@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+!.env.example
+config/config.yaml
+data/
+*.mp4
+*.avi
+*.mov
+*.sqlite*
+.DS_Store
+
+work/

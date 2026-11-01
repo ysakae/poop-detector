@@ -1,0 +1,12 @@
+{
+  "frames": 1000,
+  "roi": "640x480",
+  "mean_detection_ms": 0.60486641600437,
+  "unthrottled_cpu_percent": 138.2,
+  "rss_mib": 66.0625,
+  "monitor_24_frames_wall_seconds": 8.091074165989994,
+  "monitor_cpu_percent": 1.1,
+  "events": 1,
+  "event_processing_ms": 1.3076250033918768,
+  "scope": "人工画像のみ。RTSPデコード負荷・実際の排便からの通知遅延は含まない"
+}
