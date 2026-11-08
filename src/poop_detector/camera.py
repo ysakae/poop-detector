@@ -58,10 +58,11 @@ class Camera:
 class LatestCamera:
     """映像を継続して取り出し、最新の未処理フレームのみ保持する。"""
 
-    def __init__(self, camera):
+    def __init__(self, camera, on_frame=None):
         import threading
 
         self.camera = camera
+        self.on_frame = on_frame
         self.generation = 0
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -79,6 +80,13 @@ class LatestCamera:
         with self.camera:
             while not self._stop.is_set():
                 frame = self.camera.read()
+                if self.on_frame is not None:
+                    try:
+                        self.on_frame(frame, self.camera.generation)
+                    except Exception:
+                        logging.getLogger(__name__).error(
+                            "動画処理でエラーが発生しました。映像取得は継続します"
+                        )
                 with self._lock:
                     self._latest = (frame, self.camera.generation)
                     self._healthy = frame is not None

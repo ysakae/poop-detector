@@ -19,6 +19,13 @@ class Config:
     occupied_ratio: float = 0.18
     notifications: bool = True
     data_dir: str = "data"
+    clip_enabled: bool = True
+    clip_before_seconds: float = 30
+    clip_after_seconds: float = 30
+    clip_fps: float = 5
+    clip_max_width: int = 1280
+    clip_memory_mb: int = 128
+    clip_disk_mb: int = 4096
 
     def __post_init__(self):
         for name in ("fps", "timeout_ms", "verify_seconds", "clear_seconds", "min_area"):
@@ -32,6 +39,17 @@ class Config:
             raise ValueError("color_thresholdは0〜255です（0で色差検知を無効化）")
         if not isinstance(self.notifications, bool):
             raise ValueError("notificationsはtrueまたはfalseです")
+        if not isinstance(self.clip_enabled, bool):
+            raise ValueError("clip_enabledはtrueまたはfalseです")
+        if not (
+            0 <= self.clip_before_seconds <= 300
+            and 0 <= self.clip_after_seconds <= 300
+            and 1 <= self.clip_fps <= 30
+            and 160 <= self.clip_max_width <= 3840
+            and 8 <= self.clip_memory_mb <= 4096
+            and self.clip_disk_mb >= 8
+        ):
+            raise ValueError("動画設定の範囲を確認してください")
 
     @classmethod
     def load(cls, path):

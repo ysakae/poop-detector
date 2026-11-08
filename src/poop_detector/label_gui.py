@@ -8,6 +8,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from .clip_gui import handle_clip_post, render_clips, stream_video
 from .events import EXCRETION_TYPES, Store
 
 JST = timezone(timedelta(hours=9))
@@ -99,7 +100,7 @@ def render(store, token, query):
     content += (
         f"<p>未ラベル {metrics['unlabeled']}件 ／ 排便 {counts['feces']}件"
         f" ／ 排尿 {counts['urine']}件 ／ 種類不明 {counts['unknown']}件</p>"
-        '<a href="/records">排便・排尿の記録を見る</a></div>'
+        '<a href="/records">排便・排尿の記録を見る</a> <a href="/clips">動画を確認・保存する</a></div>'
     )
     if query.get("saved"):
         content += '<div class="message" role="status">保存しました。</div>'
@@ -233,7 +234,7 @@ def make_server(root, port=8765):
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+                "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
             )
             self.end_headers()
             self.wfile.write(data)
@@ -251,6 +252,10 @@ def make_server(root, port=8765):
                 return self.respond(200, render(store, token, query))
             if url.path == "/records":
                 return self.respond(200, render_records(store))
+            if url.path == "/clips":
+                return self.respond(200, render_clips(root, token, query))
+            if url.path == "/clip-video":
+                return stream_video(self, root, query.get("id", [""])[0])
             if url.path == "/image":
                 event = next((r for r in store.list() if r["id"] == query.get("id", [""])[0]), None)
                 if event and event["image"]:
@@ -262,7 +267,7 @@ def make_server(root, port=8765):
         def do_POST(self):
             if not self.host_allowed():
                 return self.respond(403, "アクセスできません")
-            if self.path != "/save":
+            if self.path not in ("/save", "/clips/request", "/clips/label"):
                 return self.respond(404, "記録が見つかりません")
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -272,6 +277,8 @@ def make_server(root, port=8765):
                 fields = {key: values[0] for key, values in data.items()}
                 if not hmac.compare_digest(fields.get("csrf", ""), token):
                     return self.respond(403, "画面を再読み込みして保存してください")
+                if self.path.startswith("/clips/"):
+                    return handle_clip_post(self, root, fields)
                 event_id = fields.get("id")
                 if fields.get("action") in ("missed", "manual"):
                     start = parse_time(fields.get("start"))

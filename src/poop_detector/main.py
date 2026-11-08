@@ -8,6 +8,7 @@ import os
 import platform
 import sys
 import time
+from contextlib import ExitStack
 from dataclasses import asdict
 from pathlib import Path
 
@@ -47,7 +48,7 @@ def load_baseline(path, roi):
     return frame
 
 
-def monitor(camera, roi, baseline, config, notifier, max_frames=0):
+def monitor(camera, roi, baseline, config, notifier, max_frames=0, collector=None):
     detector = IncrementalDetector(
         baseline, config.threshold, config.min_area, config.occupied_ratio, config.color_threshold
     )
@@ -56,6 +57,8 @@ def monitor(camera, roi, baseline, config, notifier, max_frames=0):
     signature = hashlib.sha256(
         baseline.tobytes() + json.dumps(asdict(roi), sort_keys=True).encode()
     ).hexdigest()
+    if collector is not None:
+        collector.scene_signature = signature
     reference = store.load_reference(signature)
     if reference is not None:
         detector.accept(reference)
@@ -70,6 +73,8 @@ def monitor(camera, roi, baseline, config, notifier, max_frames=0):
     try:
         while not max_frames or seen < max_frames:
             tick = time.monotonic()
+            if collector is not None:
+                collector.poll()
             frame = camera.read()
             if camera.generation != generation:
                 machine.interrupt()
@@ -115,6 +120,8 @@ def monitor(camera, roi, baseline, config, notifier, max_frames=0):
                 started_at = None
                 settled_since = None
                 store.set_monitor_state("SUSPECTED", event_id)
+                if collector is not None:
+                    collector.trigger(event_id)
                 if notifier.send():
                     store.update(event_id, notified_at=utcnow())
                 logger.info("排泄の疑いを記録しました: %s", event_id)
@@ -271,9 +278,34 @@ def main(argv=None):
                 baseline = load_baseline(baseline_path, roi)
                 if baseline is None:
                     raise ValueError("先にcapture-baselineを実行してください")
-                with LatestCamera(Camera(source, config.timeout_ms, config.retry_seconds)) as live:
+                with ExitStack() as stack:
+                    collector = None
+                    on_frame = None
+                    if config.clip_enabled:
+                        from .clips import ClipCollector
+
+                        collector = stack.enter_context(
+                            ClipCollector(
+                                root,
+                                config.clip_before_seconds,
+                                config.clip_after_seconds,
+                                config.clip_fps,
+                                config.clip_max_width,
+                                config.clip_memory_mb,
+                                config.clip_disk_mb,
+                            )
+                        )
+
+                        def on_frame(frame, generation):
+                            collector.feed(frame, generation=generation)
+
+                    live = stack.enter_context(
+                        LatestCamera(
+                            Camera(source, config.timeout_ms, config.retry_seconds), on_frame
+                        )
+                    )
                     live.wait_ready(config.timeout_ms / 1000 + 1)
-                    monitor(live, roi, baseline, config, notifier, args.max_frames)
+                    monitor(live, roi, baseline, config, notifier, args.max_frames, collector)
                 return 0
             frame = camera.read()
             if frame is None:

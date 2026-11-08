@@ -12,3 +12,11 @@ min_area: 40
 occupied_ratio: 0.18
 notifications: true
 data_dir: data
+# 検知前後の短い動画（常時録画はしない）
+clip_enabled: true
+clip_before_seconds: 30
+clip_after_seconds: 30
+clip_fps: 5
+clip_max_width: 1280
+clip_memory_mb: 128
+clip_disk_mb: 4096
