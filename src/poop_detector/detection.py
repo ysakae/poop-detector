@@ -24,30 +24,41 @@ class Detector:
     def gray(frame):
         return cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (5, 5), 0)
 
-    def analyze(self, frame):
+    def analyze(self, frame, valid_mask=None):
         if frame.shape != self.shape:
             raise ValueError("基準画像と解像度が異なります。基準画像を再登録してください")
+        if valid_mask is None:
+            valid = np.ones(frame.shape[:2], dtype=bool)
+        else:
+            valid = np.asarray(valid_mask) > 0
+            if valid.shape != frame.shape[:2] or not np.any(valid):
+                raise ValueError("監視マスクの形状または面積が不正です")
         gray = self.gray(frame)
         signed = gray.astype(np.int16) - self.baseline.astype(np.int16)
-        if float(np.mean(np.abs(signed) > self.threshold)) > 0.8:
+        if float(np.mean(np.abs(signed[valid]) > self.threshold)) > 0.8:
             return Observation("unstable", 0.0)
         diff = cv2.absdiff(gray, self.baseline)
         mask = cv2.threshold(diff, self.threshold, 255, cv2.THRESH_BINARY)[1]
+        mask[~valid] = 0
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-        ratio = float(np.count_nonzero(mask)) / mask.size
+        mask[~valid] = 0
+        ratio = float(np.count_nonzero(mask)) / np.count_nonzero(valid)
         if ratio >= self.occupied_ratio:
             return Observation("occupied", ratio)
         contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
         candidates = []
         height, width = mask.shape
         margin = max(1, round(min(height, width) * 0.01))
+        # 斜辺やくぼみも含めた監視領域の境界からの距離を使う。
+        padded = np.pad(valid.astype(np.uint8), 1)
+        distance = cv2.distanceTransform(padded, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)[1:-1, 1:-1]
+        boundary = valid & (distance <= margin + 1)
         for contour in contours:
             area = cv2.contourArea(contour)
             x, y, w, h = cv2.boundingRect(contour)
             # ROI外から入り込んだ体の一部は、面積が小さくても遮蔽として保留する。
-            if area >= self.min_area and (
-                x <= margin or y <= margin or x + w >= width - margin or y + h >= height - margin
-            ):
+            coords = contour[:, 0, :]
+            if area >= self.min_area and np.any(boundary[coords[:, 1], coords[:, 0]]):
                 return Observation("occupied", ratio)
             if area >= self.min_area and min(w, h) / max(w, h) >= 0.1:
                 candidates.append(area)

@@ -51,6 +51,8 @@ class ROI:
     @classmethod
     def load(cls, path):
         data = json.loads(Path(path).read_text())
+        if data.get("mode") == "mask":
+            return MaskedROI(**data)
         return PolygonROI(**data) if "points" in data else cls(**data)
 
 
@@ -116,20 +118,85 @@ class PolygonROI:
         path.write_text(json.dumps(asdict(self)))
 
 
+def _segments_intersect(a, b, c, d):
+    """端点の接触や重なりも交差として扱う。"""
+
+    def cross(p, q, r):
+        return float((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]))
+
+    def on_segment(p, q, r):
+        return bool(np.all(r >= np.minimum(p, q) - 1e-8) and np.all(r <= np.maximum(p, q) + 1e-8))
+
+    ab_c, ab_d, cd_a, cd_b = cross(a, b, c), cross(a, b, d), cross(c, d, a), cross(c, d, b)
+    if ab_c * ab_d < 0 and cd_a * cd_b < 0:
+        return True
+    return any(
+        abs(value) <= 1e-8 and on_segment(p, q, r)
+        for value, p, q, r in [(ab_c, a, b, c), (ab_d, a, b, d), (cd_a, c, d, a), (cd_b, c, d, b)]
+    )
+
+
+@dataclass(frozen=True)
+class MaskedROI(PolygonROI):
+    """3点以上の単純多角形。射影補正せず、外側を監視から除外する。"""
+
+    mode: str = "mask"
+
+    def __post_init__(self):
+        points = np.asarray(self.points, dtype=np.float32)
+        if (
+            points.ndim != 2
+            or points.shape[1] != 2
+            or len(points) < 3
+            or not np.isfinite(points).all()
+            or self.mode != "mask"
+        ):
+            raise ValueError("3点以上の正しい頂点を指定してください")
+        if np.any(points < 0) or np.any(points > 1):
+            raise ValueError("頂点は画像の内側を指定してください")
+        if len(np.unique(points, axis=0)) != len(points) or abs(cv2.contourArea(points)) < 1e-6:
+            raise ValueError("重複する頂点や面積のない多角形は指定できません")
+        count = len(points)
+        for i in range(count):
+            for j in range(i + 1, count):
+                if j == i + 1 or (i == 0 and j == count - 1):
+                    continue
+                if _segments_intersect(
+                    points[i], points[(i + 1) % count], points[j], points[(j + 1) % count]
+                ):
+                    raise ValueError("辺が交差しない順に頂点を指定してください")
+        object.__setattr__(self, "points", points.tolist())
+
+    def _bounds(self, shape):
+        points = np.rint(self.pixels(shape[1], shape[0])).astype(np.int32)
+        return points, cv2.boundingRect(points)
+
+    def mask(self, shape):
+        points, (x, y, width, height) = self._bounds(shape)
+        mask = np.zeros((height, width), dtype=np.uint8)
+        cv2.fillPoly(mask, [points - [x, y]], 255)
+        return mask
+
+    def crop(self, frame):
+        _, (x, y, width, height) = self._bounds(frame.shape)
+        crop = frame[y : y + height, x : x + width]
+        return cv2.bitwise_and(crop, crop, mask=self.mask(frame.shape))
+
+
 def select_polygon(frame):
-    """左上・右上・右下・左下の順にクリックし、Enterで確定する。"""
-    window = "トイレの四隅を指定"
+    """外周に沿って3点以上をクリックし、Enterで確定する。"""
+    window = "トイレの多角形を指定"
     points = []
     height, width = frame.shape[:2]
 
     def on_mouse(event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONDOWN and len(points) < 4:
+        if event == cv2.EVENT_LBUTTONDOWN:
             if 0 <= x < width and 0 <= y < height:
                 points.append((x, y))
         elif event == cv2.EVENT_RBUTTONDOWN and points:
             points.pop()
 
-    print("左上→右上→右下→左下をクリック。Enter:確定、右クリック:戻す、R:やり直し、Esc:取消")
+    print("外周に沿って3点以上をクリック。Enter:確定、右クリック:戻す、R:やり直し、Esc:取消")
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
     scale = min(1, 1280 / width, 800 / height)
     cv2.resizeWindow(window, round(width * scale), round(height * scale))
@@ -139,7 +206,7 @@ def select_polygon(frame):
             preview = frame.copy()
             if len(points) > 1:
                 cv2.polylines(
-                    preview, [np.array(points, dtype=np.int32)], len(points) == 4, (0, 220, 0), 2
+                    preview, [np.array(points, dtype=np.int32)], len(points) >= 3, (0, 220, 0), 2
                 )
             for index, point in enumerate(points, 1):
                 cv2.circle(preview, point, 6, (0, 220, 0), -1)
@@ -160,10 +227,10 @@ def select_polygon(frame):
                 points.clear()
             elif key in (8, 127) and points:
                 points.pop()
-            elif key in (10, 13) and len(points) == 4:
+            elif key in (10, 13) and len(points) >= 3:
                 try:
-                    return PolygonROI.from_pixels(points, width, height)
+                    return MaskedROI.from_pixels(points, width, height)
                 except ValueError:
-                    print("四角形が交差しています。Rでやり直してください")
+                    print("多角形が交差・重複しているか面積がありません。Rでやり直してください")
     finally:
         cv2.destroyWindow(window)

@@ -76,7 +76,8 @@ def monitor(camera, roi, baseline, config, notifier, max_frames=0):
                 time.sleep(1 / config.fps)
                 continue
             seen += 1
-            observation = detector.analyze(roi.crop(frame))
+            valid_mask = roi.mask(frame.shape) if hasattr(roi, "mask") else None
+            observation = detector.analyze(roi.crop(frame), valid_mask)
             if observation.kind == "candidate" and machine.started is None:
                 started_at = utcnow()
             if observation.kind != "candidate":
@@ -127,7 +128,7 @@ def parser():
             sub.add_argument("--replace", action="store_true", help="既存設定を明示的に更新")
         if name == "setup-roi":
             sub.add_argument(
-                "--polygon", action="store_true", help="四隅をクリックして斜めのROIを設定"
+                "--polygon", action="store_true", help="3点以上をクリックして多角形のROIを設定"
             )
         if name == "run":
             sub.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
