@@ -1,0 +1,73 @@
+{
+  "results": [
+    {
+      "file": "124ee940a3c941c9980ead85029c6fa1.jpg",
+      "dog_boxes": [],
+      "ms": 133.8944589952007
+    },
+    {
+      "file": "2f4f9660862a4a4aa242548a49e55996.jpg",
+      "dog_boxes": [],
+      "ms": 79.53808404272422
+    },
+    {
+      "file": "4173399c8d914b259b229cd1735ed7e1.jpg",
+      "dog_boxes": [
+        [
+          1010,
+          516,
+          1340,
+          898
+        ]
+      ],
+      "ms": 70.4299999633804
+    },
+    {
+      "file": "636471f406e54c5cbeb3615eb6f0d746.jpg",
+      "dog_boxes": [
+        [
+          562,
+          484,
+          821,
+          882
+        ]
+      ],
+      "ms": 71.51258300291374
+    },
+    {
+      "file": "8f8576ff597549e58320e347e3a15f5a.jpg",
+      "dog_boxes": [],
+      "ms": 74.67770803486928
+    },
+    {
+      "file": "b3725a31ec3046a68d04d369e50ffe33.jpg",
+      "dog_boxes": [],
+      "ms": 77.09133299067616
+    },
+    {
+      "file": "e483a86b25ff45bea98acc036d105082.jpg",
+      "dog_boxes": [
+        [
+          435,
+          544,
+          653,
+          840
+        ]
+      ],
+      "ms": 75.89574996381998
+    },
+    {
+      "file": "f4f85e102b3046f0850a02343ee2e325.jpg",
+      "dog_boxes": [],
+      "ms": 74.61166603025049
+    }
+  ],
+  "benchmark": {
+    "model": "OpenCV Zoo YOLOX-s",
+    "mean_inference_ms": 71.39819999574684,
+    "cpu_percent_inference_loop": 448.7,
+    "rss_mib": 424.859375,
+    "blank_boxes": [],
+    "scope": "旧画角の保存画像のみ。俯瞰の実機映像の精度・総負荷は未確認"
+  }
+}

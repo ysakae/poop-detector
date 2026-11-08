@@ -26,6 +26,11 @@ class Config:
     clip_max_width: int = 1280
     clip_memory_mb: int = 128
     clip_disk_mb: int = 4096
+    dog_enabled: bool = False
+    dog_fps: float = 1
+    dog_confidence: float = 0.4
+    dog_exit_seconds: float = 2
+    dog_clip_cooldown_seconds: float = 60
 
     def __post_init__(self):
         for name in ("fps", "timeout_ms", "verify_seconds", "clear_seconds", "min_area"):
@@ -41,6 +46,15 @@ class Config:
             raise ValueError("notificationsはtrueまたはfalseです")
         if not isinstance(self.clip_enabled, bool):
             raise ValueError("clip_enabledはtrueまたはfalseです")
+        if not isinstance(self.dog_enabled, bool):
+            raise ValueError("dog_enabledはtrueまたはfalseです")
+        if not (
+            0.2 <= self.dog_fps <= 10
+            and 0 < self.dog_confidence < 1
+            and 2 / self.dog_fps <= self.dog_exit_seconds <= 60
+            and 0 <= self.dog_clip_cooldown_seconds < float("inf")
+        ):
+            raise ValueError("犬の検出設定を確認してください")
         if not (
             0 <= self.clip_before_seconds <= 300
             and 0 <= self.clip_after_seconds <= 300

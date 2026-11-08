@@ -48,12 +48,27 @@ def load_baseline(path, roi):
     return frame
 
 
-def monitor(camera, roi, baseline, config, notifier, max_frames=0, collector=None):
+def monitor(
+    camera, roi, baseline, config, notifier, max_frames=0, collector=None, dog_observer=None
+):
     detector = IncrementalDetector(
         baseline, config.threshold, config.min_area, config.occupied_ratio, config.color_threshold
     )
     machine = Machine(config.verify_seconds, config.clear_seconds)
     store = Store(config.data_dir)
+    if dog_observer is None and config.dog_enabled:
+        from .dog import DogDetector, DogObserver
+
+        try:
+            model = DogDetector(
+                Path(config.data_dir) / "models" / "dog-yolox", config.dog_confidence
+            )
+        except (OSError, ValueError):
+            logger.error("犬のモデルを準備してください: uv run poop-detector setup-dog-model")
+            raise
+        dog_observer = DogObserver(model, config.dog_fps, config.dog_exit_seconds)
+    dog_state = None
+    dog_clip_times = {}
     signature = hashlib.sha256(
         baseline.tobytes() + json.dumps(asdict(roi), sort_keys=True).encode()
     ).hexdigest()
@@ -82,18 +97,32 @@ def monitor(camera, roi, baseline, config, notifier, max_frames=0, collector=Non
                 started_at = None
                 settled_since = None
                 previous = None
+                if dog_observer is not None:
+                    dog_observer.reset()
             if frame is None:
                 if not getattr(camera, "healthy", False):
                     machine.interrupt()
                     started_at = None
                     settled_since = None
                     previous = None
+                    if dog_observer is not None:
+                        dog_observer.reset()
                 time.sleep(1 / config.fps)
                 continue
             seen += 1
             valid_mask = roi.mask(frame.shape) if hasattr(roi, "mask") else None
             crop = roi.crop(frame)
             observation = detector.analyze(crop, valid_mask)
+            if dog_observer is not None:
+                dog_state = dog_observer.update(frame, roi, time.monotonic())
+                if dog_state.error or dog_state.on_roi:
+                    observation.kind = "occupied"
+                transition = dog_state.transition
+                if collector is not None and transition:
+                    last = dog_clip_times.get(transition, float("-inf"))
+                    if time.monotonic() - last >= config.dog_clip_cooldown_seconds:
+                        if collector.trigger(source=transition) is not None:
+                            dog_clip_times[transition] = time.monotonic()
             moving = previous is not None and detector.changed_from(crop, previous, valid_mask)
             previous = crop.copy()
             if moving:
@@ -143,6 +172,10 @@ def monitor(camera, roi, baseline, config, notifier, max_frames=0, collector=Non
                     (time.monotonic() - tick) * 1000,
                 )
                 last_health = time.monotonic()
+                if dog_state is not None:
+                    logger.info(
+                        "犬検出ROI遮蔽=%s 推論=%.1fms", dog_state.on_roi, dog_state.inference_ms
+                    )
             time.sleep(max(0, 1 / config.fps - (time.monotonic() - tick)))
     except KeyboardInterrupt:
         logger.info("監視を終了しました")
@@ -171,6 +204,7 @@ def parser():
             )
         if name == "run":
             sub.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
+            sub.add_argument("--dog", action="store_true", help="犬の存在・出入り検出を有効化")
     feedback = commands.add_parser("feedback", help="実際に排泄だったかと種類を記録")
     feedback.add_argument("event_id")
     feedback.add_argument("label", choices=["true", "false"])
@@ -193,6 +227,10 @@ def parser():
     gui = commands.add_parser("label-gui", help="画像を見ながらラベルを付ける")
     gui.add_argument("--port", type=int, default=8765, help="ローカル画面のポート")
     gui.add_argument("--no-browser", action="store_true", help="ブラウザを自動で開かない")
+    commands.add_parser("setup-dog-model", help="犬検出モデルを固定版・ハッシュ確認付きで取得")
+    dog_check = commands.add_parser("check-dog", help="静止画で犬検出と処理負荷を確認")
+    dog_check.add_argument("--image", required=True)
+    dog_check.add_argument("--repeat", type=int, default=10)
     return result
 
 
@@ -201,7 +239,41 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
         config = Config.load(args.config)
+        if args.command == "run" and args.dog:
+            config.dog_enabled = True
         root = Path(config.data_dir)
+        if args.command in ("setup-dog-model", "check-dog"):
+            from .dog import DogDetector, setup_model
+
+            model_dir = root / "models" / "dog-yolox"
+            if args.command == "setup-dog-model":
+                print(f"犬検出モデルを確認しました: {setup_model(model_dir)}")
+                return 0
+            if not 1 <= args.repeat <= 100:
+                raise ValueError("繰り返し回数は1〜100です")
+            frame = cv2.imread(args.image)
+            if frame is None:
+                raise ValueError("画像を読み込めません")
+            model = DogDetector(model_dir, config.dog_confidence)
+            model.predict(frame)
+            process = psutil.Process()
+            process.cpu_percent()
+            start = time.perf_counter()
+            for _ in range(args.repeat):
+                boxes = model.predict(frame)
+            print(
+                json.dumps(
+                    {
+                        "dog_boxes": boxes,
+                        "mean_inference_ms": (time.perf_counter() - start) * 1000 / args.repeat,
+                        "cpu_percent_inference_loop": process.cpu_percent(),
+                        "rss_mib": process.memory_info().rss / 1024**2,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
         if args.command == "label-gui":
             from .label_gui import serve
 

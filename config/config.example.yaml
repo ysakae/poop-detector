@@ -20,3 +20,9 @@ clip_fps: 5
 clip_max_width: 1280
 clip_memory_mb: 128
 clip_disk_mb: 4096
+# 犬の存在・出入りの検出（モデルを準備してから有効化、run --dogでも指定可）
+dog_enabled: false
+dog_fps: 1
+dog_confidence: 0.4
+dog_exit_seconds: 2
+dog_clip_cooldown_seconds: 60
