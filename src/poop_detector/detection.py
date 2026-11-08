@@ -32,7 +32,7 @@ class Detector:
     def gray(frame):
         return cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (5, 5), 0)
 
-    def analyze(self, frame, valid_mask=None):
+    def valid_region(self, frame, valid_mask=None):
         if frame.shape != self.shape:
             raise ValueError("基準画像と解像度が異なります。基準画像を再登録してください")
         if valid_mask is None:
@@ -41,11 +41,10 @@ class Detector:
             valid = np.asarray(valid_mask) > 0
             if valid.shape != frame.shape[:2] or not np.any(valid):
                 raise ValueError("監視マスクの形状または面積が不正です")
-        gray = self.gray(frame)
-        signed = gray.astype(np.int16) - self.baseline.astype(np.int16)
-        if float(np.mean(np.abs(signed[valid]) > self.threshold)) > 0.8:
-            return Observation("unstable", 0.0)
-        diff = cv2.absdiff(gray, self.baseline)
+        return valid
+
+    def difference_mask(self, frame, valid):
+        diff = cv2.absdiff(self.gray(frame), self.baseline)
         mask = cv2.threshold(diff, self.threshold, 255, cv2.THRESH_BINARY)[1]
         if self.color_threshold:
             color_diff = cv2.absdiff(self.color(frame), self.baseline_color)
@@ -53,6 +52,17 @@ class Detector:
         mask[~valid] = 0
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
         mask[~valid] = 0
+        return mask
+
+    def analyze(self, frame, valid_mask=None):
+        valid = self.valid_region(frame, valid_mask)
+        gray = self.gray(frame)
+        signed = gray.astype(np.int16) - self.baseline.astype(np.int16)
+        if float(np.mean(np.abs(signed[valid]) > self.threshold)) > 0.8:
+            return Observation("unstable", 0.0)
+        return self.classify_mask(self.difference_mask(frame, valid), valid)
+
+    def classify_mask(self, mask, valid):
         ratio = float(np.count_nonzero(mask)) / np.count_nonzero(valid)
         if ratio >= self.occupied_ratio:
             return Observation("occupied", ratio)
@@ -74,3 +84,52 @@ class Detector:
             if area >= self.min_area and min(w, h) / max(w, h) >= 0.1:
                 candidates.append(area)
         return Observation("candidate" if candidates else "empty", ratio)
+
+
+class IncrementalDetector(Detector):
+    """空の基準と通知済み状態の両方を使い、追加された変化だけを評価する。"""
+
+    def __init__(self, baseline, *args):
+        super().__init__(baseline, *args)
+        self.accept(baseline)
+
+    def accept(self, frame):
+        self.valid_region(frame)
+        self.reference_image = frame.copy()
+        self.reference = Detector(
+            frame, self.threshold, self.min_area, self.occupied_ratio, self.color_threshold
+        )
+
+    def strength(self, frame):
+        gray = cv2.absdiff(self.gray(frame), self.baseline).astype(np.float32) / self.threshold
+        if not self.color_threshold:
+            return gray
+        color = np.max(cv2.absdiff(self.color(frame), self.baseline_color), axis=2)
+        return np.maximum(gray, color.astype(np.float32) / self.color_threshold)
+
+    def analyze(self, frame, valid_mask=None):
+        valid = self.valid_region(frame, valid_mask)
+        dirty = self.difference_mask(frame, valid)
+        if not np.any(dirty):
+            return Observation("empty", 0.0)
+        delta = self.reference.difference_mask(frame, valid)
+        # 基準へ近づく変化（拭き取り・乾燥など）を追加物体として扱わない。
+        additions = (
+            (delta > 0)
+            & (dirty > 0)
+            & (self.strength(frame) >= self.strength(self.reference_image) - 0.05)
+        )
+        mask = additions.astype(np.uint8) * 255
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        result = self.classify_mask(mask, valid)
+        # 除去分を含む総差分ではなく、追加分に遮蔽・広範囲変動の基準を適用する。
+        if result.score > 0.8:
+            return Observation("unstable", result.score)
+        return result
+
+    def changed_from(self, frame, previous, valid_mask=None):
+        detector = Detector(
+            previous, self.threshold, self.min_area, self.occupied_ratio, self.color_threshold
+        )
+        valid = self.valid_region(frame, valid_mask)
+        return np.count_nonzero(detector.difference_mask(frame, valid)) >= self.min_area

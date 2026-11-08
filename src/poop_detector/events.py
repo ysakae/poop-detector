@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import cv2
+import numpy as np
 
 _UNSET = object()
 EXCRETION_TYPES = {
@@ -43,6 +44,35 @@ class Store:
                 id INTEGER PRIMARY KEY CHECK(id=1), state TEXT, event_id TEXT)""")
             db.execute("""CREATE TABLE IF NOT EXISTS excretion_labels (
                 event_id TEXT PRIMARY KEY, excretion_type TEXT NOT NULL, note TEXT NOT NULL)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS detection_reference (
+                id INTEGER PRIMARY KEY CHECK(id=1), signature TEXT, image BLOB)""")
+
+    @staticmethod
+    def encode_reference(frame):
+        ok, image = cv2.imencode(".png", frame)
+        if not ok:
+            raise OSError("通知済み状態を保存できません")
+        return image.tobytes()
+
+    def load_reference(self, signature):
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT image FROM detection_reference WHERE id=1 AND signature=?", (signature,)
+            ).fetchone()
+        if row is None:
+            return None
+        frame = cv2.imdecode(np.frombuffer(row["image"], np.uint8), cv2.IMREAD_COLOR)
+        if frame is None:
+            raise ValueError("通知済み状態を読み込めません")
+        return frame
+
+    def save_reference(self, frame, signature):
+        image = self.encode_reference(frame)
+        with self.connect() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO detection_reference VALUES (1,?,?)", (signature, image)
+            )
+            db.execute("INSERT OR REPLACE INTO monitor_state VALUES (1,'EMPTY',NULL)")
 
     def monitor_state(self):
         with self.connect() as db:
@@ -58,7 +88,10 @@ class Store:
         db.row_factory = sqlite3.Row
         return db
 
-    def record(self, frame, score, detection_started, processing_ms):
+    def record(
+        self, frame, score, detection_started, processing_ms, reference=None, signature=None
+    ):
+        encoded = self.encode_reference(reference) if reference is not None else None
         event_id = uuid4().hex
         image = f"events/{event_id}.jpg"
         if not cv2.imwrite(str(self.root / image), frame):
@@ -70,6 +103,11 @@ class Store:
                 VALUES (?,?,?,?,?,?,?)""",
                 (event_id, utcnow(), "SUSPECTED", score, detection_started, processing_ms, image),
             )
+            if encoded is not None:
+                db.execute(
+                    "INSERT OR REPLACE INTO detection_reference VALUES (1,?,?)",
+                    (signature, encoded),
+                )
         return event_id
 
     def list(self):

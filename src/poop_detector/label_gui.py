@@ -105,7 +105,7 @@ def render(store, token, query):
         content += '<div class="message" role="status">保存しました。</div>'
     content += (
         '<p class="note">自動検知は排泄の疑いです。便・尿の種類は確認して記録してください。'
-        "尿跡などが残っている間は追加通知を抑制します。追加の排泄は手動で記録してください。</p>"
+        "尿跡が残っていても追加の変化を監視します。同じ跡は再通知せず、判断できない排泄は手動で記録できます。</p>"
     )
     content += '<div class="workspace"><nav aria-label="イベント一覧">'
     for item in rows:

@@ -1,6 +1,7 @@
 """監視・初期設定・評価のコマンドライン。"""
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -19,7 +20,7 @@ import psutil
 
 from .camera import Camera, LatestCamera
 from .config import Config
-from .detection import Detector
+from .detection import IncrementalDetector
 from .events import EXCRETION_TYPES, Store, utcnow
 from .notifications import MacNotifier
 from .roi import ROI, select_polygon
@@ -47,19 +48,22 @@ def load_baseline(path, roi):
 
 
 def monitor(camera, roi, baseline, config, notifier, max_frames=0):
-    detector = Detector(
+    detector = IncrementalDetector(
         baseline, config.threshold, config.min_area, config.occupied_ratio, config.color_threshold
     )
     machine = Machine(config.verify_seconds, config.clear_seconds)
     store = Store(config.data_dir)
-    # 現在有効な抑止状態のみ復元し、清掃後のEMPTYも永続化する。
-    persisted = store.monitor_state()
-    if persisted["state"] in ("SUSPECTED", "ACKNOWLEDGED"):
-        machine.latched = True
-        machine.state = persisted["state"]
+    signature = hashlib.sha256(
+        baseline.tobytes() + json.dumps(asdict(roi), sort_keys=True).encode()
+    ).hexdigest()
+    reference = store.load_reference(signature)
+    if reference is not None:
+        detector.accept(reference)
     seen = 0
     generation = camera.generation
     started_at = None
+    settled_since = None
+    previous = None
     process = psutil.Process()
     process.cpu_percent()
     last_health = time.monotonic()
@@ -71,32 +75,58 @@ def monitor(camera, roi, baseline, config, notifier, max_frames=0):
                 machine.interrupt()
                 generation = camera.generation
                 started_at = None
+                settled_since = None
+                previous = None
             if frame is None:
                 if not getattr(camera, "healthy", False):
                     machine.interrupt()
                     started_at = None
+                    settled_since = None
+                    previous = None
                 time.sleep(1 / config.fps)
                 continue
             seen += 1
             valid_mask = roi.mask(frame.shape) if hasattr(roi, "mask") else None
-            observation = detector.analyze(roi.crop(frame), valid_mask)
+            crop = roi.crop(frame)
+            observation = detector.analyze(crop, valid_mask)
+            moving = previous is not None and detector.changed_from(crop, previous, valid_mask)
+            previous = crop.copy()
+            if moving:
+                machine.interrupt()
+                started_at = None
+                settled_since = None
+                if observation.kind == "candidate":
+                    observation.kind = "unstable"
             if observation.kind == "candidate" and machine.started is None:
                 started_at = utcnow()
             if observation.kind != "candidate":
                 started_at = None
-            was_latched = machine.latched
-            if machine.latched and store.monitor_state()["state"] == "ACKNOWLEDGED":
-                machine.acknowledge()
             if machine.update(observation.kind, time.monotonic()):
                 event_id = store.record(
-                    frame, observation.score, started_at, (time.monotonic() - tick) * 1000
+                    frame,
+                    observation.score,
+                    started_at,
+                    (time.monotonic() - tick) * 1000,
+                    reference=crop,
+                    signature=signature,
                 )
+                detector.accept(crop)
+                machine = Machine(config.verify_seconds, config.clear_seconds)
+                started_at = None
+                settled_since = None
                 store.set_monitor_state("SUSPECTED", event_id)
                 if notifier.send():
                     store.update(event_id, notified_at=utcnow())
                 logger.info("排泄の疑いを記録しました: %s", event_id)
-            if was_latched and not machine.latched:
-                store.set_monitor_state("EMPTY")
+            if observation.kind == "empty":
+                if settled_since is None:
+                    settled_since = time.monotonic()
+                if time.monotonic() - settled_since >= config.clear_seconds:
+                    if detector.changed_from(crop, detector.reference_image, valid_mask):
+                        store.save_reference(crop, signature)
+                        detector.accept(crop)
+            else:
+                settled_since = None
             if time.monotonic() - last_health >= 30:
                 logger.info(
                     "状態=%s CPU=%.1f%% RSS=%.1fMiB 処理=%.1fms",
