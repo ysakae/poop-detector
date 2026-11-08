@@ -13,12 +13,20 @@ class Observation:
 
 
 class Detector:
-    def __init__(self, baseline, threshold=30, min_area=40, occupied_ratio=0.18):
+    def __init__(
+        self, baseline, threshold=30, min_area=40, occupied_ratio=0.18, color_threshold=20
+    ):
         self.shape = baseline.shape
         self.baseline = self.gray(baseline)
         self.threshold = threshold
         self.min_area = min_area
         self.occupied_ratio = occupied_ratio
+        self.color_threshold = color_threshold
+        self.baseline_color = self.color(baseline)
+
+    @staticmethod
+    def color(frame):
+        return cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2LAB), (5, 5), 0)[:, :, 1:]
 
     @staticmethod
     def gray(frame):
@@ -39,6 +47,9 @@ class Detector:
             return Observation("unstable", 0.0)
         diff = cv2.absdiff(gray, self.baseline)
         mask = cv2.threshold(diff, self.threshold, 255, cv2.THRESH_BINARY)[1]
+        if self.color_threshold:
+            color_diff = cv2.absdiff(self.color(frame), self.baseline_color)
+            mask[np.max(color_diff, axis=2) > self.color_threshold] = 255
         mask[~valid] = 0
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
         mask[~valid] = 0

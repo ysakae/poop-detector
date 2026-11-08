@@ -95,3 +95,21 @@ def test_gui_missed_and_filter(gui):
     assert post(server, {"id": event, "label": "false"})[0] == 303
     assert event.encode() not in request(server, "GET", "/?filter=unlabeled")[1]
     assert event.encode() in request(server, "GET", "/?filter=false")[1]
+
+
+def test_gui_urine_and_excretion_log(gui):
+    server, store, event = gui
+    assert post(server, {"id": event, "label": "urine", "note": "濡れ跡を確認"})[0] == 303
+    assert store.records()[0]["excretion_type"] == "urine"
+    assert "濡れ跡を確認".encode() in request(server, "GET", "/records")[1]
+    assert (
+        post(server, {"action": "manual", "type": "feces", "start": "2026-11-08T23:10"})[0] == 303
+    )
+    assert len(store.records()) == 2
+    assert store.metrics()["missed"] == 0
+    assert event.encode() in request(server, "GET", "/?filter=urine")[1]
+    assert post(server, {"action": "missed", "type": "both", "start": "2026-11-08T23:20"})[0] == 303
+    assert store.metrics()["excretion_counts"] == {"feces": 2, "urine": 2, "unknown": 0}
+    assert (
+        post(server, {"action": "manual", "type": "wrong", "start": "2026-11-08T23:30"})[0] == 400
+    )

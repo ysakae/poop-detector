@@ -23,7 +23,7 @@ class MacNotifier:
                     "osascript",
                     "-e",
                     'display notification "ここちゃんのトイレに変化を検出しました。'
-                    'ウンチの可能性があります。" with title "ここちゃんのトイレ"',
+                    '排便・排尿の可能性があります。" with title "ここちゃんのトイレ"',
                 ],
                 shell=False,
                 check=False,

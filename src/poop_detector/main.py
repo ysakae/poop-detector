@@ -20,7 +20,7 @@ import psutil
 from .camera import Camera, LatestCamera
 from .config import Config
 from .detection import Detector
-from .events import Store, utcnow
+from .events import EXCRETION_TYPES, Store, utcnow
 from .notifications import MacNotifier
 from .roi import ROI, select_polygon
 from .state_machine import Machine
@@ -47,7 +47,9 @@ def load_baseline(path, roi):
 
 
 def monitor(camera, roi, baseline, config, notifier, max_frames=0):
-    detector = Detector(baseline, config.threshold, config.min_area, config.occupied_ratio)
+    detector = Detector(
+        baseline, config.threshold, config.min_area, config.occupied_ratio, config.color_threshold
+    )
     machine = Machine(config.verify_seconds, config.clear_seconds)
     store = Store(config.data_dir)
     # 現在有効な抑止状態のみ復元し、清掃後のEMPTYも永続化する。
@@ -92,7 +94,7 @@ def monitor(camera, roi, baseline, config, notifier, max_frames=0):
                 store.set_monitor_state("SUSPECTED", event_id)
                 if notifier.send():
                     store.update(event_id, notified_at=utcnow())
-                logger.info("排便の疑いを記録しました: %s", event_id)
+                logger.info("排泄の疑いを記録しました: %s", event_id)
             if was_latched and not machine.latched:
                 store.set_monitor_state("EMPTY")
             if time.monotonic() - last_health >= 30:
@@ -132,16 +134,25 @@ def parser():
             )
         if name == "run":
             sub.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
-    feedback = commands.add_parser("feedback", help="実際に排便だったかを記録")
+    feedback = commands.add_parser("feedback", help="実際に排泄だったかと種類を記録")
     feedback.add_argument("event_id")
     feedback.add_argument("label", choices=["true", "false"])
     feedback.add_argument("--start", help="実際の開始時刻（タイムゾーン付きISO8601）")
     feedback.add_argument("--end", help="実際の完了時刻（タイムゾーン付きISO8601）")
+    feedback.add_argument("--type", choices=EXCRETION_TYPES, help="排泄の種類")
+    feedback.add_argument("--note", help="記録のメモ")
     ack = commands.add_parser("acknowledge", help="飼い主の確認済みを記録")
     ack.add_argument("event_id")
-    missed = commands.add_parser("missed", help="見逃した排便を記録")
+    missed = commands.add_parser("missed", help="見逃した排便・排尿を記録")
     missed.add_argument("--start", required=True)
     missed.add_argument("--end")
+    missed.add_argument("--type", choices=EXCRETION_TYPES, default="unspecified")
+    commands.add_parser("records", help="確認済みの排便・排尿記録")
+    record = commands.add_parser("record", help="目視で確認した排便・排尿を記録")
+    record.add_argument("--type", required=True, choices=EXCRETION_TYPES)
+    record.add_argument("--start", required=True)
+    record.add_argument("--end")
+    record.add_argument("--note", default="")
     gui = commands.add_parser("label-gui", help="画像を見ながらラベルを付ける")
     gui.add_argument("--port", type=int, default=8765, help="ローカル画面のポート")
     gui.add_argument("--no-browser", action="store_true", help="ブラウザを自動で開かない")
@@ -159,7 +170,15 @@ def main(argv=None):
 
             serve(root, args.port, not args.no_browser)
             return 0
-        if args.command in ("events", "metrics", "feedback", "acknowledge", "missed"):
+        if args.command in (
+            "events",
+            "metrics",
+            "feedback",
+            "acknowledge",
+            "missed",
+            "record",
+            "records",
+        ):
             store = Store(root)
             from datetime import datetime
 
@@ -172,9 +191,30 @@ def main(argv=None):
             elif args.command == "metrics":
                 print(json.dumps(store.metrics(), ensure_ascii=False, indent=2))
             elif args.command == "feedback":
-                store.feedback(args.event_id, args.label == "true", args.start, args.end)
+                values = {
+                    key: value
+                    for key, value in [
+                        ("start", args.start),
+                        ("end", args.end),
+                        ("note", args.note),
+                    ]
+                    if value is not None
+                }
+                existing = next(
+                    (r["excretion_type"] for r in store.list() if r["id"] == args.event_id),
+                    "unspecified",
+                )
+                store.classify(
+                    args.event_id,
+                    (args.type or existing) if args.label == "true" else "false",
+                    **values,
+                )
             elif args.command == "missed":
-                store.missed(args.start, args.end)
+                store.add_excretion(args.type, args.start, args.end, missed=True)
+            elif args.command == "record":
+                store.add_excretion(args.type, args.start, args.end, args.note)
+            elif args.command == "records":
+                print(json.dumps(store.records(), ensure_ascii=False, indent=2))
             else:
                 store.update(args.event_id, acknowledged=1)
                 if store.monitor_state()["event_id"] == args.event_id:

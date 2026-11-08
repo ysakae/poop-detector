@@ -8,7 +8,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from .events import Store
+from .events import EXCRETION_TYPES, Store
 
 JST = timezone(timedelta(hours=9))
 STYLE = """
@@ -54,7 +54,11 @@ def render(store, token, query):
     filters = {
         "unlabeled": "未ラベル",
         "all": "すべて",
-        "true": "排便だった",
+        "true": "排泄あり",
+        "feces": "排便",
+        "urine": "排尿",
+        "both": "排便・排尿",
+        "manual": "手動記録",
         "false": "誤検知",
         "missed": "見逃し",
     }
@@ -67,11 +71,17 @@ def render(store, token, query):
         for r in rows
         if mode == "all"
         or (mode == "missed" and r["kind"] == "MISSED")
+        or (mode == "manual" and r["kind"] == "MANUAL")
+        or (mode == "true" and r["feedback"] == 1)
+        or (
+            mode in ("feces", "urine", "both")
+            and r["feedback"] == 1
+            and (r["excretion_type"] == mode or (mode != "both" and r["excretion_type"] == "both"))
+        )
         or (
             r["kind"] == "SUSPECTED"
             and (
                 (mode == "unlabeled" and r["feedback"] is None)
-                or (mode == "true" and r["feedback"] == 1)
                 or (mode == "false" and r["feedback"] == 0)
             )
         )
@@ -85,19 +95,29 @@ def render(store, token, query):
         for k, v in filters.items()
     )
     content += '</select></label> <button class="secondary">表示</button></form>'
+    counts = metrics["excretion_counts"]
     content += (
-        f"<p>未ラベル {metrics['unlabeled']}件 ／ 排便 {metrics['true_positive']}件"
-        f" ／ 誤検知 {metrics['false_positive']}件 ／ 見逃し {metrics['missed']}件</p></div>"
+        f"<p>未ラベル {metrics['unlabeled']}件 ／ 排便 {counts['feces']}件"
+        f" ／ 排尿 {counts['urine']}件 ／ 種類不明 {counts['unknown']}件</p>"
+        '<a href="/records">排便・排尿の記録を見る</a></div>'
     )
     if query.get("saved"):
         content += '<div class="message" role="status">保存しました。</div>'
+    content += (
+        '<p class="note">自動検知は排泄の疑いです。便・尿の種類は確認して記録してください。'
+        "尿跡などが残っている間は追加通知を抑制します。追加の排泄は手動で記録してください。</p>"
+    )
     content += '<div class="workspace"><nav aria-label="イベント一覧">'
     for item in rows:
         label = (
-            "見逃し"
-            if item["kind"] == "MISSED"
-            else {None: "未ラベル", 0: "誤検知", 1: "排便だった"}[item["feedback"]]
+            EXCRETION_TYPES[item["excretion_type"]]
+            if item["feedback"] == 1
+            else "誤検知"
+            if item["feedback"] == 0
+            else "未ラベル"
         )
+        if item["kind"] != "SUSPECTED":
+            label += "（見逃し）" if item["kind"] == "MISSED" else "（手動）"
         url = "/?" + urlencode({"filter": mode, "id": item["id"]})
         active = "active" if row and row["id"] == item["id"] else ""
         content += (
@@ -115,7 +135,7 @@ def render(store, token, query):
             )
         else:
             content += "<p>この記録には画像がありません。</p>"
-        if row["kind"] == "SUSPECTED":
+        if row["kind"] in ("SUSPECTED", "MANUAL", "MISSED"):
             content += (
                 '<form method="post" action="/save">'
                 + csrf
@@ -123,36 +143,76 @@ def render(store, token, query):
                 + f'<input type="hidden" name="filter" value="{mode}">'
                 + '<fieldset><legend>実際にはどうでしたか？</legend><div class="choices">'
             )
-            for value, label, match in [
-                ("true", "排便だった", 1),
-                ("false", "誤検知", 0),
-                ("unknown", "保留・未ラベル", None),
-            ]:
-                checked = "checked" if row["feedback"] == match else ""
+            choices = list(EXCRETION_TYPES.items())
+            if row["kind"] == "SUSPECTED":
+                choices += [("false", "誤検知"), ("unknown", "保留・未ラベル")]
+            selected_label = (
+                row["excretion_type"]
+                if row["feedback"] == 1
+                else "false"
+                if row["feedback"] == 0
+                else "unknown"
+            )
+            for value, label in choices:
+                if value == "feces":
+                    label = "排便だった"
+                checked = "checked" if value == selected_label else ""
                 content += (
                     f'<label class="choice"><input type="radio" name="label" '
                     f'value="{value}" {checked} required>{label}</label>'
                 )
-            content += '</div></fieldset><p class="note">開始・完了時刻は分かる場合だけ入力してください。日本時間です。</p><div class="times">'
-            for name, label in [("start", "排便の開始"), ("end", "排便の完了")]:
+            content += '</div></fieldset><p class="note">「種類不明」は排泄を確認したが便・尿の区別が付かない場合に選びます。開始・完了時刻は分かる場合だけ入力してください。日本時間です。</p><div class="times">'
+            for name, label in [("start", "排泄の開始"), ("end", "排泄の完了")]:
                 value = escape(local_time(row["actual_" + name], form=True))
                 content += f'<label>{label}<input type="datetime-local" step="1" name="{name}" value="{value}"></label>'
-            content += '</div><p style="margin-top:20px"><button>ラベルを保存</button></p></form>'
+            content += (
+                '</div><p><label>メモ（任意）<br><textarea name="note" rows="3" maxlength="2000" style="width:100%">'
+                + escape(row["note"])
+                + "</textarea></label></p>"
+                + '<p style="margin-top:20px"><button>ラベルを保存</button></p></form>'
+            )
         else:
             content += "<p>通知されなかった排便として登録されています。</p>"
     else:
         content += '<div class="empty"><h2>該当する記録はありません</h2><p>「すべて」に切り替えるか、監視で記録が増えたら再表示してください。</p></div>'
-    content += "</article></div><details><summary>通知されなかった排便を登録する</summary>"
+    content += "</article></div><details><summary>目視で確認した排便・排尿を記録する</summary>"
     content += (
-        '<p class="note">実際に確認した排便だけを登録してください。同じ排便を重複登録しないでください。</p>'
+        '<p class="note">既に通知の画像がある場合は、その記録にラベルを付けてください。同じ排泄の重複登録を避けてください。</p>'
         '<form method="post" action="/save">'
         + csrf
-        + '<input type="hidden" name="action" value="missed"><div class="times">'
+        + '<label>記録の種類<select name="action"><option value="manual">通常の手動記録</option><option value="missed">通知されなかった排泄（見逃し）</option></select></label>'
+        + '<label>排泄の種類<select name="type">'
+        + "".join(f'<option value="{k}">{v}</option>' for k, v in EXCRETION_TYPES.items())
+        + '</select></label><div class="times">'
         '<label>開始（日本時間・必須）<input type="datetime-local" step="1" name="start" required></label>'
         '<label>完了（任意）<input type="datetime-local" step="1" name="end"></label>'
-        '</div><p style="margin-top:16px"><button>見逃しを登録</button></p></form></details>'
+        '</div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000" style="width:100%"></textarea></label></p><p style="margin-top:16px"><button>排泄を記録</button></p></form></details>'
         "<footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>"
     )
+    return document(content)
+
+
+def render_records(store):
+    content = '<h2>排便・排尿の記録</h2><p><a href="/">画像の確認・記録の追加へ戻る</a></p>'
+    content += '<p class="note">確認済みの排泄を表示します。両方の記録は排便・排尿に各1件と数えます。時刻は日本時間です。</p><div style="overflow:auto"><table style="width:100%;background:white;border-collapse:collapse"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>登録方法</th><th>メモ</th></tr></thead><tbody>'
+    for row in reversed(store.records()):
+        url = "/?" + urlencode({"filter": "all", "id": row["id"]})
+        source = {"MANUAL": "手動", "MISSED": "見逃し", "SUSPECTED": "通知を確認"}[row["kind"]]
+        values = [
+            local_time(row["actual_start"] or row["timestamp"]),
+            local_time(row["actual_end"]),
+            EXCRETION_TYPES[row["excretion_type"]],
+            source,
+            row["note"],
+        ]
+        content += "<tr>" + "".join(
+            '<td style="padding:14px;border-bottom:1px solid #c8d8df">' + escape(v) + "</td>"
+            for v in values
+        )
+        content += f'<td><a href="{escape(url)}">編集</a></td></tr>'
+    content += "</tbody></table></div>"
+    if not store.records():
+        content += "<p>確認済みの排泄記録はまだありません。</p>"
     return document(content)
 
 
@@ -189,6 +249,8 @@ def make_server(root, port=8765):
             query = parse_qs(url.query)
             if url.path == "/":
                 return self.respond(200, render(store, token, query))
+            if url.path == "/records":
+                return self.respond(200, render_records(store))
             if url.path == "/image":
                 event = next((r for r in store.list() if r["id"] == query.get("id", [""])[0]), None)
                 if event and event["image"]:
@@ -211,21 +273,22 @@ def make_server(root, port=8765):
                 if not hmac.compare_digest(fields.get("csrf", ""), token):
                     return self.respond(403, "画面を再読み込みして保存してください")
                 event_id = fields.get("id")
-                if fields.get("action") == "missed":
+                if fields.get("action") in ("missed", "manual"):
                     start = parse_time(fields.get("start"))
                     end = parse_time(fields.get("end"))
                     if not start:
                         raise ValueError
                 else:
                     row = next(
-                        (
-                            r
-                            for r in store.list()
-                            if r["id"] == event_id and r["kind"] == "SUSPECTED"
-                        ),
+                        (r for r in store.list() if r["id"] == event_id),
                         None,
                     )
-                    if row is None or fields.get("label") not in ("true", "false", "unknown"):
+                    if row is None or fields.get("label") not in (
+                        *EXCRETION_TYPES,
+                        "true",
+                        "false",
+                        "unknown",
+                    ):
                         raise ValueError
                     start = (
                         parse_time(fields["start"]) if "start" in fields else row["actual_start"]
@@ -233,17 +296,29 @@ def make_server(root, port=8765):
                     end = parse_time(fields["end"]) if "end" in fields else row["actual_end"]
                 if start and end and datetime.fromisoformat(end) < datetime.fromisoformat(start):
                     raise ValueError
-                if fields.get("action") == "missed":
-                    store.missed(start, end)
-                else:
-                    store.update(
-                        event_id,
-                        feedback={"true": 1, "false": 0, "unknown": None}[fields["label"]],
-                        actual_start=start,
-                        actual_end=end,
+                if fields.get("action") in ("missed", "manual"):
+                    store.add_excretion(
+                        fields.get("type", "unspecified"),
+                        start,
+                        end,
+                        fields.get("note", ""),
+                        missed=fields["action"] == "missed",
                     )
+                else:
+                    label = "unspecified" if fields["label"] == "true" else fields["label"]
+                    store.classify(event_id, label, start, end, fields.get("note", row["note"]))
                 mode = fields.get("filter", "unlabeled")
-                if mode not in ("all", "unlabeled", "true", "false", "missed"):
+                if mode not in (
+                    "all",
+                    "unlabeled",
+                    "true",
+                    "false",
+                    "missed",
+                    "manual",
+                    "feces",
+                    "urine",
+                    "both",
+                ):
                     mode = "unlabeled"
                 self.send_response(303)
                 self.send_header("Location", "/?" + urlencode({"filter": mode, "saved": "1"}))
