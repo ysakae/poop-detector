@@ -142,6 +142,9 @@ def parser():
     missed = commands.add_parser("missed", help="見逃した排便を記録")
     missed.add_argument("--start", required=True)
     missed.add_argument("--end")
+    gui = commands.add_parser("label-gui", help="画像を見ながらラベルを付ける")
+    gui.add_argument("--port", type=int, default=8765, help="ローカル画面のポート")
+    gui.add_argument("--no-browser", action="store_true", help="ブラウザを自動で開かない")
     return result
 
 
@@ -151,6 +154,11 @@ def main(argv=None):
     try:
         config = Config.load(args.config)
         root = Path(config.data_dir)
+        if args.command == "label-gui":
+            from .label_gui import serve
+
+            serve(root, args.port, not args.no_browser)
+            return 0
         if args.command in ("events", "metrics", "feedback", "acknowledge", "missed"):
             store = Store(root)
             from datetime import datetime
