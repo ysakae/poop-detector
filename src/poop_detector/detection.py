@@ -39,9 +39,16 @@ class Detector:
             return Observation("occupied", ratio)
         contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
         candidates = []
+        height, width = mask.shape
+        margin = max(1, round(min(height, width) * 0.01))
         for contour in contours:
             area = cv2.contourArea(contour)
-            _, _, w, h = cv2.boundingRect(contour)
+            x, y, w, h = cv2.boundingRect(contour)
+            # ROI外から入り込んだ体の一部は、面積が小さくても遮蔽として保留する。
+            if area >= self.min_area and (
+                x <= margin or y <= margin or x + w >= width - margin or y + h >= height - margin
+            ):
+                return Observation("occupied", ratio)
             if area >= self.min_area and min(w, h) / max(w, h) >= 0.1:
                 candidates.append(area)
         return Observation("candidate" if candidates else "empty", ratio)
