@@ -22,7 +22,7 @@ from .config import Config
 from .detection import Detector
 from .events import Store, utcnow
 from .notifications import MacNotifier
-from .roi import ROI
+from .roi import ROI, select_polygon
 from .state_machine import Machine
 
 logger = logging.getLogger(__name__)
@@ -125,6 +125,10 @@ def parser():
         sub = commands.add_parser(name, help=description)
         if name in ("setup-roi", "capture-baseline"):
             sub.add_argument("--replace", action="store_true", help="既存設定を明示的に更新")
+        if name == "setup-roi":
+            sub.add_argument(
+                "--polygon", action="store_true", help="四隅をクリックして斜めのROIを設定"
+            )
         if name == "run":
             sub.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
     feedback = commands.add_parser("feedback", help="実際に排便だったかを記録")
@@ -198,9 +202,13 @@ def main(argv=None):
             if args.command == "check-camera":
                 print(f"フレーム取得成功: {frame.shape[1]}x{frame.shape[0]}")
             elif args.command == "setup-roi":
-                rect = cv2.selectROI("トイレ領域を選択してEnter、取消はEsc", frame)
-                cv2.destroyAllWindows()
-                ROI.from_pixels(rect, frame.shape[1], frame.shape[0]).save(roi_path)
+                if args.polygon:
+                    roi = select_polygon(frame)
+                else:
+                    rect = cv2.selectROI("トイレ領域を選択してEnter、取消はEsc", frame)
+                    cv2.destroyAllWindows()
+                    roi = ROI.from_pixels(rect, frame.shape[1], frame.shape[0])
+                roi.save(roi_path)
                 print("ROIを保存しました")
             elif args.command == "capture-baseline":
                 roi = ROI.load(roi_path)

@@ -61,6 +61,22 @@ uv run poop-detector setup-roi --replace
 uv run poop-detector capture-baseline --replace
 ```
 
+斜めに映るトイレは、次のコマンドで四角形のROIを設定できます。
+画面上で**左上→右上→右下→左下**の順に四隅をクリックし、Enterで確定してください。
+右クリックまたはBackspaceで1点戻り、Rで最初から、Escまたはウィンドウを閉じると取消です。
+四角形が交差している場合は確定せず、Rでやり直せます。
+
+```bash
+uv run poop-detector setup-roi --polygon --replace
+uv run poop-detector capture-baseline --replace
+uv run poop-detector run
+```
+
+トイレ面を囲み、餌皿や周囲の床をできるだけ含めないでください。
+四角形の内側だけを長方形へ射影補正して差分を計算します。これは画像上の補正で、実寸の計測ではありません。
+選択した四隅は正規化して保存し、次回から自動で使用します。従来の矩形ROIもそのまま読み込めます。
+既存ROI・基準画像はコマンドを実行して確定するまで変更しません。
+
 ROIは正規化座標で保存するため解像度変更に追従します。ただし基準画像は再登録が必要です。
 ROIを変更した場合も基準を再登録してください。異なるROI・解像度の基準を監視へ流用しません。
 
