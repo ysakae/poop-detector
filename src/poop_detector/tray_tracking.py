@@ -76,7 +76,7 @@ class TrayTracker:
             cv2.resize(frame, self.size, interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY
         )
 
-    def align(self, frame):
+    def align(self, frame, *, source_mask=None):
         height, width = frame.shape[:2]
         ref_width, ref_height = self.output_size
         if abs((width / height) / (ref_width / ref_height) - 1) > 0.01:
@@ -109,6 +109,8 @@ class TrayTracker:
             or cv2.contourArea(cv2.convexHull(original[matched])) < self.min_span
         ):
             return None
+        if source_mask is not None:
+            frame = cv2.bitwise_and(frame, frame, mask=source_mask)
         return self._warp(frame, transform)
 
     def _warp(self, frame, transform):

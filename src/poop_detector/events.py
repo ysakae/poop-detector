@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 _UNSET = object()
+EXCRETION_LOCATIONS = {"tray": "トレー内", "outside": "トレー外"}
 EXCRETION_TYPES = {
     "feces": "排便",
     "urine": "排尿",
@@ -29,16 +30,28 @@ def utcnow():
     return datetime.now(UTC).isoformat()
 
 
+def ensure_location_column(db, table):
+    if not any(row["name"] == "location" for row in db.execute(f"PRAGMA table_info({table})")):
+        db.execute(f"ALTER TABLE {table} ADD COLUMN location TEXT")
+
+
+def validate_location(location):
+    if location and location not in EXCRETION_LOCATIONS:
+        raise ValueError("排泄した場所が不正です")
+
+
 class Store:
     def __init__(self, root):
         self.root = Path(root)
         (self.root / "events").mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             db.execute("""CREATE TABLE IF NOT EXISTS events (
                 id TEXT PRIMARY KEY, timestamp TEXT, kind TEXT, score REAL,
                 detection_started TEXT, notified_at TEXT, processing_ms REAL,
                 image TEXT, feedback INTEGER, acknowledged INTEGER DEFAULT 0,
-                actual_start TEXT, actual_end TEXT)""")
+                actual_start TEXT, actual_end TEXT, location TEXT)""")
+            ensure_location_column(db, "events")
 
             db.execute("""CREATE TABLE IF NOT EXISTS monitor_state (
                 id INTEGER PRIMARY KEY CHECK(id=1), state TEXT, event_id TEXT)""")
@@ -127,13 +140,13 @@ class Store:
             key=lambda r: datetime.fromisoformat(r["actual_start"] or r["timestamp"]),
         )
 
-    def classify(self, event_id, label, start=_UNSET, end=_UNSET, note=_UNSET):
+    def classify(self, event_id, label, start=_UNSET, end=_UNSET, note=_UNSET, *, location=None):
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            self._classify(db, event_id, label, start, end, note)
+            self._classify(db, event_id, label, start, end, note, location=location)
 
     @staticmethod
-    def _classify(db, event_id, label, start=_UNSET, end=_UNSET, note=_UNSET):
+    def _classify(db, event_id, label, start=_UNSET, end=_UNSET, note=_UNSET, *, location=None):
         if label not in (*EXCRETION_TYPES, "false", "unknown"):
             raise ValueError("種類が不正です")
         row = db.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
@@ -154,36 +167,48 @@ class Store:
             raise ValueError("動画からの記録を取り消す場合は保留を選択してください")
         feedback = 0 if label == "false" else None if label == "unknown" else 1
         excretion_type = label if label in EXCRETION_TYPES else "unspecified"
+        validate_location(location)
+        location = row["location"] if location is None else location or None
         db.execute(
-            "UPDATE events SET feedback=?,actual_start=?,actual_end=? WHERE id=?",
-            (feedback, start, end, event_id),
+            "UPDATE events SET feedback=?,actual_start=?,actual_end=?,location=? WHERE id=?",
+            (feedback, start, end, location if feedback == 1 else None, event_id),
         )
         db.execute(
             "INSERT OR REPLACE INTO excretion_labels VALUES (?,?,?)",
             (event_id, excretion_type, note),
         )
 
-    def add_excretion(self, excretion_type, start, end=None, note="", missed=False):
+    def add_excretion(
+        self, excretion_type, start, end=None, note="", missed=False, *, location=None
+    ):
         if not start:
             raise ValueError("種類と開始時刻が必要です")
         with self.connect() as db:
             return self._insert_excretion(
-                db, excretion_type, "MISSED" if missed else "MANUAL", start, start, end, note
+                db,
+                excretion_type,
+                "MISSED" if missed else "MANUAL",
+                start,
+                start,
+                end,
+                note,
+                location=location,
             )
 
     @staticmethod
-    def _insert_excretion(db, excretion_type, kind, timestamp, start, end, note):
+    def _insert_excretion(db, excretion_type, kind, timestamp, start, end, note, *, location=None):
         if excretion_type not in EXCRETION_TYPES:
             raise ValueError("排泄の種類を指定してください")
         validate_times(timestamp, None)
         validate_times(start, end)
         if not isinstance(note, str) or len(note) > 2000:
             raise ValueError("メモは2000文字以内にしてください")
+        validate_location(location)
         event_id = uuid4().hex
         db.execute(
-            """INSERT INTO events (id,timestamp,kind,feedback,actual_start,actual_end)
-            VALUES (?,?,?,?,?,?)""",
-            (event_id, timestamp, kind, 1, start, end),
+            """INSERT INTO events (id,timestamp,kind,feedback,actual_start,actual_end,location)
+            VALUES (?,?,?,?,?,?,?)""",
+            (event_id, timestamp, kind, 1, start, end, location or None),
         )
         db.execute("INSERT INTO excretion_labels VALUES (?,?,?)", (event_id, excretion_type, note))
         return event_id

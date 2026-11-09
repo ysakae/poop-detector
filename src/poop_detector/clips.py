@@ -17,7 +17,14 @@ from uuid import uuid4
 
 import cv2
 
-from .events import EXCRETION_TYPES, Store, utcnow
+from .events import (
+    EXCRETION_LOCATIONS,
+    EXCRETION_TYPES,
+    Store,
+    ensure_location_column,
+    utcnow,
+    validate_location,
+)
 
 CLIP_LABELS = {
     "feces": "排便",
@@ -45,20 +52,24 @@ class ClipStore:
         self.root = Path(root)
         (self.root / "clips").mkdir(parents=True, exist_ok=True)
         with self.store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             db.execute("""CREATE TABLE IF NOT EXISTS clips (
                 id TEXT PRIMARY KEY, event_id TEXT, source TEXT, requested_at TEXT,
                 status TEXT, path TEXT, start_at TEXT, end_at TEXT, duration REAL,
                 fps REAL, trigger_offset REAL, pre_available REAL, post_available REAL,
                 interrupted INTEGER DEFAULT 0, error TEXT, label TEXT,
                 actual_start_offset REAL, actual_end_offset REAL, activity TEXT DEFAULT 'other',
-                note TEXT DEFAULT '', scene_signature TEXT)""")
+                note TEXT DEFAULT '', scene_signature TEXT, location TEXT)""")
+            ensure_location_column(db, "clips")
             db.execute("""CREATE TABLE IF NOT EXISTS capture_status (
                 id INTEGER PRIMARY KEY CHECK(id=1), heartbeat REAL, healthy INTEGER)""")
 
             db.execute("""CREATE TABLE IF NOT EXISTS codex_assessments (
                 clip_id TEXT PRIMARY KEY, label TEXT, activity TEXT, start_seconds REAL,
                 end_seconds REAL, reason TEXT, observed_at TEXT, error TEXT,
-                assessed_at TEXT NOT NULL, notice_claimed INTEGER DEFAULT 0, notified_at TEXT)""")
+                assessed_at TEXT NOT NULL, notice_claimed INTEGER DEFAULT 0, notified_at TEXT,
+                location TEXT)""")
+            ensure_location_column(db, "codex_assessments")
 
             db.execute("""CREATE TABLE IF NOT EXISTS clip_confirmations (
                 clip_id TEXT PRIMARY KEY, event_id TEXT NOT NULL)""")
@@ -81,7 +92,7 @@ class ClipStore:
     def latest_assessment(self):
         with self.store.connect() as db:
             row = db.execute(
-                """SELECT a.*, c.requested_at, c.label AS human_label
+                """SELECT a.*, c.requested_at, c.label AS human_label, c.location AS human_location
                 FROM codex_assessments a JOIN clips c ON c.id=a.clip_id
                 ORDER BY a.assessed_at DESC, c.requested_at DESC LIMIT 1"""
             ).fetchone()
@@ -124,17 +135,19 @@ class ClipStore:
         reason=None,
         observed_at=None,
         error=None,
+        location=None,
     ):
+        validate_location(location)
         with self.store.connect() as db:
             return (
                 db.execute(
                     """INSERT INTO codex_assessments
-                (clip_id,label,activity,start_seconds,end_seconds,reason,observed_at,error,assessed_at)
-                SELECT id,?,?,?,?,?,?,?,? FROM clips WHERE id=? AND label IS NULL AND status='ready'
+                (clip_id,label,activity,start_seconds,end_seconds,reason,observed_at,error,assessed_at,location)
+                SELECT id,?,?,?,?,?,?,?,?,? FROM clips WHERE id=? AND label IS NULL AND status='ready'
                 ON CONFLICT(clip_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,
                 start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds,
                 reason=excluded.reason,observed_at=excluded.observed_at,error=excluded.error,
-                assessed_at=excluded.assessed_at WHERE codex_assessments.error IS NOT NULL""",
+                assessed_at=excluded.assessed_at,location=excluded.location WHERE codex_assessments.error IS NOT NULL""",
                     (
                         label,
                         activity,
@@ -144,6 +157,7 @@ class ClipStore:
                         observed_at,
                         error,
                         utcnow(),
+                        location,
                         clip_id,
                     ),
                 ).rowcount
@@ -160,8 +174,10 @@ class ClipStore:
                     SELECT 1 FROM clips c WHERE c.id=candidate.clip_id AND c.label IS NULL
                     AND NOT EXISTS (
                         SELECT 1 FROM codex_assessments a JOIN clips previous ON previous.id=a.clip_id
-                        WHERE a.notice_claimed=1 AND (
-                            (c.event_id IS NOT NULL AND c.event_id=previous.event_id)
+                        WHERE a.notice_claimed=1
+                        AND COALESCE(a.location,'tray')=COALESCE(candidate.location,'tray') AND (
+                            (candidate.location IS NOT 'outside' AND c.event_id IS NOT NULL
+                                AND c.event_id=previous.event_id)
                             OR (c.scene_signature IS previous.scene_signature
                                 AND (a.label=candidate.label OR 'both' IN (a.label,candidate.label))
                                 AND ABS(julianday(a.observed_at)-julianday(candidate.observed_at))
@@ -183,7 +199,10 @@ class ClipStore:
             )
             if sent:
                 db.execute(
-                    "UPDATE events SET notified_at=? WHERE id=(SELECT event_id FROM clips WHERE id=?)",
+                    """UPDATE events SET notified_at=? WHERE id=(
+                        SELECT c.event_id FROM clips c JOIN codex_assessments a ON a.clip_id=c.id
+                        WHERE c.id=? AND a.location IS NOT 'outside'
+                    )""",
                     (stamp, clip_id),
                 )
 
@@ -199,7 +218,14 @@ class ClipStore:
             )
 
     def request(self, source="manual", event_id=None, require_live=False):
-        if source not in ("manual", "detected", "dog_enter", "dog_exit", "early_alert"):
+        if source not in (
+            "manual",
+            "detected",
+            "dog_enter",
+            "dog_exit",
+            "early_alert",
+            "outside_stay",
+        ):
             raise ValueError("保存要求の種類が不正です")
         if require_live and not self.live():
             raise ValueError("監視を動画保存有効で起動し、カメラ接続を確認してください")
@@ -221,7 +247,8 @@ class ClipStore:
     def list(self, include_assessments=False):
         query = "SELECT * FROM clips ORDER BY requested_at DESC"
         if include_assessments:
-            query = """SELECT c.*, a.label AS codex_label, a.error AS codex_error
+            query = """SELECT c.*, a.label AS codex_label, a.error AS codex_error,
+                a.location AS codex_location
                 FROM clips c LEFT JOIN codex_assessments a ON a.clip_id=c.id
                 ORDER BY c.requested_at DESC"""
         with self.store.connect() as db:
@@ -294,7 +321,16 @@ class ClipStore:
         return links
 
     def label(
-        self, clip_id, label, start=None, end=None, activity="other", note="", *, record_id=None
+        self,
+        clip_id,
+        label,
+        start=None,
+        end=None,
+        activity="other",
+        note="",
+        *,
+        record_id=None,
+        location=None,
     ):
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -315,17 +351,19 @@ class ClipStore:
                 raise ValueError("完了は開始以降を指定してください")
             if len(note) > 2000:
                 raise ValueError("メモは2000文字以内です")
-            if record_id is not None:
-                self._confirm(db, row, record_id, label, start, end, note)
+            validate_location(location)
+            location = row["location"] if location is None else location or None
             if label in ("none", "uncertain"):
-                start = end = None
+                start = end = location = None
+            if record_id is not None:
+                location = self._confirm(db, row, record_id, label, start, end, note, location)
             db.execute(
                 """UPDATE clips SET label=?,actual_start_offset=?,actual_end_offset=?,
-                activity=?,note=? WHERE id=?""",
-                (label, start, end, activity, note, clip_id),
+                activity=?,note=?,location=? WHERE id=?""",
+                (label, start, end, activity, note, location, clip_id),
             )
 
-    def _confirm(self, db, clip, record_id, label, start, end, note):
+    def _confirm(self, db, clip, record_id, label, start, end, note, location):
         if label not in ("feces", "urine", "both"):
             raise ValueError("確定記録には排便・排尿・両方のいずれかを選んでください")
         link = db.execute(
@@ -336,6 +374,8 @@ class ClipStore:
                 raise ValueError("この動画はすでに別の記録にひも付いています")
             record_id = link["event_id"]
 
+        if location == "outside" and record_id == clip["event_id"]:
+            raise ValueError("トレー外の排泄は、トレー内の検知とは別の記録を選んでください")
         if not clip["start_at"] and (start is not None or end is not None):
             raise ValueError("録画の開始日時が分からないため、動画内の時刻を変換できません")
         captured = datetime.fromisoformat(clip["start_at"] or clip["requested_at"])
@@ -343,7 +383,7 @@ class ClipStore:
         end_at = (captured + timedelta(seconds=end)).isoformat() if end is not None else None
 
         if record_id == "new":
-            if clip["event_id"]:
+            if clip["event_id"] and location != "outside":
                 raise ValueError("対応する検知記録を保存先に選んでください")
             record_id = self.store._insert_excretion(
                 db,
@@ -353,6 +393,7 @@ class ClipStore:
                 start_at,
                 end_at,
                 note,
+                location=location,
             )
         else:
             record = db.execute(
@@ -362,10 +403,18 @@ class ClipStore:
             ).fetchone()
             if record is None:
                 raise ValueError("保存先の記録を選んでください")
+            known_location = record["location"]
+            if record["kind"] == "SUSPECTED" and known_location is None:
+                known_location = "tray"
+            if location and known_location and location != known_location:
+                raise ValueError(f"保存先の場所は{EXCRETION_LOCATIONS[known_location]}です")
+            location = location or known_location
             if record["feedback"] == 1:
                 existing = record["excretion_type"] or "feces"
                 if existing not in (label, "both", "unspecified"):
                     raise ValueError(f"確定記録の種類は{EXCRETION_TYPES[existing]}です")
+                if location and record["location"] is None:
+                    db.execute("UPDATE events SET location=? WHERE id=?", (location, record_id))
             else:
                 self.store._classify(
                     db,
@@ -374,9 +423,11 @@ class ClipStore:
                     start_at or record["actual_start"],
                     end_at or record["actual_end"],
                     note or record["note"] or "",
+                    location=location,
                 )
         if link is None:
             db.execute("INSERT INTO clip_confirmations VALUES (?,?)", (clip["id"], record_id))
+        return location
 
 
 def encode_mp4(samples, path, fps):

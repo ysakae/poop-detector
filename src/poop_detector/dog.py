@@ -10,7 +10,7 @@ from urllib.request import urlopen
 import cv2
 import numpy as np
 
-from .roi import ROI
+from .roi import full_mask, outline
 
 REVISION = "48b10fa505aeb51fbd127fc60a5c660040e823b7"
 MODEL_FILES = {
@@ -102,14 +102,7 @@ class DogDetector:
 
 def overlaps_roi(box, roi, shape):
     height, width = shape[:2]
-    # 長方形だけでなく、くぼみのあるROIとの実際の重なりを調べる。
-    mask = np.zeros((height, width), np.uint8)
-    if isinstance(roi, ROI):
-        x, y, w, h = roi.pixels(width, height)
-        mask[y : y + h, x : x + w] = 1
-    else:
-        points = np.rint(roi.pixels(width, height)).astype(np.int32)
-        cv2.fillPoly(mask, [points], 1)
+    mask = full_mask(roi, shape)
     x1, y1, x2, y2 = box
     return bool(np.any(mask[max(0, y1) : min(height, y2 + 1), max(0, x1) : min(width, x2 + 1)]))
 
@@ -161,3 +154,46 @@ class DogObserver:
         return DogState(
             present, occupied, transition, self.boxes.copy(), self.inference_ms, self.error
         )
+
+
+class OutsideWatch:
+    """トレー外で立ち止まった場面を、滞在ごとに一度録画する。"""
+
+    def __init__(self, tray, scope, exit_seconds):
+        self.tray = tray
+        self.scope = scope
+        self.exit_seconds = exit_seconds
+        self.reset()
+
+    def reset(self):
+        self.anchor = None
+        self.last_seen = float("-inf")
+        self.recorded = False
+
+    def update(self, boxes, shape, now):
+        tray = outline(self.tray, shape)
+        scope = outline(self.scope, shape)
+        candidates = []
+        for x1, y1, x2, y2 in boxes:
+            center = ((x1 + x2) / 2, (y1 + y2) / 2)
+            if (
+                cv2.pointPolygonTest(tray, center, False) < 0
+                and cv2.pointPolygonTest(scope, center, False) >= 0
+            ):
+                candidates.append(((x2 - x1) * (y2 - y1), center, min(x2 - x1, y2 - y1)))
+        if not candidates:
+            if now - self.last_seen >= self.exit_seconds:
+                self.reset()
+            return False
+
+        if now - self.last_seen > self.exit_seconds and self.anchor is not None:
+            self.reset()
+        self.last_seen = now
+        _, center, size = max(candidates)
+        if self.anchor is None or np.linalg.norm(np.subtract(self.anchor, center)) > max(
+            5, size * 0.4
+        ):
+            self.anchor = center
+            self.started_at = now
+            self.recorded = False
+        return not self.recorded and now - self.started_at >= 2

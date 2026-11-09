@@ -51,12 +51,15 @@ async function updateJudgment() {
         const response = await fetch("/live/assessment");
         if (!response.ok) throw new Error();
         const data = await response.json();
-        judgment.textContent = data ? data.label : "判定はまだありません";
+        judgment.textContent = data
+            ? data.label + (data.location ? "（" + data.location + "）" : "")
+            : "判定はまだありません";
         reason.textContent = data ? data.reason : "";
         judgmentTime.textContent = data
             ? "動画の保存要求 " + jst.format(new Date(data.requested_at))
                 + " ／ 判定 " + jst.format(new Date(data.assessed_at))
                 + (data.human_label ? " ／ 手動ラベル " + data.human_label : "")
+                + (data.human_location ? "（" + data.human_location + "）" : "")
             : "";
         clipLink.hidden = !data;
         if (data) clipLink.href = "/clips?id=" + encodeURIComponent(data.clip_id);

@@ -53,3 +53,18 @@ document.addEventListener("click", (event) => {
         input.value = Math.min(video.currentTime, limit).toFixed(2);
     }
 });
+
+document.addEventListener("change", (event) => {
+    const field = event.target.closest('#clip-detail select[name="location"]');
+    if (!field) return;
+    const destination = field.form.querySelector('select[name="record_id"]');
+    if (!destination) return;
+    for (const option of destination.options) {
+        const location = option.dataset.recordLocation;
+        option.disabled = Boolean(
+            (location && field.value && location !== field.value)
+            || (option.dataset.trayEvent === "1" && field.value !== "outside")
+        );
+        if (option.selected && option.disabled) destination.value = "";
+    }
+});

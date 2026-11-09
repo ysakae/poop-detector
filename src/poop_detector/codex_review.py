@@ -18,7 +18,8 @@ import cv2
 import numpy as np
 
 from .clips import ACTIVITIES, CLIP_LABELS
-from .events import EXCRETION_TYPES, utcnow
+from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, utcnow
+from .roi import full_mask, outline
 
 logger = logging.getLogger(__name__)
 EVIDENCE = {"feces": "new_stool", "urine": "new_wet_patch", "both": "both_visible"}
@@ -35,8 +36,9 @@ SCHEMA = {
     "required": ["label", "activity", "start_seconds", "end_seconds", "evidence", "reason"],
     "additionalProperties": False,
 }
-PROMPT = """犬のトイレの連続画像です。左上から行方向に時刻順で並びます。
-各画像は登録済みのトイレ領域です。動画中に新たに発生した排泄だけを判定してください。
+TRAY_CONTEXT = """犬のトイレの連続画像です。左上から行方向に時刻順で並びます。
+各画像は登録済みのトイレ領域です。"""
+EVIDENCE_PROMPT = """動画中に新たに発生した排泄だけを判定してください。
 排便は前にはなかった便が現れたこと、排尿は尿の流れか新しい濡れ跡が発生したことが
 画像で確認できる場合に限ります。以前からある跡、影、反射、シートのずれは除外してください。
 通過、食事、匂い嗅ぎ、着座だけなら none、排泄らしい姿勢だけで跡や尿が見えない、
@@ -47,6 +49,21 @@ reason に時刻と画像で確認した根拠を日本語の短文で記載し�
 添付画像だけを見て、ツールを使わず指定のJSONを返してください。"""
 
 
+OUTSIDE_SCHEMA = {
+    **SCHEMA,
+    "properties": {
+        **SCHEMA["properties"],
+        "location": {"type": ["string", "null"], "enum": [*EXCRETION_LOCATIONS, None]},
+    },
+    "required": [*SCHEMA["required"], "location"],
+}
+OUTSIDE_CONTEXT = """犬とトイレ周辺の連続画像です。左上から行方向に時刻順で並びます。
+緑の枠はトレーの境界です。枠の外側がトレー外です。黒いマスク部分は監視範囲外です。
+確認できた排泄物や尿の流れの位置を location に記入してください。緑の枠内は tray、
+枠外は outside です。犬の体の位置で判断しないでください。排泄なし・判別不能の
+場合は null とし、境界上で位置が分からない場合は uncertain を返してください。"""
+
+
 @dataclass(frozen=True)
 class Assessment:
     label: str
@@ -54,9 +71,10 @@ class Assessment:
     start_seconds: float | None
     end_seconds: float | None
     reason: str
+    location: str | None = None
 
 
-def parse_assessment(output, duration):
+def parse_assessment(output, duration, *, include_location=False):
     if not isinstance(output, dict):
         raise ValueError("Codexの判定形式が不正です")
     label, activity = output.get("label"), output.get("activity")
@@ -72,19 +90,28 @@ def parse_assessment(output, duration):
     for offset in (start, end):
         if offset is not None and (type(offset) not in (int, float) or not 0 <= offset <= duration):
             raise ValueError("Codexの判定時刻が動画範囲外です")
+    location = (
+        output.get("location") if include_location else ("tray" if label in EVIDENCE else None)
+    )
+    if include_location and (
+        "location" not in output
+        or (label in EVIDENCE and location not in EXCRETION_LOCATIONS)
+        or (label not in EVIDENCE and location is not None)
+    ):
+        raise ValueError("Codexの判定位置が不正です")
     if label in EVIDENCE:
         if end is None or end <= 0 or (start is not None and start > end):
             raise ValueError("Codexの判定時刻が不正です")
     else:
         start = end = None
-    return Assessment(label, activity, start, end, reason.strip()[:1000])
+    return Assessment(label, activity, start, end, reason.strip()[:1000], location)
 
 
 class TrayNotVisible(ValueError):
     pass
 
 
-def write_sheet(path, destination, roi, duration, *, tray_tracker=None):
+def write_sheet(path, destination, roi, duration, *, tray_tracker=None, outside_roi=None):
     capture = cv2.VideoCapture(str(path))
     tiles = []
     timestamps = []
@@ -100,10 +127,20 @@ def write_sheet(path, destination, roi, duration, *, tray_tracker=None):
             if not ok:
                 raise ValueError("動画の一部を読み込めません")
             if tray_tracker is not None:
-                frame = tray_tracker.align(frame)
+                if outside_roi is None:
+                    frame = tray_tracker.align(frame)
+                else:
+                    frame = tray_tracker.align(
+                        frame, source_mask=full_mask(outside_roi, frame.shape)
+                    )
                 if frame is None:
                     continue
-            crop = roi.crop(frame)
+            if outside_roi is None:
+                crop = roi.crop(frame)
+            else:
+                annotated = frame.copy()
+                cv2.polylines(annotated, [outline(roi, frame.shape)], True, (0, 255, 0), 2)
+                crop = outside_roi.crop(annotated)
             scale = min(480 / crop.shape[1], 300 / crop.shape[0])
             tile = cv2.resize(crop, tuple(max(1, round(n * scale)) for n in crop.shape[1::-1]))
             tile = cv2.copyMakeBorder(tile, 26, 0, 0, 0, cv2.BORDER_CONSTANT)
@@ -130,24 +167,33 @@ def codex_environment():
     return {key: os.environ[key] for key in keys if key in os.environ}
 
 
-def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None):
+def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None, outside_roi=None):
+    outside_stay = row.get("source") == "outside_stay"
+    if outside_stay and outside_roi is None:
+        raise ValueError("トレー外の動画には --detect-outside が必要です")
     with tempfile.TemporaryDirectory(prefix="poop-codex-") as temporary:
         folder = Path(temporary)
         try:
             timestamps = write_sheet(
-                path, folder / "frames.jpg", roi, row["duration"], tray_tracker=tray_tracker
+                path,
+                folder / "frames.jpg",
+                roi,
+                row["duration"],
+                tray_tracker=tray_tracker,
+                outside_roi=outside_roi,
             )
         except TrayNotVisible:
             return Assessment(
                 "uncertain", "other", None, None, "トレーの位置を確認できないため判定を保留しました"
             )
-        prompt = PROMPT
-        if tray_tracker is not None:
-            prompt += (
-                "\nトレーの位置が分かる画像だけを添付しています。"
-                "end_seconds には画像に表示された秒数をそのまま記入してください。"
-            )
-        (folder / "schema.json").write_text(json.dumps(SCHEMA), encoding="utf-8")
+        context = TRAY_CONTEXT if outside_roi is None else OUTSIDE_CONTEXT
+        prompt = context + "\n" + EVIDENCE_PROMPT
+        if outside_stay:
+            prompt += "\n今回はトレー外の排泄だけを判定し、トレー内の排泄は対象外としてください。"
+        if tray_tracker is not None or outside_roi is not None:
+            prompt += "\nend_seconds には画像に表示された秒数をそのまま記入してください。"
+        schema = SCHEMA if outside_roi is None else OUTSIDE_SCHEMA
+        (folder / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
         result = folder / "result.json"
         runner(
             [
@@ -182,10 +228,12 @@ def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None):
             timeout=120,
         )
         assessment = parse_assessment(
-            json.loads(result.read_text(encoding="utf-8")), row["duration"]
+            json.loads(result.read_text(encoding="utf-8")),
+            row["duration"],
+            include_location=outside_roi is not None,
         )
         if (
-            tray_tracker is not None
+            (tray_tracker is not None or outside_roi is not None)
             and assessment.end_seconds is not None
             and round(assessment.end_seconds, 2) not in timestamps
         ):
@@ -196,6 +244,8 @@ def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None):
                 None,
                 "トレーの位置を確認できた画像に判定の根拠がありません",
             )
+        if outside_stay and assessment.location == "tray":
+            return Assessment("none", "other", None, None, "トレー外での排泄は確認できません")
         return assessment
 
 
@@ -271,7 +321,11 @@ class Review:
                 and not row["interrupted"]
                 and self.store.claim_assessment_notice(row["id"])
             ):
-                sent = self.notify(result.label)
+                sent = (
+                    self.notify(result.label, location="outside")
+                    if result.location == "outside"
+                    else self.notify(result.label)
+                )
                 self.store.finish_assessment_notice(row["id"], sent)
         return completed, failures
 

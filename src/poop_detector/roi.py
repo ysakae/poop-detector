@@ -183,9 +183,22 @@ class MaskedROI(PolygonROI):
         return cv2.bitwise_and(crop, crop, mask=self.mask(frame.shape))
 
 
-def select_polygon(frame):
+def outline(roi, shape):
+    height, width = shape[:2]
+    if isinstance(roi, ROI):
+        x, y, w, h = roi.pixels(width, height)
+        return np.array([[x, y], [x + w - 1, y], [x + w - 1, y + h - 1], [x, y + h - 1]], np.int32)
+    return np.rint(roi.pixels(width, height)).astype(np.int32)
+
+
+def full_mask(roi, shape):
+    mask = np.zeros(shape[:2], np.uint8)
+    cv2.fillPoly(mask, [outline(roi, shape)], 255)
+    return mask
+
+
+def select_polygon(frame, window="トイレの多角形を指定"):
     """外周に沿って3点以上をクリックし、Enterで確定する。"""
-    window = "トイレの多角形を指定"
     points = []
     height, width = frame.shape[:2]
 

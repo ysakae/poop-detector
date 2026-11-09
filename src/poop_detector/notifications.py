@@ -26,11 +26,12 @@ class MacNotifier:
             "トイレで同じ場所にとどまっています。ここちゃんの様子を確認してください。"
         )
 
-    def send_assessment(self, label):
+    def send_assessment(self, label, *, location=None):
         if label not in ("feces", "urine", "both"):
             return False
+        place = "トレー外での" if location == "outside" else ""
         return self._display(
-            f"Codexが{EXCRETION_TYPES[label]}の候補を検出しました。動画を確認できます。"
+            f"Codexが{place}{EXCRETION_TYPES[label]}の候補を検出しました。動画を確認できます。"
         )
 
     def _display(self, message):

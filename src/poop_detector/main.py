@@ -70,6 +70,7 @@ def monitor(
     early_alert=False,
     tray_tracker=None,
     on_tray_state=None,
+    outside_roi=None,
 ):
     detector = IncrementalDetector(
         baseline, config.threshold, config.min_area, config.occupied_ratio, config.color_threshold
@@ -88,6 +89,11 @@ def monitor(
             logger.error("犬のモデルを準備してください: uv run poop-detector setup-dog-model")
             raise
         dog_observer = DogObserver(model, config.dog_fps, config.dog_exit_seconds)
+    outside_watch = None
+    if outside_roi is not None:
+        from .dog import OutsideWatch
+
+        outside_watch = OutsideWatch(roi, outside_roi, config.dog_exit_seconds)
     dog_state = None
     dog_clip_times = {}
     signature = scene_signature(baseline, roi)
@@ -130,6 +136,8 @@ def monitor(
                     stay.reset()
                 if dog_observer is not None:
                     dog_observer.reset()
+                if outside_watch is not None:
+                    outside_watch.reset()
             if tray_tracker is not None and (frame is not None or interrupted):
                 state = "searching" if frame is None else "tracking"
                 if state != tray_state:
@@ -148,7 +156,16 @@ def monitor(
                     collector.trigger(source="early_alert")
             observation = detector.analyze(crop, valid_mask)
             if dog_observer is not None:
-                dog_state = dog_observer.update(frame, roi, time.monotonic())
+                now = time.monotonic()
+                dog_state = dog_observer.update(frame, roi, now)
+                if outside_watch is not None:
+                    boxes = [] if dog_state.error else dog_state.boxes
+                    if (
+                        outside_watch.update(boxes, frame.shape, now)
+                        and collector is not None
+                        and collector.trigger(source="outside_stay") is not None
+                    ):
+                        outside_watch.recorded = True
                 if dog_state.error or dog_state.on_roi:
                     observation.kind = "occupied"
                 transition = dog_state.transition
@@ -235,6 +252,7 @@ def parser():
         if name in ("capture-baseline", "run"):
             sub.add_argument("--track-tray", action="store_true", help="トレーの縁による位置追従")
         if name == "setup-roi":
+            sub.add_argument("--outside", action="store_true", help="トレーと周囲の床を囲む")
             sub.add_argument(
                 "--polygon", action="store_true", help="3点以上をクリックして多角形のROIを設定"
             )
@@ -243,12 +261,16 @@ def parser():
             sub.add_argument("--dog", action="store_true", help="犬の存在・出入り検出を有効化")
             sub.add_argument("--codex", action="store_true", help="動画のCodex判定候補で通知")
             sub.add_argument(
+                "--detect-outside", action="store_true", help="トレー外の排泄候補も検知"
+            )
+            sub.add_argument(
                 "--early-alert", action="store_true", help="トイレ滞在の見守りを録画完了前に通知"
             )
     review = commands.add_parser("codex-review", help="保存済み動画をCodexで判定（通知なし）")
     review.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
     review.add_argument("--clip", help="判定する未ラベル動画のID")
     review.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
+    review.add_argument("--detect-outside", action="store_true", help="登録した周辺範囲も判定")
     feedback = commands.add_parser("feedback", help="実際に排泄だったかと種類を記録")
     feedback.add_argument("event_id")
     feedback.add_argument("label", choices=["true", "false"])
@@ -287,6 +309,19 @@ def main(argv=None):
             config.dog_enabled = True
         root = Path(config.data_dir)
         tray_path = root / "baseline" / "tray-reference.png"
+        outside_path = root / "outside-roi.json"
+        outside_roi = None
+        if getattr(args, "detect_outside", False):
+            if args.command == "run" and not args.codex:
+                print("トレー外検知には --codex が必要です", file=sys.stderr)
+                return 2
+            if not outside_path.is_file():
+                print(
+                    "先に setup-roi --outside でトレーと周囲の床を囲んでください", file=sys.stderr
+                )
+                return 2
+            outside_roi = ROI.load(outside_path)
+            config.dog_enabled = True
         if args.command == "codex-review" or (args.command == "run" and args.codex):
             from .clips import ClipStore
             from .codex_review import Review, inspect_clip, require_codex
@@ -310,7 +345,9 @@ def main(argv=None):
                 )
                 review = Review(
                     ClipStore(root),
-                    lambda path, row: inspect_clip(path, row, roi, tray_tracker=tray_tracker),
+                    lambda path, row: inspect_clip(
+                        path, row, roi, tray_tracker=tray_tracker, outside_roi=outside_roi
+                    ),
                     scene_signature=scene_signature(baseline, roi),
                 )
                 try:
@@ -416,7 +453,9 @@ def main(argv=None):
         source = os.environ.get("POOP_RTSP_URL")
         if not source:
             raise ValueError("POOP_RTSP_URLにEufyアプリのRTSP URLを設定してください")
-        roi_path = root / "roi.json"
+        roi_path = (
+            outside_path if args.command == "setup-roi" and args.outside else root / "roi.json"
+        )
         baseline_path = root / "baseline" / "empty.png"
         if args.command == "setup-roi" and roi_path.exists() and not args.replace:
             raise ValueError("ROIは登録済みです。更新する場合は--replaceを指定してください")
@@ -459,7 +498,13 @@ def main(argv=None):
                         review = Review(
                             collector.store,
                             lambda path, row: inspect_clip(
-                                path, row, roi, tray_tracker=tray_tracker
+                                path,
+                                row,
+                                roi,
+                                tray_tracker=tray_tracker,
+                                outside_roi=outside_roi
+                                if row["source"] in ("outside_stay", "manual")
+                                else None,
                             ),
                             notifier.send_assessment if notifier.enabled else None,
                         )
@@ -482,6 +527,7 @@ def main(argv=None):
                         early_alert=args.early_alert,
                         tray_tracker=tray_tracker,
                         on_tray_state=preview.set_tray_state,
+                        outside_roi=outside_roi,
                     )
                 return 0
             frame = camera.read()
@@ -490,7 +536,9 @@ def main(argv=None):
             if args.command == "check-camera":
                 print(f"フレーム取得成功: {frame.shape[1]}x{frame.shape[0]}")
             elif args.command == "setup-roi":
-                if args.polygon:
+                if args.outside:
+                    roi = select_polygon(frame, "トレーと監視する周囲の床を指定")
+                elif args.polygon:
                     roi = select_polygon(frame)
                 else:
                     rect = cv2.selectROI("トイレ領域を選択してEnter、取消はEsc", frame)

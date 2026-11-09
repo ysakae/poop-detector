@@ -10,9 +10,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from .clip_gui import handle_clip_post, render_clips, stream_video
+from .clip_gui import handle_clip_post, location_field, render_clips, stream_video
 from .clips import CLIP_LABELS, ClipStore
-from .events import EXCRETION_TYPES, Store
+from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, Store
 from .live_preview import LivePreview
 
 JST = timezone(timedelta(hours=9))
@@ -192,7 +192,8 @@ def render(store, token, query):
                     f'<label class="choice"><input type="radio" name="label" '
                     f'value="{value}" {checked} required>{label}</label>'
                 )
-            content += '</div></fieldset><p class="note">「種類不明」は排泄を確認したが便・尿の区別が付かない場合に選びます。開始・完了時刻は分かる場合だけ入力してください。日本時間です。</p><div class="times">'
+            content += "</div></fieldset>" + location_field(row["location"])
+            content += '<p class="note">「種類不明」は排泄を確認したが便・尿の区別が付かない場合に選びます。開始・完了時刻は分かる場合だけ入力してください。日本時間です。</p><div class="times">'
             for name, label in [("start", "排泄の開始"), ("end", "排泄の完了")]:
                 value = escape(local_time(row["actual_" + name], form=True))
                 content += f'<label>{label}<input type="datetime-local" step="1" name="{name}" value="{value}"></label>'
@@ -214,7 +215,9 @@ def render(store, token, query):
         + '<label>記録の種類<select name="action"><option value="manual">通常の手動記録</option><option value="missed">通知されなかった排泄（見逃し）</option></select></label>'
         + '<label>排泄の種類<select name="type">'
         + "".join(f'<option value="{k}">{v}</option>' for k, v in EXCRETION_TYPES.items())
-        + '</select></label><div class="times">'
+        + "</select></label>"
+        + location_field(None)
+        + '<div class="times">'
         '<label>開始（日本時間・必須）<input type="datetime-local" step="1" name="start" required></label>'
         '<label>完了（任意）<input type="datetime-local" step="1" name="end"></label>'
         '</div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000" style="width:100%"></textarea></label></p><p style="margin-top:16px"><button>排泄を記録</button></p></form></details>'
@@ -226,7 +229,7 @@ def render(store, token, query):
 def render_records(store, clips):
     video_links = clips.record_videos()
     content = '<h2>排便・排尿の記録</h2><p><a href="/">画像の確認・記録の追加へ戻る</a></p>'
-    content += '<p class="note">確認済みの排泄を表示します。両方の記録は排便・排尿に各1件と数えます。時刻は日本時間です。</p><div style="overflow:auto"><table style="width:100%;background:white;border-collapse:collapse"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>登録方法</th><th>メモ</th><th>映像</th><th>操作</th></tr></thead><tbody>'
+    content += '<p class="note">確認済みの排泄を表示します。両方の記録は排便・排尿に各1件と数えます。時刻は日本時間です。</p><div style="overflow:auto"><table style="width:100%;background:white;border-collapse:collapse"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>場所</th><th>登録方法</th><th>メモ</th><th>映像</th><th>操作</th></tr></thead><tbody>'
     for row in reversed(store.records()):
         url = "/?" + urlencode({"filter": "all", "id": row["id"]})
         source = {
@@ -242,6 +245,7 @@ def render_records(store, clips):
             recorded_at,
             local_time(row["actual_end"]),
             EXCRETION_TYPES[row["excretion_type"]],
+            EXCRETION_LOCATIONS.get(row["location"], "場所不明"),
             source,
             row["note"],
         ]
@@ -326,6 +330,8 @@ def make_server(root, port=8765):
                         "requested_at": row["requested_at"],
                         "assessed_at": row["assessed_at"],
                         "human_label": CLIP_LABELS.get(row["human_label"]),
+                        "location": EXCRETION_LOCATIONS.get(row["location"]),
+                        "human_location": EXCRETION_LOCATIONS.get(row["human_location"]),
                     }
                 return self.respond(200, json.dumps(data), "application/json; charset=utf-8")
             if url.path == "/records":
@@ -388,10 +394,18 @@ def make_server(root, port=8765):
                         end,
                         fields.get("note", ""),
                         missed=fields["action"] == "missed",
+                        location=fields.get("location"),
                     )
                 else:
                     label = "unspecified" if fields["label"] == "true" else fields["label"]
-                    store.classify(event_id, label, start, end, fields.get("note", row["note"]))
+                    store.classify(
+                        event_id,
+                        label,
+                        start,
+                        end,
+                        fields.get("note", row["note"]),
+                        location=fields.get("location"),
+                    )
                 mode = fields.get("filter", "unlabeled")
                 if mode not in (
                     "all",

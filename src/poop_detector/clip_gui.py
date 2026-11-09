@@ -4,7 +4,7 @@ import re
 from html import escape
 
 from .clips import ACTIVITIES, CLIP_LABELS, ClipStore
-from .events import EXCRETION_TYPES
+from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES
 
 STATES = {
     "queued": "受付済み",
@@ -19,6 +19,7 @@ SOURCES = {
     "dog_enter": "犬の入場",
     "dog_exit": "犬の退場",
     "early_alert": "トイレ見守り",
+    "outside_stay": "トレー外での滞在",
 }
 
 
@@ -56,6 +57,9 @@ def render_clips(root, token, query):
                 label = "Codex候補 ／ " + CLIP_LABELS[item["codex_label"]]
             elif item["codex_error"]:
                 label = "Codex判定失敗"
+        location = item["codex_location"] if item["label"] is None else item["location"]
+        if location:
+            label += " ／ " + EXCRETION_LOCATIONS.get(location, "場所不明")
         status = STATES.get(item["status"], item["status"])
         active = "active" if row and row["id"] == item["id"] else ""
         content += (
@@ -95,6 +99,11 @@ def render_clips(root, token, query):
                     content += (
                         '<div class="message"><strong>Codex判定候補 ／ '
                         + escape(CLIP_LABELS[assessment["label"]])
+                        + (
+                            f"（{EXCRETION_LOCATIONS[assessment['location']]}）"
+                            if assessment["location"]
+                            else ""
+                        )
                         + " ／ "
                         + escape(ACTIVITIES[assessment["activity"]])
                         + "</strong><br>"
@@ -127,7 +136,9 @@ def render_clips(root, token, query):
                     "checked" if key == (row["label"] or draft.get("label", "uncertain")) else ""
                 )
                 content += f'<label class="choice"><input type="radio" name="label" value="{key}" {checked}>{label}</label>'
-            content += '</div></fieldset><label>動作<select name="activity">'
+            location = draft.get("location", row["location"])
+            content += "</div></fieldset>" + location_field(location)
+            content += '<label>動作<select name="activity">'
             for key, activity in ACTIVITIES.items():
                 selected_attr = "selected" if key == draft.get("activity", row["activity"]) else ""
                 content += f'<option value="{key}" {selected_attr}>{activity}</option>'
@@ -149,7 +160,7 @@ def render_clips(root, token, query):
                 + escape(row["note"])
                 + "</textarea></label></p>"
                 + '<button class="secondary">動画ラベルのみ保存</button>'
-                + confirmation_fields(store, row, local_time)
+                + confirmation_fields(store, row, local_time, location)
                 + "</form>"
             )
             if row["event_id"]:
@@ -161,7 +172,15 @@ def render_clips(root, token, query):
     return document(content + '</article></div><script src="/assets/clips.js" defer></script>')
 
 
-def confirmation_fields(store, clip, local_time):
+def location_field(location):
+    content = '<label>排泄した場所<select name="location">'
+    for value, title in (("", "場所不明"), *EXCRETION_LOCATIONS.items()):
+        selected = " selected" if value == (location or "") else ""
+        content += f'<option value="{value}"{selected}>{title}</option>'
+    return content + "</select></label>"
+
+
+def confirmation_fields(store, clip, local_time, location):
     linked = store.confirmation(clip["id"])
     content = "<fieldset><legend>排便・排尿の確定記録</legend>"
     if linked:
@@ -174,18 +193,25 @@ def confirmation_fields(store, clip, local_time):
         candidates = store.record_candidates(clip)
         original = clip["event_id"]
         content += '<label>保存先<select name="record_id">'
-        if candidates and not original:
+        if candidates:
             content += '<option value="">保存先を選択</option>'
         for record in candidates:
-            selected = " selected" if record["id"] == original else ""
+            is_original = record["id"] == original
+            known_location = record["location"] or ("tray" if record["kind"] == "SUSPECTED" else "")
+            disabled = (
+                " disabled" if location and known_location and location != known_location else ""
+            )
+            selected = " selected" if is_original and not disabled else ""
             label = EXCRETION_TYPES[record["excretion_type"]] if record["feedback"] == 1 else "検知"
+            if known_location:
+                label += "・" + EXCRETION_LOCATIONS[known_location]
             stamp = local_time(record["actual_start"] or record["timestamp"])
             content += (
-                f'<option value="{escape(record["id"], quote=True)}"{selected}>'
-                f"{escape(stamp)} {escape(label)}</option>"
+                f'<option value="{escape(record["id"], quote=True)}" data-record-location="{known_location}"'
+                f"{selected}{disabled}>{escape(stamp)} {escape(label)}</option>"
             )
-        if not original:
-            content += '<option value="new">新しい確定記録を作成</option>'
+        disabled = " disabled" if original and location != "outside" else ""
+        content += f'<option value="new" data-tray-event="{int(bool(original))}"{disabled}>新しい確定記録を作成</option>'
         content += '</select></label><p class="note">同じ排泄がすでに記録されている場合は、その記録を選んでください。</p>'
     return (
         content + '<button formaction="/clips/confirm">ラベルと確定記録を保存</button></fieldset>'
@@ -261,6 +287,7 @@ def handle_clip_post(handler, root, fields):
                 fields.get("activity", "other"),
                 fields.get("note", ""),
                 record_id=fields.get("record_id", "") if handler.path == "/clips/confirm" else None,
+                location=fields.get("location"),
             )
         handler.send_response(303)
         handler.send_header("Location", f"/clips?id={clip_id}&saved=1")
