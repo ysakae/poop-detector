@@ -24,9 +24,10 @@ def render_clips(root, token, query):
     from .label_gui import document, local_time
 
     store = ClipStore(root)
-    rows = store.list()
+    rows = store.list(include_assessments=True)
     selected = query.get("id", [""])[0]
     row = next((r for r in rows if r["id"] == selected), rows[0] if rows else None)
+    assessment = store.assessment(row["id"]) if row else None
     csrf = f'<input type="hidden" name="csrf" value="{token}">'
     content = '<h2>動画を見てラベルを付ける</h2><p><a href="/">排泄の記録へ戻る</a></p>'
     content += (
@@ -48,6 +49,11 @@ def render_clips(root, token, query):
     content += '<div class="workspace"><nav aria-label="動画一覧">'
     for item in rows:
         label = CLIP_LABELS.get(item["label"], "未ラベル")
+        if item["label"] is None:
+            if item["codex_label"]:
+                label = "Codex候補 ／ " + CLIP_LABELS[item["codex_label"]]
+            elif item["codex_error"]:
+                label = "Codex判定失敗"
         status = STATES.get(item["status"], item["status"])
         active = "active" if row and row["id"] == item["id"] else ""
         content += (
@@ -79,6 +85,25 @@ def render_clips(root, token, query):
             )
             if row["interrupted"]:
                 content += '<div class="message">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>'
+            draft = {}
+            if assessment:
+                if assessment["error"]:
+                    content += '<div class="message">' + escape(assessment["error"]) + "</div>"
+                else:
+                    content += (
+                        '<div class="message"><strong>Codex判定候補 ／ '
+                        + escape(CLIP_LABELS[assessment["label"]])
+                        + " ／ "
+                        + escape(ACTIVITIES[assessment["activity"]])
+                        + "</strong><br>"
+                        + escape(assessment["reason"])
+                    )
+                    if assessment["notified_at"]:
+                        content += "<br>通知済み " + escape(local_time(assessment["notified_at"]))
+                    if row["label"] is None:
+                        draft = assessment
+                        content += "<br>動画を確認してからラベルを保存してください。"
+                    content += "</div>"
             content += (
                 '<form method="post" action="/clips/label">'
                 + csrf
@@ -86,18 +111,20 @@ def render_clips(root, token, query):
                 + '<fieldset><legend>動画の内容</legend><div class="choices">'
             )
             for key, label in CLIP_LABELS.items():
-                checked = "checked" if key == (row["label"] or "uncertain") else ""
+                checked = (
+                    "checked" if key == (row["label"] or draft.get("label", "uncertain")) else ""
+                )
                 content += f'<label class="choice"><input type="radio" name="label" value="{key}" {checked}>{label}</label>'
             content += '</div></fieldset><label>動作<select name="activity">'
             for key, activity in ACTIVITIES.items():
-                selected_attr = "selected" if key == row["activity"] else ""
+                selected_attr = "selected" if key == draft.get("activity", row["activity"]) else ""
                 content += f'<option value="{key}" {selected_attr}>{activity}</option>'
             content += (
                 '</select></label><p class="note">動画の再生バーで位置を確認し、排泄の開始・完了を秒数で入力します。'
                 '分からなければ空欄にしてください。「排泄なし」「判断できない」では時刻を保存しません。</p><div class="times">'
             )
             for field, text in [("start", "開始（動画内の秒）"), ("end", "完了（動画内の秒）")]:
-                value = row["actual_" + field + "_offset"]
+                value = draft.get(field + "_seconds", row["actual_" + field + "_offset"])
                 value = "" if value is None else str(value)
                 content += (
                     f'<label>{text}<input type="number" min="0" max="{row["duration"]}" '
@@ -120,11 +147,8 @@ def render_clips(root, token, query):
 
 def stream_video(handler, root, clip_id):
     store = ClipStore(root)
-    row = store.get(clip_id)
-    if not row or row["status"] != "ready" or not row["path"]:
-        return handler.respond(404, "動画が見つかりません")
-    path = (store.root / row["path"]).resolve()
-    if not path.is_relative_to((store.root / "clips").resolve()) or not path.is_file():
+    path = store.video_path(store.get(clip_id))
+    if path is None:
         return handler.respond(404, "動画が見つかりません")
     size = path.stat().st_size
     start, end = 0, size - 1

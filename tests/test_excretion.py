@@ -29,9 +29,11 @@ def test_classify_and_manual_records(tmp_path):
     assert store.metrics()["missed"] == 1
     store.classify(event, "false")
     assert len(store.records()) == 2
-    assert store.list()[0]["actual_start"] == "2026-11-08T23:00:00+09:00"
+    assert next(row for row in store.list() if row["id"] == event)["actual_start"] == (
+        "2026-11-08T23:00:00+09:00"
+    )
     store.classify(event, "unknown")
-    assert store.list()[0]["feedback"] is None
+    assert next(row for row in store.list() if row["id"] == event)["feedback"] is None
 
 
 def test_invalid_record_is_not_saved(tmp_path):

@@ -54,6 +54,126 @@ class ClipStore:
             db.execute("""CREATE TABLE IF NOT EXISTS capture_status (
                 id INTEGER PRIMARY KEY CHECK(id=1), heartbeat REAL, healthy INTEGER)""")
 
+            db.execute("""CREATE TABLE IF NOT EXISTS codex_assessments (
+                clip_id TEXT PRIMARY KEY, label TEXT, activity TEXT, start_seconds REAL,
+                end_seconds REAL, reason TEXT, observed_at TEXT, error TEXT,
+                assessed_at TEXT NOT NULL, notice_claimed INTEGER DEFAULT 0, notified_at TEXT)""")
+
+    def video_path(self, row):
+        if not row or row["status"] != "ready" or not row["path"]:
+            return None
+        path = (self.root / row["path"]).resolve()
+        if path.is_relative_to((self.root / "clips").resolve()) and path.is_file():
+            return path
+        return None
+
+    def assessment(self, clip_id):
+        with self.store.connect() as db:
+            row = db.execute(
+                "SELECT * FROM codex_assessments WHERE clip_id=?", (clip_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def pending_assessments(self, limit, since=None, clip_id=None, scene_signature=None):
+        conditions = ["c.status='ready'", "c.label IS NULL"]
+        params = []
+        if since is not None:
+            conditions.extend(["c.requested_at>=?", "a.clip_id IS NULL"])
+            params.append(since)
+        else:
+            conditions.append("(a.clip_id IS NULL OR a.error IS NOT NULL)")
+        if scene_signature is not None:
+            conditions.append("c.scene_signature=?")
+            params.append(scene_signature)
+        if clip_id is not None:
+            conditions.append("c.id=?")
+            params.append(clip_id)
+        order = "ASC" if since is not None else "DESC"
+        with self.store.connect() as db:
+            return [
+                dict(row)
+                for row in db.execute(
+                    """SELECT c.* FROM clips c
+                    LEFT JOIN codex_assessments a ON a.clip_id=c.id WHERE """
+                    + " AND ".join(conditions)
+                    + f" ORDER BY c.requested_at {order} LIMIT ?",
+                    (*params, limit),
+                )
+            ]
+
+    def save_assessment(
+        self,
+        clip_id,
+        label=None,
+        activity=None,
+        start_seconds=None,
+        end_seconds=None,
+        reason=None,
+        observed_at=None,
+        error=None,
+    ):
+        with self.store.connect() as db:
+            return (
+                db.execute(
+                    """INSERT INTO codex_assessments
+                (clip_id,label,activity,start_seconds,end_seconds,reason,observed_at,error,assessed_at)
+                SELECT id,?,?,?,?,?,?,?,? FROM clips WHERE id=? AND label IS NULL AND status='ready'
+                ON CONFLICT(clip_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,
+                start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds,
+                reason=excluded.reason,observed_at=excluded.observed_at,error=excluded.error,
+                assessed_at=excluded.assessed_at WHERE codex_assessments.error IS NOT NULL""",
+                    (
+                        label,
+                        activity,
+                        start_seconds,
+                        end_seconds,
+                        reason,
+                        observed_at,
+                        error,
+                        utcnow(),
+                        clip_id,
+                    ),
+                ).rowcount
+                == 1
+            )
+
+    def claim_assessment_notice(self, clip_id):
+        with self.store.connect() as db:
+            return (
+                db.execute(
+                    """UPDATE codex_assessments AS candidate SET notice_claimed=1
+                WHERE candidate.clip_id=? AND candidate.notice_claimed=0
+                AND EXISTS (
+                    SELECT 1 FROM clips c WHERE c.id=candidate.clip_id AND c.label IS NULL
+                    AND NOT EXISTS (
+                        SELECT 1 FROM codex_assessments a JOIN clips previous ON previous.id=a.clip_id
+                        WHERE a.notice_claimed=1 AND (
+                            (c.event_id IS NOT NULL AND c.event_id=previous.event_id)
+                            OR (c.scene_signature IS previous.scene_signature
+                                AND (a.label=candidate.label OR 'both' IN (a.label,candidate.label))
+                                AND ABS(julianday(a.observed_at)-julianday(candidate.observed_at))
+                                    < 5.001/86400)
+                        )
+                    )
+                )""",
+                    (clip_id,),
+                ).rowcount
+                == 1
+            )
+
+    def finish_assessment_notice(self, clip_id, sent):
+        stamp = utcnow() if sent else None
+        with self.store.connect() as db:
+            db.execute(
+                "UPDATE codex_assessments SET notice_claimed=?,notified_at=? WHERE clip_id=?",
+                (int(sent), stamp, clip_id),
+            )
+            if sent:
+                db.execute(
+                    "UPDATE events SET notified_at=? WHERE id=(SELECT event_id FROM clips WHERE id=?)",
+                    (stamp, clip_id),
+                )
+
     def live(self):
         with self.store.connect() as db:
             row = db.execute("SELECT * FROM capture_status WHERE id=1").fetchone()
@@ -85,9 +205,14 @@ class ClipStore:
             )
         return clip_id
 
-    def list(self):
+    def list(self, include_assessments=False):
+        query = "SELECT * FROM clips ORDER BY requested_at DESC"
+        if include_assessments:
+            query = """SELECT c.*, a.label AS codex_label, a.error AS codex_error
+                FROM clips c LEFT JOIN codex_assessments a ON a.clip_id=c.id
+                ORDER BY c.requested_at DESC"""
         with self.store.connect() as db:
-            return [dict(r) for r in db.execute("SELECT * FROM clips ORDER BY requested_at DESC")]
+            return [dict(row) for row in db.execute(query)]
 
     def get(self, clip_id):
         with self.store.connect() as db:

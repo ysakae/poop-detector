@@ -48,8 +48,22 @@ def load_baseline(path, roi):
     return frame
 
 
+def scene_signature(baseline, roi):
+    return hashlib.sha256(
+        baseline.tobytes() + json.dumps(asdict(roi), sort_keys=True).encode()
+    ).hexdigest()
+
+
 def monitor(
-    camera, roi, baseline, config, notifier, max_frames=0, collector=None, dog_observer=None
+    camera,
+    roi,
+    baseline,
+    config,
+    notifier,
+    max_frames=0,
+    collector=None,
+    dog_observer=None,
+    codex_notifications=False,
 ):
     detector = IncrementalDetector(
         baseline, config.threshold, config.min_area, config.occupied_ratio, config.color_threshold
@@ -69,9 +83,7 @@ def monitor(
         dog_observer = DogObserver(model, config.dog_fps, config.dog_exit_seconds)
     dog_state = None
     dog_clip_times = {}
-    signature = hashlib.sha256(
-        baseline.tobytes() + json.dumps(asdict(roi), sort_keys=True).encode()
-    ).hexdigest()
+    signature = scene_signature(baseline, roi)
     if collector is not None:
         collector.scene_signature = signature
     reference = store.load_reference(signature)
@@ -151,7 +163,7 @@ def monitor(
                 store.set_monitor_state("SUSPECTED", event_id)
                 if collector is not None:
                     collector.trigger(event_id)
-                if notifier.send():
+                if not codex_notifications and notifier.send():
                     store.update(event_id, notified_at=utcnow())
                 logger.info("排泄の疑いを記録しました: %s", event_id)
             if observation.kind == "empty":
@@ -205,6 +217,10 @@ def parser():
         if name == "run":
             sub.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
             sub.add_argument("--dog", action="store_true", help="犬の存在・出入り検出を有効化")
+            sub.add_argument("--codex", action="store_true", help="動画のCodex判定候補で通知")
+    review = commands.add_parser("codex-review", help="保存済み動画をCodexで判定（通知なし）")
+    review.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
+    review.add_argument("--clip", help="判定する未ラベル動画のID")
     feedback = commands.add_parser("feedback", help="実際に排泄だったかと種類を記録")
     feedback.add_argument("event_id")
     feedback.add_argument("label", choices=["true", "false"])
@@ -242,6 +258,36 @@ def main(argv=None):
         if args.command == "run" and args.dog:
             config.dog_enabled = True
         root = Path(config.data_dir)
+        if args.command == "codex-review" or (args.command == "run" and args.codex):
+            from .clips import ClipStore
+            from .codex_review import Review, inspect_clip, require_codex
+
+            if args.command == "run" and not config.clip_enabled:
+                print("--codexには動画保存を有効にしてください", file=sys.stderr)
+                return 2
+            try:
+                require_codex()
+            except ValueError as error:
+                print(error, file=sys.stderr)
+                return 2
+            if args.command == "codex-review":
+                if not 1 <= args.limit <= 50:
+                    print("--limitは1〜50件で指定してください", file=sys.stderr)
+                    return 2
+                roi = ROI.load(root / "roi.json")
+                baseline = load_baseline(root / "baseline" / "empty.png", roi)
+                review = Review(
+                    ClipStore(root),
+                    lambda path, row: inspect_clip(path, row, roi),
+                    scene_signature=scene_signature(baseline, roi),
+                )
+                try:
+                    completed, failed = review.run(args.limit, clip_id=args.clip)
+                except ValueError as error:
+                    print(error, file=sys.stderr)
+                    return 2
+                print(f"Codex判定候補 {completed}件、失敗 {failed}件")
+                return 2 if failed else 0
         if args.command in ("setup-dog-model", "check-dog"):
             from .dog import DogDetector, setup_model
 
@@ -371,13 +417,29 @@ def main(argv=None):
                         def on_frame(frame, generation):
                             collector.feed(frame, generation=generation)
 
+                    if args.codex:
+                        review = Review(
+                            collector.store,
+                            lambda path, row: inspect_clip(path, row, roi),
+                            notifier.send_assessment if notifier.enabled else None,
+                        )
+                        stack.enter_context(review.watch())
                     live = stack.enter_context(
                         LatestCamera(
                             Camera(source, config.timeout_ms, config.retry_seconds), on_frame
                         )
                     )
                     live.wait_ready(config.timeout_ms / 1000 + 1)
-                    monitor(live, roi, baseline, config, notifier, args.max_frames, collector)
+                    monitor(
+                        live,
+                        roi,
+                        baseline,
+                        config,
+                        notifier,
+                        args.max_frames,
+                        collector,
+                        codex_notifications=args.codex,
+                    )
                 return 0
             frame = camera.read()
             if frame is None:

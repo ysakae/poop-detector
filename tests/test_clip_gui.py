@@ -60,3 +60,31 @@ def test_manual_request_requires_running_camera(gui):
     clips.heartbeat(True)
     assert submit(server, "/clips/request", {})[0] == 303
     assert clips.list()[0]["source"] == "manual"
+
+
+def test_codex_draft_is_visible_without_overwriting_human_label(gui):
+    from poop_detector.clips import ClipStore
+
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    clip = clips.request()
+    clips.update(clip, status="ready", duration=10)
+    clips.save_assessment(
+        clip,
+        label="feces",
+        activity="excreting",
+        start_seconds=2,
+        end_seconds=4,
+        reason="<新しい便が見えます>",
+    )
+    _, body = request(server, "GET", "/clips?id=" + clip)
+    page = body.decode()
+    assert "Codex候補 ／ 排便" in page
+    assert "&lt;新しい便が見えます&gt;" in page
+    assert 'name="label" value="feces" checked' in page
+    assert clips.get(clip)["label"] is None
+
+    clips.label(clip, "none", activity="feeding")
+    _, body = request(server, "GET", "/clips?id=" + clip)
+    assert 'name="label" value="none" checked' in body.decode()
+    assert clips.assessment(clip)["label"] == "feces"

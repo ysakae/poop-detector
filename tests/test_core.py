@@ -147,8 +147,8 @@ def test_cli_help_and_missing_url(monkeypatch, capsys):
     assert result.value.code == 0
 
 
-def test_offline_pipeline_records_one_event(tmp_path):
-    from poop_detector.config import Config
+@pytest.mark.parametrize("codex_notifications", [False, True])
+def test_offline_pipeline_records_one_event(tmp_path, codex_notifications):
     from poop_detector.main import monitor
 
     baseline, changed = frames()
@@ -159,13 +159,24 @@ def test_offline_pipeline_records_one_event(tmp_path):
         def read(self):
             return changed.copy()
 
-    class Silent:
+    class Notifier:
         def send(self):
-            return False
+            assert not codex_notifications
+            return True
 
     config = Config(data_dir=str(tmp_path), fps=100, verify_seconds=0.01)
-    monitor(Frames(), ROI(0, 0, 1, 1), baseline, config, Silent(), max_frames=8)
-    assert len(Store(tmp_path).list()) == 1
+    monitor(
+        Frames(),
+        ROI(0, 0, 1, 1),
+        baseline,
+        config,
+        Notifier(),
+        max_frames=8,
+        codex_notifications=codex_notifications,
+    )
+    events = Store(tmp_path).list()
+    assert len(events) == 1
+    assert (events[0]["notified_at"] is None) == codex_notifications
 
 
 def test_latest_camera_discards_old_frames():
