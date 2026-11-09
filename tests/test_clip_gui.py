@@ -105,3 +105,110 @@ def test_clip_links_keep_addressable_details_for_partial_navigation(gui):
     assert f'class="active" href="/clips?id={old}"'.encode() in body
     assert f'href="/clips?id={new}"'.encode() in body
     assert request(server, "GET", "/assets/clips.js")[0] == 200
+
+
+def ready_clip(clips, *, event_id=None):
+    clip = clips.request(event_id=event_id)
+    clips.update(
+        clip,
+        status="ready",
+        path=f"clips/{clip}.mp4",
+        duration=30,
+        start_at="2026-11-09T06:10:00+00:00",
+    )
+    return clip
+
+
+def test_video_confirmation_converts_offsets_and_reuses_existing_record(gui):
+    from poop_detector.clips import ClipStore
+
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    clip = ready_clip(clips)
+    fields = {"id": clip, "label": "feces", "start": "5.25", "end": "11", "record_id": "new"}
+    assert submit(server, "/clips/confirm", fields)[0] == 303
+    assert submit(server, "/clips/confirm", fields)[0] == 303
+
+    (record,) = store.records()
+    assert record["actual_start"] == "2026-11-09T06:10:05.250000+00:00"
+    assert record["actual_end"] == "2026-11-09T06:10:11+00:00"
+    assert clips.get(clip)["label"] == "feces"
+
+    other = ready_clip(clips)
+    _, page = request(server, "GET", "/clips?id=" + other)
+    assert record["id"].encode() in page
+    assert (
+        submit(
+            server,
+            "/clips/confirm",
+            {
+                "id": other,
+                "label": "feces",
+                "record_id": record["id"],
+            },
+        )[0]
+        == 303
+    )
+    assert store.records() == [record]
+
+    _, page = request(server, "GET", "/records")
+    for clip_id in (clip, other):
+        assert f'href="/clips?id={clip_id}"'.encode() in page
+
+
+def test_video_confirmation_preserves_unknown_time_and_can_use_original_event(gui):
+    from poop_detector.clips import ClipStore
+
+    server, store, event_id = gui
+    clips = ClipStore(store.root)
+    clip = ready_clip(clips, event_id=event_id)
+    assert (
+        submit(
+            server,
+            "/clips/confirm",
+            {
+                "id": clip,
+                "label": "urine",
+                "record_id": event_id,
+            },
+        )[0]
+        == 303
+    )
+    (record,) = store.records()
+    assert record["id"] == event_id
+    assert record["excretion_type"] == "urine"
+    assert record["actual_start"] is None
+    assert record["actual_end"] is None
+
+    another = ready_clip(clips)
+    assert (
+        submit(
+            server,
+            "/clips/confirm",
+            {
+                "id": another,
+                "label": "feces",
+                "record_id": "new",
+            },
+        )[0]
+        == 303
+    )
+    video_record = next(row for row in store.records() if row["id"] != event_id)
+    assert video_record["actual_start"] is None
+    assert video_record["timestamp"] == "2026-11-09T06:10:00+00:00"
+
+
+def test_invalid_confirmation_leaves_video_label_and_records_intact(gui):
+    from poop_detector.clips import ClipStore
+
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    clip = ready_clip(clips)
+    for fields in (
+        {"label": "none", "record_id": "new"},
+        {"label": "feces", "record_id": "missing"},
+        {"label": "feces", "record_id": "new", "start": "12", "end": "3"},
+    ):
+        assert submit(server, "/clips/confirm", {"id": clip, **fields})[0] == 400
+        assert clips.get(clip)["label"] is None
+        assert store.records() == []

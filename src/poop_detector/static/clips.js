@@ -39,3 +39,17 @@ clipList.addEventListener("click", (event) => {
 });
 
 window.addEventListener("popstate", () => showClip(location.href, false));
+
+document.addEventListener("click", (event) => {
+    const button = event.target.closest("#clip-detail button[data-video-offset], #clip-detail button[data-video-seek]");
+    if (!button) return;
+    const detail = button.closest("#clip-detail");
+    const video = detail.querySelector("video");
+    if (button.dataset.videoSeek !== undefined) {
+        video.currentTime = Number(button.dataset.videoSeek);
+    } else if (video.readyState) {
+        const input = detail.querySelector(`input[name="${button.dataset.videoOffset}"]`);
+        const limit = Math.floor(Number(input.max) * 100 + 1e-7) / 100;
+        input.value = Math.min(video.currentTime, limit).toFixed(2);
+    }
+});

@@ -4,6 +4,7 @@ import re
 from html import escape
 
 from .clips import ACTIVITIES, CLIP_LABELS, ClipStore
+from .events import EXCRETION_TYPES
 
 STATES = {
     "queued": "受付済み",
@@ -33,7 +34,7 @@ def render_clips(root, token, query):
     content = '<h2>動画を見てラベルを付ける</h2><p><a href="/">ライブ映像・排泄の記録へ戻る</a></p>'
     content += (
         "<p>排泄前後の動作も確認し、排泄なしの動画にもラベルを付けてください。"
-        "動画ラベルは学習用で、排泄記録のラベルとは別に保存します。</p>"
+        "排便や排尿を確認したら、動画ラベルと確定記録を一緒に保存できます。</p>"
     )
     content += (
         '<form method="post" action="/clips/request">'
@@ -99,6 +100,16 @@ def render_clips(root, token, query):
                         + "</strong><br>"
                         + escape(assessment["reason"])
                     )
+                    for field, title in (
+                        ("start_seconds", "開始候補へ移動"),
+                        ("end_seconds", "完了候補へ移動"),
+                    ):
+                        seconds = assessment[field]
+                        if seconds is not None:
+                            content += (
+                                f'<p><button class="secondary" type="button" data-video-seek="{seconds}">'
+                                f"{title}（{seconds:g}秒）</button></p>"
+                            )
                     if assessment["notified_at"]:
                         content += "<br>通知済み " + escape(local_time(assessment["notified_at"]))
                     if row["label"] is None:
@@ -121,21 +132,25 @@ def render_clips(root, token, query):
                 selected_attr = "selected" if key == draft.get("activity", row["activity"]) else ""
                 content += f'<option value="{key}" {selected_attr}>{activity}</option>'
             content += (
-                '</select></label><p class="note">動画の再生バーで位置を確認し、排泄の開始・完了を秒数で入力します。'
-                '分からなければ空欄にしてください。「排泄なし」「判断できない」では時刻を保存しません。</p><div class="times">'
+                '</select></label><p class="note">再生位置を開始・完了として指定できます。'
+                '映っていない時刻は空欄にしてください。</p><div class="times">'
             )
             for field, text in [("start", "開始（動画内の秒）"), ("end", "完了（動画内の秒）")]:
-                value = draft.get(field + "_seconds", row["actual_" + field + "_offset"])
+                value = row["actual_" + field + "_offset"]
                 value = "" if value is None else str(value)
                 content += (
-                    f'<label>{text}<input type="number" min="0" max="{row["duration"]}" '
+                    f'<div><label>{text}<input type="number" min="0" max="{row["duration"]}" '
                     f'step="0.01" name="{field}" value="{value}"></label>'
+                    f'<button class="secondary" type="button" data-video-offset="{field}">'
+                    f"ここを{'開始' if field == 'start' else '完了'}にする</button></div>"
                 )
             content += (
                 '</div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000" style="width:100%">'
                 + escape(row["note"])
                 + "</textarea></label></p>"
-                + "<button>動画ラベルを保存</button></form>"
+                + '<button class="secondary">動画ラベルのみ保存</button>'
+                + confirmation_fields(store, row, local_time)
+                + "</form>"
             )
             if row["event_id"]:
                 content += f'<p><a href="/?filter=all&amp;id={row["event_id"]}">対応するイベント画像を確認</a></p>'
@@ -144,6 +159,37 @@ def render_clips(root, token, query):
         else:
             content += "<p>保存処理中です。録画と変換が終わったら更新してください。</p>"
     return document(content + '</article></div><script src="/assets/clips.js" defer></script>')
+
+
+def confirmation_fields(store, clip, local_time):
+    linked = store.confirmation(clip["id"])
+    content = "<fieldset><legend>排便・排尿の確定記録</legend>"
+    if linked:
+        content += (
+            f'<input type="hidden" name="record_id" value="{escape(linked, quote=True)}">'
+            f'<p><a href="/?filter=all&amp;id={escape(linked, quote=True)}">ひも付け済みの記録を開く</a></p>'
+            '<p class="note">確定した日時や種類は、ひも付け済みの記録から編集できます。</p>'
+        )
+    else:
+        candidates = store.record_candidates(clip)
+        original = clip["event_id"]
+        content += '<label>保存先<select name="record_id">'
+        if candidates and not original:
+            content += '<option value="">保存先を選択</option>'
+        for record in candidates:
+            selected = " selected" if record["id"] == original else ""
+            label = EXCRETION_TYPES[record["excretion_type"]] if record["feedback"] == 1 else "検知"
+            stamp = local_time(record["actual_start"] or record["timestamp"])
+            content += (
+                f'<option value="{escape(record["id"], quote=True)}"{selected}>'
+                f"{escape(stamp)} {escape(label)}</option>"
+            )
+        if not original:
+            content += '<option value="new">新しい確定記録を作成</option>'
+        content += '</select></label><p class="note">同じ排泄がすでに記録されている場合は、その記録を選んでください。</p>'
+    return (
+        content + '<button formaction="/clips/confirm">ラベルと確定記録を保存</button></fieldset>'
+    )
 
 
 def stream_video(handler, root, clip_id):
@@ -214,12 +260,22 @@ def handle_clip_post(handler, root, fields):
                 end,
                 fields.get("activity", "other"),
                 fields.get("note", ""),
+                record_id=fields.get("record_id", "") if handler.path == "/clips/confirm" else None,
             )
         handler.send_response(303)
         handler.send_header("Location", f"/clips?id={clip_id}&saved=1")
         handler.end_headers()
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as error:
         from .label_gui import document
+
+        if handler.path == "/clips/confirm":
+            return handler.respond(
+                400,
+                document(
+                    f"<h2>確定記録を保存できませんでした</h2><p>{escape(str(error))}</p>"
+                    '<p><a href="/clips">動画一覧へ戻る</a></p>'
+                ),
+            )
 
         status = 409 if handler.path == "/clips/request" else 400
         handler.respond(

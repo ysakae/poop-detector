@@ -99,7 +99,7 @@ def render(store, token, query):
         for r in rows
         if mode == "all"
         or (mode == "missed" and r["kind"] == "MISSED")
-        or (mode == "manual" and r["kind"] == "MANUAL")
+        or (mode == "manual" and r["kind"] in ("MANUAL", "VIDEO"))
         or (mode == "true" and r["feedback"] == 1)
         or (
             mode in ("feces", "urine", "both")
@@ -144,8 +144,9 @@ def render(store, token, query):
             if item["feedback"] == 0
             else "未ラベル"
         )
-        if item["kind"] != "SUSPECTED":
-            label += "（見逃し）" if item["kind"] == "MISSED" else "（手動）"
+        label += {"MISSED": "（見逃し）", "MANUAL": "（手動）", "VIDEO": "（映像）"}.get(
+            item["kind"], ""
+        )
         url = "/?" + urlencode({"filter": mode, "id": item["id"]})
         active = "active" if row and row["id"] == item["id"] else ""
         content += (
@@ -163,7 +164,7 @@ def render(store, token, query):
             )
         else:
             content += "<p>この記録には画像がありません。</p>"
-        if row["kind"] in ("SUSPECTED", "MANUAL", "MISSED"):
+        if row["kind"] in ("SUSPECTED", "MANUAL", "MISSED", "VIDEO"):
             content += (
                 '<form method="post" action="/save">'
                 + csrf
@@ -174,6 +175,8 @@ def render(store, token, query):
             choices = list(EXCRETION_TYPES.items())
             if row["kind"] == "SUSPECTED":
                 choices += [("false", "誤検知"), ("unknown", "保留・未ラベル")]
+            elif row["kind"] == "VIDEO":
+                choices += [("unknown", "保留・未ラベル")]
             selected_label = (
                 row["excretion_type"]
                 if row["feedback"] == 1
@@ -220,14 +223,23 @@ def render(store, token, query):
     return document(LIVE_PANEL + content)
 
 
-def render_records(store):
+def render_records(store, clips):
+    video_links = clips.record_videos()
     content = '<h2>排便・排尿の記録</h2><p><a href="/">画像の確認・記録の追加へ戻る</a></p>'
-    content += '<p class="note">確認済みの排泄を表示します。両方の記録は排便・排尿に各1件と数えます。時刻は日本時間です。</p><div style="overflow:auto"><table style="width:100%;background:white;border-collapse:collapse"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>登録方法</th><th>メモ</th></tr></thead><tbody>'
+    content += '<p class="note">確認済みの排泄を表示します。両方の記録は排便・排尿に各1件と数えます。時刻は日本時間です。</p><div style="overflow:auto"><table style="width:100%;background:white;border-collapse:collapse"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>登録方法</th><th>メモ</th><th>映像</th><th>操作</th></tr></thead><tbody>'
     for row in reversed(store.records()):
         url = "/?" + urlencode({"filter": "all", "id": row["id"]})
-        source = {"MANUAL": "手動", "MISSED": "見逃し", "SUSPECTED": "通知を確認"}[row["kind"]]
+        source = {
+            "MANUAL": "手動",
+            "MISSED": "見逃し",
+            "SUSPECTED": "検知を確認",
+            "VIDEO": "映像で確認",
+        }[row["kind"]]
+        recorded_at = local_time(row["actual_start"] or row["timestamp"])
+        if row["kind"] == "VIDEO" and not row["actual_start"]:
+            recorded_at += "（動画時刻・開始不明）"
         values = [
-            local_time(row["actual_start"] or row["timestamp"]),
+            recorded_at,
             local_time(row["actual_end"]),
             EXCRETION_TYPES[row["excretion_type"]],
             source,
@@ -237,7 +249,11 @@ def render_records(store):
             '<td style="padding:14px;border-bottom:1px solid #c8d8df">' + escape(v) + "</td>"
             for v in values
         )
-        content += f'<td><a href="{escape(url)}">編集</a></td></tr>'
+        links = " ".join(
+            f'<a href="/clips?id={escape(clip_id, quote=True)}">映像を見る{f" ({index})" if index > 1 else ""}</a>'
+            for index, clip_id in enumerate(video_links.get(row["id"], ()), 1)
+        )
+        content += f'<td>{links}</td><td><a href="{escape(url)}">編集</a></td></tr>'
     content += "</tbody></table></div>"
     if not store.records():
         content += "<p>確認済みの排泄記録はまだありません。</p>"
@@ -313,7 +329,7 @@ def make_server(root, port=8765):
                     }
                 return self.respond(200, json.dumps(data), "application/json; charset=utf-8")
             if url.path == "/records":
-                return self.respond(200, render_records(store))
+                return self.respond(200, render_records(store, clips))
             if url.path == "/clips":
                 return self.respond(200, render_clips(root, token, query))
             if url.path == "/clip-video":
@@ -329,7 +345,7 @@ def make_server(root, port=8765):
         def do_POST(self):
             if not self.host_allowed():
                 return self.respond(403, "アクセスできません")
-            if self.path not in ("/save", "/clips/request", "/clips/label"):
+            if self.path not in ("/save", "/clips/request", "/clips/label", "/clips/confirm"):
                 return self.respond(404, "記録が見つかりません")
             try:
                 length = int(self.headers.get("Content-Length", "0"))

@@ -128,51 +128,64 @@ class Store:
         )
 
     def classify(self, event_id, label, start=_UNSET, end=_UNSET, note=_UNSET):
-        if label not in (*EXCRETION_TYPES, "false", "unknown"):
-            raise ValueError("種類が不正です")
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
-            if row is None:
-                raise ValueError("記録が見つかりません")
-            previous = db.execute(
-                "SELECT note FROM excretion_labels WHERE event_id=?", (event_id,)
-            ).fetchone()
-            start = row["actual_start"] if start is _UNSET else start
-            end = row["actual_end"] if end is _UNSET else end
-            note = (previous["note"] if previous else "") if note is _UNSET else note
-            validate_times(start, end)
-            if not isinstance(note, str) or len(note) > 2000:
-                raise ValueError("メモは2000文字以内にしてください")
-            if row["kind"] != "SUSPECTED" and (label in ("false", "unknown") or not start):
-                raise ValueError("手動・見逃し記録には種類と開始時刻が必要です")
-            feedback = 0 if label == "false" else None if label == "unknown" else 1
-            excretion_type = label if label in EXCRETION_TYPES else "unspecified"
-            db.execute(
-                "UPDATE events SET feedback=?,actual_start=?,actual_end=? WHERE id=?",
-                (feedback, start, end, event_id),
-            )
-            db.execute(
-                "INSERT OR REPLACE INTO excretion_labels VALUES (?,?,?)",
-                (event_id, excretion_type, note),
-            )
+            self._classify(db, event_id, label, start, end, note)
+
+    @staticmethod
+    def _classify(db, event_id, label, start=_UNSET, end=_UNSET, note=_UNSET):
+        if label not in (*EXCRETION_TYPES, "false", "unknown"):
+            raise ValueError("種類が不正です")
+        row = db.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
+        if row is None:
+            raise ValueError("記録が見つかりません")
+        previous = db.execute(
+            "SELECT note FROM excretion_labels WHERE event_id=?", (event_id,)
+        ).fetchone()
+        start = row["actual_start"] if start is _UNSET else start
+        end = row["actual_end"] if end is _UNSET else end
+        note = (previous["note"] if previous else "") if note is _UNSET else note
+        validate_times(start, end)
+        if not isinstance(note, str) or len(note) > 2000:
+            raise ValueError("メモは2000文字以内にしてください")
+        if row["kind"] in ("MANUAL", "MISSED") and (label in ("false", "unknown") or not start):
+            raise ValueError("手動・見逃し記録には種類と開始時刻が必要です")
+        if row["kind"] == "VIDEO" and label == "false":
+            raise ValueError("動画からの記録を取り消す場合は保留を選択してください")
+        feedback = 0 if label == "false" else None if label == "unknown" else 1
+        excretion_type = label if label in EXCRETION_TYPES else "unspecified"
+        db.execute(
+            "UPDATE events SET feedback=?,actual_start=?,actual_end=? WHERE id=?",
+            (feedback, start, end, event_id),
+        )
+        db.execute(
+            "INSERT OR REPLACE INTO excretion_labels VALUES (?,?,?)",
+            (event_id, excretion_type, note),
+        )
 
     def add_excretion(self, excretion_type, start, end=None, note="", missed=False):
-        if excretion_type not in EXCRETION_TYPES or not start:
+        if not start:
             raise ValueError("種類と開始時刻が必要です")
+        with self.connect() as db:
+            return self._insert_excretion(
+                db, excretion_type, "MISSED" if missed else "MANUAL", start, start, end, note
+            )
+
+    @staticmethod
+    def _insert_excretion(db, excretion_type, kind, timestamp, start, end, note):
+        if excretion_type not in EXCRETION_TYPES:
+            raise ValueError("排泄の種類を指定してください")
+        validate_times(timestamp, None)
         validate_times(start, end)
         if not isinstance(note, str) or len(note) > 2000:
             raise ValueError("メモは2000文字以内にしてください")
         event_id = uuid4().hex
-        with self.connect() as db:
-            db.execute(
-                """INSERT INTO events (id,timestamp,kind,feedback,actual_start,actual_end)
-                VALUES (?,?,?,?,?,?)""",
-                (event_id, start, "MISSED" if missed else "MANUAL", 1, start, end),
-            )
-            db.execute(
-                "INSERT INTO excretion_labels VALUES (?,?,?)", (event_id, excretion_type, note)
-            )
+        db.execute(
+            """INSERT INTO events (id,timestamp,kind,feedback,actual_start,actual_end)
+            VALUES (?,?,?,?,?,?)""",
+            (event_id, timestamp, kind, 1, start, end),
+        )
+        db.execute("INSERT INTO excretion_labels VALUES (?,?,?)", (event_id, excretion_type, note))
         return event_id
 
     def update(self, event_id, **values):

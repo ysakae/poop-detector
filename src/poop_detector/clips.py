@@ -11,12 +11,13 @@ import tempfile
 import threading
 import time
 from collections import deque
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 import cv2
 
-from .events import Store, utcnow
+from .events import EXCRETION_TYPES, Store, utcnow
 
 CLIP_LABELS = {
     "feces": "排便",
@@ -58,6 +59,9 @@ class ClipStore:
                 clip_id TEXT PRIMARY KEY, label TEXT, activity TEXT, start_seconds REAL,
                 end_seconds REAL, reason TEXT, observed_at TEXT, error TEXT,
                 assessed_at TEXT NOT NULL, notice_claimed INTEGER DEFAULT 0, notified_at TEXT)""")
+
+            db.execute("""CREATE TABLE IF NOT EXISTS clip_confirmations (
+                clip_id TEXT PRIMARY KEY, event_id TEXT NOT NULL)""")
 
     def video_path(self, row):
         if not row or row["status"] != "ready" or not row["path"]:
@@ -251,32 +255,128 @@ class ClipStore:
                 (*values.values(), clip_id),
             )
 
-    def label(self, clip_id, label, start=None, end=None, activity="other", note=""):
-        row = self.get(clip_id)
-        if (
-            not row
-            or row["status"] != "ready"
-            or label not in CLIP_LABELS
-            or activity not in ACTIVITIES
-        ):
-            raise ValueError("保存済み動画とラベルを確認してください")
-        for value in (start, end):
-            if value is not None and (
-                not math.isfinite(value) or not 0 <= value <= row["duration"]
-            ):
-                raise ValueError("開始・完了は動画内の秒数で指定してください")
-        if start is not None and end is not None and end < start:
-            raise ValueError("完了は開始以降を指定してください")
-        if label in ("none", "uncertain"):
-            start = end = None
-        if len(note) > 2000:
-            raise ValueError("メモは2000文字以内です")
+    def confirmation(self, clip_id):
         with self.store.connect() as db:
+            row = db.execute(
+                "SELECT event_id FROM clip_confirmations WHERE clip_id=?", (clip_id,)
+            ).fetchone()
+        return row["event_id"] if row else None
+
+    def record_candidates(self, clip):
+        start = datetime.fromisoformat(clip["start_at"] or clip["requested_at"])
+        margin = timedelta(seconds=30)
+        end = start + timedelta(seconds=clip["duration"])
+        return [
+            record
+            for record in self.store.list()
+            if record["id"] == clip["event_id"]
+            or (
+                (record["feedback"] == 1 or record["kind"] == "SUSPECTED")
+                and datetime.fromisoformat(record["actual_start"] or record["timestamp"])
+                <= end + margin
+                and datetime.fromisoformat(
+                    record["actual_end"] or record["actual_start"] or record["timestamp"]
+                )
+                >= start - margin
+            )
+        ]
+
+    def record_videos(self):
+        links = {}
+        with self.store.connect() as db:
+            for row in db.execute(
+                """SELECT c.id, COALESCE(k.event_id, c.event_id) AS record_id
+                FROM clips c LEFT JOIN clip_confirmations k ON k.clip_id=c.id
+                WHERE c.status='ready' AND c.path IS NOT NULL ORDER BY c.requested_at"""
+            ):
+                if row["record_id"]:
+                    links.setdefault(row["record_id"], []).append(row["id"])
+        return links
+
+    def label(
+        self, clip_id, label, start=None, end=None, activity="other", note="", *, record_id=None
+    ):
+        with self.store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM clips WHERE id=?", (clip_id,)).fetchone()
+            if (
+                not row
+                or row["status"] != "ready"
+                or label not in CLIP_LABELS
+                or activity not in ACTIVITIES
+            ):
+                raise ValueError("保存済み動画とラベルを確認してください")
+            for value in (start, end):
+                if value is not None and (
+                    not math.isfinite(value) or not 0 <= value <= row["duration"]
+                ):
+                    raise ValueError("開始・完了は動画内の秒数で指定してください")
+            if start is not None and end is not None and end < start:
+                raise ValueError("完了は開始以降を指定してください")
+            if len(note) > 2000:
+                raise ValueError("メモは2000文字以内です")
+            if record_id is not None:
+                self._confirm(db, row, record_id, label, start, end, note)
+            if label in ("none", "uncertain"):
+                start = end = None
             db.execute(
                 """UPDATE clips SET label=?,actual_start_offset=?,actual_end_offset=?,
                 activity=?,note=? WHERE id=?""",
                 (label, start, end, activity, note, clip_id),
             )
+
+    def _confirm(self, db, clip, record_id, label, start, end, note):
+        if label not in ("feces", "urine", "both"):
+            raise ValueError("確定記録には排便・排尿・両方のいずれかを選んでください")
+        link = db.execute(
+            "SELECT event_id FROM clip_confirmations WHERE clip_id=?", (clip["id"],)
+        ).fetchone()
+        if link:
+            if record_id not in ("new", link["event_id"]):
+                raise ValueError("この動画はすでに別の記録にひも付いています")
+            record_id = link["event_id"]
+
+        if not clip["start_at"] and (start is not None or end is not None):
+            raise ValueError("録画の開始日時が分からないため、動画内の時刻を変換できません")
+        captured = datetime.fromisoformat(clip["start_at"] or clip["requested_at"])
+        start_at = (captured + timedelta(seconds=start)).isoformat() if start is not None else None
+        end_at = (captured + timedelta(seconds=end)).isoformat() if end is not None else None
+
+        if record_id == "new":
+            if clip["event_id"]:
+                raise ValueError("対応する検知記録を保存先に選んでください")
+            record_id = self.store._insert_excretion(
+                db,
+                label,
+                "VIDEO",
+                start_at or end_at or captured.isoformat(),
+                start_at,
+                end_at,
+                note,
+            )
+        else:
+            record = db.execute(
+                """SELECT e.*, l.excretion_type, l.note FROM events e
+                LEFT JOIN excretion_labels l ON l.event_id=e.id WHERE e.id=?""",
+                (record_id,),
+            ).fetchone()
+            if record is None:
+                raise ValueError("保存先の記録を選んでください")
+            if record["feedback"] == 1:
+                existing = record["excretion_type"] or "feces"
+                if existing not in (label, "both", "unspecified"):
+                    raise ValueError(f"確定記録の種類は{EXCRETION_TYPES[existing]}です")
+            else:
+                self.store._classify(
+                    db,
+                    record_id,
+                    label,
+                    start_at or record["actual_start"],
+                    end_at or record["actual_end"],
+                    note or record["note"] or "",
+                )
+        if link is None:
+            db.execute("INSERT INTO clip_confirmations VALUES (?,?)", (clip["id"], record_id))
 
 
 def encode_mp4(samples, path, fps):
