@@ -24,6 +24,7 @@ from .config import Config
 from .detection import IncrementalDetector
 from .early_alert import EarlyAlert
 from .events import EXCRETION_TYPES, Store, utcnow
+from .live_preview import LivePreview
 from .notifications import MacNotifier
 from .roi import ROI, select_polygon
 from .state_machine import Machine
@@ -413,7 +414,7 @@ def main(argv=None):
                     raise ValueError("先にcapture-baselineを実行してください")
                 with ExitStack() as stack:
                     collector = None
-                    on_frame = None
+                    preview = LivePreview(root)
                     if config.clip_enabled:
                         from .clips import ClipCollector
 
@@ -429,8 +430,10 @@ def main(argv=None):
                             )
                         )
 
-                        def on_frame(frame, generation):
+                    def on_frame(frame, generation):
+                        if collector is not None:
                             collector.feed(frame, generation=generation)
+                        preview.publish(frame)
 
                     if args.codex:
                         review = Review(

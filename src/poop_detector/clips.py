@@ -74,6 +74,15 @@ class ClipStore:
             ).fetchone()
         return dict(row) if row else None
 
+    def latest_assessment(self):
+        with self.store.connect() as db:
+            row = db.execute(
+                """SELECT a.*, c.requested_at, c.label AS human_label
+                FROM codex_assessments a JOIN clips c ON c.id=a.clip_id
+                ORDER BY a.assessed_at DESC, c.requested_at DESC LIMIT 1"""
+            ).fetchone()
+        return dict(row) if row else None
+
     def pending_assessments(self, limit, since=None, clip_id=None, scene_signature=None):
         conditions = ["c.status='ready'", "c.label IS NULL"]
         params = []

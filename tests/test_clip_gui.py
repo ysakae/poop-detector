@@ -88,3 +88,20 @@ def test_codex_draft_is_visible_without_overwriting_human_label(gui):
     _, body = request(server, "GET", "/clips?id=" + clip)
     assert 'name="label" value="none" checked' in body.decode()
     assert clips.assessment(clip)["label"] == "feces"
+
+
+def test_clip_links_keep_addressable_details_for_partial_navigation(gui):
+    from poop_detector.clips import ClipStore
+
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    old = clips.request()
+    new = clips.request()
+    status, body = request(server, "GET", "/clips?id=" + old)
+    assert status == 200
+    assert b'id="clip-list"' in body
+    assert b'id="clip-detail"' in body
+    assert b'src="/assets/clips.js"' in body
+    assert f'class="active" href="/clips?id={old}"'.encode() in body
+    assert f'href="/clips?id={new}"'.encode() in body
+    assert request(server, "GET", "/assets/clips.js")[0] == 200

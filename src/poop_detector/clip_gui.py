@@ -30,7 +30,7 @@ def render_clips(root, token, query):
     row = next((r for r in rows if r["id"] == selected), rows[0] if rows else None)
     assessment = store.assessment(row["id"]) if row else None
     csrf = f'<input type="hidden" name="csrf" value="{token}">'
-    content = '<h2>動画を見てラベルを付ける</h2><p><a href="/">排泄の記録へ戻る</a></p>'
+    content = '<h2>動画を見てラベルを付ける</h2><p><a href="/">ライブ映像・排泄の記録へ戻る</a></p>'
     content += (
         "<p>排泄前後の動作も確認し、排泄なしの動画にもラベルを付けてください。"
         "動画ラベルは学習用で、排泄記録のラベルとは別に保存します。</p>"
@@ -47,7 +47,7 @@ def render_clips(root, token, query):
         content += '<div class="message">動画収集のカメラ接続を確認できません。監視を起動し、カメラ接続を確認してください。</div>'
     if query.get("saved"):
         content += '<div class="message" role="status">保存しました。</div>'
-    content += '<div class="workspace"><nav aria-label="動画一覧">'
+    content += '<div class="workspace"><nav id="clip-list" aria-label="動画一覧">'
     for item in rows:
         label = CLIP_LABELS.get(item["label"], "未ラベル")
         if item["label"] is None:
@@ -62,7 +62,7 @@ def render_clips(root, token, query):
             + escape(local_time(item["requested_at"]))
             + f"<small>{escape(status)} ／ {escape(label)}</small></a>"
         )
-    content += "</nav><article>"
+    content += '</nav><article id="clip-detail">'
     if row is None:
         content += '<div class="empty"><h3>動画はまだありません</h3><p>監視を起動して保存ボタンを押すか、自動検知を待ってください。</p></div>'
     else:
@@ -143,7 +143,7 @@ def render_clips(root, token, query):
             content += "<p>" + escape(row["error"] or "動画を保存できませんでした") + "</p>"
         else:
             content += "<p>保存処理中です。録画と変換が終わったら更新してください。</p>"
-    return document(content + "</article></div>")
+    return document(content + '</article></div><script src="/assets/clips.js" defer></script>')
 
 
 def stream_video(handler, root, clip_id):

@@ -1,17 +1,42 @@
 """画像とラベルを確認する、外部依存のないローカルGUI。"""
 
 import hmac
+import json
 import secrets
 import webbrowser
 from datetime import datetime, timedelta, timezone
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from .clip_gui import handle_clip_post, render_clips, stream_video
+from .clips import CLIP_LABELS, ClipStore
 from .events import EXCRETION_TYPES, Store
+from .live_preview import LivePreview
 
 JST = timezone(timedelta(hours=9))
+ASSETS = Path(__file__).with_name("static")
+LIVE_PANEL = """
+<section class="live-panel" aria-labelledby="live-title">
+  <h2 id="live-title">現在のカメラ映像</h2>
+  <div class="live-grid">
+    <figure class="live-view">
+      <img id="live-frame" alt="現在のカメラ映像" hidden>
+      <figcaption id="live-frame-status">監視からの映像を待っています。</figcaption>
+    </figure>
+    <div class="live-result">
+      <h3>直近のCodex判定</h3>
+      <p class="note">保存済みクリップの判定です。ライブ映像と時刻が異なります。</p>
+      <p><strong id="live-judgment">判定を読み込み中</strong></p>
+      <p id="live-reason"></p>
+      <p class="note" id="live-judgment-time"></p>
+      <a id="live-clip-link" href="/clips" hidden>判定されたクリップを開く</a>
+    </div>
+  </div>
+</section>
+<script src="/assets/live.js" defer></script>
+"""
 STYLE = """
 :root{font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;color:#243b47;background:#edf3f5}
 *{box-sizing:border-box}body{margin:0}header{padding:24px 4vw;background:#254b60;color:white;display:flex;justify-content:space-between;align-items:center;gap:16px}
@@ -21,7 +46,9 @@ main{max-width:1600px;margin:auto;padding:24px 4vw}.toolbar{display:flex;align-i
 article{background:white;padding:22px;border-radius:12px}figure{margin:0 0 18px;background:#192d39;min-height:120px;text-align:center;border-radius:8px;overflow:hidden}figure img{max-width:100%;max-height:62vh;display:block;margin:auto}figcaption{padding:10px;color:#dae8ee;font-size:13px}
 fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:bold;margin-bottom:12px}.choices{display:flex;gap:12px;flex-wrap:wrap}.choice{border:2px solid #d2e0e6;border-radius:8px;padding:14px;cursor:pointer}.choice:has(input:checked){border-color:#247c90;background:#e7f3f6}input[type=radio]{accent-color:#247c90;margin-right:6px}
 .times{display:flex;gap:20px;flex-wrap:wrap}label{font-size:14px}input[type=datetime-local],select{display:block;padding:10px;border:1px solid #93adb9;border-radius:5px;font:inherit;margin-top:7px}button{font:inherit;padding:11px 18px;border:1px solid #247c90;background:#247c90;color:white;border-radius:6px;cursor:pointer}button.secondary{background:white;color:#254b60}button:hover{filter:brightness(.94)}a{color:#19677c}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #df9d19;outline-offset:3px}.note{font-size:13px;color:#526d7a}.message{background:#e2f2e8;padding:12px;margin-bottom:16px;border-left:4px solid #38835c}details{margin-top:24px;padding:20px;background:white;border-radius:8px}summary{cursor:pointer;font-weight:bold}details form{margin-top:18px}.empty{padding:50px 24px;text-align:center}footer{margin-top:20px;color:#526d7a;font-size:12px}
-@media(max-width:800px){header{display:block}.workspace{grid-template-columns:1fr}nav{max-height:190px}article{padding:16px}.times{gap:12px}main{padding:16px}}
+.live-panel{margin-bottom:24px}.live-panel h2{margin:0 0 12px}.live-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(220px,1fr);gap:16px;align-items:stretch}
+.live-view{margin:0}.live-view img{width:100%;aspect-ratio:16/9;object-fit:contain}.live-view img[hidden]{display:none}.live-view figcaption{padding:10px 12px;text-align:left}.live-result{background:white;border-radius:12px;padding:16px 20px}.live-result h3{margin:0 0 8px}
+@media(max-width:800px){header{display:block}.workspace,.live-grid{grid-template-columns:1fr}nav{max-height:190px}article{padding:16px}.times{gap:12px}main{padding:16px}}
 """
 
 
@@ -190,7 +217,7 @@ def render(store, token, query):
         '</div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000" style="width:100%"></textarea></label></p><p style="margin-top:16px"><button>排泄を記録</button></p></form></details>'
         "<footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>"
     )
-    return document(content)
+    return document(LIVE_PANEL + content)
 
 
 def render_records(store):
@@ -219,13 +246,15 @@ def render_records(store):
 
 def make_server(root, port=8765):
     store = Store(root)
+    clips = ClipStore(root)
+    preview = LivePreview(root)
     token = secrets.token_urlsafe(32)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
 
-        def respond(self, status, data, mime="text/html; charset=utf-8"):
+        def respond(self, status, data, mime="text/html; charset=utf-8", headers=None):
             data = data.encode() if isinstance(data, str) else data
             self.send_response(status)
             self.send_header("Content-Type", mime)
@@ -234,8 +263,13 @@ def make_server(root, port=8765):
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+                "default-src 'none'; img-src 'self' blob:; media-src 'self'; "
+                "script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; "
+                "form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
             )
+            self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(data)
 
@@ -250,6 +284,30 @@ def make_server(root, port=8765):
             query = parse_qs(url.query)
             if url.path == "/":
                 return self.respond(200, render(store, token, query))
+            if url.path in ("/assets/live.js", "/assets/clips.js"):
+                script = ASSETS / url.path.rsplit("/", 1)[1]
+                return self.respond(200, script.read_bytes(), "text/javascript; charset=utf-8")
+            if url.path == "/live/frame":
+                if self.headers.get("Sec-Fetch-Site") == "cross-site":
+                    return self.respond(403, "アクセスできません")
+                frame = preview.read()
+                if frame is None:
+                    return self.respond(503, "現在の映像を取得できません")
+                data, stamp = frame
+                return self.respond(200, data, "image/jpeg", {"X-Frame-Time": stamp})
+            if url.path == "/live/assessment":
+                row = clips.latest_assessment()
+                data = None
+                if row:
+                    data = {
+                        "clip_id": row["clip_id"],
+                        "label": "判定失敗" if row["error"] else CLIP_LABELS[row["label"]],
+                        "reason": row["error"] or row["reason"],
+                        "requested_at": row["requested_at"],
+                        "assessed_at": row["assessed_at"],
+                        "human_label": CLIP_LABELS.get(row["human_label"]),
+                    }
+                return self.respond(200, json.dumps(data), "application/json; charset=utf-8")
             if url.path == "/records":
                 return self.respond(200, render_records(store))
             if url.path == "/clips":
