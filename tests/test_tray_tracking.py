@@ -57,6 +57,18 @@ def test_camera_shift_keeps_new_changes_and_recovers_after_occlusion():
     assert aligned[187, 326].tolist() == [35, 47, 63]
 
 
+def test_tracks_shifted_tray_when_lighting_changes():
+    frame, roi = tray_scene()
+    tracker = TrayTracker(frame, roi)
+    dimmed = (frame * 0.72).astype(np.uint8)
+    shifted = cv2.warpAffine(dimmed, np.float32([[1, 0, 12], [0, 1, -8]]), (640, 360))
+
+    aligned = tracker.align(shifted)
+
+    assert aligned is not None
+    assert np.abs(roi.crop(aligned).astype(float) - roi.crop(dimmed)).mean() < 1
+
+
 def test_pauses_when_the_tray_leaves_the_frame():
     frame, _ = tray_scene()
     edge_roi = ROI.from_pixels((170, 75, 320, 285), 640, 360)

@@ -45,9 +45,15 @@ class TrayTracker:
         self.min_span = 0.15 * cv2.contourArea(self.boundary)
         interior = np.zeros((h, w), np.uint8)
         cv2.fillPoly(interior, [np.rint(self.boundary).astype(np.int32)], 255)
-        self.points = self._rim_points(interior)
+        self.points = self._rim_points(self.reference, interior)
+        if self.points is None:
+            raise TrayReferenceError(
+                "トレーの縁を十分に確認できません。ROIと基準画像を確認してください"
+            )
+        self.detail_reference = self._local_detail(self.reference)
+        self.detail_points = self._rim_points(self.detail_reference, interior)
 
-    def _rim_points(self, interior):
+    def _rim_points(self, reference, interior):
         short_side = min(np.ptp(self.boundary, axis=0))
         # 模様の少ない太い縁では、内側の角まで探索範囲を広げる。
         for fraction in (0.075, 0.14):
@@ -59,7 +65,7 @@ class TrayTracker:
                 borderValue=0,
             )
             points = cv2.goodFeaturesToTrack(
-                self.reference, 64, 0.005, 10, mask=interior - inner, blockSize=5
+                reference, 64, 0.005, 10, mask=interior - inner, blockSize=5
             )
             if (
                 points is not None
@@ -67,14 +73,17 @@ class TrayTracker:
                 and cv2.contourArea(cv2.convexHull(points)) >= self.min_span
             ):
                 return points
-        raise TrayReferenceError(
-            "トレーの縁を十分に確認できません。ROIと基準画像を確認してください"
-        )
+        return None
 
     def _gray(self, frame):
         return cv2.cvtColor(
             cv2.resize(frame, self.size, interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY
         )
+
+    @staticmethod
+    def _local_detail(gray):
+        # 緩やかな明るさの違いを差し引き、縁の形を照合する。
+        return cv2.addWeighted(gray, 1, cv2.GaussianBlur(gray, (0, 0), 5), -1, 128)
 
     def align(self, frame, *, source_mask=None):
         height, width = frame.shape[:2]
@@ -82,16 +91,26 @@ class TrayTracker:
         if abs((width / height) / (ref_width / ref_height) - 1) > 0.01:
             return None
         gray = self._gray(frame)
-        forward, status, error = cv2.calcOpticalFlowPyrLK(
-            self.reference, gray, self.points, None, **FLOW
-        )
+        transform = self._estimate_transform(self.reference, gray, self.points)
+        if transform is None and self.detail_points is not None:
+            transform = self._estimate_transform(
+                self.detail_reference, self._local_detail(gray), self.detail_points
+            )
+        if transform is None:
+            return None
+        if source_mask is not None:
+            frame = cv2.bitwise_and(frame, frame, mask=source_mask)
+        return self._warp(frame, transform)
+
+    def _estimate_transform(self, reference, gray, points):
+        forward, status, error = cv2.calcOpticalFlowPyrLK(reference, gray, points, None, **FLOW)
         if forward is None:
             return None
         matched = (status.ravel() == 1) & (error.ravel() < 24)
-        original, moved = self.points[matched], forward[matched]
+        original, moved = points[matched], forward[matched]
         if len(moved) < MIN_MATCHES:
             return None
-        backward, status, _ = cv2.calcOpticalFlowPyrLK(gray, self.reference, moved, None, **FLOW)
+        backward, status, _ = cv2.calcOpticalFlowPyrLK(gray, reference, moved, None, **FLOW)
         if backward is None:
             return None
         matched = (status.ravel() == 1) & (
@@ -109,9 +128,7 @@ class TrayTracker:
             or cv2.contourArea(cv2.convexHull(original[matched])) < self.min_span
         ):
             return None
-        if source_mask is not None:
-            frame = cv2.bitwise_and(frame, frame, mask=source_mask)
-        return self._warp(frame, transform)
+        return transform
 
     def _warp(self, frame, transform):
         scales = np.linalg.svd(transform[:, :2], compute_uv=False)
