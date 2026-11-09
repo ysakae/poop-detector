@@ -80,9 +80,14 @@ def parse_assessment(output, duration):
     return Assessment(label, activity, start, end, reason.strip()[:1000])
 
 
-def write_sheet(path, destination, roi, duration):
+class TrayNotVisible(ValueError):
+    pass
+
+
+def write_sheet(path, destination, roi, duration, *, tray_tracker=None):
     capture = cv2.VideoCapture(str(path))
     tiles = []
+    timestamps = []
     try:
         fps = capture.get(cv2.CAP_PROP_FPS)
         frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -94,14 +99,22 @@ def write_sheet(path, destination, roi, duration):
             ok, frame = capture.read()
             if not ok:
                 raise ValueError("動画の一部を読み込めません")
+            if tray_tracker is not None:
+                frame = tray_tracker.align(frame)
+                if frame is None:
+                    continue
             crop = roi.crop(frame)
             scale = min(480 / crop.shape[1], 300 / crop.shape[0])
             tile = cv2.resize(crop, tuple(max(1, round(n * scale)) for n in crop.shape[1::-1]))
             tile = cv2.copyMakeBorder(tile, 26, 0, 0, 0, cv2.BORDER_CONSTANT)
-            cv2.putText(tile, f"{index / fps:.2f}s", (6, 19), 0, 0.55, (255, 255, 255), 1)
+            timestamp = round(index / fps, 2)
+            cv2.putText(tile, f"{timestamp:.2f}s", (6, 19), 0, 0.55, (255, 255, 255), 1)
             tiles.append(tile)
+            timestamps.append(timestamp)
     finally:
         capture.release()
+    if tray_tracker is not None and len(tiles) < max(2, math.ceil(count * 2 / 3)):
+        raise TrayNotVisible("位置を確認できるフレームが不足しています")
     columns = min(len(tiles), 4)
     tiles.extend(np.zeros_like(tiles[0]) for _ in range(-len(tiles) % columns))
     sheet = np.vstack(
@@ -109,6 +122,7 @@ def write_sheet(path, destination, roi, duration):
     )
     if not cv2.imwrite(str(destination), sheet, [cv2.IMWRITE_JPEG_QUALITY, 88]):
         raise OSError("Codex判定用画像を保存できません")
+    return timestamps
 
 
 def codex_environment():
@@ -116,10 +130,23 @@ def codex_environment():
     return {key: os.environ[key] for key in keys if key in os.environ}
 
 
-def inspect_clip(path, row, roi, runner=subprocess.run):
+def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None):
     with tempfile.TemporaryDirectory(prefix="poop-codex-") as temporary:
         folder = Path(temporary)
-        write_sheet(path, folder / "frames.jpg", roi, row["duration"])
+        try:
+            timestamps = write_sheet(
+                path, folder / "frames.jpg", roi, row["duration"], tray_tracker=tray_tracker
+            )
+        except TrayNotVisible:
+            return Assessment(
+                "uncertain", "other", None, None, "トレーの位置を確認できないため判定を保留しました"
+            )
+        prompt = PROMPT
+        if tray_tracker is not None:
+            prompt += (
+                "\nトレーの位置が分かる画像だけを添付しています。"
+                "end_seconds には画像に表示された秒数をそのまま記入してください。"
+            )
         (folder / "schema.json").write_text(json.dumps(SCHEMA), encoding="utf-8")
         result = folder / "result.json"
         runner(
@@ -142,7 +169,7 @@ def inspect_clip(path, row, roi, runner=subprocess.run):
                 "schema.json",
                 "--output-last-message",
                 "result.json",
-                PROMPT,
+                prompt,
                 "--image",
                 "frames.jpg",
             ],
@@ -154,7 +181,22 @@ def inspect_clip(path, row, roi, runner=subprocess.run):
             check=True,
             timeout=120,
         )
-        return parse_assessment(json.loads(result.read_text(encoding="utf-8")), row["duration"])
+        assessment = parse_assessment(
+            json.loads(result.read_text(encoding="utf-8")), row["duration"]
+        )
+        if (
+            tray_tracker is not None
+            and assessment.end_seconds is not None
+            and round(assessment.end_seconds, 2) not in timestamps
+        ):
+            return Assessment(
+                "uncertain",
+                "other",
+                None,
+                None,
+                "トレーの位置を確認できた画像に判定の根拠がありません",
+            )
+        return assessment
 
 
 def require_codex():

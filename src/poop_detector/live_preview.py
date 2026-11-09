@@ -20,6 +20,7 @@ class LivePreview:
         self.root = Path(root)
         self.frame_path = self.root / ".live-preview.jpg"
         self.request_path = self.root / ".live-preview-request"
+        self.tray_state_path = self.root / ".live-preview-tray-state"
         self.last_attempt = float("-inf")
 
     def publish(self, frame, now=None):
@@ -38,21 +39,36 @@ class LivePreview:
             ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if not ok:
                 return
-            with tempfile.NamedTemporaryFile(
-                dir=self.root, prefix=".live-preview-", delete=False
-            ) as output:
-                temporary = Path(output.name)
-                try:
-                    output.write(jpeg.tobytes())
-                    output.flush()
-                    temporary.replace(self.frame_path)
-                finally:
-                    temporary.unlink(missing_ok=True)
+            self._write(self.frame_path, jpeg.tobytes())
         except FileNotFoundError:
             return
         except (OSError, cv2.error):
             logger.warning("ライブ映像のプレビューを更新できません")
             self.last_attempt = now + REQUEST_MAX_AGE
+
+    def _write(self, path, data):
+        with tempfile.NamedTemporaryFile(
+            dir=self.root, prefix=".live-preview-", delete=False
+        ) as output:
+            temporary = Path(output.name)
+            try:
+                output.write(data)
+                output.flush()
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+    def set_tray_state(self, state):
+        try:
+            self._write(self.tray_state_path, state.encode("ascii"))
+        except OSError:
+            logger.warning("トレーの追従状態を保存できません")
+
+    def tray_state(self):
+        try:
+            return self.tray_state_path.read_text(encoding="ascii")
+        except (OSError, UnicodeError):
+            return "fixed"
 
     def read(self):
         try:

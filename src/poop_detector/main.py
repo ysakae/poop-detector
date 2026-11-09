@@ -28,6 +28,7 @@ from .live_preview import LivePreview
 from .notifications import MacNotifier
 from .roi import ROI, select_polygon
 from .state_machine import Machine
+from .tray_tracking import TrayReferenceError, TrayTracker
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,8 @@ def monitor(
     dog_observer=None,
     codex_notifications=False,
     early_alert=False,
+    tray_tracker=None,
+    on_tray_state=None,
 ):
     detector = IncrementalDetector(
         baseline, config.threshold, config.min_area, config.occupied_ratio, config.color_threshold
@@ -101,15 +104,25 @@ def monitor(
     process = psutil.Process()
     process.cpu_percent()
     last_health = time.monotonic()
+    tray_state = None
     try:
         while not max_frames or seen < max_frames:
             tick = time.monotonic()
             if collector is not None:
                 collector.poll()
-            frame = camera.read()
-            if camera.generation != generation:
+            raw_frame = camera.read()
+            frame = raw_frame
+            interrupted = camera.generation != generation
+            generation = camera.generation
+            if frame is not None:
+                seen += 1
+                if tray_tracker is not None:
+                    frame = tray_tracker.align(frame)
+                    interrupted |= frame is None
+            elif not getattr(camera, "healthy", False):
+                interrupted = True
+            if interrupted:
                 machine.interrupt()
-                generation = camera.generation
                 started_at = None
                 settled_since = None
                 previous = None
@@ -117,19 +130,15 @@ def monitor(
                     stay.reset()
                 if dog_observer is not None:
                     dog_observer.reset()
+            if tray_tracker is not None and (frame is not None or interrupted):
+                state = "searching" if frame is None else "tracking"
+                if state != tray_state:
+                    tray_state = state
+                    if on_tray_state is not None:
+                        on_tray_state(state)
             if frame is None:
-                if not getattr(camera, "healthy", False):
-                    machine.interrupt()
-                    started_at = None
-                    settled_since = None
-                    previous = None
-                    if stay is not None:
-                        stay.reset()
-                    if dog_observer is not None:
-                        dog_observer.reset()
                 time.sleep(1 / config.fps)
                 continue
-            seen += 1
             valid_mask = roi.mask(frame.shape) if hasattr(roi, "mask") else None
             crop = roi.crop(frame)
             if stay is not None and stay.update(crop, valid_mask, tick):
@@ -162,7 +171,7 @@ def monitor(
                 started_at = None
             if machine.update(observation.kind, time.monotonic()):
                 event_id = store.record(
-                    frame,
+                    raw_frame,
                     observation.score,
                     started_at,
                     (time.monotonic() - tick) * 1000,
@@ -223,6 +232,8 @@ def parser():
         sub = commands.add_parser(name, help=description)
         if name in ("setup-roi", "capture-baseline"):
             sub.add_argument("--replace", action="store_true", help="既存設定を明示的に更新")
+        if name in ("capture-baseline", "run"):
+            sub.add_argument("--track-tray", action="store_true", help="トレーの縁による位置追従")
         if name == "setup-roi":
             sub.add_argument(
                 "--polygon", action="store_true", help="3点以上をクリックして多角形のROIを設定"
@@ -237,6 +248,7 @@ def parser():
     review = commands.add_parser("codex-review", help="保存済み動画をCodexで判定（通知なし）")
     review.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
     review.add_argument("--clip", help="判定する未ラベル動画のID")
+    review.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
     feedback = commands.add_parser("feedback", help="実際に排泄だったかと種類を記録")
     feedback.add_argument("event_id")
     feedback.add_argument("label", choices=["true", "false"])
@@ -274,6 +286,7 @@ def main(argv=None):
         if args.command == "run" and args.dog:
             config.dog_enabled = True
         root = Path(config.data_dir)
+        tray_path = root / "baseline" / "tray-reference.png"
         if args.command == "codex-review" or (args.command == "run" and args.codex):
             from .clips import ClipStore
             from .codex_review import Review, inspect_clip, require_codex
@@ -292,9 +305,12 @@ def main(argv=None):
                     return 2
                 roi = ROI.load(root / "roi.json")
                 baseline = load_baseline(root / "baseline" / "empty.png", roi)
+                tray_tracker = (
+                    TrayTracker.from_baseline(tray_path, baseline, roi) if args.track_tray else None
+                )
                 review = Review(
                     ClipStore(root),
-                    lambda path, row: inspect_clip(path, row, roi),
+                    lambda path, row: inspect_clip(path, row, roi, tray_tracker=tray_tracker),
                     scene_signature=scene_signature(baseline, roi),
                 )
                 try:
@@ -412,9 +428,13 @@ def main(argv=None):
                 baseline = load_baseline(baseline_path, roi)
                 if baseline is None:
                     raise ValueError("先にcapture-baselineを実行してください")
+                tray_tracker = (
+                    TrayTracker.from_baseline(tray_path, baseline, roi) if args.track_tray else None
+                )
                 with ExitStack() as stack:
                     collector = None
                     preview = LivePreview(root)
+                    preview.set_tray_state("searching" if tray_tracker is not None else "fixed")
                     if config.clip_enabled:
                         from .clips import ClipCollector
 
@@ -438,7 +458,9 @@ def main(argv=None):
                     if args.codex:
                         review = Review(
                             collector.store,
-                            lambda path, row: inspect_clip(path, row, roi),
+                            lambda path, row: inspect_clip(
+                                path, row, roi, tray_tracker=tray_tracker
+                            ),
                             notifier.send_assessment if notifier.enabled else None,
                         )
                         stack.enter_context(review.watch())
@@ -458,6 +480,8 @@ def main(argv=None):
                         collector,
                         codex_notifications=args.codex,
                         early_alert=args.early_alert,
+                        tray_tracker=tray_tracker,
+                        on_tray_state=preview.set_tray_state,
                     )
                 return 0
             frame = camera.read()
@@ -476,9 +500,17 @@ def main(argv=None):
                 print("ROIを保存しました")
             elif args.command == "capture-baseline":
                 roi = ROI.load(roi_path)
+                if args.track_tray:
+                    TrayTracker(frame, roi)
+                    tray_path.parent.mkdir(parents=True, exist_ok=True)
+                    if not cv2.imwrite(str(tray_path), frame):
+                        raise OSError("トレー追従用の基準画像を保存できません")
                 save_baseline(baseline_path, roi.crop(frame), roi)
                 print("基準画像を保存しました")
         return 0
+    except TrayReferenceError as error:
+        print(error, file=sys.stderr)
+        return 2
     except (ValueError, TypeError, OSError, cv2.error):
         # 外部例外の文字列に認証URLが含まれる可能性があるため出力しない。
         if not os.environ.get("POOP_RTSP_URL") and args.command in (

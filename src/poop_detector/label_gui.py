@@ -294,7 +294,11 @@ def make_server(root, port=8765):
                 if frame is None:
                     return self.respond(503, "現在の映像を取得できません")
                 data, stamp = frame
-                return self.respond(200, data, "image/jpeg", {"X-Frame-Time": stamp})
+                headers = {"X-Frame-Time": stamp}
+                tray_state = preview.tray_state()
+                if tray_state in ("tracking", "searching"):
+                    headers["X-Tray-State"] = tray_state
+                return self.respond(200, data, "image/jpeg", headers)
             if url.path == "/live/assessment":
                 row = clips.latest_assessment()
                 data = None

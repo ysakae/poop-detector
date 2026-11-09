@@ -28,7 +28,15 @@ async function updateFrame() {
             frameTime = stamp;
         }
         image.hidden = false;
-        frameStatus.textContent = "映像更新 " + jst.format(new Date(stamp));
+        const trayState = response.headers.get("X-Tray-State");
+        const status = "映像更新 " + jst.format(new Date(stamp));
+        if (trayState === "searching") {
+            frameStatus.textContent = status + " ／ トレーの位置を確認中・判定保留";
+        } else if (trayState === "tracking") {
+            frameStatus.textContent = status + " ／ トレーを追従中";
+        } else {
+            frameStatus.textContent = status;
+        }
     } catch {
         image.hidden = true;
         frameStatus.textContent = "現在の映像を取得できません。監視の起動とカメラ接続を確認してください。";
