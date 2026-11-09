@@ -52,6 +52,8 @@ class TrayTracker:
             )
         self.detail_reference = self._local_detail(self.reference)
         self.detail_points = self._rim_points(self.detail_reference, interior)
+        self.edge_reference = self._rim_edges(self.reference)
+        self.edge_points = self._rim_points(self.edge_reference, interior)
 
     def _rim_points(self, reference, interior):
         short_side = min(np.ptp(self.boundary, axis=0))
@@ -85,13 +87,31 @@ class TrayTracker:
         # 緩やかな明るさの違いを差し引き、縁の形を照合する。
         return cv2.addWeighted(gray, 1, cv2.GaussianBlur(gray, (0, 0), 5), -1, 128)
 
+    @classmethod
+    def _rim_edges(cls, gray):
+        # 赤外線で明暗が逆転しても、符号を除いた輪郭の形は残る。
+        smoothed = cv2.GaussianBlur(gray, (0, 0), 1.5)
+        edges = cv2.convertScaleAbs(cv2.Laplacian(smoothed, cv2.CV_32F, ksize=3), alpha=0.5)
+        return cls._local_detail(edges)
+
+    @staticmethod
+    def _monochrome(frame):
+        blue, green, red = cv2.split(frame[::16, ::16])
+        return cv2.absdiff(blue, green).mean() < 1 and cv2.absdiff(red, green).mean() < 1
+
     def align(self, frame, *, source_mask=None):
         height, width = frame.shape[:2]
         ref_width, ref_height = self.output_size
         if abs((width / height) / (ref_width / ref_height) - 1) > 0.01:
             return None
         gray = self._gray(frame)
-        transform = self._estimate_transform(self.reference, gray, self.points)
+        transform = None
+        if self.edge_points is not None and self._monochrome(frame):
+            transform = self._estimate_transform(
+                self.edge_reference, self._rim_edges(gray), self.edge_points
+            )
+        if transform is None:
+            transform = self._estimate_transform(self.reference, gray, self.points)
         if transform is None and self.detail_points is not None:
             transform = self._estimate_transform(
                 self.detail_reference, self._local_detail(gray), self.detail_points

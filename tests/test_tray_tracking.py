@@ -69,6 +69,21 @@ def test_tracks_shifted_tray_when_lighting_changes():
     assert np.abs(roi.crop(aligned).astype(float) - roi.crop(dimmed)).mean() < 1
 
 
+def test_tracks_tray_when_infrared_reverses_rim_contrast():
+    frame, roi = tray_scene()
+    tracker = TrayTracker(frame, roi)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    infrared = cv2.cvtColor(255 - gray, cv2.COLOR_GRAY2BGR)
+    cv2.circle(infrared, (340, 186), 7, (35, 35, 35), -1)
+    shifted = cv2.warpAffine(infrared, np.float32([[1, 0, 10], [0, 1, -6]]), (640, 360))
+
+    aligned = tracker.align(shifted)
+
+    assert aligned is not None
+    assert np.abs(roi.crop(aligned).astype(float) - roi.crop(infrared)).mean() < 2
+    assert aligned[186, 340].tolist() == [35, 35, 35]
+
+
 def test_pauses_when_the_tray_leaves_the_frame():
     frame, _ = tray_scene()
     edge_roi = ROI.from_pixels((170, 75, 320, 285), 640, 360)
