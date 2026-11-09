@@ -113,3 +113,35 @@ def test_gui_urine_and_excretion_log(gui):
     assert (
         post(server, {"action": "manual", "type": "wrong", "start": "2026-11-08T23:30"})[0] == 400
     )
+
+
+def test_records_show_daily_counts_and_hourly_statistics_in_japan_time(gui):
+    server, store, _ = gui
+    store.add_excretion("feces", "2026-11-02T00:00:00+09:00")
+    store.add_excretion("urine", "2026-11-01T23:59:59+09:00")
+    store.add_excretion("both", "2026-11-07T15:00:00+00:00", missed=True)
+    store.add_excretion("urine", "2026-11-08T00:59:59+09:00", location="outside")
+    store.add_excretion("unspecified", "2026-11-08T08:00:00+09:00")
+    store.add_excretion("both", "2026-11-08T15:00:00+00:00")
+
+    status, body = request(server, "GET", "/records?date=2026-11-08&days=7")
+    assert status == 200
+    html = body.decode()
+    assert "排便 1件 ／ 排尿 2件 ／ 種類不明 1件" in html
+    assert "2026-11-02〜2026-11-08（7日間・記録あり2日）" in html
+    hourly = html.split('id="hourly-stats"', 1)[1].split("</table>", 1)[0]
+    assert re.search(r"00:00〜00:59</th>.*?</meter> 2件.*?</meter> 2件", hourly)
+    assert re.search(r"08:00〜08:59</th>.*?</meter> 0件.*?</meter> 0件", hourly)
+
+
+def test_records_stats_follow_confirmed_start_or_fall_back_to_record_time(gui):
+    server, store, event = gui
+    with store.connect() as db:
+        db.execute("UPDATE events SET timestamp=? WHERE id=?", ("2026-11-07T15:25:00+00:00", event))
+    url = "/records?date=2026-11-08&days=7"
+    assert "排便 0件 ／ 排尿 0件".encode() in request(server, "GET", url)[1]
+    store.classify(event, "urine", start=None)
+    assert "排便 0件 ／ 排尿 1件".encode() in request(server, "GET", url)[1]
+    store.classify(event, "urine", start="2026-11-07T23:55:00+09:00")
+    assert "排便 0件 ／ 排尿 0件".encode() in request(server, "GET", url)[1]
+    assert request(server, "GET", "/records?date=invalid&days=-1")[0] == 200

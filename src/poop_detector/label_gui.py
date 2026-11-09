@@ -4,7 +4,7 @@ import hmac
 import json
 import secrets
 import webbrowser
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -23,9 +23,10 @@ from .clip_storage import DEFAULT_DISK_MIB
 from .clips import CLIP_LABELS, ClipStore
 from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, Store
 from .live_preview import LivePreview
+from .record_stats import JST, summarize_records
 
-JST = timezone(timedelta(hours=9))
 ASSETS = Path(__file__).with_name("static")
+STATS_PERIODS = ("7", "30", "90")
 LIVE_PANEL = """
 <section class="live-panel" aria-labelledby="live-title">
   <h2 id="live-title">現在のカメラ映像</h2>
@@ -58,6 +59,7 @@ fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:bold;margin-bottom:
 .capacity-warning{background:#fff1d2;color:#603d10;padding:12px;border-left:4px solid #b96a09}
 .live-panel{margin-bottom:24px}.live-panel h2{margin:0 0 12px}.live-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(220px,1fr);gap:16px;align-items:stretch}
 .live-view{margin:0}.live-view img{width:100%;aspect-ratio:16/9;object-fit:contain}.live-view img[hidden]{display:none}.live-view figcaption{padding:10px 12px;text-align:left}.live-result{background:white;border-radius:12px;padding:16px 20px}.live-result h3{margin:0 0 8px}
+.record-stats{background:white;padding:20px;border-radius:12px;margin:16px 0}.record-stats h3{margin:0 0 8px}.record-stats input[type=date]{font:inherit;padding:8px;display:block;margin-top:7px}.record-stats details{padding:0}.hourly-scroll{max-height:22rem;overflow:auto}.hourly-scroll table{width:100%;border-collapse:collapse;text-align:left}.hourly-scroll th,.hourly-scroll td{padding:6px 10px;border-bottom:1px solid #dce6ea;white-space:nowrap}.hourly-scroll thead{position:sticky;top:0;background:white}.hourly-scroll meter{width:clamp(35px,12vw,160px)}
 @media(max-width:800px){header{display:block}.workspace,.live-grid{grid-template-columns:1fr}nav{max-height:190px}article{padding:16px}.times{gap:12px}main{padding:16px}}
 """
 
@@ -236,11 +238,54 @@ def render(store, token, query, disk_mb=DEFAULT_DISK_MIB):
     return document(LIVE_PANEL + capacity_panel(store.root, disk_mb) + content)
 
 
-def render_records(store, clips):
+def render_record_stats(records, query):
+    try:
+        day = date.fromisoformat(query.get("date", [""])[0])
+    except ValueError:
+        day = datetime.now(JST).date()
+    period = query.get("days", ["30"])[0]
+    if period not in STATS_PERIODS:
+        period = "30"
+    start = date.fromordinal(max(1, day.toordinal() - int(period) + 1))
+    daily, hourly, recorded_days = summarize_records(records, start, day)
+    options = "".join(
+        f'<option value="{value}"{" selected" if value == period else ""}>{value}日間</option>'
+        for value in STATS_PERIODS
+    )
+    content = (
+        '<section class="record-stats" aria-labelledby="daily-stats-title">'
+        '<h3 id="daily-stats-title">1日の排便・排尿回数</h3>'
+        '<form method="get" action="/records" class="toolbar">'
+        f'<label>集計日<input type="date" name="date" value="{day}" required></label>'
+        f'<label>時間帯別の集計期間<select name="days">{options}</select></label>'
+        '<button class="secondary">集計を表示</button></form>'
+        f"<p><strong>排便 {daily['feces']}件 ／ 排尿 {daily['urine']}件"
+        f" ／ 種類不明 {daily['unspecified']}件</strong></p>"
+        '<p class="note">日本時間で集計します。開始時刻が不明な記録は記録時刻を使います。'
+        "「排便・排尿」は各1件です。0件は確定記録が0件だったことを表します。</p>"
+        "<details open><summary>時間帯別の排便・排尿</summary>"
+        f"<p>{start}〜{day}（{(day - start).days + 1}日間・記録あり{recorded_days}日）</p>"
+        '<div class="hourly-scroll" role="region" aria-label="1時間ごとの集計表" tabindex="0">'
+        '<table id="hourly-stats"><thead><tr><th scope="col">時間帯</th>'
+        '<th scope="col">排便</th><th scope="col">排尿</th></tr></thead><tbody>'
+    )
+    scale = max(1, *(counts[kind] for counts in hourly for kind in ("feces", "urine")))
+    for hour, counts in enumerate(hourly):
+        content += f'<tr><th scope="row">{hour:02d}:00〜{hour:02d}:59</th>'
+        for kind in ("feces", "urine"):
+            count = counts[kind]
+            content += f'<td><meter aria-hidden="true" max="{scale}" value="{count}"></meter> {count}件</td>'
+        content += "</tr>"
+    return content + "</tbody></table></div></details></section>"
+
+
+def render_records(store, clips, query):
+    records = store.records()
     video_links = clips.record_videos()
     content = '<h2>排便・排尿の記録</h2><p><a href="/">画像の確認・記録の追加へ戻る</a></p>'
-    content += '<p class="note">確認済みの排泄を表示します。両方の記録は排便・排尿に各1件と数えます。時刻は日本時間です。</p><div style="overflow:auto"><table style="width:100%;background:white;border-collapse:collapse"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>場所</th><th>登録方法</th><th>メモ</th><th>映像</th><th>操作</th></tr></thead><tbody>'
-    for row in reversed(store.records()):
+    content += render_record_stats(records, query)
+    content += '<h3>確定記録一覧（全期間）</h3><div style="overflow:auto"><table style="width:100%;background:white;border-collapse:collapse"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>場所</th><th>登録方法</th><th>メモ</th><th>映像</th><th>操作</th></tr></thead><tbody>'
+    for row in reversed(records):
         url = "/?" + urlencode({"filter": "all", "id": row["id"]})
         source = {
             "MANUAL": "手動",
@@ -269,7 +314,7 @@ def render_records(store, clips):
         )
         content += f'<td>{links}</td><td><a href="{escape(url)}">編集</a></td></tr>'
     content += "</tbody></table></div>"
-    if not store.records():
+    if not records:
         content += "<p>確認済みの排泄記録はまだありません。</p>"
     return document(content)
 
@@ -345,7 +390,7 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB):
                     }
                 return self.respond(200, json.dumps(data), "application/json; charset=utf-8")
             if url.path == "/records":
-                return self.respond(200, render_records(store, clips))
+                return self.respond(200, render_records(store, clips, query))
             if url.path == "/clips":
                 return self.respond(200, render_clips(root, token, query, disk_mb))
             if url.path == "/clips/capacity":
