@@ -186,7 +186,7 @@ class ClipStore:
             )
 
     def request(self, source="manual", event_id=None, require_live=False):
-        if source not in ("manual", "detected", "dog_enter", "dog_exit"):
+        if source not in ("manual", "detected", "dog_enter", "dog_exit", "early_alert"):
             raise ValueError("保存要求の種類が不正です")
         if require_live and not self.live():
             raise ValueError("監視を動画保存有効で起動し、カメラ接続を確認してください")

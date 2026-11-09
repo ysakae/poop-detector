@@ -17,6 +17,7 @@ SOURCES = {
     "detected": "差分検知",
     "dog_enter": "犬の入場",
     "dog_exit": "犬の退場",
+    "early_alert": "トイレ見守り",
 }
 
 

@@ -21,6 +21,11 @@ class MacNotifier:
             "ここちゃんのトイレに変化を検出しました。排便・排尿の可能性があります。"
         )
 
+    def send_early_alert(self):
+        return self._display(
+            "トイレで同じ場所にとどまっています。ここちゃんの様子を確認してください。"
+        )
+
     def send_assessment(self, label):
         if label not in ("feces", "urine", "both"):
             return False

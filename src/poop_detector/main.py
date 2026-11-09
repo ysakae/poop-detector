@@ -22,6 +22,7 @@ import psutil
 from .camera import Camera, LatestCamera
 from .config import Config
 from .detection import IncrementalDetector
+from .early_alert import EarlyAlert
 from .events import EXCRETION_TYPES, Store, utcnow
 from .notifications import MacNotifier
 from .roi import ROI, select_polygon
@@ -64,10 +65,12 @@ def monitor(
     collector=None,
     dog_observer=None,
     codex_notifications=False,
+    early_alert=False,
 ):
     detector = IncrementalDetector(
         baseline, config.threshold, config.min_area, config.occupied_ratio, config.color_threshold
     )
+    stay = EarlyAlert(baseline, config) if early_alert else None
     machine = Machine(config.verify_seconds, config.clear_seconds)
     store = Store(config.data_dir)
     if dog_observer is None and config.dog_enabled:
@@ -109,6 +112,8 @@ def monitor(
                 started_at = None
                 settled_since = None
                 previous = None
+                if stay is not None:
+                    stay.reset()
                 if dog_observer is not None:
                     dog_observer.reset()
             if frame is None:
@@ -117,6 +122,8 @@ def monitor(
                     started_at = None
                     settled_since = None
                     previous = None
+                    if stay is not None:
+                        stay.reset()
                     if dog_observer is not None:
                         dog_observer.reset()
                 time.sleep(1 / config.fps)
@@ -124,6 +131,11 @@ def monitor(
             seen += 1
             valid_mask = roi.mask(frame.shape) if hasattr(roi, "mask") else None
             crop = roi.crop(frame)
+            if stay is not None and stay.update(crop, valid_mask, tick):
+                if notifier.send_early_alert():
+                    logger.info("トイレ見守りの早期通知を送りました")
+                if collector is not None:
+                    collector.trigger(source="early_alert")
             observation = detector.analyze(crop, valid_mask)
             if dog_observer is not None:
                 dog_state = dog_observer.update(frame, roi, time.monotonic())
@@ -218,6 +230,9 @@ def parser():
             sub.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
             sub.add_argument("--dog", action="store_true", help="犬の存在・出入り検出を有効化")
             sub.add_argument("--codex", action="store_true", help="動画のCodex判定候補で通知")
+            sub.add_argument(
+                "--early-alert", action="store_true", help="トイレ滞在の見守りを録画完了前に通知"
+            )
     review = commands.add_parser("codex-review", help="保存済み動画をCodexで判定（通知なし）")
     review.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
     review.add_argument("--clip", help="判定する未ラベル動画のID")
@@ -439,6 +454,7 @@ def main(argv=None):
                         args.max_frames,
                         collector,
                         codex_notifications=args.codex,
+                        early_alert=args.early_alert,
                     )
                 return 0
             frame = camera.read()
