@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import cv2
 
+from .clip_storage import DEFAULT_DISK_MIB, MIB, recording_usage
 from .events import (
     EXCRETION_LOCATIONS,
     EXCRETION_TYPES,
@@ -44,6 +45,7 @@ ACTIVITIES = {
     "excreting": "排泄動作",
 }
 logger = logging.getLogger(__name__)
+SHORT_VISIT_SECONDS = 15
 
 
 class ClipStore:
@@ -61,6 +63,9 @@ class ClipStore:
                 actual_start_offset REAL, actual_end_offset REAL, activity TEXT DEFAULT 'other',
                 note TEXT DEFAULT '', scene_signature TEXT, location TEXT)""")
             ensure_location_column(db, "clips")
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS clips_by_status_time ON clips(status, requested_at)"
+            )
             db.execute("""CREATE TABLE IF NOT EXISTS capture_status (
                 id INTEGER PRIMARY KEY CHECK(id=1), heartbeat REAL, healthy INTEGER)""")
 
@@ -73,6 +78,31 @@ class ClipStore:
 
             db.execute("""CREATE TABLE IF NOT EXISTS clip_confirmations (
                 clip_id TEXT PRIMARY KEY, event_id TEXT NOT NULL)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS clip_protections (clip_id TEXT PRIMARY KEY)""")
+
+    def is_pinned(self, clip_id):
+        with self.store.connect() as db:
+            return (
+                db.execute("SELECT 1 FROM clip_protections WHERE clip_id=?", (clip_id,)).fetchone()
+                is not None
+            )
+
+    def pin(self, clip_id, protected):
+        with self.store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT status FROM clips WHERE id=?", (clip_id,)).fetchone()
+            if row is None or row["status"] != "ready":
+                raise ValueError("保護する動画を確認してください")
+            if protected:
+                db.execute("INSERT OR IGNORE INTO clip_protections VALUES (?)", (clip_id,))
+            else:
+                db.execute("DELETE FROM clip_protections WHERE clip_id=?", (clip_id,))
+
+    def queued(self):
+        with self.store.connect() as db:
+            return db.execute(
+                "SELECT id,source FROM clips WHERE status='queued' ORDER BY requested_at DESC"
+            ).fetchall()
 
     def video_path(self, row):
         if not row or row["status"] != "ready" or not row["path"]:
@@ -262,6 +292,7 @@ class ClipStore:
     def update(self, clip_id, **values):
         allowed = {
             "status",
+            "source",
             "path",
             "start_at",
             "end_at",
@@ -496,13 +527,13 @@ class ClipCollector:
         fps=5,
         max_width=1280,
         memory_mb=128,
-        disk_mb=4096,
+        disk_mb=DEFAULT_DISK_MIB,
         encoder=encode_mp4,
     ):
         self.store = ClipStore(root)
         self.before, self.after, self.fps = before, after, fps
         self.max_width = max_width
-        self.memory_limit, self.disk_limit = int(memory_mb * 1024**2), int(disk_mb * 1024**2)
+        self.memory_limit, self.disk_limit = int(memory_mb * 1024**2), int(disk_mb * MIB)
         self.encoder = encoder
         self.buffer = deque()
         self.jobs = {}
@@ -581,14 +612,28 @@ class ClipCollector:
         self.buffer.clear()
         self.last_sample = self.last_frame = float("-inf")
 
-    def trigger(self, event_id=None, source="detected"):
-        try:
-            clip_id = self.store.request(source, event_id)
-            self.poll(force=True)
-            return clip_id
-        except ValueError:
-            logger.warning("動画保存の同時処理数を超えています")
-            return None
+    def trigger(self, event_id=None, source="detected", *, now=None):
+        now = time.monotonic() if now is None else now
+        with self.lock:
+            if source == "dog_exit" and event_id is None:
+                for clip_id, job in reversed(self.jobs.items()):
+                    if (
+                        job["status"] == "recording"
+                        and job["source"] == "dog_enter"
+                        and 0 <= now - job["trigger"] <= SHORT_VISIT_SECONDS
+                        and now <= job["end"]
+                        and now - self.last_frame < 5
+                    ):
+                        job["end"] = now + self.after
+                        job["source"] = "dog_visit"
+                        return clip_id
+            try:
+                clip_id = self.store.request(source, event_id)
+                self.poll(now=now, force=True)
+                return clip_id
+            except ValueError:
+                logger.warning("動画保存の同時処理数を超えています")
+                return None
 
     def poll(self, now=None, force=False):
         now = time.monotonic() if now is None else now
@@ -597,9 +642,7 @@ class ClipCollector:
                 return
             self.last_poll = now
             self.store.heartbeat(now - self.last_frame < 5)
-            for row in self.store.list():
-                if row["status"] != "queued":
-                    continue
+            for row in self.store.queued():
                 clip_id = row["id"]
                 if not self.buffer or now - self.last_frame >= 5:
                     self.store.update(
@@ -609,6 +652,7 @@ class ClipCollector:
                 samples = [s for s in self.buffer if now - s[0] <= self.before + 1e-6]
                 self.jobs[clip_id] = {
                     "samples": samples,
+                    "source": row["source"],
                     "trigger": now,
                     "end": now + self.after,
                     "status": "recording",
@@ -641,6 +685,7 @@ class ClipCollector:
             self.store.update(
                 clip_id,
                 status="encoding",
+                source=job["source"],
                 start_at=samples[0][1],
                 end_at=samples[-1][1],
                 fps=self.fps,
@@ -667,7 +712,7 @@ class ClipCollector:
                 path = self.store.root / "clips" / f"{clip_id}.mp4"
                 temporary = path.with_suffix(".part.mp4")
                 try:
-                    used = sum(p.stat().st_size for p in path.parent.glob("*.mp4"))
+                    used = recording_usage(self.store.root)
                     if used >= self.disk_limit:
                         raise OSError("動画保存容量上限")
                     duration = self.encoder(job["samples"], temporary, self.fps)

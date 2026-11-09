@@ -14,7 +14,7 @@ def submit(server, path, fields):
         server,
         "POST",
         path,
-        urlencode(fields),
+        urlencode(fields, doseq=True),
         {"Content-Type": "application/x-www-form-urlencoded"},
     )
 

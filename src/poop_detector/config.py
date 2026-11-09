@@ -5,6 +5,8 @@ from pathlib import Path
 
 import yaml
 
+from .clip_storage import DEFAULT_DISK_MIB
+
 
 @dataclass
 class Config:
@@ -25,7 +27,7 @@ class Config:
     clip_fps: float = 5
     clip_max_width: int = 1280
     clip_memory_mb: int = 128
-    clip_disk_mb: int = 4096
+    clip_disk_mb: int = DEFAULT_DISK_MIB
     dog_enabled: bool = False
     dog_fps: float = 1
     dog_confidence: float = 0.4

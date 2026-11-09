@@ -392,7 +392,7 @@ def main(argv=None):
         if args.command == "label-gui":
             from .label_gui import serve
 
-            serve(root, args.port, not args.no_browser)
+            serve(root, args.port, not args.no_browser, disk_mb=config.clip_disk_mb)
             return 0
         if args.command in (
             "events",

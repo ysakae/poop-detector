@@ -3,6 +3,16 @@
 import re
 from html import escape
 
+from .clip_storage import (
+    CLEANUP_LIMIT,
+    DEFAULT_DISK_MIB,
+    MIB,
+    RETENTION_DAYS,
+    cleanup_candidates,
+    cleanup_selected,
+    recording_usage,
+    retention_days,
+)
 from .clips import ACTIVITIES, CLIP_LABELS, ClipStore
 from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES
 
@@ -12,18 +22,21 @@ STATES = {
     "encoding": "変換中",
     "ready": "再生可能",
     "failed": "保存失敗",
+    "removing": "整理中",
+    "removed": "整理済み",
 }
 SOURCES = {
     "manual": "手動保存",
     "detected": "差分検知",
     "dog_enter": "犬の入場",
     "dog_exit": "犬の退場",
+    "dog_visit": "犬の入退場",
     "early_alert": "トイレ見守り",
     "outside_stay": "トレー外での滞在",
 }
 
 
-def render_clips(root, token, query):
+def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB):
     from .label_gui import document, local_time
 
     store = ClipStore(root)
@@ -45,6 +58,8 @@ def render_clips(root, token, query):
         "録画後の変換が終わったら「更新」を押してください。</p>"
         '<p><a href="/clips">更新</a></p>'
     )
+    content += capacity_panel(store.root, disk_mb)
+    content += '<p><a href="/clips/storage">録画容量と古い動画の整理</a></p>'
     if not store.live():
         content += '<div class="message">動画収集のカメラ接続を確認できません。監視を起動し、カメラ接続を確認してください。</div>'
     if query.get("saved"):
@@ -80,6 +95,14 @@ def render_clips(root, token, query):
             + "</p>"
         )
         if row["status"] == "ready":
+            pinned = store.is_pinned(row["id"])
+            pin_text = "保護指定を解除" if pinned else "この動画を保護"
+            content += (
+                '<form method="post" action="/clips/protect">'
+                + csrf
+                + f'<input type="hidden" name="id" value="{escape(row["id"], quote=True)}">'
+                + f'<button class="secondary" name="protected" value="{int(not pinned)}">{pin_text}</button></form>'
+            )
             content += (
                 f'<video controls preload="metadata" style="width:100%;background:#192d39" '
                 f'src="/clip-video?id={row["id"]}">動画を再生できません。</video>'
@@ -165,11 +188,107 @@ def render_clips(root, token, query):
             )
             if row["event_id"]:
                 content += f'<p><a href="/?filter=all&amp;id={row["event_id"]}">対応するイベント画像を確認</a></p>'
+        elif row["status"] in ("removed", "removing"):
+            message = (
+                "録画ファイルは整理済みです。"
+                if row["status"] == "removed"
+                else "録画ファイルの整理を再開できます。"
+            )
+            content += f'<p>{message} <a href="/clips/storage">録画の整理を開く</a></p>'
+            if assessment and assessment["reason"]:
+                label = CLIP_LABELS.get(assessment["label"], "判定結果")
+                content += f"<p>{escape(label)} ／ {escape(assessment['reason'])}</p>"
         elif row["status"] == "failed":
             content += "<p>" + escape(row["error"] or "動画を保存できませんでした") + "</p>"
         else:
             content += "<p>保存処理中です。録画と変換が終わったら更新してください。</p>"
     return document(content + '</article></div><script src="/assets/clips.js" defer></script>')
+
+
+def capacity_status(root, disk_mb):
+    used = recording_usage(root)
+    capacity = disk_mb * MIB
+    percentage = 100 * used / capacity
+    remaining = max(0, capacity - used)
+    content = (
+        f"<p>録画容量 {used / MIB:,.1f} / {disk_mb:,} MiB（{percentage:.1f}％）"
+        f" ／ 上限まで残り {remaining / MIB:,.1f} MiB</p>"
+    )
+    if percentage >= 100:
+        warning = "録画容量の上限に達しています。空きを確保するまで新しい録画は保存できません。"
+    elif percentage >= 90:
+        warning = "録画容量が90％に達しました。古い動画の整理をご検討ください。"
+    elif percentage >= 75:
+        warning = "録画容量が75％に達しました。"
+    else:
+        return content
+    return content + f'<p class="capacity-warning" role="status">{warning}</p>'
+
+
+def capacity_panel(root, disk_mb):
+    return (
+        '<section id="recording-capacity" aria-label="録画容量">'
+        + capacity_status(root, disk_mb)
+        + '</section><script src="/assets/clip_storage.js" defer></script>'
+    )
+
+
+def render_storage(store, token, query, disk_mb):
+    from .label_gui import document, local_time
+
+    try:
+        days = retention_days(query.get("days", ["7"])[0])
+    except ValueError:
+        days = 7
+    candidates = cleanup_candidates(store, days)
+    options = "".join(
+        f'<option value="{day}"{" selected" if day == days else ""}>{day}日以上前</option>'
+        for day in RETENTION_DAYS
+    )
+    content = '<h2>録画容量と古い動画の整理</h2><p><a href="/clips">動画一覧へ戻る</a></p>'
+    content += capacity_panel(store.root, disk_mb)
+    try:
+        removed, skipped = (int(query[key][0]) for key in ("removed", "skipped"))
+    except (KeyError, ValueError):
+        pass
+    else:
+        content += f'<p class="message" role="status">{removed}本を整理しました。{skipped}本は対象外または再試行が必要です。</p>'
+    content += (
+        '<form method="get" action="/clips/storage"><label>整理候補の古さ'
+        f'<select name="days">{options}</select></label> <button>候補を表示</button></form>'
+        '<p class="note">手動ラベル付き、検知や確定記録にひも付いた動画、保護指定した動画、'
+        "Codexが排泄候補と判定した動画は整理対象から外れます。</p>"
+    )
+    if not candidates:
+        return document(content + "<p>整理できる古い動画はありません。</p>")
+    total = sum(size for _, size in candidates)
+    content += (
+        f"<p>表示中の候補 {len(candidates)}本（古い順に最大{CLEANUP_LIMIT}本）"
+        f" ／ すべて選んだ場合に空く容量の目安 {total / MIB:,.2f} MiB</p>"
+        '<form id="cleanup-form" method="post" action="/clips/cleanup">'
+        f'<input type="hidden" name="csrf" value="{token}">'
+        f'<input type="hidden" name="days" value="{days}">'
+        '<p><label><input type="checkbox" id="cleanup-all">表示中の候補をすべて選択</label></p>'
+        "<fieldset><legend>整理する動画を選択</legend>"
+    )
+    for row, size in candidates:
+        clip_id = escape(row["id"], quote=True)
+        stamp = escape(local_time(row["requested_at"]))
+        source = SOURCES.get(row["source"], "動画")
+        verdict = CLIP_LABELS.get(row["codex_label"], "未判定")
+        content += (
+            f'<p><label><input type="checkbox" name="id" value="{clip_id}" data-bytes="{size}">'
+            f"{stamp} ／ {source} ／ {verdict}</label>"
+            f' ／ {size / MIB:,.2f} MiB ／ <a href="/clips?id={clip_id}" target="_blank" rel="noopener">確認</a></p>'
+        )
+    content += (
+        '</fieldset><p id="cleanup-selection" role="status">選択済み 0本 ／ 空く容量の目安 0.00 MiB</p>'
+        '<p><label><input type="checkbox" name="confirm" value="1" required>'
+        "選んだ動画ファイルを削除することを確認しました</label></p>"
+        "<button>選択した動画ファイルを削除</button></form>"
+        '<p class="note">削除した映像は再生できなくなります。判定結果や記録は残ります。</p>'
+    )
+    return document(content)
 
 
 def location_field(location):
@@ -270,11 +389,27 @@ def stream_video(handler, root, clip_id):
         pass
 
 
-def handle_clip_post(handler, root, fields):
+def handle_clip_post(handler, root, fields, selected_ids=()):
     store = ClipStore(root)
     try:
+        if handler.path == "/clips/cleanup":
+            if fields.get("confirm") != "1":
+                raise ValueError("削除の確認欄にチェックを入れてください")
+            days = retention_days(fields.get("days", ""))
+            removed, skipped = cleanup_selected(store, selected_ids, days)
+            handler.send_response(303)
+            handler.send_header(
+                "Location", f"/clips/storage?days={days}&removed={removed}&skipped={skipped}"
+            )
+            handler.end_headers()
+            return
         if handler.path == "/clips/request":
             clip_id = store.request(require_live=True)
+        elif handler.path == "/clips/protect":
+            clip_id = fields.get("id", "")
+            if fields.get("protected") not in ("0", "1"):
+                raise ValueError("保護の設定を確認してください")
+            store.pin(clip_id, fields["protected"] == "1")
         else:
             clip_id = fields.get("id", "")
             start = float(fields["start"]) if fields.get("start") else None
@@ -295,6 +430,14 @@ def handle_clip_post(handler, root, fields):
     except (ValueError, TypeError) as error:
         from .label_gui import document
 
+        if handler.path == "/clips/cleanup":
+            return handler.respond(
+                400,
+                document(
+                    f"<h2>動画を整理できませんでした</h2><p>{escape(str(error))}</p>"
+                    '<p><a href="/clips/storage">録画の整理へ戻る</a></p>'
+                ),
+            )
         if handler.path == "/clips/confirm":
             return handler.respond(
                 400,

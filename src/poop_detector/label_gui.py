@@ -10,7 +10,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from .clip_gui import handle_clip_post, location_field, render_clips, stream_video
+from .clip_gui import (
+    capacity_panel,
+    capacity_status,
+    handle_clip_post,
+    location_field,
+    render_clips,
+    render_storage,
+    stream_video,
+)
+from .clip_storage import DEFAULT_DISK_MIB
 from .clips import CLIP_LABELS, ClipStore
 from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, Store
 from .live_preview import LivePreview
@@ -46,6 +55,7 @@ main{max-width:1600px;margin:auto;padding:24px 4vw}.toolbar{display:flex;align-i
 article{background:white;padding:22px;border-radius:12px}figure{margin:0 0 18px;background:#192d39;min-height:120px;text-align:center;border-radius:8px;overflow:hidden}figure img{max-width:100%;max-height:62vh;display:block;margin:auto}figcaption{padding:10px;color:#dae8ee;font-size:13px}
 fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:bold;margin-bottom:12px}.choices{display:flex;gap:12px;flex-wrap:wrap}.choice{border:2px solid #d2e0e6;border-radius:8px;padding:14px;cursor:pointer}.choice:has(input:checked){border-color:#247c90;background:#e7f3f6}input[type=radio]{accent-color:#247c90;margin-right:6px}
 .times{display:flex;gap:20px;flex-wrap:wrap}label{font-size:14px}input[type=datetime-local],select{display:block;padding:10px;border:1px solid #93adb9;border-radius:5px;font:inherit;margin-top:7px}button{font:inherit;padding:11px 18px;border:1px solid #247c90;background:#247c90;color:white;border-radius:6px;cursor:pointer}button.secondary{background:white;color:#254b60}button:hover{filter:brightness(.94)}a{color:#19677c}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #df9d19;outline-offset:3px}.note{font-size:13px;color:#526d7a}.message{background:#e2f2e8;padding:12px;margin-bottom:16px;border-left:4px solid #38835c}details{margin-top:24px;padding:20px;background:white;border-radius:8px}summary{cursor:pointer;font-weight:bold}details form{margin-top:18px}.empty{padding:50px 24px;text-align:center}footer{margin-top:20px;color:#526d7a;font-size:12px}
+.capacity-warning{background:#fff1d2;color:#603d10;padding:12px;border-left:4px solid #b96a09}
 .live-panel{margin-bottom:24px}.live-panel h2{margin:0 0 12px}.live-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(220px,1fr);gap:16px;align-items:stretch}
 .live-view{margin:0}.live-view img{width:100%;aspect-ratio:16/9;object-fit:contain}.live-view img[hidden]{display:none}.live-view figcaption{padding:10px 12px;text-align:left}.live-result{background:white;border-radius:12px;padding:16px 20px}.live-result h3{margin:0 0 8px}
 @media(max-width:800px){header{display:block}.workspace,.live-grid{grid-template-columns:1fr}nav{max-height:190px}article{padding:16px}.times{gap:12px}main{padding:16px}}
@@ -78,7 +88,7 @@ def document(content):
     )
 
 
-def render(store, token, query):
+def render(store, token, query, disk_mb=DEFAULT_DISK_MIB):
     filters = {
         "unlabeled": "未ラベル",
         "all": "すべて",
@@ -223,7 +233,7 @@ def render(store, token, query):
         '</div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000" style="width:100%"></textarea></label></p><p style="margin-top:16px"><button>排泄を記録</button></p></form></details>'
         "<footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>"
     )
-    return document(LIVE_PANEL + content)
+    return document(LIVE_PANEL + capacity_panel(store.root, disk_mb) + content)
 
 
 def render_records(store, clips):
@@ -264,7 +274,7 @@ def render_records(store, clips):
     return document(content)
 
 
-def make_server(root, port=8765):
+def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB):
     store = Store(root)
     clips = ClipStore(root)
     preview = LivePreview(root)
@@ -303,8 +313,8 @@ def make_server(root, port=8765):
             url = urlsplit(self.path)
             query = parse_qs(url.query)
             if url.path == "/":
-                return self.respond(200, render(store, token, query))
-            if url.path in ("/assets/live.js", "/assets/clips.js"):
+                return self.respond(200, render(store, token, query, disk_mb))
+            if url.path in ("/assets/live.js", "/assets/clips.js", "/assets/clip_storage.js"):
                 script = ASSETS / url.path.rsplit("/", 1)[1]
                 return self.respond(200, script.read_bytes(), "text/javascript; charset=utf-8")
             if url.path == "/live/frame":
@@ -337,7 +347,11 @@ def make_server(root, port=8765):
             if url.path == "/records":
                 return self.respond(200, render_records(store, clips))
             if url.path == "/clips":
-                return self.respond(200, render_clips(root, token, query))
+                return self.respond(200, render_clips(root, token, query, disk_mb))
+            if url.path == "/clips/capacity":
+                return self.respond(200, capacity_status(clips.root, disk_mb))
+            if url.path == "/clips/storage":
+                return self.respond(200, render_storage(clips, token, query, disk_mb))
             if url.path == "/clip-video":
                 return stream_video(self, root, query.get("id", [""])[0])
             if url.path == "/image":
@@ -351,7 +365,14 @@ def make_server(root, port=8765):
         def do_POST(self):
             if not self.host_allowed():
                 return self.respond(403, "アクセスできません")
-            if self.path not in ("/save", "/clips/request", "/clips/label", "/clips/confirm"):
+            if self.path not in (
+                "/save",
+                "/clips/request",
+                "/clips/label",
+                "/clips/confirm",
+                "/clips/protect",
+                "/clips/cleanup",
+            ):
                 return self.respond(404, "記録が見つかりません")
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -362,7 +383,7 @@ def make_server(root, port=8765):
                 if not hmac.compare_digest(fields.get("csrf", ""), token):
                     return self.respond(403, "画面を再読み込みして保存してください")
                 if self.path.startswith("/clips/"):
-                    return handle_clip_post(self, root, fields)
+                    return handle_clip_post(self, root, fields, data.get("id", ()))
                 event_id = fields.get("id")
                 if fields.get("action") in ("missed", "manual"):
                     start = parse_time(fields.get("start"))
@@ -433,8 +454,8 @@ def make_server(root, port=8765):
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)
 
 
-def serve(root, port=8765, open_browser=True):
-    with make_server(root, port) as server:
+def serve(root, port=8765, open_browser=True, *, disk_mb=DEFAULT_DISK_MIB):
+    with make_server(root, port, disk_mb=disk_mb) as server:
         url = f"http://127.0.0.1:{server.server_port}/"
         print(f"ラベル付け画面: {url}", flush=True)
         if open_browser:
