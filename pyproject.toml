@@ -2,16 +2,26 @@
 name = "poop-detector"
 version = "0.1.0"
 description = "犬のトイレの変化を検知して通知するローカル監視ツール"
+readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [{ name = "Yoshiaki Sakae" }]
+keywords = ["dog", "pet", "toilet", "camera", "rtsp", "opencv", "monitoring", "ntfy"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "Natural Language :: Japanese",
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Natural Language :: Japanese",
+    "Topic :: Home Automation",
+    "Topic :: Multimedia :: Video :: Capture",
 ]
 dependencies = [
     "opencv-python>=4.10,<5",
@@ -20,10 +30,17 @@ dependencies = [
     "psutil>=6,<8",
     "python-dotenv>=1.1,<2",
 ]
+[project.urls]
+Homepage = "https://github.com/ysakae/poop-detector"
+Documentation = "https://github.com/ysakae/poop-detector/tree/main/docs"
+Repository = "https://github.com/ysakae/poop-detector"
+Issues = "https://github.com/ysakae/poop-detector/issues"
+Changelog = "https://github.com/ysakae/poop-detector/blob/main/CHANGELOG.md"
 [project.scripts]
 poop-detector = "poop_detector.main:main"
 [build-system]
-requires = ["hatchling"]
+# license-files（PEP 639）に対応した版
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 [dependency-groups]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]

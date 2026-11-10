@@ -89,6 +89,16 @@ uv run poop-detector run
 
 Ctrl+C で停止します。通知は、`.env` に `POOP_NTFY_TOPIC` があれば ntfy、なければ macOS の通知センターに届きます。
 
+### PyPI から入れる場合
+
+0.1.0 を PyPI に公開した後は、リポジトリを取得せずに次のコマンドでも入れられます。
+
+```bash
+uv tool install poop-detector
+```
+
+コマンドは作業用のディレクトリで実行してください。そのディレクトリの `.env`、`config/config.yaml`、`data/` を使います。ひな形はリポジトリの [`.env.example`](.env.example) と [`config/config.example.yaml`](config/config.example.yaml) を参考にしてください。
+
 ## 記録とラベル付け
 
 監視とは別のターミナルでラベル GUI を起動すると、ブラウザーで `http://127.0.0.1:8765/` が開きます。
@@ -134,4 +144,4 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-テストは人工画像と一時ディレクトリを使い、実カメラや実データには依存しません。プルリクエストと `main` への push では、GitHub Actions が Ruff の検査と書式の確認、Ubuntu の Python 3.11・3.12 でのテスト、Docker イメージの確認を行います。Issue やプルリクエストを送る前に [コントリビューションの手引き](CONTRIBUTING.md) と [行動規範](CODE_OF_CONDUCT.md) を読んでください。
+テストは人工画像と一時ディレクトリを使い、実カメラや実データには依存しません。プルリクエストと `main` への push では、GitHub Actions が Ruff の検査と書式の確認、パッケージのビルド、Ubuntu の Python 3.11・3.12 でのテスト、Docker イメージの確認を行います。変更履歴は [CHANGELOG.md](CHANGELOG.md) にあります。Issue やプルリクエストを送る前に [コントリビューションの手引き](CONTRIBUTING.md) と [行動規範](CODE_OF_CONDUCT.md) を読んでください。

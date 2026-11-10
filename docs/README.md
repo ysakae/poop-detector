@@ -19,6 +19,7 @@
 | ファイル | 内容 |
 |---|---|
 | [architecture.md](architecture.md) | 設計の概要。監視とラベル GUI の連携、監視ループの流れ、検知の不変条件など |
+| [releasing.md](releasing.md) | リリースと PyPI への公開の手順（メンテナー向け） |
 | [validation.json](validation.json) | 初期 MVP の差分検知の処理時間と負荷の実測値 |
 | [dog-model-validation.json](dog-model-validation.json) | 犬検出モデル（OpenCV Zoo YOLOX-s）の検出結果と推論時間の実測値 |
 
