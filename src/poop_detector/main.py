@@ -278,6 +278,10 @@ def parser():
             sub.add_argument(
                 "--early-alert", action="store_true", help="トイレ滞在の見守りを録画完了前に通知"
             )
+        if name == "test-notification":
+            sub.add_argument(
+                "--early-alert", action="store_true", help="見守り専用のntfyトピックをテスト"
+            )
     review = commands.add_parser("codex-review", help="保存済み動画をCodexで判定（通知なし）")
     review.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
     review.add_argument("--clip", help="判定する未ラベル動画のID")
@@ -456,19 +460,30 @@ def main(argv=None):
                 if store.monitor_state()["event_id"] == args.event_id:
                     store.set_monitor_state("ACKNOWLEDGED", args.event_id)
             return 0
-        topic = ""
+        topic = early_topic = ""
         if args.command in ("run", "test-notification"):
             topic = os.environ.get("POOP_NTFY_TOPIC", "").strip()
+            early_topic = os.environ.get("POOP_NTFY_EARLY_TOPIC", "").strip()
+        if early_topic and not topic:
+            print(
+                "見守り用トピックを使う場合は POOP_NTFY_TOPIC も設定してください", file=sys.stderr
+            )
+            return 2
         if topic:
             try:
-                notifier = NtfyNotifier(topic, enabled=config.notifications)
+                notifier = NtfyNotifier(
+                    topic, enabled=config.notifications, early_topic=early_topic
+                )
             except ValueError as error:
                 print(error, file=sys.stderr)
                 return 2
         else:
             notifier = MacNotifier(config.notifications and platform.system() == "Darwin")
         if args.command == "test-notification":
-            if not notifier.send_test():
+            if args.early_alert and not early_topic:
+                print("見守り用の POOP_NTFY_EARLY_TOPIC を設定してください", file=sys.stderr)
+                return 2
+            if not notifier.send_test(early_alert=args.early_alert):
                 print("通知が無効、非対応OS、または送信に失敗しました", file=sys.stderr)
                 return 2
             if topic:
