@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: セキュリティの報告 / Security report
+    url: https://github.com/ysakae/poop-detector/blob/main/SECURITY.md
+    about: 脆弱性は公開の Issue に書かず、こちらの方法で非公開で報告してください。Report vulnerabilities privately.
   - name: 使い方の説明 / Documentation
     url: https://github.com/ysakae/poop-detector/tree/main/docs
     about: 設定や機能の詳しい説明です。Detailed documentation (in Japanese).

@@ -107,7 +107,7 @@ uv run poop-detector label-gui
 - `--codex` を使うと、動画から切り出した画像が Codex CLI を通じて外部のサービスに送られます
 - `setup-dog-model` は犬検出モデルを GitHub から取得します。監視の開始時に自動で取得することはありません
 
-`data/`、`.env`、`config/config.yaml` は Git の管理対象外です。
+`data/`、`.env`、`config/config.yaml` は Git の管理対象外です。詳しくは [データの保存先と外部への送信](docs/privacy.md) を、脆弱性の報告方法は [SECURITY.md](SECURITY.md) を参照してください。
 
 ## ドキュメント
 
@@ -119,6 +119,7 @@ uv run poop-detector label-gui
 - [犬の検出](docs/dog.md) — 犬の存在、トレー外の検知、行動マップ、旋回候補
 - [Docker / Linux](docs/docker.md)
 - [データ収集の方針](docs/data-collection.md)
+- [データの保存先と外部への送信](docs/privacy.md)
 - [設計の概要](docs/architecture.md) — 開発者向け
 
 ## 開発
