@@ -1,5 +1,7 @@
 # poop-detector
 
+[![CI](https://github.com/ysakae/poop-detector/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ysakae/poop-detector/actions/workflows/ci.yml)
+
 犬のトイレを RTSP カメラで見守り、排便・排尿の「可能性」をスマートフォンや Mac に通知するローカル監視ツールです。
 空のトイレの画像と今の映像を比べ、変化が一定時間残ったときに知らせます。映像は手元のマシンで処理し、クラウドへは送りません（任意の Codex 判定を除く）。
 
@@ -127,4 +129,4 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-テストは人工画像と一時ディレクトリを使い、実カメラや実データには依存しません。開発の規約は [AGENTS.md](AGENTS.md) を参照してください。
+テストは人工画像と一時ディレクトリを使い、実カメラや実データには依存しません。プルリクエストと `main` への push では、GitHub Actions が Ruff の検査と書式の確認、Ubuntu の Python 3.11・3.12 でのテスト、Docker イメージの確認を行います。開発の規約は [AGENTS.md](AGENTS.md) を参照してください。
