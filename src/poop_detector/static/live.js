@@ -1,0 +1,77 @@
+"use strict";
+
+const image = document.querySelector("#live-frame");
+const frameStatus = document.querySelector("#live-frame-status");
+const judgment = document.querySelector("#live-judgment");
+const reason = document.querySelector("#live-reason");
+const judgmentTime = document.querySelector("#live-judgment-time");
+const clipLink = document.querySelector("#live-clip-link");
+const jst = new Intl.DateTimeFormat("ja-JP", {
+    dateStyle: "short",
+    timeStyle: "medium",
+    timeZone: "Asia/Tokyo",
+});
+let imageUrl;
+let frameTime;
+
+async function updateFrame() {
+    try {
+        if (document.hidden) return;
+        const response = await fetch("/live/frame");
+        if (!response.ok) throw new Error();
+        const stamp = response.headers.get("X-Frame-Time");
+        if (stamp !== frameTime) {
+            const url = URL.createObjectURL(await response.blob());
+            image.src = url;
+            if (imageUrl) URL.revokeObjectURL(imageUrl);
+            imageUrl = url;
+            frameTime = stamp;
+        }
+        image.hidden = false;
+        const trayState = response.headers.get("X-Tray-State");
+        const status = "映像更新 " + jst.format(new Date(stamp));
+        if (trayState === "searching") {
+            frameStatus.textContent = status + " ／ トレーの位置を確認中・判定保留";
+        } else if (trayState === "tracking") {
+            frameStatus.textContent = status + " ／ トレーを追従中";
+        } else {
+            frameStatus.textContent = status;
+        }
+    } catch {
+        image.hidden = true;
+        frameStatus.textContent = "現在の映像を取得できません。監視の起動とカメラ接続を確認してください。";
+    } finally {
+        window.setTimeout(updateFrame, document.hidden ? 1000 : 300);
+    }
+}
+
+async function updateJudgment() {
+    try {
+        if (document.hidden) return;
+        const response = await fetch("/live/assessment");
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        judgment.textContent = data
+            ? data.label + (data.location ? "（" + data.location + "）" : "")
+            : "判定はまだありません";
+        reason.textContent = data ? data.reason : "";
+        judgmentTime.textContent = data
+            ? "動画の保存要求 " + jst.format(new Date(data.requested_at))
+                + " ／ 判定 " + jst.format(new Date(data.assessed_at))
+                + (data.human_label ? " ／ 手動ラベル " + data.human_label : "")
+                + (data.human_location ? "（" + data.human_location + "）" : "")
+            : "";
+        clipLink.hidden = !data;
+        if (data) clipLink.href = "/clips?id=" + encodeURIComponent(data.clip_id);
+    } catch {
+        judgment.textContent = "判定結果を取得できません";
+        reason.textContent = "";
+        judgmentTime.textContent = "";
+        clipLink.hidden = true;
+    } finally {
+        window.setTimeout(updateJudgment, 2000);
+    }
+}
+
+updateFrame();
+updateJudgment();

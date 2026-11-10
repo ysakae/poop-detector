@@ -2,7 +2,8 @@
 
 ## プロジェクト構成
 
-Python の実装は `src/poop_detector/` にあります。`main.py` が CLI の入口で、`camera.py` が映像取得、`detection.py` が変化検知、`events.py` が検知記録を担当します。テストは `tests/`、設定例は `config/config.example.yaml`、利用手順は `README.md` にあります。
+- `src/poop_detector/` に Python の実装があります。`main.py` が CLI の入口で、`camera.py` が映像取得、`detection.py` が変化検知、`events.py` と `clips.py` が記録・録画を担当します。
+- `label_gui.py` と `clip_gui.py` がラベル付け画面を提供します。ブラウザー用 JavaScript は `src/poop_detector/static/`、テストは `tests/` にあります。設定例は `config/config.example.yaml`、利用手順は `README.md` を参照してください。
 
 ## 開発・実行コマンド
 
@@ -10,7 +11,8 @@ Python 3.11 以上が必要です。開発には `.python-version` の 3.12 を�
 
 - `uv sync --frozen` でロック済みの依存関係を導入します。
 - `uv run poop-detector check-camera` で RTSP 接続を確認します。
-- `uv run poop-detector run` で監視を起動します。先に ROI と基準画像を登録してください。
+- `uv run poop-detector run` で監視を起動します。先に ROI と基準画像を登録してください。動画保存には FFmpeg の `libx264` が必要です。
+- `uv run poop-detector label-gui` でラベル付けと記録のローカル GUI を起動します。
 - `docker build -t poop-detector .` で Linux 用イメージを作成します。
 
 ## コード規約とテスト
@@ -30,4 +32,4 @@ Codex と Claude Code は以下の手順に従います。
 
 ## ローカルデータと安全性
 
-RTSP URL、通知トピック、`.env`、実機設定、室内の画像・動画、`data/` のデータはコミットしないでください。既存データや未コミットの変更を失う恐れがある操作、Git 履歴の書き換え、リポジトリ外のファイル変更には事前に明示的な承認を得てください。
+RTSP URL は `POOP_RTSP_URL` で渡してください。RTSP URL、通知トピック、`.env`、実機設定、室内の画像・動画、`data/` の SQLite などのデータはコミットしないでください。既存データや未コミットの変更を失う恐れがある操作（一括削除、SQLite データの破壊的変更を含む）、Git 履歴の書き換え、リポジトリ外のファイル変更には事前に明示的な承認を得てください。

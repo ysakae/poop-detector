@@ -4,6 +4,8 @@ import logging
 import subprocess
 from typing import Protocol
 
+from .events import EXCRETION_TYPES
+
 
 class Notifier(Protocol):
     def send(self) -> bool: ...
@@ -15,6 +17,24 @@ class MacNotifier:
         self.runner = runner
 
     def send(self):
+        return self._display(
+            "ここちゃんのトイレに変化を検出しました。排便・排尿の可能性があります。"
+        )
+
+    def send_early_alert(self):
+        return self._display(
+            "トイレで同じ場所にとどまっています。ここちゃんの様子を確認してください。"
+        )
+
+    def send_assessment(self, label, *, location=None):
+        if label not in ("feces", "urine", "both"):
+            return False
+        place = "トレー外での" if location == "outside" else ""
+        return self._display(
+            f"Codexが{place}{EXCRETION_TYPES[label]}の候補を検出しました。動画を確認できます。"
+        )
+
+    def _display(self, message):
         if not self.enabled:
             return False
         try:
@@ -22,8 +42,7 @@ class MacNotifier:
                 [
                     "osascript",
                     "-e",
-                    'display notification "ここちゃんのトイレに変化を検出しました。'
-                    'ウンチの可能性があります。" with title "ここちゃんのトイレ"',
+                    f'display notification "{message}" with title "ここちゃんのトイレ"',
                 ],
                 shell=False,
                 check=False,
