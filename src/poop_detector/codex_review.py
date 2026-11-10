@@ -113,10 +113,52 @@ class TrayNotVisible(ValueError):
     pass
 
 
-def write_sheet(path, destination, roi, duration, *, tray_tracker=None, outside_roi=None):
+def save_sheet(destination, tiles, timestamps):
+    labeled = []
+    for tile, timestamp in zip(tiles, timestamps, strict=True):
+        tile = cv2.copyMakeBorder(tile, 26, 0, 0, 0, cv2.BORDER_CONSTANT)
+        cv2.putText(tile, f"{timestamp:.2f}s", (6, 19), 0, 0.55, (255, 255, 255), 1)
+        labeled.append(tile)
+    columns = min(len(labeled), 4)
+    labeled.extend(np.zeros_like(labeled[0]) for _ in range(-len(labeled) % columns))
+    sheet = np.vstack(
+        [np.hstack(labeled[index : index + columns]) for index in range(0, len(labeled), columns)]
+    )
+    if not cv2.imwrite(str(destination), sheet, [cv2.IMWRITE_JPEG_QUALITY, 88]):
+        raise OSError("Codex判定用画像を保存できません")
+
+
+def save_difference_sheet(destination, tiles, timestamps, mask):
+    # 網目の細かな模様をぼかし、ROI外との境界のにじみを除く。
+    sigma = max(1, min(mask.shape) / 70)
+    margin = math.ceil(2 * sigma)
+    kernel = np.ones((2 * margin + 1, 2 * margin + 1), np.uint8)
+    interior = cv2.erode(mask, kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0) > 0
+    if not np.any(interior):
+        return
+    smoothed = [
+        cv2.GaussianBlur(cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY).astype(np.float32), (0, 0), sigma)
+        for tile in tiles
+    ]
+    reference = np.median(smoothed[:3], axis=0)
+    differences = []
+    for gray in smoothed:
+        delta = gray - reference
+        delta -= np.median(delta[interior])
+        tile = np.clip(128 + 8 * delta, 0, 255).astype(np.uint8)
+        tile[~interior] = 0
+        differences.append(cv2.cvtColor(tile, cv2.COLOR_GRAY2BGR))
+    save_sheet(destination, differences, timestamps)
+
+
+def write_sheet(
+    path, destination, roi, duration, *, tray_tracker=None, outside_roi=None, difference_path=None
+):
     capture = cv2.VideoCapture(str(path))
     tiles = []
     timestamps = []
+    mask = None
+    compare = difference_path is not None and tray_tracker is not None and outside_roi is None
     try:
         fps = capture.get(cv2.CAP_PROP_FPS)
         frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -145,22 +187,21 @@ def write_sheet(path, destination, roi, duration, *, tray_tracker=None, outside_
                 crop = outside_roi.crop(annotated)
             scale = min(480 / crop.shape[1], 300 / crop.shape[0])
             tile = cv2.resize(crop, tuple(max(1, round(n * scale)) for n in crop.shape[1::-1]))
-            tile = cv2.copyMakeBorder(tile, 26, 0, 0, 0, cv2.BORDER_CONSTANT)
-            timestamp = round(index / fps, 2)
-            cv2.putText(tile, f"{timestamp:.2f}s", (6, 19), 0, 0.55, (255, 255, 255), 1)
+            if compare and mask is None:
+                mask = np.full(tile.shape[:2], 255, np.uint8)
+                if hasattr(roi, "mask"):
+                    mask = cv2.resize(
+                        roi.mask(frame.shape), tile.shape[1::-1], interpolation=cv2.INTER_NEAREST
+                    )
             tiles.append(tile)
-            timestamps.append(timestamp)
+            timestamps.append(round(index / fps, 2))
     finally:
         capture.release()
     if tray_tracker is not None and len(tiles) < max(2, math.ceil(count * 2 / 3)):
         raise TrayNotVisible("位置を確認できるフレームが不足しています")
-    columns = min(len(tiles), 4)
-    tiles.extend(np.zeros_like(tiles[0]) for _ in range(-len(tiles) % columns))
-    sheet = np.vstack(
-        [np.hstack(tiles[index : index + columns]) for index in range(0, len(tiles), columns)]
-    )
-    if not cv2.imwrite(str(destination), sheet, [cv2.IMWRITE_JPEG_QUALITY, 88]):
-        raise OSError("Codex判定用画像を保存できません")
+    save_sheet(destination, tiles, timestamps)
+    if compare and len(tiles) >= 4:
+        save_difference_sheet(difference_path, tiles, timestamps, mask)
     return timestamps
 
 
@@ -175,6 +216,7 @@ def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None, ou
         raise ValueError("トレー外の動画には --detect-outside が必要です")
     with tempfile.TemporaryDirectory(prefix="poop-codex-") as temporary:
         folder = Path(temporary)
+        difference_path = folder / "differences.jpg"
         try:
             timestamps = write_sheet(
                 path,
@@ -183,6 +225,7 @@ def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None, ou
                 row["duration"],
                 tray_tracker=tray_tracker,
                 outside_roi=outside_roi,
+                difference_path=difference_path,
             )
         except TrayNotVisible:
             return Assessment(
@@ -190,6 +233,16 @@ def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None, ou
             )
         context = TRAY_CONTEXT if outside_roi is None else OUTSIDE_CONTEXT
         prompt = context + "\n" + EVIDENCE_PROMPT
+        images = ["--image", "frames.jpg"]
+        if difference_path.is_file():
+            images.extend(["--image", difference_path.name])
+            prompt += (
+                "\n2枚目は同じ時刻・配置の比較画像です。最初の3コマの中央値と比べ、"
+                "網目や画面全体の明るさの変化を抑えて、暗くなった箇所を強調しています。"
+                "犬が離れたあとも同じ位置に残る小さな暗い跡を探し、元画像の前後と照合してください。"
+                "比較画像だけで排尿とせず、犬の体、動く影、反射、位置ずれを除外してください。"
+                "比較の基準に犬が映っている場合は、その場所の変化を元画像で確認してください。"
+            )
         if outside_stay:
             prompt += "\n今回はトレー外の排泄だけを判定し、トレー内の排泄は対象外としてください。"
         if tray_tracker is not None or outside_roi is not None:
@@ -218,8 +271,7 @@ def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None, ou
                 "--output-last-message",
                 "result.json",
                 prompt,
-                "--image",
-                "frames.jpg",
+                *images,
             ],
             cwd=folder,
             env=codex_environment(),

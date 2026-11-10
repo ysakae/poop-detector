@@ -136,6 +136,55 @@ def test_image_and_schema_reach_codex(tmp_path, monkeypatch):
     assert inspect_clip(path, row, ROI(0.2, 0.2, 0.5, 0.5), runner=run) == FEEDING
 
 
+def test_tracked_mesh_video_supplies_difference_without_amplifying_existing_marks(tmp_path):
+    path = tmp_path / "mesh.mp4"
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 5, (320, 240))
+    assert writer.isOpened()
+    y, x = np.indices((240, 320))
+    mesh = np.uint8(140 + ((x % 6 < 2) | (y % 6 < 2)) * 45)
+    cv2.circle(mesh, (70, 100), 13, 115, -1)
+    offset = np.full_like(mesh, 10)
+    cv2.circle(offset, (210, 140), 15, 2, -1)
+    for index in range(50):
+        gray = mesh if index < 28 else mesh + offset
+        writer.write(cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR))
+    writer.release()
+
+    class Tracker:
+        def align(self, frame):
+            return frame
+
+    def run(args, **kwargs):
+        folder = kwargs["cwd"]
+        assert [args[index + 1] for index, arg in enumerate(args) if arg == "--image"] == [
+            "frames.jpg",
+            "differences.jpg",
+        ]
+        sheet = cv2.imread(str(folder / "differences.jpg"), cv2.IMREAD_GRAYSCALE)
+        assert sheet is not None
+        first, last_in_top_row = np.hsplit(sheet, 4)[::3]
+        assert abs(int(first[201, 263]) - 128) < 10
+        assert abs(int(last_in_top_row[151, 88]) - 128) < 18
+        assert last_in_top_row[201, 263] < 100
+        (folder / "result.json").write_text(
+            json.dumps(
+                dict(
+                    label="none",
+                    activity="feeding",
+                    start_seconds=None,
+                    end_seconds=None,
+                    evidence="none",
+                    reason=FEEDING.reason,
+                )
+            )
+        )
+
+    assert (
+        inspect_clip(path, {"duration": 10}, ROI(0, 0, 1, 1), runner=run, tray_tracker=Tracker())
+        == FEEDING
+    )
+
+
 def test_cli_exposes_live_and_backfill_modes():
     assert parser().parse_args(["run", "--dog", "--codex"]).codex
     assert parser().parse_args(["codex-review", "--limit", "3"]).limit == 3
