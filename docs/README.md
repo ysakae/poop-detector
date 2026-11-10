@@ -1,5 +1,20 @@
 # docs
 
+## 利用者向け
+
+| ファイル | 内容 |
+|---|---|
+| [setup.md](setup.md) | 初期設定。カメラ、`.env`、監視領域、基準画像、トレー追従 |
+| [detection.md](detection.md) | 判定の仕組み。差分検知、排尿の検知、見守り通知、設定項目、制限 |
+| [records.md](records.md) | 記録とラベル付け。ラベル GUI、排泄の記録、評価指標 |
+| [notifications.md](notifications.md) | 通知。macOS の通知と ntfy |
+| [video.md](video.md) | 動画。保存、容量の管理、Codex による判定 |
+| [dog.md](dog.md) | 犬の検出。犬の存在、トレー外の検知、行動マップ、旋回候補 |
+| [docker.md](docker.md) | Docker / Linux での実行 |
+| [data-collection.md](data-collection.md) | データ収集の方針と今後 |
+
+## 開発者向け
+
 | ファイル | 内容 |
 |---|---|
 | [architecture.md](architecture.md) | 設計の概要。監視とラベル GUI の連携、監視ループの流れ、検知の不変条件など |
