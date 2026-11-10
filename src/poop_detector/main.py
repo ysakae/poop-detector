@@ -27,7 +27,7 @@ from .detection import IncrementalDetector
 from .early_alert import EarlyAlert
 from .events import EXCRETION_TYPES, Store, utcnow
 from .live_preview import LivePreview
-from .notifications import MacNotifier
+from .notifications import MacNotifier, NtfyNotifier
 from .roi import ROI, select_polygon
 from .state_machine import Machine
 from .tray_tracking import TrayReferenceError, TrayTracker
@@ -456,11 +456,25 @@ def main(argv=None):
                 if store.monitor_state()["event_id"] == args.event_id:
                     store.set_monitor_state("ACKNOWLEDGED", args.event_id)
             return 0
-        notifier = MacNotifier(config.notifications and platform.system() == "Darwin")
+        topic = ""
+        if args.command in ("run", "test-notification"):
+            topic = os.environ.get("POOP_NTFY_TOPIC", "").strip()
+        if topic:
+            try:
+                notifier = NtfyNotifier(topic, enabled=config.notifications)
+            except ValueError as error:
+                print(error, file=sys.stderr)
+                return 2
+        else:
+            notifier = MacNotifier(config.notifications and platform.system() == "Darwin")
         if args.command == "test-notification":
-            if not notifier.send():
-                raise ValueError("通知が無効、非対応OS、または送信失敗です")
-            print("通知要求を送信しました。通知センターで表示を確認してください")
+            if not notifier.send_test():
+                print("通知が無効、非対応OS、または送信に失敗しました", file=sys.stderr)
+                return 2
+            if topic:
+                print("ntfy.shが通知を受け付けました。購読しているiPhoneで確認してください")
+            else:
+                print("通知要求を送信しました。通知センターで表示を確認してください")
             return 0
         source = os.environ.get("POOP_RTSP_URL")
         if not source:

@@ -53,7 +53,7 @@ uv run poop-detector test-notification
 uv run poop-detector run
 ```
 
-Ctrl+Cで停止します。通知テストの成功はOSへの要求成功を示します。通知表示はmacOSの通知設定・集中モードも確認してください。
+Ctrl+Cで停止します。通知テストの成功はOSまたはntfy.shが受け付けたことを示します。受信端末で表示を確認してください。
 ROI・基準を更新するときは明示的に指定します。基準は自動更新しません。
 
 ```bash
@@ -231,16 +231,28 @@ SQLite記録、精度・遅延集計、切断後の再接続、最新フレー�
 実際の排便映像がないため、実際のPrecision・Recall・通知遅延は未測定です。
 通知要求は実機で成功しましたが、通知センターでの表示はユーザー確認が必要です。
 
+## 家族のiPhoneへntfyで通知する
+
+家族のiPhoneにntfyアプリを入れ、全員で同じ `ntfy.sh` のトピックを購読します。無料トピックは公開扱いです。`openssl rand -hex 16` などで推測しにくい名前を一度作り、家族内だけで共有してください。
+
+監視を起動するターミナルで、トピック名を環境変数に設定して送信を試します。
+
+```bash
+export POOP_NTFY_TOPIC='ここを実際のトピック名に置き換える'
+uv run poop-detector test-notification
+```
+
+同じターミナルで普段の監視コマンドを起動すると、macOS・Linuxともntfyを通知先に使います。`notifications: true` が必要です。送信するのは短い本文で、映像やカメラのURLは添付しません。`--early-alert` を付けると見守り通知も届きます。
+
 ## Docker / Linux
 
 Dockerfileを用意していますが、このMacにはDocker実行環境がなくビルド・実行は未検証です。
 ROI設定・基準登録はMac側で先に済ませ、同じ解像度・画角でLinuxへコピーしてください。
-macOS通知はLinuxでは無効になります。Telegramなどの通知先は未実装です。
-設定例をコピーする前に既存設定を確認し、Docker内ではnotificationsをfalseにしてください。
+Linuxで通知する場合は `POOP_NTFY_TOPIC` を設定します。通知を使わない場合は `notifications: false` にしてください。
 
 ```bash
 docker build -t poop-detector .
-docker run --rm --env POOP_RTSP_URL -v "$PWD/data:/app/data" -v "$PWD/config:/app/config:ro" poop-detector
+docker run --rm --env POOP_RTSP_URL --env POOP_NTFY_TOPIC -v "$PWD/data:/app/data" -v "$PWD/config:/app/config:ro" poop-detector
 ```
 
 Docker内からカメラのLANに到達できる必要があります。クラウドへの移行にはVPN等が必要で、RTSPの外部公開はしません。
