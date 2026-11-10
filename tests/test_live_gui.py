@@ -6,8 +6,7 @@ import time
 
 import cv2
 import numpy as np
-from test_label_gui import gui as gui
-from test_label_gui import request
+from support import request
 
 from poop_detector.clips import ClipStore
 from poop_detector.live_preview import LivePreview

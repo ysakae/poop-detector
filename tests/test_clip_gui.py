@@ -1,22 +1,6 @@
 """動画の再生・ラベル付けと手動保存要求のHTTP確認。"""
 
-import re
-from urllib.parse import urlencode
-
-from test_label_gui import gui as gui
-from test_label_gui import request
-
-
-def submit(server, path, fields):
-    _, body = request(server, "GET", "/clips")
-    fields["csrf"] = re.search(r'name="csrf" value="([^"]+)"', body.decode())[1]
-    return request(
-        server,
-        "POST",
-        path,
-        urlencode(fields, doseq=True),
-        {"Content-Type": "application/x-www-form-urlencoded"},
-    )
+from support import ready_clip, request, submit
 
 
 def test_video_range_and_labels(gui):
@@ -105,18 +89,6 @@ def test_clip_links_keep_addressable_details_for_partial_navigation(gui):
     assert f'class="active" href="/clips?id={old}"'.encode() in body
     assert f'href="/clips?id={new}"'.encode() in body
     assert request(server, "GET", "/assets/clips.js")[0] == 200
-
-
-def ready_clip(clips, *, event_id=None):
-    clip = clips.request(event_id=event_id)
-    clips.update(
-        clip,
-        status="ready",
-        path=f"clips/{clip}.mp4",
-        duration=30,
-        start_at="2026-11-09T06:10:00+00:00",
-    )
-    return clip
 
 
 def test_video_confirmation_converts_offsets_and_reuses_existing_record(gui):
