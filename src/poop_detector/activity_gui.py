@@ -17,6 +17,15 @@ def heatmap(layout, cells, mode):
     content = (
         f'<svg viewBox="0 0 {GRID} {GRID}" role="img" aria-label="サークルの行動ヒートマップ" '
         'style="display:block;width:min(100%,560px);height:auto;background:#263c46;border-radius:8px">'
+    )
+    outline = layout.map_outline()
+    if outline is not None:
+        points = " ".join(f"{round(x * GRID, 5):g},{round(y * GRID, 5):g}" for x, y in outline)
+        content += (
+            f'<defs><clipPath id="activity-floor"><polygon points="{points}"/></clipPath></defs>'
+            '<g clip-path="url(#activity-floor)">'
+        )
+    content += (
         f'<image href="/activity/background?id={layout.id}" width="{GRID}" height="{GRID}" '
         'preserveAspectRatio="none" opacity=".6"/>'
     )
@@ -31,6 +40,8 @@ def heatmap(layout, cells, mode):
             f'<rect x="{x}" y="{y}" width="1" height="1" fill="{color}" opacity="{opacity:.3f}">'
             f"<title>{amount:.0f}{unit}（全体の{percent:.1f}％）</title></rect>"
         )
+    if outline is not None:
+        content += "</g>"
     return content + "</svg>"
 
 

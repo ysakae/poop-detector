@@ -9,8 +9,8 @@ from test_label_gui import request
 
 from poop_detector.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
 from poop_detector.config import Config
-from poop_detector.main import monitor, parser
-from poop_detector.roi import ROI, PolygonROI
+from poop_detector.main import main, monitor, parser
+from poop_detector.roi import ROI, MaskedROI, PolygonROI
 
 
 def layout():
@@ -106,3 +106,45 @@ def test_only_one_monitor_can_record_activity(tmp_path):
     store = ActivityStore(tmp_path)
     with store.recording_lock(), pytest.raises(ValueError, match="起動中"), store.recording_lock():
         pytest.fail("二重に集計を開始できる状態です")
+
+
+def concave_floor():
+    return MaskedROI([[0.1, 0.1], [0.9, 0.1], [0.9, 0.5], [0.5, 0.5], [0.5, 0.9], [0.1, 0.9]])
+
+
+def test_setup_activity_accepts_concave_floor_and_ignores_positions_in_cutout(
+    tmp_path, monkeypatch
+):
+    class Camera:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self):
+            return np.full((101, 101, 3), 150, np.uint8)
+
+    config = tmp_path / "config.yaml"
+    config.write_text(f"data_dir: {tmp_path}")
+    monkeypatch.setenv("POOP_RTSP_URL", "test")
+    monkeypatch.setattr("poop_detector.main.Camera", lambda *args: Camera())
+    monkeypatch.setattr("poop_detector.main.select_polygon", lambda frame, title: concave_floor())
+    assert main(["--config", str(config), "setup-activity-map"]) == 0
+    calibration = ActivityLayout.load(tmp_path)
+    assert calibration.roi == concave_floor()
+    assert calibration.background(tmp_path).is_file()
+    recorder = ActivityRecorder(ActivityStore(tmp_path), calibration)
+    assert recorder.position([(69, 69, 71, 71)], (101, 101, 3)) is None
+    assert recorder.position([(29, 69, 31, 71)], (101, 101, 3)) == pytest.approx((0.25, 0.75))
+
+
+def test_activity_gui_clips_heat_to_registered_floor_polygon(gui):
+    server, store, _ = gui
+    calibration = ActivityLayout("b" * 32, concave_floor())
+    calibration.save(store.root, np.full((101, 101, 3), 150, np.uint8))
+    ActivityStore(store.root).add(calibration.id, date(2026, 11, 10), 1, (3, 4), None)
+    status, page = request(server, "GET", "/activity?date=2026-11-10")
+    assert status == 200
+    assert b'<polygon points="0,0 20,0 20,10 10,10 10,20 0,20"' in page
+    assert b'<g clip-path="url(#activity-floor)">' in page

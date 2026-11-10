@@ -7,7 +7,7 @@ import math
 import re
 import sqlite3
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 
 from .record_stats import JST
-from .roi import PolygonROI
+from .roi import MaskedROI, PolygonROI
 
 GRID = 20
 LAYOUT_FILE = "activity-layout.json"
@@ -34,7 +34,23 @@ class ActivityLayout:
     @classmethod
     def load(cls, root):
         data = json.loads((Path(root) / LAYOUT_FILE).read_text())
-        return cls(data["id"], PolygonROI(data["points"]))
+        kind = MaskedROI if data.get("mode") == "mask" else PolygonROI
+        return cls(data["id"], kind(data["points"]))
+
+    def map_transform(self):
+        points = np.float32(self.roi.points)
+        if isinstance(self.roi, MaskedROI):
+            # 多角形は射影補正せず、背景画像と同じ外接矩形を座標の基準にする。
+            left, top = points.min(axis=0)
+            right, bottom = points.max(axis=0)
+            points = np.float32([[left, top], [right, top], [right, bottom], [left, bottom]])
+        return cv2.getPerspectiveTransform(points, np.float32([[0, 0], [1, 0], [1, 1], [0, 1]]))
+
+    def map_outline(self):
+        if isinstance(self.roi, MaskedROI):
+            points = cv2.perspectiveTransform(np.float32([self.roi.points]), self.map_transform())
+            return np.clip(points[0], 0, 1)
+        return None
 
     def background(self, root):
         return Path(root) / f"activity-{self.id}.jpg"
@@ -48,7 +64,7 @@ class ActivityLayout:
         if not cv2.imwrite(str(self.background(root)), floor):
             raise OSError("行動マップの背景を保存できません")
         pending = root / f".activity-{self.id}.json"
-        pending.write_text(json.dumps({"id": self.id, "points": self.roi.points}))
+        pending.write_text(json.dumps({"id": self.id, **asdict(self.roi)}))
         pending.replace(root / LAYOUT_FILE)
 
 
@@ -118,9 +134,7 @@ class ActivityRecorder:
     def __init__(self, store, layout):
         self.store, self.layout = store, layout
         self.boundary = np.float32(layout.roi.points)
-        self.transform = cv2.getPerspectiveTransform(
-            self.boundary, np.float32([[0, 0], [1, 0], [1, 1], [0, 1]])
-        )
+        self.transform = layout.map_transform()
         self.last_sample = float("-inf")
         self.interrupt()
 

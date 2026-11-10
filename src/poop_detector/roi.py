@@ -197,23 +197,19 @@ def full_mask(roi, shape):
     return mask
 
 
-def select_polygon(frame, window="トイレの多角形を指定", *, floor=False):
+def select_polygon(frame, window="トイレの多角形を指定"):
     """外周に沿って3点以上をクリックし、Enterで確定する。"""
     points = []
     height, width = frame.shape[:2]
 
     def on_mouse(event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONDOWN and (not floor or len(points) < 4):
+        if event == cv2.EVENT_LBUTTONDOWN:
             if 0 <= x < width and 0 <= y < height:
                 points.append((x, y))
         elif event == cv2.EVENT_RBUTTONDOWN and points:
             points.pop()
 
-    if floor:
-        print("床の四隅を左上・右上・右下・左下の順にクリックしてください")
-    else:
-        print("外周に沿って3点以上をクリックしてください")
-    print("Enter:確定、右クリック:戻す、R:やり直し、Esc:取消")
+    print("外周に沿って3点以上をクリック。Enter:確定、右クリック:戻す、R:やり直し、Esc:取消")
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
     scale = min(1, 1280 / width, 800 / height)
     cv2.resizeWindow(window, round(width * scale), round(height * scale))
@@ -244,10 +240,9 @@ def select_polygon(frame, window="トイレの多角形を指定", *, floor=Fals
                 points.clear()
             elif key in (8, 127) and points:
                 points.pop()
-            elif key in (10, 13) and len(points) >= (4 if floor else 3):
+            elif key in (10, 13) and len(points) >= 3:
                 try:
-                    kind = PolygonROI if floor else MaskedROI
-                    return kind.from_pixels(points, width, height)
+                    return MaskedROI.from_pixels(points, width, height)
                 except ValueError:
                     print("多角形が交差・重複しているか面積がありません。Rでやり直してください")
     finally:

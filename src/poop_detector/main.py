@@ -248,7 +248,7 @@ def parser():
     for name, description in [
         ("check-camera", "映像を1フレーム取得"),
         ("setup-roi", "監視領域を選択"),
-        ("setup-activity-map", "行動マップ用にサークルの床の四隅を登録"),
+        ("setup-activity-map", "行動マップ用にサークルの床を多角形で登録"),
         ("capture-baseline", "空のトイレの基準を登録"),
         ("run", "監視開始"),
         ("events", "イベント一覧"),
@@ -580,7 +580,7 @@ def main(argv=None):
                 roi.save(roi_path)
                 print("ROIを保存しました")
             elif args.command == "setup-activity-map":
-                floor = select_polygon(frame, "サークル床面の四隅を指定", floor=True)
+                floor = select_polygon(frame, "サークルの床面を多角形で指定")
                 ActivityLayout(uuid4().hex, floor).save(root, frame)
                 print("行動マップの床面を登録しました")
             elif args.command == "capture-baseline":
