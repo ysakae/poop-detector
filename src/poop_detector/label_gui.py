@@ -92,7 +92,7 @@ def document(content, title=None):
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{title}</title><style>" + STYLE + "</style>"
         f"<header><div><h1>{title}</h1><p>画像を確認して、検知結果にラベルを付けます。</p>"
-        "</div><span>このMac内で保存</span></header><main>" + content + "</main></html>"
+        "</div><span>このマシン内で保存</span></header><main>" + content + "</main></html>"
     )
 
 

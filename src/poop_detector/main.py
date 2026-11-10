@@ -28,6 +28,7 @@ from .early_alert import EarlyAlert
 from .events import EXCRETION_TYPES, Store, utcnow
 from .live_preview import LivePreview
 from .notifications import DEFAULT_NTFY_SERVER, MacNotifier, NtfyNotifier
+from .platform_support import has_display
 from .roi import ROI, select_polygon
 from .state_machine import Machine
 from .tray_tracking import TrayReferenceError, TrayTracker
@@ -542,9 +543,12 @@ def main(argv=None):
                 print(error, file=sys.stderr)
                 return 2
         else:
-            notifier = MacNotifier(
-                config.notifications and platform.system() == "Darwin", pet_name=config.pet_name
-            )
+            on_mac = platform.system() == "Darwin"
+            if config.notifications and not on_mac and args.command in ("run", "test-notification"):
+                logger.warning(
+                    "macOS 以外では、.env に POOP_NTFY_TOPIC を設定しないと通知は届きません"
+                )
+            notifier = MacNotifier(config.notifications and on_mac, pet_name=config.pet_name)
         if args.command == "test-notification":
             if args.early_alert and not early_topic:
                 print("見守り用の POOP_NTFY_EARLY_TOPIC を設定してください", file=sys.stderr)
@@ -557,6 +561,13 @@ def main(argv=None):
             else:
                 print("通知要求を送信しました。通知センターで表示を確認してください")
             return 0
+        if args.command in ("setup-roi", "setup-activity-map") and not has_display():
+            print(
+                "範囲の登録には画面が必要です。画面のあるマシンで登録し、"
+                "data/ をこのマシンへコピーしてください（docs/setup.md）",
+                file=sys.stderr,
+            )
+            return 2
         source = settings["POOP_RTSP_URL"]
         if not source:
             print(".envのPOOP_RTSP_URLにEufyアプリのRTSP URLを設定してください", file=sys.stderr)

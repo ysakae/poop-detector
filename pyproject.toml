@@ -3,6 +3,14 @@ name = "poop-detector"
 version = "0.1.0"
 description = "犬のトイレの変化を検知して通知するローカル監視ツール"
 requires-python = ">=3.11"
+classifiers = [
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Natural Language :: Japanese",
+]
 dependencies = [
     "opencv-python>=4.10,<5",
     "numpy>=2,<3",

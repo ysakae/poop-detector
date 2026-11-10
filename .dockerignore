@@ -2,6 +2,7 @@
 .venv
 .env*
 data
+config/config.yaml
 work
 __pycache__
 .pytest_cache
