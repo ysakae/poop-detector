@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+この文書は AI エージェント（Codex、Claude Code）向けの規約です。人間のコントリビューター向けの手順は `CONTRIBUTING.md` にあります。規約を変えるときは、両方の内容をそろえてください。
+
 ## プロジェクト構成
 
 - `src/poop_detector/` に Python の実装があります。`main.py` が CLI の入口で、`camera.py` が映像取得、`detection.py` が変化検知、`events.py` と `clips.py` が記録・録画を担当します。

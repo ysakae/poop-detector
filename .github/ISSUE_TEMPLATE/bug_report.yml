@@ -1,0 +1,61 @@
+name: 不具合の報告 / Bug report
+description: 期待どおりに動かないことを報告します。Report something that does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        日本語でも英語でも書けます。You can write in Japanese or English.
+
+        **実際のカメラの画像・動画、RTSP の URL、ntfy のトピック名、`.env` や `data/` の中身は貼らないでください。** この Issue は誰でも読めます。
+        Do not attach real camera footage, RTSP URLs, ntfy topic names, or the contents of `.env` or `data/`.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 起きたこと / What happened
+      description: 何をしたら、何が起きたか。表示されたエラーメッセージがあれば、認証情報を伏せて貼ってください。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待した動作 / Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順 / Steps to reproduce
+      description: 実行したコマンドとオプション（例：`uv run poop-detector run --dog --track-tray`）。
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: macOS 15 (Apple Silicon) / Ubuntu 24.04 / Docker
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python のバージョン / Python version
+      description: "`uv run python --version` の出力"
+    validations:
+      required: true
+  - type: input
+    id: camera
+    attributes:
+      label: カメラの種類 / Camera
+      description: メーカーと型番。URL は書かないでください。
+      placeholder: Eufy Indoor Cam 2K
+  - type: textarea
+    id: config
+    attributes:
+      label: 設定 / Configuration
+      description: "`config/config.yaml` のうち、既定値から変えた項目（任意）。`.env` は貼らないでください。"
+      render: yaml
