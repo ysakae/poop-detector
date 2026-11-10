@@ -62,6 +62,7 @@ def test_ntfy_sends_only_early_alerts_to_the_separate_topic():
 
 def test_cli_can_send_a_distinct_test_message_on_linux(tmp_path, monkeypatch, capsys):
     sent = []
+    monkeypatch.chdir(tmp_path)
 
     def open_request(request, *, timeout):
         sent.append(json.loads(request.data))
@@ -84,6 +85,7 @@ def test_cli_can_send_a_distinct_test_message_on_linux(tmp_path, monkeypatch, ca
 
 def test_cli_can_test_early_topic_without_sending_to_the_main_topic(tmp_path, monkeypatch, capsys):
     sent = []
+    monkeypatch.chdir(tmp_path)
 
     def open_request(request, *, timeout):
         sent.append(json.loads(request.data))

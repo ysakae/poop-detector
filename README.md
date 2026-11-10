@@ -14,7 +14,7 @@ cp config/config.example.yaml config/config.yaml
 ```
 
 `config/config.yaml`は未作成でも既定値で起動します。既に設定がある場合は上書きせず編集してください。
-`.env.example`は参考用で、自動読み込みしません。
+接続情報は、プロジェクト直下の `.env` に保存します。初回は `cp -n .env.example .env` でひな形を作ってください。コマンドを実行するディレクトリの `.env` を起動時に読み込みます。すでに同じ名前を環境変数に設定している場合は、空の値も含めて環境変数を優先します。
 
 ## カメラの最小設定
 
@@ -30,16 +30,13 @@ cp config/config.example.yaml config/config.yaml
 連続配信について：[Eufy RTSP設定ガイド](https://service.eufy.com/article-description/Device-NAS-RTSP-Configuration-Guide)。
 アプリの版によって表示が異なる場合は、実際の画面に従ってください。
 
-URLは環境変数で渡します。macOSのzshでは次の入力により、URLをシェル履歴へ直接記録せずに設定できます。
+`.env` の `POOP_RTSP_URL` にEufyアプリのURLを入力し、プロジェクト直下で接続を確認します。
 
-```zsh
-read -rs 'POOP_RTSP_URL?EufyのRTSP URLを入力: '
-export POOP_RTSP_URL
-printf '\n'
+```bash
 uv run poop-detector check-camera
 ```
 
-認証情報をチャットやGitに貼る必要はありません。起動済みアプリは別のターミナルで後から設定した環境変数を引き継がないため、コマンドは設定した同じターミナルで実行してください。
+認証情報は `.env` にのみ入力してください。`.env` はGitの対象外です。値を変更したら監視を再起動してください。
 
 ## 初回設定と監視
 
@@ -235,23 +232,21 @@ SQLite記録、精度・遅延集計、切断後の再接続、最新フレー�
 
 家族のiPhoneにntfyアプリを入れ、全員で同じ `ntfy.sh` のトピックを購読します。無料トピックは公開扱いです。`openssl rand -hex 16` などで推測しにくい名前を一度作り、家族内だけで共有してください。
 
-監視を起動するターミナルで、トピック名を環境変数に設定して送信を試します。
+`.env` の `POOP_NTFY_TOPIC` にトピック名を設定し、送信を試します。
 
 ```bash
-export POOP_NTFY_TOPIC='ここを実際のトピック名に置き換える'
 uv run poop-detector test-notification
 ```
 
-同じターミナルで普段の監視コマンドを起動すると、macOS・Linuxともntfyを通知先に使います。`notifications: true` が必要です。送信するのは短い本文で、映像やカメラのURLは添付しません。`--early-alert` を付けると見守り通知も届きます。
+プロジェクト直下で普段の監視コマンドを起動すると、macOS・Linuxともntfyを通知先に使います。`notifications: true` が必要です。送信するのは短い本文で、映像やカメラのURLは添付しません。`--early-alert` を付けると見守り通知も届きます。
 
-見守り通知を分ける場合は、別のトピック名を作って `POOP_NTFY_EARLY_TOPIC` に設定します。見守り通知を受け取りたい人だけが、そのトピックを追加で購読してください。
+見守り通知を分ける場合は、別のトピック名を作って `.env` の `POOP_NTFY_EARLY_TOPIC` に設定します。見守り通知を受け取りたい人だけが、そのトピックを追加で購読してください。
 
 ```bash
-export POOP_NTFY_EARLY_TOPIC='ここを実際の見守り用トピック名に置き換える'
 uv run poop-detector test-notification --early-alert
 ```
 
-両方のトピックを設定したターミナルで `run --early-alert` を含む普段の監視コマンドを再起動します。排便・排尿候補は通常のトピックに、見守り通知だけは別のトピックに届きます。`POOP_NTFY_EARLY_TOPIC` が未設定の場合、見守り通知も通常のトピックに届きます。
+両方のトピックを設定したら、`--early-alert` 付きの監視を再起動します。排便・排尿候補は通常のトピックに、見守り通知だけは別のトピックに届きます。`POOP_NTFY_EARLY_TOPIC` が未設定の場合、見守り通知も通常のトピックに届きます。
 
 ## Docker / Linux
 
@@ -261,7 +256,7 @@ Linuxで通知する場合は `POOP_NTFY_TOPIC` を設定します。通知を�
 
 ```bash
 docker build -t poop-detector .
-docker run --rm --env POOP_RTSP_URL --env POOP_NTFY_TOPIC --env POOP_NTFY_EARLY_TOPIC -v "$PWD/data:/app/data" -v "$PWD/config:/app/config:ro" poop-detector
+docker run --rm -v "$PWD/.env:/app/.env:ro" -v "$PWD/data:/app/data" -v "$PWD/config:/app/config:ro" poop-detector
 ```
 
 Docker内からカメラのLANに到達できる必要があります。クラウドへの移行にはVPN等が必要で、RTSPの外部公開はしません。

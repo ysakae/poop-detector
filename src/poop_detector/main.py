@@ -22,7 +22,7 @@ import psutil
 
 from .activity_map import LAYOUT_FILE, ActivityLayout, ActivityRecorder, ActivityStore
 from .camera import Camera, LatestCamera
-from .config import Config
+from .config import Config, load_connection_settings
 from .detection import IncrementalDetector
 from .early_alert import EarlyAlert
 from .events import EXCRETION_TYPES, Store, utcnow
@@ -460,10 +460,11 @@ def main(argv=None):
                 if store.monitor_state()["event_id"] == args.event_id:
                     store.set_monitor_state("ACKNOWLEDGED", args.event_id)
             return 0
+        settings = load_connection_settings()
         topic = early_topic = ""
         if args.command in ("run", "test-notification"):
-            topic = os.environ.get("POOP_NTFY_TOPIC", "").strip()
-            early_topic = os.environ.get("POOP_NTFY_EARLY_TOPIC", "").strip()
+            topic = settings["POOP_NTFY_TOPIC"].strip()
+            early_topic = settings["POOP_NTFY_EARLY_TOPIC"].strip()
         if early_topic and not topic:
             print(
                 "見守り用トピックを使う場合は POOP_NTFY_TOPIC も設定してください", file=sys.stderr
@@ -491,9 +492,10 @@ def main(argv=None):
             else:
                 print("通知要求を送信しました。通知センターで表示を確認してください")
             return 0
-        source = os.environ.get("POOP_RTSP_URL")
+        source = settings["POOP_RTSP_URL"]
         if not source:
-            raise ValueError("POOP_RTSP_URLにEufyアプリのRTSP URLを設定してください")
+            print(".envのPOOP_RTSP_URLにEufyアプリのRTSP URLを設定してください", file=sys.stderr)
+            return 2
         roi_path = (
             outside_path if args.command == "setup-roi" and args.outside else root / "roi.json"
         )
@@ -627,19 +629,10 @@ def main(argv=None):
         return 2
     except (ValueError, TypeError, OSError, cv2.error):
         # 外部例外の文字列に認証URLが含まれる可能性があるため出力しない。
-        if not os.environ.get("POOP_RTSP_URL") and args.command in (
-            "check-camera",
-            "setup-roi",
-            "setup-activity-map",
-            "capture-baseline",
-            "run",
-        ):
-            print("POOP_RTSP_URLにEufyアプリのRTSP URLを設定してください", file=sys.stderr)
-        else:
-            print(
-                "処理できませんでした。設定・登録済みROI・基準画像・入力値を確認してください",
-                file=sys.stderr,
-            )
+        print(
+            "処理できませんでした。設定・登録済みROI・基準画像・入力値を確認してください",
+            file=sys.stderr,
+        )
         return 2
 
 

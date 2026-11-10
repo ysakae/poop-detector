@@ -136,9 +136,10 @@ def test_config_rejects_invalid_values(tmp_path):
         Config.load(path)
 
 
-def test_cli_help_and_missing_url(monkeypatch, capsys):
+def test_cli_help_and_missing_url(tmp_path, monkeypatch, capsys):
     from poop_detector.main import main
 
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("POOP_RTSP_URL", raising=False)
     assert main(["check-camera"]) == 2
     assert "RTSP" in capsys.readouterr().err
