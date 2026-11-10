@@ -22,12 +22,12 @@ import psutil
 
 from .activity_map import LAYOUT_FILE, ActivityLayout, ActivityRecorder, ActivityStore
 from .camera import Camera, LatestCamera
-from .config import Config
+from .config import Config, load_connection_settings
 from .detection import IncrementalDetector
 from .early_alert import EarlyAlert
 from .events import EXCRETION_TYPES, Store, utcnow
 from .live_preview import LivePreview
-from .notifications import MacNotifier
+from .notifications import MacNotifier, NtfyNotifier
 from .roi import ROI, select_polygon
 from .state_machine import Machine
 from .tray_tracking import TrayReferenceError, TrayTracker
@@ -57,6 +57,52 @@ def scene_signature(baseline, roi):
     return hashlib.sha256(
         baseline.tobytes() + json.dumps(asdict(roi), sort_keys=True).encode()
     ).hexdigest()
+
+
+def review_circling(root, config, args):
+    from .circling import inspect_circling
+    from .clips import ClipStore
+    from .dog import DogDetector
+
+    if not 1 <= args.limit <= 50:
+        print("--limitは1〜50件で指定してください", file=sys.stderr)
+        return 2
+    roi = ROI.load(root / "roi.json")
+    baseline_dir = root / "baseline"
+    baseline = load_baseline(baseline_dir / "empty.png", roi)
+    store = ClipStore(root)
+    rows = store.circling_targets(scene_signature(baseline, roi), args.limit, args.clip)
+    if not rows:
+        print("現在の画角で分析できる保存済み動画がありません")
+        return 2 if args.clip else 0
+    tracker = (
+        TrayTracker.from_baseline(baseline_dir / "tray-reference.png", baseline, roi)
+        if args.track_tray
+        else None
+    )
+    model = DogDetector(root / "models" / "dog-yolox", config.dog_confidence)
+    failed = 0
+    for row in rows:
+        clip_id = row["id"]
+        try:
+            path = store.video_path(row)
+            if path is None:
+                raise OSError("動画がありません")
+            candidates, sampled, located = inspect_circling(
+                path, model.predict, roi, tray_tracker=tracker
+            )
+            if not store.save_circling_review(clip_id, candidates, sampled, located):
+                raise OSError("動画の状態が変わりました")
+        except (OSError, ValueError, cv2.error):
+            failed += 1
+            print(f"{clip_id} 旋回分析に失敗しました", file=sys.stderr)
+            continue
+        offsets = "、".join(f"{start:.1f}〜{end:.1f}秒" for start, end in candidates)
+        print(
+            f"{clip_id} 旋回候補 {offsets or 'なし'}（位置取得 {located}/{sampled}コマ）",
+            flush=True,
+        )
+    return 2 if failed else 0
 
 
 def monitor(
@@ -278,11 +324,19 @@ def parser():
             sub.add_argument(
                 "--early-alert", action="store_true", help="トイレ滞在の見守りを録画完了前に通知"
             )
+        if name == "test-notification":
+            sub.add_argument(
+                "--early-alert", action="store_true", help="見守り専用のntfyトピックをテスト"
+            )
     review = commands.add_parser("codex-review", help="保存済み動画をCodexで判定（通知なし）")
     review.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
     review.add_argument("--clip", help="判定する未ラベル動画のID")
     review.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
     review.add_argument("--detect-outside", action="store_true", help="登録した周辺範囲も判定")
+    circling = commands.add_parser("circling-review", help="保存動画の旋回候補を分析（通知なし）")
+    circling.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
+    circling.add_argument("--clip", help="分析する動画のID。指定した動画は再分析できます")
+    circling.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
     feedback = commands.add_parser("feedback", help="実際に排泄だったかと種類を記録")
     feedback.add_argument("event_id")
     feedback.add_argument("label", choices=["true", "false"])
@@ -320,6 +374,8 @@ def main(argv=None):
         if args.command == "run" and (args.dog or args.activity_map):
             config.dog_enabled = True
         root = Path(config.data_dir)
+        if args.command == "circling-review":
+            return review_circling(root, config, args)
         tray_path = root / "baseline" / "tray-reference.png"
         outside_path = root / "outside-roi.json"
         outside_roi = None
@@ -456,15 +512,42 @@ def main(argv=None):
                 if store.monitor_state()["event_id"] == args.event_id:
                     store.set_monitor_state("ACKNOWLEDGED", args.event_id)
             return 0
-        notifier = MacNotifier(config.notifications and platform.system() == "Darwin")
+        settings = load_connection_settings()
+        topic = early_topic = ""
+        if args.command in ("run", "test-notification"):
+            topic = settings["POOP_NTFY_TOPIC"].strip()
+            early_topic = settings["POOP_NTFY_EARLY_TOPIC"].strip()
+        if early_topic and not topic:
+            print(
+                "見守り用トピックを使う場合は POOP_NTFY_TOPIC も設定してください", file=sys.stderr
+            )
+            return 2
+        if topic:
+            try:
+                notifier = NtfyNotifier(
+                    topic, enabled=config.notifications, early_topic=early_topic
+                )
+            except ValueError as error:
+                print(error, file=sys.stderr)
+                return 2
+        else:
+            notifier = MacNotifier(config.notifications and platform.system() == "Darwin")
         if args.command == "test-notification":
-            if not notifier.send():
-                raise ValueError("通知が無効、非対応OS、または送信失敗です")
-            print("通知要求を送信しました。通知センターで表示を確認してください")
+            if args.early_alert and not early_topic:
+                print("見守り用の POOP_NTFY_EARLY_TOPIC を設定してください", file=sys.stderr)
+                return 2
+            if not notifier.send_test(early_alert=args.early_alert):
+                print("通知が無効、非対応OS、または送信に失敗しました", file=sys.stderr)
+                return 2
+            if topic:
+                print("ntfy.shが通知を受け付けました。購読しているiPhoneで確認してください")
+            else:
+                print("通知要求を送信しました。通知センターで表示を確認してください")
             return 0
-        source = os.environ.get("POOP_RTSP_URL")
+        source = settings["POOP_RTSP_URL"]
         if not source:
-            raise ValueError("POOP_RTSP_URLにEufyアプリのRTSP URLを設定してください")
+            print(".envのPOOP_RTSP_URLにEufyアプリのRTSP URLを設定してください", file=sys.stderr)
+            return 2
         roi_path = (
             outside_path if args.command == "setup-roi" and args.outside else root / "roi.json"
         )
@@ -598,19 +681,10 @@ def main(argv=None):
         return 2
     except (ValueError, TypeError, OSError, cv2.error):
         # 外部例外の文字列に認証URLが含まれる可能性があるため出力しない。
-        if not os.environ.get("POOP_RTSP_URL") and args.command in (
-            "check-camera",
-            "setup-roi",
-            "setup-activity-map",
-            "capture-baseline",
-            "run",
-        ):
-            print("POOP_RTSP_URLにEufyアプリのRTSP URLを設定してください", file=sys.stderr)
-        else:
-            print(
-                "処理できませんでした。設定・登録済みROI・基準画像・入力値を確認してください",
-                file=sys.stderr,
-            )
+        print(
+            "処理できませんでした。設定・登録済みROI・基準画像・入力値を確認してください",
+            file=sys.stderr,
+        )
         return 2
 
 

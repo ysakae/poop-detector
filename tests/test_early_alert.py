@@ -49,6 +49,7 @@ def test_gap_and_masked_motion_do_not_trigger():
 def test_cooldown_suppresses_a_new_stay_immediately_after_alert():
     empty, stays, moved = frames()
     alert = EarlyAlert(empty, Config())
+    assert not alert.update(empty, None, -1)
     for t in range(4):
         assert not alert.update(stays, None, t)
     assert alert.update(stays, None, 4)
@@ -100,3 +101,24 @@ def test_global_lighting_change_does_not_trigger():
     alert = EarlyAlert(empty, Config())
     darker = np.full_like(empty, 75)
     assert not any(alert.update(darker, None, t) for t in range(8))
+
+
+def test_already_resting_or_small_movements_do_not_trigger_but_new_stay_does():
+    empty, stays, moved = frames()
+    breathing = stays.copy()
+    breathing[55:62, 55:62] = 105
+    alert = EarlyAlert(empty, Config())
+    for tick in range(12):
+        assert not alert.update(stays if tick % 2 else breathing, None, tick)
+    for tick in range(12, 16):
+        assert not alert.update(moved, None, tick)
+    assert alert.update(moved, None, 16)
+
+
+def test_connection_gap_does_not_rearm_early_alert_for_a_static_dog():
+    empty, stays, _ = frames()
+    alert = EarlyAlert(empty, Config())
+    assert not alert.update(empty, None, 0)
+    assert not alert.update(stays, None, 1)
+    for tick in range(10, 20):
+        assert not alert.update(stays, None, tick)

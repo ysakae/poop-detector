@@ -114,6 +114,24 @@ def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB):
             )
             if row["interrupted"]:
                 content += '<div class="message">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>'
+            circling = store.circling_review(row["id"])
+            if circling is not None:
+                content += (
+                    '<div class="message"><strong>行動分析 ／ 旋回候補</strong>'
+                    f"<p>トレー付近の位置を取得 {circling['located']}/{circling['sampled']}コマ</p>"
+                )
+                if not circling["candidates"]:
+                    content += "<p>旋回候補はありません。</p>"
+                for start, end in circling["candidates"]:
+                    content += (
+                        f'<p><button class="secondary" type="button" data-video-seek="{start}">'
+                        f"旋回候補 {start:.1f}〜{end:.1f}秒へ移動</button>"
+                    )
+                    actual_start = row["actual_start_offset"]
+                    if actual_start is not None and actual_start > end:
+                        content += f" ／ 排泄の開始記録より {actual_start - end:.1f}秒前に検出"
+                    content += "</p>"
+                content += "</div>"
             draft = {}
             if assessment:
                 if assessment["error"]:

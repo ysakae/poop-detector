@@ -1,6 +1,7 @@
 """上限付き動画バッファと、別プロセスのGUIから使える収集台帳。"""
 
 import fcntl
+import json
 import logging
 import math
 import queue
@@ -79,6 +80,45 @@ class ClipStore:
             db.execute("""CREATE TABLE IF NOT EXISTS clip_confirmations (
                 clip_id TEXT PRIMARY KEY, event_id TEXT NOT NULL)""")
             db.execute("""CREATE TABLE IF NOT EXISTS clip_protections (clip_id TEXT PRIMARY KEY)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS circling_reviews (
+                clip_id TEXT PRIMARY KEY, candidates TEXT NOT NULL,
+                sampled INTEGER NOT NULL, located INTEGER NOT NULL)""")
+
+    def circling_targets(self, scene_signature, limit, clip_id=None):
+        query = """SELECT c.* FROM clips c
+            LEFT JOIN circling_reviews r ON r.clip_id=c.id
+            WHERE c.status='ready' AND c.interrupted=0 AND c.scene_signature=?"""
+        params = [scene_signature]
+        if clip_id is None:
+            query += " AND r.clip_id IS NULL"
+        else:
+            query += " AND c.id=?"
+            params.append(clip_id)
+        with self.store.connect() as db:
+            rows = db.execute(
+                query + " ORDER BY c.label IS NULL, c.requested_at DESC LIMIT ?", (*params, limit)
+            )
+            return [dict(row) for row in rows]
+
+    def circling_review(self, clip_id):
+        with self.store.connect() as db:
+            row = db.execute(
+                "SELECT * FROM circling_reviews WHERE clip_id=?", (clip_id,)
+            ).fetchone()
+        return {**row, "candidates": json.loads(row["candidates"])} if row else None
+
+    def save_circling_review(self, clip_id, candidates, sampled, located):
+        with self.store.connect() as db:
+            return (
+                db.execute(
+                    """INSERT INTO circling_reviews SELECT id, ?, ?, ? FROM clips
+                WHERE id=? AND status='ready'
+                ON CONFLICT(clip_id) DO UPDATE SET candidates=excluded.candidates,
+                    sampled=excluded.sampled, located=excluded.located""",
+                    (json.dumps(candidates), sampled, located, clip_id),
+                ).rowcount
+                == 1
+            )
 
     def is_pinned(self, clip_id):
         with self.store.connect() as db:

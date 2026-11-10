@@ -20,7 +20,8 @@ uv run ruff check . && uv run ruff format --check . # テストと必ず併せ�
 uv run poop-detector <サブコマンド> --help          # CLI（入口は main.py の parser()）
 ```
 
-- `run` や `setup-roi` などカメラを使うコマンドは環境変数 `POOP_RTSP_URL` が必須です。`.env` は自動で読み込みません。
+- `run` や `setup-roi` などカメラを使うコマンドは `POOP_RTSP_URL` が必須です。接続情報は実行ディレクトリの `.env` から読み込み、同名の環境変数があればそちらを優先します（`config.load_connection_settings`）。
+- テストや手元の確認でカメラ用コマンドを実行すると、実際の `.env` が読まれます。テストでは `monkeypatch.chdir(tmp_path)` などで作業ディレクトリを切り替えてください。
 - `label-gui`、`events`、`metrics`、`record` などの記録系コマンドはカメラなしで動きます。
 - 動画の保存には FFmpeg の `libx264`、`--codex` には Codex CLI のログインが必要です。
 
@@ -67,6 +68,12 @@ uv run poop-detector <サブコマンド> --help          # CLI（入口は main
 
 `--codex` では `codex_review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を Codex CLI に渡して JSON スキーマに沿った判定を受け取ります。このモードでは差分だけの通知を抑え、Codex が根拠を確認した場合にだけ通知します。`codex-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
 
+`circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。
+
+### 通知先
+
+`notifications.py` の `_ToiletNotifier` が文面を持ち、`MacNotifier`（osascript）と `NtfyNotifier`（ntfy.sh への HTTP POST）が送信だけを実装します。`POOP_NTFY_TOPIC` があれば ntfy、なければ macOS 通知を使います。通知先を増やすときは `_deliver` を実装したサブクラスを足してください。ntfy の無料トピックは公開扱いなので、本文に映像やカメラの URL を入れないでください。
+
 ### ラベル GUI
 
 `label_gui.make_server` は標準ライブラリの `http.server` だけで作ったサーバーで、HTML は Python の文字列で組み立てます（テンプレートエンジンやフロントエンドのビルドはありません）。画面ごとに `clip_gui.py`（動画）、`activity_gui.py`（行動マップ）へ分かれ、`static/` の JavaScript は補助的な操作だけを担います。
@@ -79,4 +86,4 @@ RTSP URL には認証情報が含まれます。`main.py` は OpenCV の読み�
 
 ### テストの作り方
 
-`Camera` の `factory`、`MacNotifier` の `runner`、`ClipCollector` の `encoder`、`inspect_clip` の `runner`、`DogDetector` の `net` は差し替え用の引数です。`monitor` も `max_frames` と偽のカメラで実行できます。テストは NumPy で作った人工画像と `tmp_path` を使い、実カメラ・実データ・Codex CLI には依存させません。
+`Camera` の `factory`、`MacNotifier` の `runner`、`NtfyNotifier` の `opener`、`ClipCollector` の `encoder`、`inspect_clip` の `runner`、`DogDetector` の `net` は差し替え用の引数です。`monitor` も `max_frames` と偽のカメラで実行できます。テストは NumPy で作った人工画像と `tmp_path` を使い、実カメラ・実データ・Codex CLI には依存させません。

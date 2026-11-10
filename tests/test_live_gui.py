@@ -69,12 +69,15 @@ def test_monitoring_command_shares_frames_without_clip_recording(gui, monkeypatc
     from poop_detector.roi import ROI
 
     server, store, _ = gui
+    monkeypatch.chdir(store.root)
     frame = np.full((60, 100, 3), 190, dtype=np.uint8)
     roi = ROI(0, 0, 1, 1)
     roi.save(store.root / "roi.json")
     cli.save_baseline(store.root / "baseline" / "empty.png", frame, roi)
     config = store.root / "test-config.yaml"
-    config.write_text(f"data_dir: {store.root}\nclip_enabled: false\nfps: 20\n")
+    config.write_text(
+        f"data_dir: {store.root}\nclip_enabled: false\nnotifications: false\nfps: 20\n"
+    )
 
     class Camera:
         def __init__(self, source, timeout_ms, retry_seconds):
