@@ -6,7 +6,23 @@ verify_seconds: 3.0
 clear_seconds: 3.0
 # 画像差分の濃度閾値・最小輪郭面積（ROI内ピクセル）
 threshold: 30
+# 色差の閾値。0で色差の検知を無効化。
+color_threshold: 20
 min_area: 40
 occupied_ratio: 0.18
 notifications: true
 data_dir: data
+# 検知前後の短い動画（常時録画はしない）
+clip_enabled: true
+clip_before_seconds: 30
+clip_after_seconds: 30
+clip_fps: 5
+clip_max_width: 1280
+clip_memory_mb: 128
+clip_disk_mb: 4096
+# 犬の存在・出入りの検出（モデルを準備してから有効化、run --dogでも指定可）
+dog_enabled: false
+dog_fps: 1
+dog_confidence: 0.4
+dog_exit_seconds: 2
+dog_clip_cooldown_seconds: 60
