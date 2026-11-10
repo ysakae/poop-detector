@@ -134,7 +134,7 @@ uv run poop-detector label-gui
 
 ## ライセンス
 
-[MIT License](LICENSE) です。犬検出モデル（OpenCV Zoo の YOLOX）はリポジトリに含めず、`setup-dog-model` で取得します。モデルは Apache License 2.0 で、取得時にモデルの `LICENSE` も一緒に保存します。
+[MIT License](LICENSE) です。犬検出モデル（OpenCV Zoo の YOLOX）はリポジトリに含めず、`setup-dog-model` で取得します。モデルは Apache License 2.0 で、取得時にモデルの `LICENSE` も一緒に保存します。依存ライブラリ、FFmpeg、Docker イメージのライセンスは [依存ライブラリと取得物のライセンス](docs/licenses.md) にまとめています。
 
 ## 開発
 

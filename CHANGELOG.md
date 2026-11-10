@@ -38,7 +38,7 @@
 
 - macOS と Linux に対応。Windows では理由を示して終了する
 - GitHub Actions で静的解析、Python 3.11・3.12 のテスト、Docker イメージを確認
-- MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明
+- MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明、依存ライブラリのライセンスの一覧
 
 [Unreleased]: https://github.com/ysakae/poop-detector/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ysakae/poop-detector/releases/tag/v0.1.0
