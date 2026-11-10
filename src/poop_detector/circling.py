@@ -15,6 +15,8 @@ MIN_POINTS = 7
 
 
 class CirclingDetector:
+    """犬の位置の軌跡から、その場で回る動き（排泄の前兆候補）を見つける。"""
+
     def __init__(self):
         self.path = deque()
         self.last_seen = None

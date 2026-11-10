@@ -97,7 +97,7 @@ def test_baseline_rejects_changed_roi(tmp_path):
     path = tmp_path / "empty.png"
     save_baseline(path, baseline, roi)
     assert load_baseline(path, roi).shape == baseline.shape
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="ROIが変わっています"):
         load_baseline(path, ROI(0.5, 0.5, 0.5, 0.5))
 
 

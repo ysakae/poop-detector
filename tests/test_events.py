@@ -17,7 +17,7 @@ def test_events_feedback_metrics_and_image(tmp_path):
     assert store.metrics()["precision"] == 1
     assert store.metrics()["recall"] == 0.5
     assert store.metrics()["missed"] == 1
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="イベントが見つかりません"):
         store.feedback("unknown", False)
 
 

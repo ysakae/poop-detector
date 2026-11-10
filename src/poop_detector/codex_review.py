@@ -68,6 +68,8 @@ OUTSIDE_CONTEXT = """犬とトイレ周辺の連続画像です。左上から�
 
 @dataclass(frozen=True)
 class Assessment:
+    """Codex が動画を見て返した判定（排泄の種類、行動、時刻、根拠）。"""
+
     label: str
     activity: str
     start_seconds: float | None
@@ -109,16 +111,16 @@ def parse_assessment(output, duration, *, include_location=False):
     return Assessment(label, activity, start, end, reason.strip()[:1000], location)
 
 
-class TrayNotVisible(ValueError):
-    pass
+class TrayNotVisibleError(ValueError):
+    """動画の中でトレーの位置を確かめられるフレームが足りない。"""
 
 
 def save_sheet(destination, tiles, timestamps):
     labeled = []
     for tile, timestamp in zip(tiles, timestamps, strict=True):
-        tile = cv2.copyMakeBorder(tile, 26, 0, 0, 0, cv2.BORDER_CONSTANT)
-        cv2.putText(tile, f"{timestamp:.2f}s", (6, 19), 0, 0.55, (255, 255, 255), 1)
-        labeled.append(tile)
+        framed = cv2.copyMakeBorder(tile, 26, 0, 0, 0, cv2.BORDER_CONSTANT)
+        cv2.putText(framed, f"{timestamp:.2f}s", (6, 19), 0, 0.55, (255, 255, 255), 1)
+        labeled.append(framed)
     columns = min(len(labeled), 4)
     labeled.extend(np.zeros_like(labeled[0]) for _ in range(-len(labeled) % columns))
     sheet = np.vstack(
@@ -198,7 +200,7 @@ def write_sheet(
     finally:
         capture.release()
     if tray_tracker is not None and len(tiles) < max(2, math.ceil(count * 2 / 3)):
-        raise TrayNotVisible("位置を確認できるフレームが不足しています")
+        raise TrayNotVisibleError("位置を確認できるフレームが不足しています")
     save_sheet(destination, tiles, timestamps)
     if compare and len(tiles) >= 4:
         save_difference_sheet(difference_path, tiles, timestamps, mask)
@@ -227,7 +229,7 @@ def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None, ou
                 outside_roi=outside_roi,
                 difference_path=difference_path,
             )
-        except TrayNotVisible:
+        except TrayNotVisibleError:
             return Assessment(
                 "uncertain", "other", None, None, "トレーの位置を確認できないため判定を保留しました"
             )
@@ -307,8 +309,9 @@ def require_codex():
     if not shutil.which("codex"):
         raise ValueError("Codex CLIをインストールし、codex loginでログインしてください")
     try:
+        # 固定の引数で、PATH 上の Codex CLI のログイン状態を確かめるだけ。
         result = subprocess.run(
-            ["codex", "login", "status"],
+            ["codex", "login", "status"],  # noqa: S607
             capture_output=True,
             check=False,
             timeout=10,
@@ -321,6 +324,8 @@ def require_codex():
 
 
 class Review:
+    """変換済みの動画を Codex で判定し、結果を保存して必要なら通知する。"""
+
     def __init__(self, store, inspect, notify=None, scene_signature=None):
         self.store = store
         self.inspect = inspect
@@ -388,6 +393,8 @@ class Review:
 
 
 class ReviewWorker:
+    """監視中に新しい動画を定期的に探し、別スレッドで Review を実行する。"""
+
     def __init__(self, review):
         self.review = review
         self.since = utcnow()

@@ -8,11 +8,15 @@ import numpy as np
 
 @dataclass
 class Observation:
+    """1フレームの判定結果。kind は empty・candidate・occupied・unstable のいずれか。"""
+
     kind: str
     score: float
 
 
 class Detector:
+    """空のトイレの基準画像との明るさ・色の差分から、変化の候補を判定する。"""
+
     def __init__(
         self, baseline, threshold=30, min_area=40, occupied_ratio=0.18, color_threshold=20
     ):
@@ -76,7 +80,7 @@ class Detector:
         boundary = valid & (distance <= margin + 1)
         for contour in contours:
             area = cv2.contourArea(contour)
-            x, y, w, h = cv2.boundingRect(contour)
+            _, _, w, h = cv2.boundingRect(contour)
             # ROI外から入り込んだ体の一部は、面積が小さくても遮蔽として保留する。
             coords = contour[:, 0, :]
             if area >= self.min_area and np.any(boundary[coords[:, 1], coords[:, 0]]):

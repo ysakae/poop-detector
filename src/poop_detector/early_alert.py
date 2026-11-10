@@ -16,6 +16,8 @@ MIN_MOTION_RATIO = 0.08
 
 
 class EarlyAlert:
+    """録画の完了を待たず、トイレの同じ場所での滞在を見つけて知らせる。"""
+
     def __init__(self, baseline, config):
         height, width = baseline.shape[:2]
         scale = 240 / max(width, height)

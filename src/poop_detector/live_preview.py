@@ -16,6 +16,8 @@ REQUEST_MAX_AGE = 5
 
 
 class LivePreview:
+    """GUI から要求があったときだけ、最新フレームを .live-preview.jpg に書き出す。"""
+
     def __init__(self, root):
         self.root = Path(root)
         self.frame_path = self.root / ".live-preview.jpg"

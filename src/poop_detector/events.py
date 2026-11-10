@@ -41,6 +41,8 @@ def validate_location(location):
 
 
 class Store:
+    """検知イベント、目視の判定、排泄の記録を events.sqlite3 に保存する。"""
+
     def __init__(self, root):
         self.root = Path(root)
         (self.root / "events").mkdir(parents=True, exist_ok=True)
@@ -218,8 +220,9 @@ class Store:
         if not values.keys() <= allowed:
             raise ValueError("更新項目が不正です")
         with self.connect() as db:
+            # 列名は上の allowed で許可したものだけ。値はプレースホルダーで渡す。
             cursor = db.execute(
-                "UPDATE events SET " + ",".join(f"{k}=?" for k in values) + " WHERE id=?",
+                "UPDATE events SET " + ",".join(f"{k}=?" for k in values) + " WHERE id=?",  # noqa: S608
                 (*values.values(), event_id),
             )
             if cursor.rowcount != 1:

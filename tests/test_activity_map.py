@@ -43,14 +43,17 @@ def test_activity_gui_shows_switches_and_uses_saved_floor_image(gui):
     calibration.save(store.root, np.full((100, 100, 3), 150, np.uint8))
     status, page = request(server, "GET", "/activity?mode=pass&days=7&date=2026-11-10")
     assert status == 200
-    assert "通過回数".encode() in page and "集計データはまだありません".encode() in page
+    assert "通過回数".encode() in page
+    assert "集計データはまだありません".encode() in page
     assert request(server, "GET", f"/activity/background?id={calibration.id}")[0] == 200
     assert request(server, "GET", "/activity/background?id=../events.sqlite3")[0] == 404
     ActivityStore(store.root).add(calibration.id, date(2026, 11, 10), 1, (3, 4), (5, 6))
     _, page = request(server, "GET", "/activity?mode=pass&days=7&date=2026-11-10")
-    assert b'<rect x="5" y="6"' in page and b'<rect x="3" y="4"' not in page
+    assert b'<rect x="5" y="6"' in page
+    assert b'<rect x="3" y="4"' not in page
     _, page = request(server, "GET", "/activity?mode=stay&days=7&date=2026-11-10")
-    assert b'<rect x="3" y="4"' in page and b'<rect x="5" y="6"' not in page
+    assert b'<rect x="3" y="4"' in page
+    assert b'<rect x="5" y="6"' not in page
 
 
 def test_monitor_observes_raw_frame_even_when_tray_is_unavailable(tmp_path):

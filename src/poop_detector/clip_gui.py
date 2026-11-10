@@ -153,7 +153,7 @@ def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
                         + "</strong><br>"
                         + escape(assessment["reason"])
                     )
-                    for field, title in (
+                    for field, button_title in (
                         ("start_seconds", "開始候補へ移動"),
                         ("end_seconds", "完了候補へ移動"),
                     ):
@@ -161,7 +161,7 @@ def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
                         if seconds is not None:
                             content += (
                                 f'<p><button class="secondary" type="button" data-video-seek="{seconds}">'
-                                f"{title}（{seconds:g}秒）</button></p>"
+                                f"{button_title}（{seconds:g}秒）</button></p>"
                             )
                     if assessment["notified_at"]:
                         content += "<br>通知済み " + escape(local_time(assessment["notified_at"]))
@@ -389,7 +389,7 @@ def stream_video(handler, root, clip_id):
             handler.send_header("Content-Range", f"bytes */{size}")
             handler.send_header("Content-Length", "0")
             handler.end_headers()
-            return
+            return None
     handler.send_response(206 if range_header else 200)
     handler.send_header("Content-Type", "video/mp4")
     handler.send_header("Accept-Ranges", "bytes")
@@ -425,7 +425,7 @@ def handle_clip_post(handler, root, fields, selected_ids=(), *, title=None):
                 "Location", f"/clips/storage?days={days}&removed={removed}&skipped={skipped}"
             )
             handler.end_headers()
-            return
+            return None
         if handler.path == "/clips/request":
             clip_id = store.request(require_live=True)
         elif handler.path == "/clips/protect":

@@ -14,10 +14,12 @@ FLOW = {
 
 
 class TrayReferenceError(ValueError):
-    pass
+    """トレー追従用の基準画像がないか、使えない。"""
 
 
 class TrayTracker:
+    """トレーの縁を目印に、カメラのずれを登録時の位置へ戻す。"""
+
     @classmethod
     def from_baseline(cls, path, baseline, roi):
         reference = cv2.imread(str(path))

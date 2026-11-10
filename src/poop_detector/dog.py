@@ -45,6 +45,8 @@ def setup_model(directory):
 
 
 class DogDetector:
+    """OpenCV Zoo の YOLOX で、画像内の犬の検出枠を求める。"""
+
     def __init__(self, directory, confidence=0.4, net=None):
         self.confidence = confidence
         if net is None:
@@ -109,6 +111,8 @@ def overlaps_roi(box, roi, shape):
 
 @dataclass
 class DogState:
+    """犬の検出結果。ROI への重なりと、入場・退場の変化を含む。"""
+
     present: bool
     on_roi: bool
     transition: str | None
@@ -118,6 +122,8 @@ class DogState:
 
 
 class DogObserver:
+    """一定間隔で犬を検出し、トイレへの入場と退場を判定する。"""
+
     def __init__(self, detector, fps=1, exit_seconds=2):
         self.detector, self.fps, self.exit_seconds = detector, fps, exit_seconds
         self.reset()

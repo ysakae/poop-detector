@@ -10,6 +10,8 @@ import numpy as np
 
 @dataclass(frozen=True)
 class ROI:
+    """矩形の監視範囲。座標は画像の幅と高さに対する割合で持つ。"""
+
     x: float
     y: float
     width: float
@@ -202,14 +204,15 @@ def select_polygon(frame, window="トイレの多角形を指定"):
     points = []
     height, width = frame.shape[:2]
 
-    def on_mouse(event, x, y, flags, param):
+    def on_mouse(event, x, y, _flags, _param):
         if event == cv2.EVENT_LBUTTONDOWN:
             if 0 <= x < width and 0 <= y < height:
                 points.append((x, y))
         elif event == cv2.EVENT_RBUTTONDOWN and points:
             points.pop()
 
-    print("外周に沿って3点以上をクリック。Enter:確定、右クリック:戻す、R:やり直し、Esc:取消")
+    # 範囲の登録は対話的な操作なので、操作方法をターミナルに表示する。
+    print("外周に沿って3点以上をクリック。Enter:確定、右クリック:戻す、R:やり直し、Esc:取消")  # noqa: T201
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
     scale = min(1, 1280 / width, 800 / height)
     cv2.resizeWindow(window, round(width * scale), round(height * scale))
@@ -244,6 +247,6 @@ def select_polygon(frame, window="トイレの多角形を指定"):
                 try:
                     return MaskedROI.from_pixels(points, width, height)
                 except ValueError:
-                    print("多角形が交差・重複しているか面積がありません。Rでやり直してください")
+                    print("多角形が交差・重複しているか面積がありません。Rでやり直してください")  # noqa: T201
     finally:
         cv2.destroyWindow(window)

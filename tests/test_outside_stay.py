@@ -151,7 +151,8 @@ def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path,
             return DogState(True, False, None, [(13, 25, 30, 45)], 1)
 
     class Collector:
-        sources = []
+        def __init__(self):
+            self.sources = []
 
         def poll(self):
             pass

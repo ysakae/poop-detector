@@ -10,5 +10,5 @@ def test_roi_roundtrip_and_scaling(tmp_path):
     path = tmp_path / "roi.json"
     roi.save(path)
     assert ROI.load(path).pixels(400, 400) == (40, 80, 200, 160)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="空でない領域"):
         ROI.from_pixels((0, 0, 0, 20), 200, 200)

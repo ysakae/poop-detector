@@ -7,6 +7,8 @@ import cv2
 
 
 class Camera:
+    """RTSP などの映像を OpenCV で読み、失敗したら待ってから接続し直す。"""
+
     def __init__(self, source, timeout_ms=5000, retry_seconds=2, factory=None):
         self.source = source
         self.timeout_ms = timeout_ms
