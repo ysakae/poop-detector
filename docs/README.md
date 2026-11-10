@@ -13,6 +13,7 @@
 | [docker.md](docker.md) | Docker / Linux での実行 |
 | [data-collection.md](data-collection.md) | データ収集の方針と今後 |
 | [privacy.md](privacy.md) | データの保存先と、機能ごとに外部へ送られる情報。ラベル GUI の安全対策と限界 |
+| [licenses.md](licenses.md) | 依存ライブラリ、犬検出モデル、FFmpeg、Docker イメージのライセンス |
 
 ## 開発者向け
 
