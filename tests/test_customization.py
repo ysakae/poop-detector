@@ -236,7 +236,14 @@ def gui_page(tmp_path, **kwargs):
         pages = {}
         for path in ("/", "/records", "/clips", "/activity"):
             conn = http.client.HTTPConnection(*server.server_address)
-            conn.request("GET", path, headers={"Host": f"127.0.0.1:{server.server_port}"})
+            conn.request(
+                "GET",
+                path,
+                headers={
+                    "Host": f"127.0.0.1:{server.server_port}",
+                    "Cookie": f"poop_detector_session={server.access_token}",
+                },
+            )
             pages[path] = conn.getresponse().read().decode()
             conn.close()
         return pages

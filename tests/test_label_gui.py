@@ -26,12 +26,24 @@ def gui(tmp_path):
     thread.join()
 
 
-def request(server, method, path, body=None, headers=None):
+def session_cookie(server):
+    """起動時のトークンをブラウザーに移した後と同じ Cookie ヘッダーを返す。"""
+    return {"Cookie": f"poop_detector_session={server.access_token}"}
+
+
+def exchange(server, method, path, body=None, headers=None, auth=True):
+    """状態コード、応答ヘッダー、本文を返す。auth=False でトークンを持たない相手を再現する。"""
     conn = http.client.HTTPConnection(*server.server_address)
-    conn.request(method, path, body=body, headers=headers or {})
+    sent = {**(session_cookie(server) if auth else {}), **(headers or {})}
+    conn.request(method, path, body=body, headers=sent)
     response = conn.getresponse()
-    status, data = response.status, response.read()
+    result = response.status, response.headers, response.read()
     conn.close()
+    return result
+
+
+def request(server, method, path, body=None, headers=None, auth=True):
+    status, _, data = exchange(server, method, path, body, headers, auth)
     return status, data
 
 
@@ -145,3 +157,142 @@ def test_records_stats_follow_confirmed_start_or_fall_back_to_record_time(gui):
     store.classify(event, "urine", start="2026-11-07T23:55:00+09:00")
     assert "排便 0件 ／ 排尿 0件".encode() in request(server, "GET", url)[1]
     assert request(server, "GET", "/records?date=invalid&days=-1")[0] == 200
+
+
+# --- 閲覧の認証 ---
+
+PROTECTED_PATHS = (
+    "/",
+    "/records",
+    "/clips",
+    "/clips/storage",
+    "/clips/capacity",
+    "/activity",
+    "/activity/background?id=x",
+    "/live/frame",
+    "/live/assessment",
+    "/clip-video?id=x",
+    "/assets/live.js",
+)
+
+
+def test_gui_rejects_get_without_session(gui):
+    server, _, event = gui
+    image = request(server, "GET", "/image?id=" + event)[1]
+    for path in (*PROTECTED_PATHS, "/image?id=" + event):
+        for headers in ({}, {"Cookie": "poop_detector_session=wrong"}):
+            status, data = request(server, "GET", path, headers=headers, auth=False)
+            assert status == 403, path
+            assert image not in data
+            assert b"csrf" not in data
+
+
+def test_gui_rejects_post_without_session_even_with_csrf(gui):
+    server, store, event = gui
+    page = request(server, "GET", "/")[1].decode()
+    csrf = re.search(r'name="csrf" value="([^"]+)"', page)[1]
+    body = urlencode({"id": event, "label": "false", "csrf": csrf})
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    assert request(server, "POST", "/save", body, headers, auth=False)[0] == 403
+    assert store.list()[0]["feedback"] is None
+
+
+def test_token_url_moves_token_into_strict_http_only_cookie(gui):
+    server, _, _ = gui
+    path = f"/records?token={server.access_token}&days=7"
+    status, headers, _ = exchange(server, "GET", path, auth=False)
+    assert status == 303
+    assert headers["Location"] == "/records?days=7"
+    cookie = headers["Set-Cookie"]
+    assert cookie.startswith(f"poop_detector_session={server.access_token};")
+    assert "HttpOnly" in cookie
+    assert "SameSite=Strict" in cookie
+    assert "Path=/" in cookie
+    name, value = cookie.split(";", 1)[0].split("=", 1)
+    status, data = request(
+        server, "GET", "/records", headers={"Cookie": f"{name}={value}"}, auth=False
+    )
+    assert status == 200
+    assert "記録".encode() in data
+
+
+def test_token_url_rejects_wrong_token_and_keeps_redirect_local(gui):
+    server, _, _ = gui
+    status, headers, _ = exchange(server, "GET", "/?token=wrong", auth=False)
+    assert status == 403
+    assert "Set-Cookie" not in headers
+    for path in ("//evil.example/", "/\\evil.example/"):
+        status, headers, _ = exchange(
+            server, "GET", f"{path}?token={server.access_token}", auth=False
+        )
+        assert status == 303
+        location = headers["Location"]
+        assert location.startswith("/")
+        assert not location.startswith(("//", "/\\"))
+
+
+def test_redirect_without_token_never_leaves_the_gui():
+    from poop_detector.gui_access import redirect_without_token
+
+    assert redirect_without_token("//evil.example/", "token=t") == "/"
+    assert redirect_without_token("/\\evil.example/", "token=t") == "/"
+    assert redirect_without_token("evil", "token=t") == "/"
+    assert redirect_without_token("/clips", "token=t&id=a%20b") == "/clips?id=a+b"
+
+
+def test_gui_accepts_session_among_other_cookies_and_hides_referrer(gui):
+    server, _, _ = gui
+    cookie = f"other=1; poop_detector_session=old; poop_detector_session={server.access_token}"
+    status, headers, _ = exchange(server, "GET", "/", headers={"Cookie": cookie}, auth=False)
+    assert status == 200
+    assert headers["Referrer-Policy"] == "no-referrer"
+
+
+class FakeServer:
+    server_port = 8765
+    access_token = "secret-token"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def serve_forever(self):
+        raise KeyboardInterrupt
+
+
+@pytest.fixture
+def launch(monkeypatch, capsys):
+    from poop_detector import label_gui
+
+    opened = []
+    monkeypatch.setattr(label_gui, "make_server", lambda *a, **k: FakeServer())
+
+    def run(open_browser, *, tty, browser_ok=True):
+        monkeypatch.setattr(
+            label_gui.webbrowser, "open", lambda url: opened.append(url) or browser_ok
+        )
+        monkeypatch.setattr(label_gui.sys.stdout, "isatty", lambda: tty)
+        label_gui.serve("data", open_browser=open_browser)
+        return capsys.readouterr().out
+
+    return run, opened
+
+
+def test_serve_opens_browser_with_token_and_keeps_it_out_of_logs(launch):
+    run, opened = launch
+    out = run(True, tty=False)
+    assert opened == ["http://127.0.0.1:8765/?token=secret-token"]
+    assert "secret-token" not in out
+    assert "http://127.0.0.1:8765/" in out
+
+
+def test_serve_prints_token_url_only_to_terminal(launch):
+    run, opened = launch
+    assert "http://127.0.0.1:8765/?token=secret-token" in run(False, tty=True)
+    assert opened == []
+    out = run(False, tty=False)
+    assert "secret-token" not in out
+    assert "端末" in out
+    assert "http://127.0.0.1:8765/?token=secret-token" in run(True, tty=True, browser_ok=False)
