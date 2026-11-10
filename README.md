@@ -45,11 +45,18 @@
 - Python 3.11 以上と [uv](https://docs.astral.sh/uv/)
 - FFmpeg（動画の保存に `libx264` を使います）
 - RTSP で映像を配信できるカメラ。トイレ全体が映る位置に固定してください
-- macOS または Linux。Windows は排他制御に `fcntl` を使っているため動きません
-- 監視領域の登録には画面のあるマシンが必要です
+- macOS または Linux（下の表を参照）
+- 監視領域の登録には画面のあるマシンが必要です。画面のない Linux では、別のマシンで登録した `data/roi.json` をコピーして使います（[初期設定](docs/setup.md#画面のない環境で使う)）
 - 画面と通知の文面は日本語のみです
 
-開発と確認は Apple Silicon の macOS で行っています。
+| 環境 | 状況 |
+|---|---|
+| macOS（Apple Silicon） | 開発に使い、実際のカメラで動かしています |
+| Linux（Ubuntu 24.04） | GitHub Actions でテスト一式と主要な機能の動作を確認しています。実際のカメラでは未確認です |
+| Docker | GitHub Actions でイメージのビルドとコンテナ内の動作を確認しています。実際のカメラでは未確認です（[Docker / Linux](docs/docker.md)） |
+| Windows | 非対応です。排他制御に `fcntl` を使っているため、起動時に案内を出して終了します。WSL2 などの Linux 環境での実行は未確認です |
+
+macOS 以外では macOS の通知センターを使えないため、通知には ntfy の設定が必要です（[通知](docs/notifications.md)）。
 
 ## クイックスタート
 
