@@ -1,4 +1,4 @@
-"""トイレ領域内で動きが止まった場面を、その場で検知する。"""
+"""トイレ領域内で動いた後、同じ場所にとどまる場面を検知する。"""
 
 import cv2
 import numpy as np
@@ -11,6 +11,8 @@ COOLDOWN_SECONDS = 30
 MIN_FOREGROUND_RATIO = 0.09
 MAX_FOREGROUND_RATIO = 0.8
 MIN_OVERLAP = 0.64
+MOTION_PIXEL_DELTA = 16
+MIN_MOTION_RATIO = 0.08
 
 
 class EarlyAlert:
@@ -31,6 +33,7 @@ class EarlyAlert:
         self.anchor = None
         self.started_at = None
         self.alerted = False
+        self.previous_gray = None
 
     def update(self, frame, valid_mask, now):
         elapsed = now - self.sampled_at
@@ -44,8 +47,11 @@ class EarlyAlert:
             valid_mask = cv2.resize(valid_mask, self.size, interpolation=cv2.INTER_NEAREST)
             if not np.any(valid_mask):
                 self.anchor = None
+                self.previous_gray = None
                 return False
         valid = self.detector.valid_region(image, valid_mask)
+        previous = self.previous_gray
+        self.previous_gray = self.detector.gray(image)
         valid_area = np.count_nonzero(valid)
         mask = self.detector.difference_mask(image, valid)
         if cv2.countNonZero(mask) > MAX_FOREGROUND_RATIO * valid_area:
@@ -61,12 +67,20 @@ class EarlyAlert:
             return False
 
         foreground = labels == largest
+        foreground_area = stats[largest, cv2.CC_STAT_AREA]
         if self.anchor is None or np.count_nonzero(self.anchor & foreground) < (
             MIN_OVERLAP * np.count_nonzero(self.anchor | foreground)
         ):
             self.anchor = foreground
-            self.started_at = now
+            self.started_at = None
             self.alerted = False
+        if self.started_at is None:
+            # 起動時から静止している犬や物体は、基準画像との差だけで滞在とみなさない。
+            if previous is not None:
+                changed = cv2.absdiff(self.previous_gray, previous) >= MOTION_PIXEL_DELTA
+                if np.count_nonzero(changed & foreground) >= MIN_MOTION_RATIO * foreground_area:
+                    self.anchor = foreground
+                    self.started_at = now
             return False
         if self.alerted or now - self.started_at < STAY_SECONDS:
             return False

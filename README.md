@@ -14,7 +14,9 @@ cp config/config.example.yaml config/config.yaml
 ```
 
 `config/config.yaml`は未作成でも既定値で起動します。既に設定がある場合は上書きせず編集してください。
-`.env.example`は参考用で、自動読み込みしません。
+接続情報は、プロジェクト直下の `.env` に保存します。初回は `cp -n .env.example .env` でひな形を作ってください。コマンドを実行するディレクトリの `.env` を起動時に読み込みます。すでに同じ名前を環境変数に設定している場合は、空の値も含めて環境変数を優先します。
+
+すでにターミナルでRTSP URLや通知トピックを `export` している場合は、そのターミナルから `uv run python scripts/export-dotenv.py` を実行すると `.env` に保存できます。空の値は対象外です。既存の値を更新する場合だけ `--replace` を付けてください。
 
 ## カメラの最小設定
 
@@ -30,16 +32,13 @@ cp config/config.example.yaml config/config.yaml
 連続配信について：[Eufy RTSP設定ガイド](https://service.eufy.com/article-description/Device-NAS-RTSP-Configuration-Guide)。
 アプリの版によって表示が異なる場合は、実際の画面に従ってください。
 
-URLは環境変数で渡します。macOSのzshでは次の入力により、URLをシェル履歴へ直接記録せずに設定できます。
+`.env` の `POOP_RTSP_URL` にEufyアプリのURLを入力し、プロジェクト直下で接続を確認します。
 
-```zsh
-read -rs 'POOP_RTSP_URL?EufyのRTSP URLを入力: '
-export POOP_RTSP_URL
-printf '\n'
+```bash
 uv run poop-detector check-camera
 ```
 
-認証情報をチャットやGitに貼る必要はありません。起動済みアプリは別のターミナルで後から設定した環境変数を引き継がないため、コマンドは設定した同じターミナルで実行してください。
+認証情報は `.env` にのみ入力してください。`.env` はGitの対象外です。値を変更したら監視を再起動してください。
 
 ## 初回設定と監視
 
@@ -53,7 +52,7 @@ uv run poop-detector test-notification
 uv run poop-detector run
 ```
 
-Ctrl+Cで停止します。通知テストの成功はOSへの要求成功を示します。通知表示はmacOSの通知設定・集中モードも確認してください。
+Ctrl+Cで停止します。通知テストの成功はOSまたはntfy.shが受け付けたことを示します。受信端末で表示を確認してください。
 ROI・基準を更新するときは明示的に指定します。基準は自動更新しません。
 
 ```bash
@@ -231,16 +230,35 @@ SQLite記録、精度・遅延集計、切断後の再接続、最新フレー�
 実際の排便映像がないため、実際のPrecision・Recall・通知遅延は未測定です。
 通知要求は実機で成功しましたが、通知センターでの表示はユーザー確認が必要です。
 
+## 家族のiPhoneへntfyで通知する
+
+家族のiPhoneにntfyアプリを入れ、全員で同じ `ntfy.sh` のトピックを購読します。無料トピックは公開扱いです。`openssl rand -hex 16` などで推測しにくい名前を一度作り、家族内だけで共有してください。
+
+`.env` の `POOP_NTFY_TOPIC` にトピック名を設定し、送信を試します。
+
+```bash
+uv run poop-detector test-notification
+```
+
+プロジェクト直下で普段の監視コマンドを起動すると、macOS・Linuxともntfyを通知先に使います。`notifications: true` が必要です。送信するのは短い本文で、映像やカメラのURLは添付しません。`--early-alert` を付けると見守り通知も届きます。
+
+見守り通知を分ける場合は、別のトピック名を作って `.env` の `POOP_NTFY_EARLY_TOPIC` に設定します。見守り通知を受け取りたい人だけが、そのトピックを追加で購読してください。
+
+```bash
+uv run poop-detector test-notification --early-alert
+```
+
+両方のトピックを設定したら、`--early-alert` 付きの監視を再起動します。排便・排尿候補は通常のトピックに、見守り通知だけは別のトピックに届きます。`POOP_NTFY_EARLY_TOPIC` が未設定の場合、見守り通知も通常のトピックに届きます。
+
 ## Docker / Linux
 
 Dockerfileを用意していますが、このMacにはDocker実行環境がなくビルド・実行は未検証です。
 ROI設定・基準登録はMac側で先に済ませ、同じ解像度・画角でLinuxへコピーしてください。
-macOS通知はLinuxでは無効になります。Telegramなどの通知先は未実装です。
-設定例をコピーする前に既存設定を確認し、Docker内ではnotificationsをfalseにしてください。
+Linuxで通知する場合は `POOP_NTFY_TOPIC` を設定します。通知を使わない場合は `notifications: false` にしてください。
 
 ```bash
 docker build -t poop-detector .
-docker run --rm --env POOP_RTSP_URL -v "$PWD/data:/app/data" -v "$PWD/config:/app/config:ro" poop-detector
+docker run --rm -v "$PWD/.env:/app/.env:ro" -v "$PWD/data:/app/data" -v "$PWD/config:/app/config:ro" poop-detector
 ```
 
 Docker内からカメラのLANに到達できる必要があります。クラウドへの移行にはVPN等が必要で、RTSPの外部公開はしません。
@@ -395,13 +413,24 @@ uv run poop-detector run --dog --codex --detect-outside
 uv run poop-detector run --dog --codex --early-alert
 ```
 
-基準画像と比べてトイレ内に大きな変化があり、約4秒にわたり同じ位置にとどまった場合に、macOSへ「ここちゃんの様子を確認してください」と通知します。
+トイレ内で動きを確認し、その後、約4秒にわたり同じ位置にとどまった場合に「ここちゃんの様子を確認してください」と通知します。起動・再接続時から静止したままの場合や、小さな動きだけの場合は通知を開始しません。
 変化の位置を手元のMacで追い、録画の完了やCodexの応答を待たずに通知します。
 同じ滞在では一度だけ通知し、別の滞在でも30秒以内の再通知を抑えます。
 動画保存が有効ならこの時点でも前後の動画を保存し、動画GUIに「トイレ見守り」と表示します。
-食事や座り込みなどでも反応することがあります。通知が来たら映像やトイレを確認し、排便していた場合は終わってからトイレの外へ誘導できます。
+動いた直後に寝そべった場合や、食事・座り込みでも反応することがあります。通知が来たら映像やトイレを確認し、排便していた場合は終わってからトイレの外へ誘導できます。
 
 ## ここから集めるデータと次の工程
+
+### 保存動画から旋回候補を確認する
+
+トレー付近の短い軌跡を分析し、狭い範囲を一方向に回る候補を、動画ラベル画面で確認できます。
+
+```bash
+uv run poop-detector circling-review --limit 5 --track-tray
+uv run poop-detector circling-review --clip 動画ID --track-tray
+```
+
+現在の画角で撮影した動画を対象に、通常は未分析のものを手動ラベル付きから優先します。監視でトレー追従を使う場合は `--track-tray` を付けてください。候補は通知せず、動画内の時刻と位置を取得できたコマ数を保存します。動画ラベル画面で候補時刻に移動でき、排泄開始を動画内で記録していれば候補が何秒前だったか確認できます。
 
 排泄の動画だけでなく、食事・座る・伏せる・匂いを嗅ぐ・通過する動画も保存し、動画GUIでラベルを付けてください。
 開始/完了は分かる範囲で指定し、映っていない部分を推測で埋めないでください。
