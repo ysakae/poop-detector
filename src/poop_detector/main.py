@@ -11,6 +11,7 @@ import time
 from contextlib import ExitStack
 from dataclasses import asdict
 from pathlib import Path
+from uuid import uuid4
 
 # FFmpegの診断に認証URLが含まれることを防ぐため、OpenCV読込前に抑制する。
 os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
@@ -19,6 +20,7 @@ os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "-8"
 import cv2
 import psutil
 
+from .activity_map import LAYOUT_FILE, ActivityLayout, ActivityRecorder, ActivityStore
 from .camera import Camera, LatestCamera
 from .config import Config
 from .detection import IncrementalDetector
@@ -71,6 +73,7 @@ def monitor(
     tray_tracker=None,
     on_tray_state=None,
     outside_roi=None,
+    activity_map=None,
 ):
     detector = IncrementalDetector(
         baseline, config.threshold, config.min_area, config.occupied_ratio, config.color_threshold
@@ -120,6 +123,11 @@ def monitor(
             frame = raw_frame
             interrupted = camera.generation != generation
             generation = camera.generation
+            if activity_map is not None:
+                if interrupted or (raw_frame is None and not getattr(camera, "healthy", False)):
+                    activity_map.interrupt()
+                if raw_frame is not None:
+                    activity_map.update(raw_frame, dog_observer.detector.predict, tick)
             if frame is not None:
                 seen += 1
                 if tray_tracker is not None:
@@ -240,6 +248,7 @@ def parser():
     for name, description in [
         ("check-camera", "映像を1フレーム取得"),
         ("setup-roi", "監視領域を選択"),
+        ("setup-activity-map", "行動マップ用にサークルの床の四隅を登録"),
         ("capture-baseline", "空のトイレの基準を登録"),
         ("run", "監視開始"),
         ("events", "イベント一覧"),
@@ -247,7 +256,7 @@ def parser():
         ("test-notification", "通知テスト"),
     ]:
         sub = commands.add_parser(name, help=description)
-        if name in ("setup-roi", "capture-baseline"):
+        if name in ("setup-roi", "setup-activity-map", "capture-baseline"):
             sub.add_argument("--replace", action="store_true", help="既存設定を明示的に更新")
         if name in ("capture-baseline", "run"):
             sub.add_argument("--track-tray", action="store_true", help="トレーの縁による位置追従")
@@ -259,6 +268,9 @@ def parser():
         if name == "run":
             sub.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
             sub.add_argument("--dog", action="store_true", help="犬の存在・出入り検出を有効化")
+            sub.add_argument(
+                "--activity-map", action="store_true", help="サークル内の滞在・通過を集計"
+            )
             sub.add_argument("--codex", action="store_true", help="動画のCodex判定候補で通知")
             sub.add_argument(
                 "--detect-outside", action="store_true", help="トレー外の排泄候補も検知"
@@ -305,7 +317,7 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
         config = Config.load(args.config)
-        if args.command == "run" and args.dog:
+        if args.command == "run" and (args.dog or args.activity_map):
             config.dog_enabled = True
         root = Path(config.data_dir)
         tray_path = root / "baseline" / "tray-reference.png"
@@ -457,6 +469,16 @@ def main(argv=None):
             outside_path if args.command == "setup-roi" and args.outside else root / "roi.json"
         )
         baseline_path = root / "baseline" / "empty.png"
+        if (
+            args.command == "setup-activity-map"
+            and (root / LAYOUT_FILE).exists()
+            and not args.replace
+        ):
+            print(
+                "床面は登録済みです。画角を変えた場合は --replace を指定してください",
+                file=sys.stderr,
+            )
+            return 2
         if args.command == "setup-roi" and roi_path.exists() and not args.replace:
             raise ValueError("ROIは登録済みです。更新する場合は--replaceを指定してください")
         if args.command == "capture-baseline" and baseline_path.exists() and not args.replace:
@@ -470,7 +492,17 @@ def main(argv=None):
                 tray_tracker = (
                     TrayTracker.from_baseline(tray_path, baseline, roi) if args.track_tray else None
                 )
+                activity = None
+                if args.activity_map:
+                    try:
+                        layout = ActivityLayout.load(root)
+                    except (OSError, ValueError, TypeError, KeyError):
+                        print("先に setup-activity-map で床面を登録してください", file=sys.stderr)
+                        return 2
+                    activity = ActivityRecorder(ActivityStore(root), layout)
                 with ExitStack() as stack:
+                    if activity is not None:
+                        stack.enter_context(activity.store.recording_lock())
                     collector = None
                     preview = LivePreview(root)
                     preview.set_tray_state("searching" if tray_tracker is not None else "fixed")
@@ -528,6 +560,7 @@ def main(argv=None):
                         tray_tracker=tray_tracker,
                         on_tray_state=preview.set_tray_state,
                         outside_roi=outside_roi,
+                        activity_map=activity,
                     )
                 return 0
             frame = camera.read()
@@ -546,6 +579,10 @@ def main(argv=None):
                     roi = ROI.from_pixels(rect, frame.shape[1], frame.shape[0])
                 roi.save(roi_path)
                 print("ROIを保存しました")
+            elif args.command == "setup-activity-map":
+                floor = select_polygon(frame, "サークル床面の四隅を指定", floor=True)
+                ActivityLayout(uuid4().hex, floor).save(root, frame)
+                print("行動マップの床面を登録しました")
             elif args.command == "capture-baseline":
                 roi = ROI.load(roi_path)
                 if args.track_tray:
@@ -564,6 +601,7 @@ def main(argv=None):
         if not os.environ.get("POOP_RTSP_URL") and args.command in (
             "check-camera",
             "setup-roi",
+            "setup-activity-map",
             "capture-baseline",
             "run",
         ):

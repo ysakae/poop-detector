@@ -332,6 +332,19 @@ uv run poop-detector check-dog --image /absolute/path/to/image.jpg --repeat 10
 出典・モデルライセンス：[OpenCV Zoo YOLOX（Apache 2.0）](https://github.com/opencv/opencv_zoo/tree/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/object_detection_yolox)。
 重い追加のPython依存は導入せず、既存のOpenCV DNNでCPU実行します。
 
+## サークルの行動マップ
+
+カメラを固定し、サークルの床の四隅が映るようにします。監視を停止し、床を上から見て左上・右上・右下・左下の順にクリックして登録します。
+
+```bash
+uv run poop-detector setup-activity-map
+uv run poop-detector run --dog --codex --early-alert --track-tray --activity-map
+```
+
+普段の監視オプションに `--activity-map` を追加してください。サークル全体の元映像で約1秒間隔の位置推定を行い、画像や動画の代わりに、20×20区画の日別集計を `data/activity.sqlite3` に保存します。背景には登録時の床面画像を1枚使います。
+ラベルGUIを再起動し、「サークルの行動マップ」で滞在時間・通過回数と1・7・30日間の集計を切り替えられます。位置を確認できなかった区間は通り道としてつなぎません。
+トレー配置を比較する場合は、カメラと床面の登録を維持し、移動の前後で集計終了日を切り替えます。カメラの向きが変わった場合は `setup-activity-map --replace` で登録し直し、監視を再起動してください。登録し直した後の画面は新しい座標の集計を表示します。
+
 ## Codexの判定候補と通知を使う
 
 Codex CLIをインストールし、`codex login status` でログイン状態を確認します。

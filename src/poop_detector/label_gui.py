@@ -10,6 +10,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from .activity_gui import render_activity
+from .activity_map import ActivityLayout
 from .clip_gui import (
     capacity_panel,
     capacity_status,
@@ -139,7 +141,8 @@ def render(store, token, query, disk_mb=DEFAULT_DISK_MIB):
     content += (
         f"<p>未ラベル {metrics['unlabeled']}件 ／ 排便 {counts['feces']}件"
         f" ／ 排尿 {counts['urine']}件 ／ 種類不明 {counts['unknown']}件</p>"
-        '<a href="/records">排便・排尿の記録を見る</a> <a href="/clips">動画を確認・保存する</a></div>'
+        '<a href="/records">排便・排尿の記録を見る</a> <a href="/clips">動画を確認・保存する</a>'
+        ' <a href="/activity">サークルの行動マップ</a></div>'
     )
     if query.get("saved"):
         content += '<div class="message" role="status">保存しました。</div>'
@@ -391,6 +394,17 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB):
                 return self.respond(200, json.dumps(data), "application/json; charset=utf-8")
             if url.path == "/records":
                 return self.respond(200, render_records(store, clips, query))
+            if url.path == "/activity":
+                return self.respond(200, render_activity(root, query))
+            if url.path == "/activity/background":
+                try:
+                    layout = ActivityLayout.load(root)
+                    background = layout.background(root)
+                    if query.get("id") == [layout.id] and not background.is_symlink():
+                        return self.respond(200, background.read_bytes(), "image/jpeg")
+                except (OSError, ValueError, TypeError, KeyError):
+                    pass
+                return self.respond(404, "背景が見つかりません")
             if url.path == "/clips":
                 return self.respond(200, render_clips(root, token, query, disk_mb))
             if url.path == "/clips/capacity":
