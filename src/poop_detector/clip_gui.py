@@ -389,7 +389,7 @@ def stream_video(handler, root, clip_id):
             handler.send_header("Content-Range", f"bytes */{size}")
             handler.send_header("Content-Length", "0")
             handler.end_headers()
-            return
+            return None
     handler.send_response(206 if range_header else 200)
     handler.send_header("Content-Type", "video/mp4")
     handler.send_header("Accept-Ranges", "bytes")
@@ -425,7 +425,7 @@ def handle_clip_post(handler, root, fields, selected_ids=(), *, title=None):
                 "Location", f"/clips/storage?days={days}&removed={removed}&skipped={skipped}"
             )
             handler.end_headers()
-            return
+            return None
         if handler.path == "/clips/request":
             clip_id = store.request(require_live=True)
         elif handler.path == "/clips/protect":

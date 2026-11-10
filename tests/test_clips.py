@@ -126,9 +126,8 @@ def test_second_collector_is_rejected_and_stale_requests_fail(tmp_path):
     store = ClipStore(tmp_path)
     stale = store.request()
     with ClipCollector(tmp_path):
-        with pytest.raises(ValueError):
-            with ClipCollector(tmp_path):
-                pass
+        with pytest.raises(ValueError), ClipCollector(tmp_path):
+            pass
         assert store.get(stale)["status"] == "failed"
 
 
