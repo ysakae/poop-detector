@@ -130,6 +130,8 @@ def test_setup_activity_accepts_concave_floor_and_ignores_positions_in_cutout(
     monkeypatch.setenv("POOP_RTSP_URL", "test")
     monkeypatch.setattr("poop_detector.main.Camera", lambda *args: Camera())
     monkeypatch.setattr("poop_detector.main.select_polygon", lambda frame, title: concave_floor())
+    # ウィンドウは開かないので、画面のない CI でも登録処理まで進める。
+    monkeypatch.setattr("poop_detector.main.has_display", lambda: True)
     assert main(["--config", str(config), "setup-activity-map"]) == 0
     calibration = ActivityLayout.load(tmp_path)
     assert calibration.roi == concave_floor()
