@@ -59,6 +59,52 @@ def scene_signature(baseline, roi):
     ).hexdigest()
 
 
+def review_circling(root, config, args):
+    from .circling import inspect_circling
+    from .clips import ClipStore
+    from .dog import DogDetector
+
+    if not 1 <= args.limit <= 50:
+        print("--limitは1〜50件で指定してください", file=sys.stderr)
+        return 2
+    roi = ROI.load(root / "roi.json")
+    baseline_dir = root / "baseline"
+    baseline = load_baseline(baseline_dir / "empty.png", roi)
+    store = ClipStore(root)
+    rows = store.circling_targets(scene_signature(baseline, roi), args.limit, args.clip)
+    if not rows:
+        print("現在の画角で分析できる保存済み動画がありません")
+        return 2 if args.clip else 0
+    tracker = (
+        TrayTracker.from_baseline(baseline_dir / "tray-reference.png", baseline, roi)
+        if args.track_tray
+        else None
+    )
+    model = DogDetector(root / "models" / "dog-yolox", config.dog_confidence)
+    failed = 0
+    for row in rows:
+        clip_id = row["id"]
+        try:
+            path = store.video_path(row)
+            if path is None:
+                raise OSError("動画がありません")
+            candidates, sampled, located = inspect_circling(
+                path, model.predict, roi, tray_tracker=tracker
+            )
+            if not store.save_circling_review(clip_id, candidates, sampled, located):
+                raise OSError("動画の状態が変わりました")
+        except (OSError, ValueError, cv2.error):
+            failed += 1
+            print(f"{clip_id} 旋回分析に失敗しました", file=sys.stderr)
+            continue
+        offsets = "、".join(f"{start:.1f}〜{end:.1f}秒" for start, end in candidates)
+        print(
+            f"{clip_id} 旋回候補 {offsets or 'なし'}（位置取得 {located}/{sampled}コマ）",
+            flush=True,
+        )
+    return 2 if failed else 0
+
+
 def monitor(
     camera,
     roi,
@@ -287,6 +333,10 @@ def parser():
     review.add_argument("--clip", help="判定する未ラベル動画のID")
     review.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
     review.add_argument("--detect-outside", action="store_true", help="登録した周辺範囲も判定")
+    circling = commands.add_parser("circling-review", help="保存動画の旋回候補を分析（通知なし）")
+    circling.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
+    circling.add_argument("--clip", help="分析する動画のID。指定した動画は再分析できます")
+    circling.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
     feedback = commands.add_parser("feedback", help="実際に排泄だったかと種類を記録")
     feedback.add_argument("event_id")
     feedback.add_argument("label", choices=["true", "false"])
@@ -324,6 +374,8 @@ def main(argv=None):
         if args.command == "run" and (args.dog or args.activity_map):
             config.dog_enabled = True
         root = Path(config.data_dir)
+        if args.command == "circling-review":
+            return review_circling(root, config, args)
         tray_path = root / "baseline" / "tray-reference.png"
         outside_path = root / "outside-roi.json"
         outside_roi = None
