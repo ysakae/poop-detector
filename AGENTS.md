@@ -1,0 +1,33 @@
+# Repository Guidelines
+
+## プロジェクト構成
+
+Python の実装は `src/poop_detector/` にあります。`main.py` が CLI の入口で、`camera.py` が映像取得、`detection.py` が変化検知、`events.py` が検知記録を担当します。テストは `tests/`、設定例は `config/config.example.yaml`、利用手順は `README.md` にあります。
+
+## 開発・実行コマンド
+
+Python 3.11 以上が必要です。開発には `.python-version` の 3.12 を使い、依存関係と実行環境は `uv` で管理してください。
+
+- `uv sync --frozen` でロック済みの依存関係を導入します。
+- `uv run poop-detector check-camera` で RTSP 接続を確認します。
+- `uv run poop-detector run` で監視を起動します。先に ROI と基準画像を登録してください。
+- `docker build -t poop-detector .` で Linux 用イメージを作成します。
+
+## コード規約とテスト
+
+- Python は4スペースで字下げし、変数・関数・モジュールは `snake_case`、クラスは `PascalCase` とします。Ruff の行長設定は100文字です。ユーザーへの説明とコード内のコメントは日本語で書いてください。
+- コード変更では `tests/test_*.py` に `test_*` を先に追加し、失敗を確認してから最小限の実装とリファクタリングを行います。人工画像や一時ディレクトリを使い、実カメラや運用データに依存させないでください。数値のカバレッジ基準は設けていません。
+- `uv run pytest` と併せて `uv run ruff check .` と `uv run ruff format --check .` を実行し、指摘に対処してください。文書のみの変更は `git diff --check` で確認します。
+
+## GitHub Flow
+
+Codex と Claude Code は以下の手順に従います。
+
+1. 作業前に `git status` を確認し、既存の変更を保全します。`git fetch origin` で既定ブランチを取得し、最新の `origin/main` から `feat/`、`fix/`、`docs/` などの作業ブランチを作成します。
+2. 変更を一つの目的に絞り、コミット前に `git status`、`git diff`、`git diff --cached` を確認します。件名は `fix: ROI端の誤通知を抑制` のように Conventional Commits 形式で日本語にします。
+3. 作業ブランチを push し、`main` 宛てに Pull Request を作成します。変更理由、検証手順と結果、関連 Issue があればそのリンクを記載します。GUI の変更には人工データで撮ったスクリーンショットを添えます。
+4. レビューと設定済みのチェックを確認します。`main` や `master` への直接コミットと直接 push を禁止します。AI が PR をマージする場合は、ユーザーの明示的な指示を得てください。
+
+## ローカルデータと安全性
+
+RTSP URL、通知トピック、`.env`、実機設定、室内の画像・動画、`data/` のデータはコミットしないでください。既存データや未コミットの変更を失う恐れがある操作、Git 履歴の書き換え、リポジトリ外のファイル変更には事前に明示的な承認を得てください。
