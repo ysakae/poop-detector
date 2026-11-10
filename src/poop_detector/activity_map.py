@@ -8,14 +8,13 @@ import re
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
-from datetime import datetime
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from .record_stats import JST
 from .roi import MaskedROI, PolygonROI
+from .timezones import local_now
 
 GRID = 20
 LAYOUT_FILE = "activity-layout.json"
@@ -160,7 +159,7 @@ class ActivityRecorder:
         if tick - self.last_sample < 1:
             return
         self.last_sample = tick
-        day = (stamp or datetime.now(JST)).astimezone(JST).date()
+        day = (stamp or local_now()).astimezone().date()
         try:
             point = self.position(predict(frame), frame.shape)
         except (cv2.error, OSError, ValueError):

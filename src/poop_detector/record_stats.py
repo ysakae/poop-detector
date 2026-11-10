@@ -1,9 +1,8 @@
-"""確定した排泄記録を日本時間の日付と時刻で集計する。"""
+"""確定した排泄記録をローカル時刻の日付と時刻で集計する。"""
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
 
-JST = timezone(timedelta(hours=9))
+from .timezones import to_local
 
 
 def summarize_records(records, first_day, last_day):
@@ -11,7 +10,7 @@ def summarize_records(records, first_day, last_day):
     hourly = [Counter() for _ in range(24)]
     recorded_days = set()
     for row in records:
-        stamp = datetime.fromisoformat(row["actual_start"] or row["timestamp"]).astimezone(JST)
+        stamp = to_local(row["actual_start"] or row["timestamp"])
         day = stamp.date()
         if not first_day <= day <= last_day:
             continue

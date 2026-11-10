@@ -11,6 +11,10 @@ color_threshold: 20
 min_area: 40
 occupied_ratio: 0.18
 notifications: true
+# 通知と画面に表示する犬の名前（空なら名前を出さない文面）
+pet_name: ""
+# 日別集計と画面の時刻のタイムゾーン（例: Asia/Tokyo）。空ならマシンの設定に従う。
+timezone: ""
 data_dir: data
 # 検知前後の短い動画（常時録画はしない）
 clip_enabled: true

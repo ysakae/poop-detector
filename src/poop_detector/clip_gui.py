@@ -1,6 +1,7 @@
 """ローカル動画の再生と、動作学習用ラベルの入力画面。"""
 
 import re
+from functools import partial
 from html import escape
 
 from .clip_storage import (
@@ -36,8 +37,10 @@ SOURCES = {
 }
 
 
-def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB):
+def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
     from .label_gui import document, local_time
+
+    page = partial(document, title=title)
 
     store = ClipStore(root)
     rows = store.list(include_assessments=True)
@@ -220,7 +223,7 @@ def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB):
             content += "<p>" + escape(row["error"] or "動画を保存できませんでした") + "</p>"
         else:
             content += "<p>保存処理中です。録画と変換が終わったら更新してください。</p>"
-    return document(content + '</article></div><script src="/assets/clips.js" defer></script>')
+    return page(content + '</article></div><script src="/assets/clips.js" defer></script>')
 
 
 def capacity_status(root, disk_mb):
@@ -251,8 +254,10 @@ def capacity_panel(root, disk_mb):
     )
 
 
-def render_storage(store, token, query, disk_mb):
+def render_storage(store, token, query, disk_mb, *, title=None):
     from .label_gui import document, local_time
+
+    page = partial(document, title=title)
 
     try:
         days = retention_days(query.get("days", ["7"])[0])
@@ -278,7 +283,7 @@ def render_storage(store, token, query, disk_mb):
         "Codexが排泄候補と判定した動画は整理対象から外れます。</p>"
     )
     if not candidates:
-        return document(content + "<p>整理できる古い動画はありません。</p>")
+        return page(content + "<p>整理できる古い動画はありません。</p>")
     total = sum(size for _, size in candidates)
     content += (
         f"<p>表示中の候補 {len(candidates)}本（古い順に最大{CLEANUP_LIMIT}本）"
@@ -306,7 +311,7 @@ def render_storage(store, token, query, disk_mb):
         "<button>選択した動画ファイルを削除</button></form>"
         '<p class="note">削除した映像は再生できなくなります。判定結果や記録は残ります。</p>'
     )
-    return document(content)
+    return page(content)
 
 
 def location_field(location):
@@ -407,7 +412,7 @@ def stream_video(handler, root, clip_id):
         pass
 
 
-def handle_clip_post(handler, root, fields, selected_ids=()):
+def handle_clip_post(handler, root, fields, selected_ids=(), *, title=None):
     store = ClipStore(root)
     try:
         if handler.path == "/clips/cleanup":
@@ -448,10 +453,12 @@ def handle_clip_post(handler, root, fields, selected_ids=()):
     except (ValueError, TypeError) as error:
         from .label_gui import document
 
+        page = partial(document, title=title)
+
         if handler.path == "/clips/cleanup":
             return handler.respond(
                 400,
-                document(
+                page(
                     f"<h2>動画を整理できませんでした</h2><p>{escape(str(error))}</p>"
                     '<p><a href="/clips/storage">録画の整理へ戻る</a></p>'
                 ),
@@ -459,7 +466,7 @@ def handle_clip_post(handler, root, fields, selected_ids=()):
         if handler.path == "/clips/confirm":
             return handler.respond(
                 400,
-                document(
+                page(
                     f"<h2>確定記録を保存できませんでした</h2><p>{escape(str(error))}</p>"
                     '<p><a href="/clips">動画一覧へ戻る</a></p>'
                 ),
@@ -468,7 +475,7 @@ def handle_clip_post(handler, root, fields, selected_ids=()):
         status = 409 if handler.path == "/clips/request" else 400
         handler.respond(
             status,
-            document(
+            page(
                 '<h2>保存できませんでした</h2><p>監視とカメラの接続、保存処理数、動画内の時刻を確認してください。</p><a href="/clips">動画一覧へ戻る</a>'
             ),
         )

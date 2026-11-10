@@ -1,7 +1,7 @@
 [project]
 name = "poop-detector"
 version = "0.1.0"
-description = "ここちゃんのトイレの変化を検知するローカル監視ツール"
+description = "犬のトイレの変化を検知して通知するローカル監視ツール"
 requires-python = ">=3.11"
 dependencies = [
     "opencv-python>=4.10,<5",

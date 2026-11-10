@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-犬（ここちゃん）のトイレを RTSP カメラで監視し、画像差分で排泄の「候補」を通知するローカルツールです。
+犬のトイレを RTSP カメラで監視し、画像差分で排泄の「候補」を通知するローカルツールです。
 このリポジトリの開発手順と GitHub Flow は、以下の共通ルールに従ってください。利用者向けの操作手順は `README.md` にあります。
 
 @AGENTS.md

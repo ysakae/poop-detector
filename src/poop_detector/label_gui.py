@@ -25,10 +25,12 @@ from .clip_storage import DEFAULT_DISK_MIB
 from .clips import CLIP_LABELS, ClipStore
 from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, Store
 from .live_preview import LivePreview
-from .record_stats import JST, summarize_records
+from .record_stats import summarize_records
+from .timezones import local_today, parse_local, timezone_label, to_local
 
 ASSETS = Path(__file__).with_name("static")
 STATS_PERIODS = ("7", "30", "90")
+APP_TITLE = "トイレ記録"
 LIVE_PANEL = """
 <section class="live-panel" aria-labelledby="live-title">
   <h2 id="live-title">現在のカメラ映像</h2>
@@ -69,30 +71,32 @@ fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:bold;margin-bottom:
 def local_time(value, form=False):
     if not value:
         return ""
-    stamp = datetime.fromisoformat(value).astimezone(JST)
+    stamp = to_local(value)
     return stamp.strftime("%Y-%m-%dT%H:%M:%S" if form else "%Y/%m/%d %H:%M:%S")
 
 
 def parse_time(value):
     if not value:
         return None
-    stamp = datetime.fromisoformat(value)
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=JST)
-    return stamp.isoformat()
+    return parse_local(value).isoformat()
 
 
-def document(content):
+def page_title(pet_name=""):
+    return f"{pet_name}の{APP_TITLE}" if pet_name else APP_TITLE
+
+
+def document(content, title=None):
+    title = escape(title or APP_TITLE)
     return (
         '<!doctype html><html lang="ja"><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        "<title>ここちゃんのトイレ記録</title><style>" + STYLE + "</style>"
-        "<header><div><h1>ここちゃんのトイレ記録</h1><p>画像を確認して、検知結果にラベルを付けます。</p>"
+        f"<title>{title}</title><style>" + STYLE + "</style>"
+        f"<header><div><h1>{title}</h1><p>画像を確認して、検知結果にラベルを付けます。</p>"
         "</div><span>このMac内で保存</span></header><main>" + content + "</main></html>"
     )
 
 
-def render(store, token, query, disk_mb=DEFAULT_DISK_MIB):
+def render(store, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
     filters = {
         "unlabeled": "未ラベル",
         "all": "すべて",
@@ -208,7 +212,10 @@ def render(store, token, query, disk_mb=DEFAULT_DISK_MIB):
                     f'value="{value}" {checked} required>{label}</label>'
                 )
             content += "</div></fieldset>" + location_field(row["location"])
-            content += '<p class="note">「種類不明」は排泄を確認したが便・尿の区別が付かない場合に選びます。開始・完了時刻は分かる場合だけ入力してください。日本時間です。</p><div class="times">'
+            content += (
+                '<p class="note">「種類不明」は排泄を確認したが便・尿の区別が付かない場合に選びます。開始・完了時刻は分かる場合だけ入力してください。'
+                + f'{escape(timezone_label())}です。</p><div class="times">'
+            )
             for name, label in [("start", "排泄の開始"), ("end", "排泄の完了")]:
                 value = escape(local_time(row["actual_" + name], form=True))
                 content += f'<label>{label}<input type="datetime-local" step="1" name="{name}" value="{value}"></label>'
@@ -233,19 +240,19 @@ def render(store, token, query, disk_mb=DEFAULT_DISK_MIB):
         + "</select></label>"
         + location_field(None)
         + '<div class="times">'
-        '<label>開始（日本時間・必須）<input type="datetime-local" step="1" name="start" required></label>'
+        f'<label>開始（{escape(timezone_label())}・必須）<input type="datetime-local" step="1" name="start" required></label>'
         '<label>完了（任意）<input type="datetime-local" step="1" name="end"></label>'
         '</div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000" style="width:100%"></textarea></label></p><p style="margin-top:16px"><button>排泄を記録</button></p></form></details>'
         "<footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>"
     )
-    return document(LIVE_PANEL + capacity_panel(store.root, disk_mb) + content)
+    return document(LIVE_PANEL + capacity_panel(store.root, disk_mb) + content, title)
 
 
 def render_record_stats(records, query):
     try:
         day = date.fromisoformat(query.get("date", [""])[0])
     except ValueError:
-        day = datetime.now(JST).date()
+        day = local_today()
     period = query.get("days", ["30"])[0]
     if period not in STATS_PERIODS:
         period = "30"
@@ -264,7 +271,7 @@ def render_record_stats(records, query):
         '<button class="secondary">集計を表示</button></form>'
         f"<p><strong>排便 {daily['feces']}件 ／ 排尿 {daily['urine']}件"
         f" ／ 種類不明 {daily['unspecified']}件</strong></p>"
-        '<p class="note">日本時間で集計します。開始時刻が不明な記録は記録時刻を使います。'
+        f'<p class="note">{escape(timezone_label())}で集計します。開始時刻が不明な記録は記録時刻を使います。'
         "「排便・排尿」は各1件です。0件は確定記録が0件だったことを表します。</p>"
         "<details open><summary>時間帯別の排便・排尿</summary>"
         f"<p>{start}〜{day}（{(day - start).days + 1}日間・記録あり{recorded_days}日）</p>"
@@ -282,7 +289,7 @@ def render_record_stats(records, query):
     return content + "</tbody></table></div></details></section>"
 
 
-def render_records(store, clips, query):
+def render_records(store, clips, query, *, title=None):
     records = store.records()
     video_links = clips.record_videos()
     content = '<h2>排便・排尿の記録</h2><p><a href="/">画像の確認・記録の追加へ戻る</a></p>'
@@ -319,14 +326,15 @@ def render_records(store, clips, query):
     content += "</tbody></table></div>"
     if not records:
         content += "<p>確認済みの排泄記録はまだありません。</p>"
-    return document(content)
+    return document(content, title)
 
 
-def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB):
+def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
     store = Store(root)
     clips = ClipStore(root)
     preview = LivePreview(root)
     token = secrets.token_urlsafe(32)
+    title = page_title(pet_name)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -361,7 +369,7 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB):
             url = urlsplit(self.path)
             query = parse_qs(url.query)
             if url.path == "/":
-                return self.respond(200, render(store, token, query, disk_mb))
+                return self.respond(200, render(store, token, query, disk_mb, title=title))
             if url.path in ("/assets/live.js", "/assets/clips.js", "/assets/clip_storage.js"):
                 script = ASSETS / url.path.rsplit("/", 1)[1]
                 return self.respond(200, script.read_bytes(), "text/javascript; charset=utf-8")
@@ -393,9 +401,9 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB):
                     }
                 return self.respond(200, json.dumps(data), "application/json; charset=utf-8")
             if url.path == "/records":
-                return self.respond(200, render_records(store, clips, query))
+                return self.respond(200, render_records(store, clips, query, title=title))
             if url.path == "/activity":
-                return self.respond(200, render_activity(root, query))
+                return self.respond(200, render_activity(root, query, title=title))
             if url.path == "/activity/background":
                 try:
                     layout = ActivityLayout.load(root)
@@ -406,11 +414,11 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB):
                     pass
                 return self.respond(404, "背景が見つかりません")
             if url.path == "/clips":
-                return self.respond(200, render_clips(root, token, query, disk_mb))
+                return self.respond(200, render_clips(root, token, query, disk_mb, title=title))
             if url.path == "/clips/capacity":
                 return self.respond(200, capacity_status(clips.root, disk_mb))
             if url.path == "/clips/storage":
-                return self.respond(200, render_storage(clips, token, query, disk_mb))
+                return self.respond(200, render_storage(clips, token, query, disk_mb, title=title))
             if url.path == "/clip-video":
                 return stream_video(self, root, query.get("id", [""])[0])
             if url.path == "/image":
@@ -442,7 +450,7 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB):
                 if not hmac.compare_digest(fields.get("csrf", ""), token):
                     return self.respond(403, "画面を再読み込みして保存してください")
                 if self.path.startswith("/clips/"):
-                    return handle_clip_post(self, root, fields, data.get("id", ()))
+                    return handle_clip_post(self, root, fields, data.get("id", ()), title=title)
                 event_id = fields.get("id")
                 if fields.get("action") in ("missed", "manual"):
                     start = parse_time(fields.get("start"))
@@ -506,15 +514,16 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB):
                 self.respond(
                     400,
                     document(
-                        '<h2>保存できませんでした</h2><p>ラベルと時刻を確認してください。完了は開始以降を指定します。</p><a href="/">記録に戻る</a>'
+                        '<h2>保存できませんでした</h2><p>ラベルと時刻を確認してください。完了は開始以降を指定します。</p><a href="/">記録に戻る</a>',
+                        title,
                     ),
                 )
 
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)
 
 
-def serve(root, port=8765, open_browser=True, *, disk_mb=DEFAULT_DISK_MIB):
-    with make_server(root, port, disk_mb=disk_mb) as server:
+def serve(root, port=8765, open_browser=True, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
+    with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name) as server:
         url = f"http://127.0.0.1:{server.server_port}/"
         print(f"ラベル付け画面: {url}", flush=True)
         if open_browser:

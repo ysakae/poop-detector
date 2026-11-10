@@ -22,12 +22,12 @@ import psutil
 
 from .activity_map import LAYOUT_FILE, ActivityLayout, ActivityRecorder, ActivityStore
 from .camera import Camera, LatestCamera
-from .config import Config, load_connection_settings
+from .config import Config, apply_timezone, load_connection_settings
 from .detection import IncrementalDetector
 from .early_alert import EarlyAlert
 from .events import EXCRETION_TYPES, Store, utcnow
 from .live_preview import LivePreview
-from .notifications import MacNotifier, NtfyNotifier
+from .notifications import DEFAULT_NTFY_SERVER, MacNotifier, NtfyNotifier
 from .roi import ROI, select_polygon
 from .state_machine import Machine
 from .tray_tracking import TrayReferenceError, TrayTracker
@@ -288,7 +288,7 @@ def monitor(
 
 
 def parser():
-    result = argparse.ArgumentParser(description="ここちゃんのトイレ変化検知")
+    result = argparse.ArgumentParser(description="犬のトイレの変化検知")
     result.add_argument("--config", default="config/config.yaml", help="設定ファイル")
     commands = result.add_subparsers(dest="command", required=True)
     for name, description in [
@@ -371,6 +371,7 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
         config = Config.load(args.config)
+        apply_timezone(config.timezone)
         if args.command == "run" and (args.dog or args.activity_map):
             config.dog_enabled = True
         root = Path(config.data_dir)
@@ -460,7 +461,13 @@ def main(argv=None):
         if args.command == "label-gui":
             from .label_gui import serve
 
-            serve(root, args.port, not args.no_browser, disk_mb=config.clip_disk_mb)
+            serve(
+                root,
+                args.port,
+                not args.no_browser,
+                disk_mb=config.clip_disk_mb,
+                pet_name=config.pet_name,
+            )
             return 0
         if args.command in (
             "events",
@@ -525,13 +532,19 @@ def main(argv=None):
         if topic:
             try:
                 notifier = NtfyNotifier(
-                    topic, enabled=config.notifications, early_topic=early_topic
+                    topic,
+                    enabled=config.notifications,
+                    early_topic=early_topic,
+                    pet_name=config.pet_name,
+                    server=settings["POOP_NTFY_SERVER"].strip() or DEFAULT_NTFY_SERVER,
                 )
             except ValueError as error:
                 print(error, file=sys.stderr)
                 return 2
         else:
-            notifier = MacNotifier(config.notifications and platform.system() == "Darwin")
+            notifier = MacNotifier(
+                config.notifications and platform.system() == "Darwin", pet_name=config.pet_name
+            )
         if args.command == "test-notification":
             if args.early_alert and not early_topic:
                 print("見守り用の POOP_NTFY_EARLY_TOPIC を設定してください", file=sys.stderr)
@@ -540,7 +553,7 @@ def main(argv=None):
                 print("通知が無効、非対応OS、または送信に失敗しました", file=sys.stderr)
                 return 2
             if topic:
-                print("ntfy.shが通知を受け付けました。購読しているiPhoneで確認してください")
+                print("ntfyが通知を受け付けました。購読している端末で確認してください")
             else:
                 print("通知要求を送信しました。通知センターで表示を確認してください")
             return 0
