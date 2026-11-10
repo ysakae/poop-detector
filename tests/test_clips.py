@@ -60,8 +60,12 @@ def test_labels_and_video_time_bounds(tmp_path):
     store.update(clip, status="ready", duration=10)
     store.label(clip, "urine", 2, 5, "other", "目視確認")
     assert store.get(clip)["label"] == "urine"
-    for start, end in [(5, 2), (-1, 2), (2, 11)]:
-        with pytest.raises(ValueError):
+    for start, end, message in [
+        (5, 2, "完了は開始以降"),
+        (-1, 2, "動画内の秒数"),
+        (2, 11, "動画内の秒数"),
+    ]:
+        with pytest.raises(ValueError, match=message):
             store.label(clip, "feces", start, end)
     store.label(clip, "none", activity="feeding")
     assert store.get(clip)["activity"] == "feeding"
@@ -71,7 +75,7 @@ def test_labels_and_video_time_bounds(tmp_path):
 def test_no_camera_request_is_rejected(tmp_path):
     from poop_detector.clips import ClipStore
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="カメラ接続を確認"):
         ClipStore(tmp_path).request("manual", require_live=True)
 
 
@@ -126,7 +130,7 @@ def test_second_collector_is_rejected_and_stale_requests_fail(tmp_path):
     store = ClipStore(tmp_path)
     stale = store.request()
     with ClipCollector(tmp_path):
-        with pytest.raises(ValueError), ClipCollector(tmp_path):
+        with pytest.raises(ValueError, match="別の動画監視が起動中"), ClipCollector(tmp_path):
             pass
         assert store.get(stale)["status"] == "failed"
 

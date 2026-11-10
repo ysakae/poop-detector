@@ -24,5 +24,5 @@ def test_occlusion_is_not_feces():
 
 def test_resolution_mismatch_rejected():
     baseline, _ = spot_scene()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="解像度が異なります"):
         Detector(baseline).analyze(baseline[:100])

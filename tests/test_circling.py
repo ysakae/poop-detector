@@ -81,4 +81,5 @@ def test_cli_saves_rotation_with_seek_link_without_modifying_label(gui, monkeypa
     assert len(row["candidates"]) == 1
     assert clips.get(clip_id)["label"] == "none"
     _, page = request(server, "GET", f"/clips?id={clip_id}")
-    assert "旋回候補".encode() in page and b'data-video-seek="0.0"' in page
+    assert "旋回候補".encode() in page
+    assert b'data-video-seek="0.0"' in page

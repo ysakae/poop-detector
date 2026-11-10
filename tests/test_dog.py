@@ -39,7 +39,8 @@ def test_observer_entrance_exit_and_roi_occlusion():
     frame = np.zeros((100, 100, 3), np.uint8)
     roi = ROI(0.1, 0.1, 0.5, 0.5)
     state = observer.update(frame, roi, 0)
-    assert state.transition == "dog_enter" and state.on_roi
+    assert state.transition == "dog_enter"
+    assert state.on_roi
     assert observer.update(frame, roi, 0.5).transition is None
     boxes.clear()
     assert observer.update(frame, roi, 1).present
@@ -89,7 +90,9 @@ def test_visible_dog_outside_roi_enters_when_moving_inside():
     frame = np.zeros((100, 100, 3), np.uint8)
     roi = ROI(0, 0, 0.5, 0.5)
     first = observer.update(frame, roi, 0)
-    assert first.present and not first.on_roi and first.transition is None
+    assert first.present
+    assert not first.on_roi
+    assert first.transition is None
     boxes[:] = [(20, 20, 40, 40)]
     assert observer.update(frame, roi, 1).transition == "dog_enter"
 
@@ -155,7 +158,8 @@ def test_monitor_collects_entry_exit_and_detection(tmp_path):
             return DogState(True, self.count < 3, transition, [], 1)
 
     class Collector:
-        sources = []
+        def __init__(self):
+            self.sources = []
 
         def poll(self):
             pass

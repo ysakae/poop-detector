@@ -49,7 +49,9 @@ def test_long_visit_keeps_separate_entry_and_exit_clips(tmp_path):
         entry = collector.trigger(source="dog_enter", now=2)
         collector.feed(frame, now=18)
         exit_clip = collector.trigger(source="dog_exit", now=18)
-        assert entry and exit_clip and exit_clip != entry
+        assert entry
+        assert exit_clip
+        assert exit_clip != entry
 
 
 def saved_clip(clips, *, days_ago=10, event_id=None):
@@ -78,7 +80,8 @@ def test_storage_cleanup_preserves_labels_links_and_newly_pinned_videos(gui):
     clips.save_assessment(target, label="none", reason="映像を確認しました")
 
     status, page = request(server, "GET", "/clips/storage")
-    assert status == 200 and "空く容量".encode() in page
+    assert status == 200
+    assert "空く容量".encode() in page
     for clip_id in (target, pinned):
         assert f'value="{clip_id}"'.encode() in page
     for clip_id in (labeled, linked, positive, recent):

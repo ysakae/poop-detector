@@ -54,7 +54,8 @@ def test_home_shows_latest_codex_assessment_and_manual_label(gui):
     assert data["label"] == "排便"
     assert data["human_label"] == "排泄なし"
     assert data["reason"] == "<根拠>"
-    assert data["requested_at"] and data["assessed_at"]
+    assert data["requested_at"]
+    assert data["assessed_at"]
 
 
 def test_live_preview_rejects_other_hosts(gui):
