@@ -1,10 +1,12 @@
 """登録した床面に滞在時間と通過回数を重ねる。"""
 
 import sqlite3
-from datetime import date, datetime
+from datetime import date
+from functools import partial
+from html import escape
 
 from .activity_map import GRID, ActivityLayout, ActivityStore
-from .record_stats import JST
+from .timezones import local_today, timezone_label
 
 PERIODS = ("1", "7", "30")
 
@@ -45,14 +47,16 @@ def heatmap(layout, cells, mode):
     return content + "</svg>"
 
 
-def render_activity(root, query):
+def render_activity(root, query, *, title=None):
     from .label_gui import document
+
+    page = partial(document, title=title)
 
     content = '<h2>サークルの行動マップ</h2><p><a href="/">ライブ映像・記録へ戻る</a></p>'
     try:
         layout = ActivityLayout.load(root)
     except (OSError, ValueError, TypeError, KeyError):
-        return document(
+        return page(
             content
             + "<p>行動マップを使うには、先に <code>uv run poop-detector setup-activity-map</code>"
             " で床面を登録し、監視に <code>--activity-map</code> を付けて起動してください。</p>"
@@ -60,7 +64,7 @@ def render_activity(root, query):
     try:
         last_day = date.fromisoformat(query.get("date", [""])[0])
     except ValueError:
-        last_day = datetime.now(JST).date()
+        last_day = local_today()
     days = query.get("days", ["7"])[0]
     if days not in PERIODS:
         days = "7"
@@ -78,12 +82,12 @@ def render_activity(root, query):
         f'<option value="pass"{passing}>通過回数</option></select></label>'
         f'<label>集計終了日 <input type="date" name="date" value="{last_day}" required></label>'
         f'<label>期間<select name="days">{periods}</select></label><button>表示</button></form>'
-        f"<p>{first_day}〜{last_day}（日本時間）</p>"
+        f"<p>{first_day}〜{last_day}（{escape(timezone_label())}）</p>"
     )
     try:
         cells, sampled, located = ActivityStore(root).summary(layout.id, first_day, last_day)
     except sqlite3.Error:
-        return document(content + "<p>集計を読み込めませんでした。画面を更新してください。</p>")
+        return page(content + "<p>集計を読み込めませんでした。画面を更新してください。</p>")
     if not sampled:
         content += "<p>この期間の集計データはまだありません。</p>"
     else:
@@ -92,7 +96,7 @@ def render_activity(root, query):
             f" ／ 通過 {sum(row[3] for row in cells)}回</p>"
         )
     content += heatmap(layout, cells, mode)
-    return document(
+    return page(
         content
         + '<p class="note">背景は床面の登録時の映像です。色が濃いほどその区画の割合が高く、10％以上で最も濃くなります。'
         "滞在時間は検出枠の中心があった時間です。通過回数は別の区画に移った回数で、"

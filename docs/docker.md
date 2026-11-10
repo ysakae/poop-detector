@@ -12,5 +12,6 @@ docker run --rm -v "$PWD/.env:/app/.env:ro" -v "$PWD/data:/app/data" -v "$PWD/co
 
 - Docker 内からカメラの LAN に到達できる必要があります。クラウドへ移す場合は VPN などが必要で、RTSP のポートを外部に公開してはいけません。
 - `.dockerignore` で `.env`、`data/`、`tests/` などをビルドから除外しているため、認証情報・室内の画像・データベースはイメージに含まれません。
+- コンテナのタイムゾーンは通常 UTC です。日別の集計を自分の地域の日付で区切るには、`config/config.yaml` の `timezone`（例: `Asia/Tokyo`）を設定してください。
 - ラベル GUI はコンテナ内で使用しません。
 - コンテナの UID とボリュームの書き込み権限は、実際の環境で確認してください。

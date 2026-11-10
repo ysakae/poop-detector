@@ -47,13 +47,17 @@
 
 ## 通知先
 
-`notifications.py` の `_ToiletNotifier` が文面を持ち、`MacNotifier`（osascript）と `NtfyNotifier`（ntfy.sh への HTTP POST）が送信だけを実装します。`POOP_NTFY_TOPIC` があれば ntfy、なければ macOS 通知を使います。通知先を増やすときは `_deliver` を実装したサブクラスを足してください。ntfy の無料トピックは公開扱いなので、本文に映像やカメラの URL を入れないでください。
+`notifications.py` の `_ToiletNotifier` が文面を持ち、`MacNotifier`（osascript）と `NtfyNotifier`（ntfy サーバーへの HTTP POST、既定は ntfy.sh）が送信だけを実装します。文面の犬の名前は設定の `pet_name` から受け取り、`MacNotifier` は AppleScript の文字列としてエスケープしてから埋め込みます。`POOP_NTFY_TOPIC` があれば ntfy、なければ macOS 通知を使います。通知先を増やすときは `_deliver` を実装したサブクラスを足してください。ntfy の無料トピックは公開扱いなので、本文に映像やカメラの URL を入れないでください。
 
 ## ラベル GUI
 
 `label_gui.make_server` は標準ライブラリの `http.server` だけで作ったサーバーで、HTML は Python の文字列で組み立てます（テンプレートエンジンやフロントエンドのビルドはありません）。画面ごとに `clip_gui.py`（動画）、`activity_gui.py`（行動マップ）へ分かれ、`static/` の JavaScript は補助的な操作だけを担います。
 
 外部公開しない前提でも、Host ヘッダーの検査、起動ごとのトークン、厳しい CSP を入れています。インラインスクリプトは CSP で動かないため、JavaScript は `static/` に置き、`/assets/` の許可リストへ追加してください。
+
+## 時刻とタイムゾーン
+
+データベースには UTC のタイムゾーン付き ISO 8601 で保存し、画面の表示と日別集計だけをローカル時刻に変換します（`timezones.py`）。ローカル時刻はプロセスのタイムゾーンに従い、設定の `timezone` があれば起動時に `config.apply_timezone` が `TZ` 環境変数として反映します。テストは `tests/conftest.py` で日本時間に固定しているので、実行するマシンのタイムゾーンに左右されません。
 
 ## 認証情報をログに出さない仕組み
 

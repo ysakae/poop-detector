@@ -77,7 +77,7 @@ def test_cli_can_send_a_distinct_test_message_on_linux(tmp_path, monkeypatch, ca
     command = ["--config", str(config), "test-notification"]
     assert main(command) == 0
     assert "テスト" in sent[0]["message"]
-    assert "iPhone" in capsys.readouterr().out
+    assert "購読している端末" in capsys.readouterr().out
     config.write_text("notifications: false\n")
     assert main(command) == 2
     assert len(sent) == 1

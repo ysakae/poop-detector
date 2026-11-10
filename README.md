@@ -47,6 +47,7 @@
 - RTSP で映像を配信できるカメラ。トイレ全体が映る位置に固定してください
 - macOS または Linux。Windows は排他制御に `fcntl` を使っているため動きません
 - 監視領域の登録には画面のあるマシンが必要です
+- 画面と通知の文面は日本語のみです
 
 開発と確認は Apple Silicon の macOS で行っています。
 
@@ -75,6 +76,8 @@ uv run poop-detector test-notification
 uv run poop-detector run
 ```
 
+通知や画面に犬の名前を出す場合は、`config/config.yaml` の `pet_name` に設定してください。
+
 Ctrl+C で停止します。通知は、`.env` に `POOP_NTFY_TOPIC` があれば ntfy、なければ macOS の通知センターに届きます。
 
 ## 記録とラベル付け
@@ -91,7 +94,7 @@ uv run poop-detector label-gui
 
 - 基準画像、ROI、イベント画像、動画、SQLite のデータベースは、既定でリポジトリ直下の `data/` に保存します。室内の映像を含むので、取り扱いに注意してください
 - RTSP URL には認証情報が含まれます。`.env` にだけ書き、Git にコミットしないでください。ルーターの RTSP ポートを外部に公開しないでください
-- ntfy を使うと、通知の短い本文が `ntfy.sh` に送られます。映像やカメラの URL は送りません。無料トピックは名前を知っている人なら誰でも読めます
+- ntfy を使うと、通知の短い本文が ntfy のサーバー（既定は `ntfy.sh`）に送られます。映像やカメラの URL は送りません。無料トピックは名前を知っている人なら誰でも読めます
 - `--codex` を使うと、動画から切り出した画像が Codex CLI を通じて外部のサービスに送られます
 - `setup-dog-model` は犬検出モデルを GitHub から取得します。監視の開始時に自動で取得することはありません
 

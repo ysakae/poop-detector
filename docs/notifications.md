@@ -7,7 +7,7 @@
 | `POOP_NTFY_TOPIC` なし | macOS の通知センター（Linux では通知されません） |
 | `POOP_NTFY_TOPIC` あり | ntfy（macOS・Linux とも） |
 
-どちらの場合も `config/config.yaml` の `notifications: true`（既定）が必要です。通知を使わない場合は `notifications: false` にしてください。
+どちらの場合も `config/config.yaml` の `notifications: true`（既定）が必要です。`pet_name` を設定すると、通知のタイトルと本文に犬の名前が入ります。通知を使わない場合は `notifications: false` にしてください。
 
 ## 通知のテスト
 
@@ -15,7 +15,7 @@
 uv run poop-detector test-notification
 ```
 
-成功は、OS または ntfy.sh が通知を受け付けたことを示します。受信端末で実際に表示されるかを確認してください。macOS では通知の設定や集中モードも確認してください。
+成功は、OS または ntfy のサーバーが通知を受け付けたことを示します。受信端末で実際に表示されるかを確認してください。macOS では通知の設定や集中モードも確認してください。
 
 ## 家族のスマートフォンへ ntfy で通知する
 
@@ -28,6 +28,10 @@ uv run poop-detector test-notification
 ```
 
 リポジトリのディレクトリで普段の監視コマンドを起動すると、ntfy を通知先に使います。送信するのは短い本文で、映像やカメラの URL は添付しません。`--early-alert` を付けると見守り通知も届きます。
+
+## 自分で運用する ntfy サーバーを使う
+
+`.env` の `POOP_NTFY_SERVER` にサーバーの URL（例: `https://ntfy.example.com`）を設定すると、`ntfy.sh` の代わりにそのサーバーへ送ります。URL に認証情報や `?` 以降は含められません。`http://` も使えますが、通知の本文が暗号化されずに流れるため、信頼できる LAN 内のサーバーに限ってください。
 
 ## 見守り通知を別のトピックに分ける
 
