@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class Notifier(Protocol):
+    """監視ループが使う通知の最小のインターフェース。"""
+
     def send(self) -> bool: ...
 
 
@@ -64,11 +66,14 @@ def applescript_string(value):
 
 
 class MacNotifier(_ToiletNotifier):
+    """osascript で macOS の通知センターに通知する。"""
+
     def __init__(self, enabled=True, runner=subprocess.run, *, pet_name=""):
         super().__init__(enabled, pet_name)
         self.runner = runner
 
-    def _deliver(self, message, *, early_alert):
+    # macOS の通知は見守り用の送り先を分けられないため、early_alert は使わない。
+    def _deliver(self, message, *, early_alert):  # noqa: ARG002
         script = (
             f'display notification "{applescript_string(message)}" '
             f'with title "{applescript_string(self.title())}"'
@@ -103,6 +108,8 @@ def validated_ntfy_server(server):
 
 
 class NtfyNotifier(_ToiletNotifier):
+    """ntfy サーバーへ HTTP POST で通知する。"""
+
     def __init__(
         self,
         topic,
@@ -138,7 +145,8 @@ class NtfyNotifier(_ToiletNotifier):
             {"topic": topic, "title": self.title(early_alert=separate), "message": message},
             ensure_ascii=False,
         ).encode("utf-8")
-        request = Request(
+        # 送信先は validated_ntfy_server で http(s) だけに限っている。
+        request = Request(  # noqa: S310
             self.server,
             data=payload,
             headers={"Content-Type": "application/json"},

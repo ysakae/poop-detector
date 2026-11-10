@@ -1,6 +1,7 @@
 """上限付き動画バッファと、別プロセスのGUIから使える収集台帳。"""
 
 import fcntl
+import itertools
 import json
 import logging
 import math
@@ -50,6 +51,8 @@ SHORT_VISIT_SECONDS = 15
 
 
 class ClipStore:
+    """動画の保存要求・状態・ラベルを events.sqlite3 の clips テーブルで管理する。"""
+
     def __init__(self, root):
         self.store = Store(root)
         self.root = Path(root)
@@ -183,12 +186,13 @@ class ClipStore:
             conditions.append("c.id=?")
             params.append(clip_id)
         order = "ASC" if since is not None else "DESC"
+        # 条件はこの関数内の固定の文字列だけで組み立て、値はすべてプレースホルダーで渡す。
         with self.store.connect() as db:
             return [
                 dict(row)
                 for row in db.execute(
                     """SELECT c.* FROM clips c
-                    LEFT JOIN codex_assessments a ON a.clip_id=c.id WHERE """
+                    LEFT JOIN codex_assessments a ON a.clip_id=c.id WHERE """  # noqa: S608
                     + " AND ".join(conditions)
                     + f" ORDER BY c.requested_at {order} LIMIT ?",
                     (*params, limit),
@@ -348,8 +352,9 @@ class ClipStore:
         if not values or not values.keys() <= allowed:
             raise ValueError("更新項目が不正です")
         with self.store.connect() as db:
+            # 列名は上の allowed で許可したものだけ。値はプレースホルダーで渡す。
             db.execute(
-                "UPDATE clips SET " + ",".join(f"{k}=?" for k in values) + " WHERE id=?",
+                "UPDATE clips SET " + ",".join(f"{k}=?" for k in values) + " WHERE id=?",  # noqa: S608
                 (*values.values(), clip_id),
             )
 
@@ -521,7 +526,8 @@ def encode_mp4(samples, path, fps):
         for frame in frames:
             spool.write(frame)
         spool.seek(0)
-        subprocess.run(
+        # shutil.which で見つけた FFmpeg を、固定の引数と保存先のパスだけで起動する。
+        subprocess.run(  # noqa: S603
             [
                 executable,
                 "-hide_banner",
@@ -559,6 +565,8 @@ def encode_mp4(samples, path, fps):
 
 
 class ClipCollector:
+    """フレームをメモリー上限付きで保持し、保存要求の前後を MP4 に変換する。"""
+
     def __init__(
         self,
         root,
@@ -718,9 +726,7 @@ class ClipCollector:
             del self.jobs[clip_id]
             return
         job["interrupted"] = bool(job.get("interrupted") or interrupted)
-        gaps = any(
-            b[0] - a[0] > max(1, 3 / self.fps) for a, b in zip(samples, samples[1:], strict=False)
-        )
+        gaps = any(b[0] - a[0] > max(1, 3 / self.fps) for a, b in itertools.pairwise(samples))
         try:
             self.store.update(
                 clip_id,

@@ -226,9 +226,11 @@ def monitor(
                 transition = dog_state.transition
                 if collector is not None and transition:
                     last = dog_clip_times.get(transition, float("-inf"))
-                    if time.monotonic() - last >= config.dog_clip_cooldown_seconds:
-                        if collector.trigger(source=transition) is not None:
-                            dog_clip_times[transition] = time.monotonic()
+                    if (
+                        time.monotonic() - last >= config.dog_clip_cooldown_seconds
+                        and collector.trigger(source=transition) is not None
+                    ):
+                        dog_clip_times[transition] = time.monotonic()
             moving = previous is not None and detector.changed_from(crop, previous, valid_mask)
             previous = crop.copy()
             if moving:
@@ -263,10 +265,11 @@ def monitor(
             if observation.kind == "empty":
                 if settled_since is None:
                     settled_since = time.monotonic()
-                if time.monotonic() - settled_since >= config.clear_seconds:
-                    if detector.changed_from(crop, detector.reference_image, valid_mask):
-                        store.save_reference(crop, signature)
-                        detector.accept(crop)
+                if time.monotonic() - settled_since >= config.clear_seconds and (
+                    detector.changed_from(crop, detector.reference_image, valid_mask)
+                ):
+                    store.save_reference(crop, signature)
+                    detector.accept(crop)
             else:
                 settled_since = None
             if time.monotonic() - last_health >= 30:

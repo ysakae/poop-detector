@@ -153,7 +153,7 @@ def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
                         + "</strong><br>"
                         + escape(assessment["reason"])
                     )
-                    for field, title in (
+                    for field, button_title in (
                         ("start_seconds", "開始候補へ移動"),
                         ("end_seconds", "完了候補へ移動"),
                     ):
@@ -161,7 +161,7 @@ def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
                         if seconds is not None:
                             content += (
                                 f'<p><button class="secondary" type="button" data-video-seek="{seconds}">'
-                                f"{title}（{seconds:g}秒）</button></p>"
+                                f"{button_title}（{seconds:g}秒）</button></p>"
                             )
                     if assessment["notified_at"]:
                         content += "<br>通知済み " + escape(local_time(assessment["notified_at"]))

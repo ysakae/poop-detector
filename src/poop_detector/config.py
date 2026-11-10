@@ -64,6 +64,8 @@ def apply_timezone(name):
 
 @dataclass
 class Config:
+    """config.yaml の動作設定。値の範囲は作成時に検証する。"""
+
     fps: float = 3.0
     timeout_ms: int = 5000
     retry_seconds: float = 2.0

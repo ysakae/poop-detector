@@ -2,6 +2,8 @@
 
 
 class Machine:
+    """候補が続いた時間で通知を判断し、同じ跡での重複通知を抑える状態遷移。"""
+
     def __init__(self, verify_seconds=3.0, clear_seconds=3.0):
         self.verify_seconds = verify_seconds
         self.clear_seconds = clear_seconds

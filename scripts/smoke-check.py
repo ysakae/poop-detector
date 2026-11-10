@@ -32,6 +32,8 @@ def check_video(root):
         image = np.full((120, 160, 3), 200, np.uint8)
         cv2.circle(image, (20 + step * 12, 60), 10, (40, 60, 90), -1)
         ok, jpeg = cv2.imencode(".jpg", image)
+        if not ok:
+            raise RuntimeError("JPEG に変換できません")
         frames.append((step / 5, "2026-11-10T00:00:00+00:00", jpeg.tobytes()))
     path = root / "clips" / "smoke.mp4"
     path.parent.mkdir()
@@ -69,7 +71,8 @@ def check_gui(root):
 def check_cli(root):
     config = root / "config.yaml"
     config.write_text(f"data_dir: {root}\nnotifications: false\n")
-    result = subprocess.run(
+    # 同じ Python で自分の CLI を起動するだけで、外部の入力は使わない。
+    result = subprocess.run(  # noqa: S603
         [sys.executable, "-m", "poop_detector.main", "--config", str(config), "events"],
         capture_output=True,
         text=True,

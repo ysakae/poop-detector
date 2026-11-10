@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ActivityLayout:
+    """行動マップ用に登録したサークルの床面（多角形）と、その登録 ID。"""
+
     id: str
     roi: PolygonROI
 
@@ -68,6 +70,8 @@ class ActivityLayout:
 
 
 class ActivityStore:
+    """行動マップの集計を activity.sqlite3 に日別・マス目別で保存する。"""
+
     def __init__(self, root):
         self.path = Path(root) / "activity.sqlite3"
         with self.connect() as db:
@@ -130,6 +134,8 @@ def cell_at(point):
 
 
 class ActivityRecorder:
+    """犬の検出位置を床面の座標に変換し、滞在時間と通過回数を記録する。"""
+
     def __init__(self, store, layout):
         self.store, self.layout = store, layout
         self.boundary = np.float32(layout.roi.points)

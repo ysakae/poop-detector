@@ -204,12 +204,11 @@ def render(store, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
                 else "unknown"
             )
             for value, label in choices:
-                if value == "feces":
-                    label = "排便だった"
+                text = "排便だった" if value == "feces" else label
                 checked = "checked" if value == selected_label else ""
                 content += (
                     f'<label class="choice"><input type="radio" name="label" '
-                    f'value="{value}" {checked} required>{label}</label>'
+                    f'value="{value}" {checked} required>{text}</label>'
                 )
             content += "</div></fieldset>" + location_field(row["location"])
             content += (
@@ -525,10 +524,11 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
 def serve(root, port=8765, open_browser=True, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
     with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name) as server:
         url = f"http://127.0.0.1:{server.server_port}/"
-        print(f"ラベル付け画面: {url}", flush=True)
+        # 画面の URL は、起動したターミナルに表示する。
+        print(f"ラベル付け画面: {url}", flush=True)  # noqa: T201
         if open_browser:
             webbrowser.open(url)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            print("ラベル付け画面を終了しました")
+            print("ラベル付け画面を終了しました")  # noqa: T201
