@@ -139,9 +139,9 @@ uv run poop-detector label-gui
 ## 開発
 
 ```bash
-uv run pytest
+uv run pytest --cov
 uv run ruff check .
 uv run ruff format --check .
 ```
 
-テストは人工画像と一時ディレクトリを使い、実カメラや実データには依存しません。プルリクエストと `main` への push では、GitHub Actions が Ruff の検査と書式の確認、パッケージのビルド、Ubuntu の Python 3.11・3.12 でのテスト、Docker イメージの確認を行います。変更履歴は [CHANGELOG.md](CHANGELOG.md) にあります。Issue やプルリクエストを送る前に [コントリビューションの手引き](CONTRIBUTING.md) と [行動規範](CODE_OF_CONDUCT.md) を読んでください。
+テストは人工画像と一時ディレクトリを使い、実カメラや実データには依存しません。プルリクエストと `main` への push では、GitHub Actions が Ruff の検査と書式の確認、パッケージのビルド、Ubuntu の Python 3.11・3.12 でのテストとカバレッジの下限の確認、Docker イメージの確認を行います。変更履歴は [CHANGELOG.md](CHANGELOG.md) にあります。Issue やプルリクエストを送る前に [コントリビューションの手引き](CONTRIBUTING.md) と [行動規範](CODE_OF_CONDUCT.md) を読んでください。

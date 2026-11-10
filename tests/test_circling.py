@@ -4,8 +4,7 @@ import math
 
 import cv2
 import numpy as np
-from test_label_gui import gui as gui
-from test_label_gui import request
+from support import request
 
 from poop_detector.circling import CirclingDetector
 from poop_detector.clips import ClipStore

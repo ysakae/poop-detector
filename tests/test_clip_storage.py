@@ -4,9 +4,7 @@ from datetime import UTC, datetime, timedelta
 from threading import Thread
 
 import numpy as np
-from test_clip_gui import submit
-from test_label_gui import gui as gui
-from test_label_gui import request
+from support import request, submit
 
 from poop_detector.clip_storage import MIB, cleanup_selected
 from poop_detector.clips import ClipCollector, ClipStore

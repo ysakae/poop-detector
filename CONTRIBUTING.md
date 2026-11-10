@@ -43,12 +43,16 @@ uv sync --frozen
 3. 次の3つがすべて通ることを確認します。プルリクエストでは GitHub Actions でも同じ確認を行います。
 
    ```bash
-   uv run pytest
+   uv run pytest --cov
    uv run ruff check .
    uv run ruff format --check .
    ```
 
+   `--cov` を付けると、テストが実行しなかった行を一覧し、全体のカバレッジが `pyproject.toml` の `fail_under` を下回ると失敗します。CI でも同じ下限で確認します。一部のテストだけを実行するときは `--cov` を付けないでください（下限を下回って失敗します）。
+
    文書だけを変える場合は `git diff --check` で確認してください。
+
+   テストで共通に使うフィクスチャは `tests/conftest.py` に、人工画像や偽のカメラなどの補助は `tests/support.py` にあります。
 
 4. 1つのプルリクエストは1つの目的に絞ってください。
 

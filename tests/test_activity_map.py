@@ -4,8 +4,7 @@ from datetime import date, datetime
 
 import numpy as np
 import pytest
-from test_label_gui import gui as gui
-from test_label_gui import request
+from support import request
 
 from poop_detector.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
 from poop_detector.config import Config

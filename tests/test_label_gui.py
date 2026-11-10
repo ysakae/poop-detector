@@ -1,44 +1,14 @@
 """実HTTP経由でラベルの保存と画像の公開範囲を確認する。"""
 
-import http.client
 import re
-import threading
 from urllib.parse import urlencode
 
-import numpy as np
-import pytest
-
-from poop_detector.events import Store
-
-
-@pytest.fixture
-def gui(tmp_path):
-    from poop_detector.label_gui import make_server
-
-    store = Store(tmp_path)
-    event = store.record(np.full((50, 50, 3), 150, np.uint8), 0.1, None, 1)
-    server = make_server(tmp_path, 0)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    yield server, store, event
-    server.shutdown()
-    server.server_close()
-    thread.join()
-
-
-def request(server, method, path, body=None, headers=None):
-    conn = http.client.HTTPConnection(*server.server_address)
-    conn.request(method, path, body=body, headers=headers or {})
-    response = conn.getresponse()
-    status, data = response.status, response.read()
-    conn.close()
-    return status, data
+from support import csrf_token, request
 
 
 def post(server, fields, token=True):
     if token:
-        _, page = request(server, "GET", "/")
-        fields["csrf"] = re.search(r'name="csrf" value="([^"]+)"', page.decode())[1]
+        fields = {**fields, "csrf": csrf_token(server)}
     return request(
         server,
         "POST",

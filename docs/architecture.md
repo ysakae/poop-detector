@@ -65,4 +65,4 @@ RTSP URL には認証情報が含まれます。`main.py` は OpenCV の読み�
 
 ## テストの作り方
 
-`Camera` の `factory`、`MacNotifier` の `runner`、`NtfyNotifier` の `opener`、`ClipCollector` の `encoder`、`inspect_clip` の `runner`、`DogDetector` の `net` は差し替え用の引数です。`monitor` も `max_frames` と偽のカメラで実行できます。テストは NumPy で作った人工画像と `tmp_path` を使い、実カメラ・実データ・Codex CLI には依存させません。
+`Camera` の `factory`、`MacNotifier` の `runner`、`NtfyNotifier` の `opener`、`ClipCollector` の `encoder`、`inspect_clip` の `runner`、`DogDetector` の `net` は差し替え用の引数です。`monitor` も `max_frames` と偽のカメラで実行できます。CLI 全体は `main.Camera` を偽のカメラに差し替えて動かします（`tests/test_cli.py`、検知から動画保存までを通す `tests/test_pipeline.py`）。テストは NumPy で作った人工画像と `tmp_path` を使い、実カメラ・実データ・Codex CLI には依存させません。

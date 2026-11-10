@@ -4,9 +4,7 @@ import json
 
 import cv2
 import numpy as np
-from test_clip_gui import ready_clip, submit
-from test_label_gui import gui as gui
-from test_label_gui import request
+from support import ready_clip, request, submit
 
 from poop_detector.clips import ClipStore
 from poop_detector.codex_review import inspect_clip
