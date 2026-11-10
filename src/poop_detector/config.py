@@ -9,14 +9,13 @@ from dotenv import dotenv_values
 
 from .clip_storage import DEFAULT_DISK_MIB
 
+CONNECTION_KEYS = ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC")
+
 
 def load_connection_settings():
     path = Path(".env")
     values = dotenv_values(path, interpolate=False, encoding="utf-8-sig") if path.is_file() else {}
-    return {
-        key: os.environ.get(key, values.get(key) or "")
-        for key in ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC")
-    }
+    return {key: os.environ.get(key, values.get(key) or "") for key in CONNECTION_KEYS}
 
 
 @dataclass
