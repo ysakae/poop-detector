@@ -30,6 +30,24 @@ jobs:
       - name: 書式の確認
         run: uv run ruff format --check .
 
+  package:
+    name: パッケージのビルド
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: sdist と wheel を作る
+        run: uv build
+      - name: メタデータを検査
+        run: uvx twine check --strict dist/*
+      - name: wheel からインストールして起動する
+        run: |
+          cd "$RUNNER_TEMP"
+          uvx --isolated --from "$GITHUB_WORKSPACE"/dist/*.whl poop-detector --help
+
   test:
     name: テスト（Python ${{ matrix.python }}）
     runs-on: ubuntu-24.04
