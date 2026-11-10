@@ -16,6 +16,8 @@ uv run poop-detector run
 
 ## 動画の確認とラベル付け
 
+![動画ラベル画面。左に動画の一覧、右に再生中の動画と Codex 判定候補が並ぶ（人工データ）](images/label-gui-clips.jpg)
+
 別のターミナルでラベル GUI を起動し、「動画を確認・保存する」を開いてください。
 
 ```bash
