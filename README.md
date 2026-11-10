@@ -129,4 +129,4 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-テストは人工画像と一時ディレクトリを使い、実カメラや実データには依存しません。プルリクエストと `main` への push では、GitHub Actions が Ruff の検査と書式の確認、Ubuntu の Python 3.11・3.12 でのテスト、Docker イメージの確認を行います。開発の規約は [AGENTS.md](AGENTS.md) を参照してください。
+テストは人工画像と一時ディレクトリを使い、実カメラや実データには依存しません。プルリクエストと `main` への push では、GitHub Actions が Ruff の検査と書式の確認、Ubuntu の Python 3.11・3.12 でのテスト、Docker イメージの確認を行います。Issue やプルリクエストを送る前に [コントリビューションの手引き](CONTRIBUTING.md) と [行動規範](CODE_OF_CONDUCT.md) を読んでください。

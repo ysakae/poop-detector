@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使い方の説明 / Documentation
+    url: https://github.com/ysakae/poop-detector/tree/main/docs
+    about: 設定や機能の詳しい説明です。Detailed documentation (in Japanese).
+  - name: コントリビューションの手引き / Contributing guide
+    url: https://github.com/ysakae/poop-detector/blob/main/CONTRIBUTING.md
+    about: Issue とプルリクエストの書き方です。How to report issues and send pull requests.

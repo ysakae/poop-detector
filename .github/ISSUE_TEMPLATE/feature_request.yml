@@ -1,0 +1,35 @@
+name: 機能の提案 / Feature request
+description: 新しい機能や改善を提案します。Suggest a new feature or an improvement.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        日本語でも英語でも書けます。You can write in Japanese or English.
+        個人の実験的なプロジェクトのため、すべての提案には対応できません。大きな変更は、実装する前にここで相談してください。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 困っていること / Problem
+      description: どんな場面で、何に困っているか。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案 / Proposal
+      description: どうなるとよいか。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: ほかに考えた方法 / Alternatives considered
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: 自分で実装しますか / Would you implement it?
+      options:
+        - まだ分からない / Not sure
+        - はい / Yes
+        - いいえ / No
