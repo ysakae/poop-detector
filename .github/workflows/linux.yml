@@ -1,0 +1,51 @@
+# Linux での動作確認。テスト一式と Docker イメージを、人工データだけで確かめる。
+name: Linux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: Ubuntu で実行
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: FFmpeg を導入
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: 依存関係を導入
+        run: uv sync --frozen
+      - name: テスト
+        run: uv run pytest
+      - name: 主要な機能の動作確認
+        run: uv run python scripts/smoke-check.py
+
+  docker:
+    name: Docker イメージ
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: イメージをビルド
+        run: docker build -t poop-detector .
+      - name: CLI が起動する
+        run: docker run --rm poop-detector --help
+      - name: コンテナ内で主要な機能の動作確認
+        run: >-
+          docker run --rm --entrypoint python
+          -v "$PWD/scripts:/scripts:ro"
+          poop-detector /scripts/smoke-check.py
