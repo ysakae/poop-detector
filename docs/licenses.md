@@ -56,7 +56,7 @@ macOS の wheel（4.14.0.94 で確認）には、GPL のライブラリである
 | プログラム | ライセンス | 用途 |
 |---|---|---|
 | FFmpeg（`libx264` を有効にした構成） | GPL-2.0 以降 | 動画の MP4 への変換 |
-| Codex CLI | Apache-2.0 | `--codex` と `codex-review` での動画の判定 |
+| Codex CLI | Apache-2.0 | 動画の自動判定の既定の判定器（`--video-review`、`video-review`） |
 
 ## Docker イメージ
 

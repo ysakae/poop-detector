@@ -9,7 +9,7 @@
 - `events.sqlite3` — 次の台帳が同じファイルにテーブルを持ちます。
   - `events.Store`：検知イベントと排泄の記録
   - `clips.ClipStore`：動画の保存要求と状態
-  - `clip_reviews.AssessmentStore`：Codex の判定
+  - `clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
   - `clip_reviews.CirclingReviews`：旋回候補
   - `clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
   - `clip_storage`：保持期間・保護・整理
@@ -18,7 +18,7 @@
 - GUI からの「今の前後の動画を保存」は `clips` テーブルへ `queued` 行を入れるだけで、監視側の `ClipCollector.poll()` が拾います。監視の生存は `capture_status` のハートビートで判定します。
 - ライブ映像は `LivePreview` が `.live-preview.jpg` を書き、GUI が `.live-preview-request` の更新時刻で要求を伝えます。
 - `activity.sqlite3` は行動マップ専用の別データベースです。
-- 排他は `fcntl.flock` のロックファイル（`.capture.lock`、`.codex.lock`、`.activity.lock`）で行います。動画収集を伴う監視は同時に1プロセスだけです。
+- 排他は `fcntl.flock` のロックファイル（`.capture.lock`、`.review.lock`、`.activity.lock`）で行います。動画収集を伴う監視は同時に1プロセスだけです。
 
 ## CLI の構成
 
@@ -30,10 +30,10 @@
 | `commands/run.py` | `run` |
 | `commands/records.py` | `events`、`metrics`、`feedback`、`acknowledge`、`missed`、`record`、`records`、`label-gui` |
 | `commands/notify.py` | `test-notification` |
-| `commands/review.py` | `codex-review`、`circling-review` |
+| `commands/review.py` | `video-review`、`circling-review` |
 | `commands/dog_model.py` | `setup-dog-model`、`check-dog` |
 
-処理は `(args, CommandContext)` を受け取り、終了コードを返します。`CommandContext` は設定とデータの保存先の場所を持ちます。設定（`config.Config`）は不変で、`run` は `--codex` などのフラグを `config.with_flags` で設定に重ね、機能の依存関係を `config.check_monitor_features` の1か所で確かめます。設定ファイルの各項目（セクション・名前・型・許容範囲）は `config.SETTINGS` の表で定義し、検証のエラーはその表から項目名と範囲を示します。ROI と基準画像の読み込み、通知先の選択、カメラの接続など、複数のコマンドで使う準備は `commands/context.py` にあります。サブコマンドを足すときは、`parser()` に引数を、`HANDLERS` に処理を加えてください。
+処理は `(args, CommandContext)` を受け取り、終了コードを返します。`CommandContext` は設定とデータの保存先の場所を持ちます。設定（`config.Config`）は不変で、`run` は `--video-review` などのフラグを `config.with_flags` で設定に重ね、機能の依存関係を `config.check_monitor_features` の1か所で確かめます。設定ファイルの各項目（セクション・名前・型・許容範囲）は `config.SETTINGS` の表で定義し、検証のエラーはその表から項目名と範囲を示します。ROI と基準画像の読み込み、通知先の選択、カメラの接続など、複数のコマンドで使う準備は `commands/context.py` にあります。サブコマンドを足すときは、`parser()` に引数を、`HANDLERS` に処理を加えてください。
 
 ## 監視ループ（`monitoring.Monitor`）
 
@@ -70,11 +70,11 @@
 
 `ROI`（矩形）、`PolygonROI`（旧版の四隅・射影補正あり）、`MaskedROI`（現行の多角形・射影補正なし・マスクあり）があり、`ROI.load` が JSON の内容から型を選びます。座標はすべて正規化して保存します。`mask` を持つかどうかで処理が分岐するため、ROI を扱うコードは3種類すべてで確認してください。
 
-## 動画と Codex 判定
+## 動画と自動判定
 
 `ClipCollector` が JPEG 圧縮したフレームをメモリー上限付きで保持し、トリガー前後を切り出して作業スレッドで MP4 に変換します。クリップの `source`（`detected`、`manual`、`dog_enter`、`dog_exit`、`early_alert`、`outside_stay`）で後段の扱いが変わります。
 
-`--codex` では `codex_review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を Codex CLI に渡して JSON スキーマに沿った判定を受け取ります。このモードでは差分だけの通知を抑え、Codex が根拠を確認した場合にだけ通知します。`codex-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
+`--video-review` では `video_review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を判定器（`video_review.VideoJudge`）に渡して JSON スキーマに沿った判定を受け取ります。判定器は差し替えられる作りで、既定の実装は Codex CLI（`codex_cli.CodexCliJudge`）です。このモードでは差分だけの通知を抑え、判定器が根拠を確認した場合にだけ通知します。`video-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
 
 `circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。
 
@@ -114,4 +114,4 @@ RTSP URL には認証情報が含まれます。パッケージの `__init__.py`
 
 ## テストの作り方
 
-`Camera` の `factory`、`MacNotifier` の `runner`、`NtfyNotifier` の `opener`、`ClipCollector` の `encoder`、`inspect_clip` の `runner`、`DogDetector` の `net` は差し替え用の引数です。`monitor` も `max_frames` と偽のカメラで実行できます。CLI 全体は `commands.context.Camera` を偽のカメラに差し替えて動かします（`tests/test_cli.py`、検知から動画保存までを通す `tests/test_pipeline.py`）。テストは NumPy で作った人工画像と `tmp_path` を使い、実カメラ・実データ・Codex CLI には依存させません。
+`Camera` の `factory`、`MacNotifier` の `runner`、`NtfyNotifier` の `opener`、`ClipCollector` の `encoder`、`inspect_clip` の `judge`（`CodexCliJudge` の `runner`）、`DogDetector` の `net` は差し替え用の引数です。`monitor` も `max_frames` と偽のカメラで実行できます。CLI 全体は `commands.context.Camera` を偽のカメラに差し替えて動かします（`tests/test_cli.py`、検知から動画保存までを通す `tests/test_pipeline.py`）。テストは NumPy で作った人工画像と `tmp_path` を使い、実カメラ・実データ・Codex CLI には依存させません。

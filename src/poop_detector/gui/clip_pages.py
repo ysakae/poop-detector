@@ -65,11 +65,11 @@ def clip_list_item(item: Mapping[str, Any], selected: str | None) -> dict[str, A
 
     label = CLIP_LABELS.get(item["label"], "未ラベル")
     if item["label"] is None:
-        if item["codex_label"]:
-            label = "Codex候補 ／ " + CLIP_LABELS[item["codex_label"]]
-        elif item["codex_error"]:
-            label = "Codex判定失敗"
-    location = item["codex_location"] if item["label"] is None else item["location"]
+        if item["review_label"]:
+            label = "自動判定の候補 ／ " + CLIP_LABELS[item["review_label"]]
+        elif item["review_error"]:
+            label = "自動判定の失敗"
+    location = item["review_location"] if item["label"] is None else item["location"]
     if location:
         label += " ／ " + EXCRETION_LOCATIONS.get(location, "場所不明")
     return {
@@ -128,7 +128,7 @@ def circling_detail(store: ClipStore, row: Mapping[str, Any]) -> dict[str, Any] 
 
 
 def assessment_detail(assessment: Mapping[str, Any] | None, labeled: bool) -> dict[str, Any] | None:
-    """Codex の判定。人がまだラベルを付けていなければ、入力欄の初期値（draft）にする。"""
+    """自動判定。人がまだラベルを付けていなければ、入力欄の初期値（draft）にする。"""
     from .pages import local_time
 
     if not assessment:
@@ -163,7 +163,7 @@ def assessment_detail(assessment: Mapping[str, Any] | None, labeled: bool) -> di
 
 
 def label_form(row: Mapping[str, Any], assessment: Mapping[str, Any] | None) -> dict[str, Any]:
-    """動画のラベル入力欄の初期値。Codex の判定が下書きなら、その値を使う。"""
+    """動画のラベル入力欄の初期値。自動判定が下書きなら、その値を使う。"""
     draft: Mapping[str, Any] = (
         assessment if assessment and not assessment["error"] and row["label"] is None else {}
     )
@@ -299,7 +299,7 @@ def render_storage(
                 "size_mib": size / MIB,
                 "time": local_time(row["requested_at"]),
                 "source": SOURCES.get(row["source"], "動画"),
-                "verdict": CLIP_LABELS.get(row["codex_label"], "未判定"),
+                "verdict": CLIP_LABELS.get(row["review_label"], "未判定"),
             }
             for row, size in candidates
         ],

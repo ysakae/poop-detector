@@ -12,7 +12,7 @@ import sqlite3
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-# 版1のテーブル。(列名, 型と既定値) の順で、新しいテーブルはこの順に作る。
+# 版1のテーブル（版1の時点の名前）。(列名, 型と既定値) の順で、新しいテーブルはこの順に作る。
 # 既存のテーブルに足りない列は、ALTER TABLE で末尾に加える。
 TABLES_V1: dict[str, Sequence[tuple[str, str]]] = {
     "events": [
@@ -126,8 +126,13 @@ def migrate_to_v1(db: sqlite3.Connection) -> None:
     db.execute("CREATE INDEX IF NOT EXISTS clips_by_status_time ON clips(status, requested_at)")
 
 
+def migrate_to_v2(db: sqlite3.Connection) -> None:
+    """動画の自動判定の表から、判定器の製品名を外す（codex_assessments → video_assessments）。"""
+    db.execute("ALTER TABLE codex_assessments RENAME TO video_assessments")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
-MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (migrate_to_v1,)
+MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (migrate_to_v1, migrate_to_v2)
 LATEST_VERSION = len(MIGRATIONS)
 
 

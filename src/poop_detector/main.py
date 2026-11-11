@@ -13,6 +13,8 @@ from .config import Config, ConfigError, apply_timezone
 from .events import EXCRETION_TYPES
 from .tray_tracking import TrayReferenceError
 
+# 以前の名前のサブコマンド。引き続き使える。
+ALIASES = {"codex-review": "video-review"}
 HANDLERS: dict[str, Handler] = {
     "check-camera": setup.check_camera,
     "setup-roi": setup.setup_roi,
@@ -22,7 +24,7 @@ HANDLERS: dict[str, Handler] = {
     "events": records.events,
     "metrics": records.metrics,
     "test-notification": notify.test_notification,
-    "codex-review": review.codex_review,
+    "video-review": review.video_review,
     "circling-review": review.circling_review,
     "feedback": records.feedback,
     "acknowledge": records.acknowledge,
@@ -77,9 +79,11 @@ def parser() -> argparse.ArgumentParser:
                 help="サークル内の滞在・通過を集計（features.activity_map と同じ）",
             )
             sub.add_argument(
+                "--video-review",
                 "--codex",
+                dest="video_review",
                 action="store_true",
-                help="動画のCodex判定候補で通知（features.codex と同じ）",
+                help="保存した動画を自動判定し、根拠が見えたら通知（features.video_review と同じ）",
             )
             sub.add_argument(
                 "--detect-outside",
@@ -95,7 +99,9 @@ def parser() -> argparse.ArgumentParser:
             sub.add_argument(
                 "--early-alert", action="store_true", help="見守り専用のntfyトピックをテスト"
             )
-    review = commands.add_parser("codex-review", help="保存済み動画をCodexで判定（通知なし）")
+    review = commands.add_parser(
+        "video-review", aliases=["codex-review"], help="保存済み動画を自動判定（通知なし）"
+    )
     review.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
     review.add_argument("--clip", help="判定する未ラベル動画のID")
     review.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
@@ -132,7 +138,7 @@ def parser() -> argparse.ArgumentParser:
     dog_check.add_argument("--repeat", type=int, default=10)
     commands.add_parser("show-config", help="設定ファイルから読んだ有効な設定を表示")
     for name, sub in commands.choices.items():
-        sub.set_defaults(handler=HANDLERS[name])
+        sub.set_defaults(handler=HANDLERS[ALIASES.get(name, name)])
     return result
 
 

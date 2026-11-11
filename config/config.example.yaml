@@ -8,17 +8,18 @@ timezone: ""
 # 通知と画面に表示する犬の名前（空なら名前を出さない文面）
 pet_name: ""
 
-# 監視で使う機能。run の --codex などのフラグは、ここで false でも一時的に有効にする。
+# 監視で使う機能。run の --video-review などのフラグは、ここで false でも一時的に有効にする。
 features:
-  # 保存した動画を Codex CLI で判定し、根拠が見えたときだけ通知する（clips.enabled が必要）
-  codex: false
+  # 保存した動画を自動判定（既定の判定器は Codex CLI）し、根拠が見えたときだけ通知する
+  # （clips.enabled が必要。以前の名前 codex も読める）
+  video_review: false
   # 録画を待たずに、トイレでの滞在を知らせる
   early_alert: false
   # トレーの縁を目印に、カメラのずれを補正する（capture-baseline で縁の画像も登録する）
   track_tray: false
   # サークル内の滞在時間と通過回数を記録する（犬の検出を自動で有効にする）
   activity_map: false
-  # トレー外での排泄の候補も判定する（codex が必要。犬の検出を自動で有効にする）
+  # トレー外での排泄の候補も判定する（video_review が必要。犬の検出を自動で有効にする）
   detect_outside: false
 
 camera:

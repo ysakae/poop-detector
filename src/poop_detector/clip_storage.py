@@ -15,12 +15,14 @@ if TYPE_CHECKING:
 MIB = 1024**2
 DEFAULT_DISK_MIB = 4096
 RETENTION_DAYS = (1, 3, 7, 14, 30)  # 整理の画面で選べる古さ（日）
+# 動画の自動判定（video_review）と整理を同時に行わないための排他のロックファイル。
+REVIEW_LOCK = ".review.lock"
 CLEANUP_LIMIT = 100  # 1回の整理で表示・削除する最大の本数（画面とデータベースの負荷を抑える）
 logger = logging.getLogger(__name__)
 
 CANDIDATE_SQL = """
-    SELECT c.id, c.path, c.requested_at, c.status, c.source, a.label AS codex_label
-    FROM clips c LEFT JOIN codex_assessments a ON a.clip_id=c.id
+    SELECT c.id, c.path, c.requested_at, c.status, c.source, a.label AS review_label
+    FROM clips c LEFT JOIN video_assessments a ON a.clip_id=c.id
     WHERE c.status IN ('ready', 'removing')
       AND julianday(c.requested_at) <= julianday(?)
       AND c.label IS NULL AND c.event_id IS NULL
@@ -93,8 +95,8 @@ def cleanup_selected(store: "ClipStore", clip_ids: Iterable[str], days: int) -> 
         raise ValueError("整理する動画を選んでください")
     before = cutoff(days)
     removed = 0
-    # Codexが動画を読み取っている間は整理を開始しない。
-    with (store.root / ".codex.lock").open("a") as lock:
+    # 自動判定が動画を読み取っている間は整理を開始しない。
+    with (store.root / REVIEW_LOCK).open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:

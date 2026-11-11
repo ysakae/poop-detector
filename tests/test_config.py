@@ -39,7 +39,7 @@ features: {codex: true, early_alert: true, track_tray: true}
     assert config.notifications is False
     assert (config.clip_enabled, config.clip_disk_mb) == (False, 2048)
     assert (config.dog_enabled, config.dog_fps) == (True, 2)
-    assert (config.codex_enabled, config.early_alert_enabled, config.track_tray_enabled) == (
+    assert (config.video_review_enabled, config.early_alert_enabled, config.track_tray_enabled) == (
         True,
         True,
         True,
@@ -83,7 +83,7 @@ def test_example_config_has_every_setting_and_loads_without_warnings(caplog):
         ("clips: {max_width: 100}\n", r"clips.max_width は160〜3840 の整数"),
         ("dog: {confidence: 1}\n", r"dog.confidence は0 より大きく 1 未満"),
         ("dog: {fps: 0.5, exit_seconds: 2}\n", r"dog.exit_seconds は 2 / dog.fps（4秒）以上"),
-        ("features: {codex: yes-please}\n", r"features.codex はtrue または false"),
+        ("features: {video_review: yes-please}\n", r"features.video_review はtrue または false"),
         ("camera: {fps: '3'}\n", r"camera.fps は"),
         ("detection: {threshold: 2.5}\n", r"detection.threshold は1〜255 の整数"),
         ("clips: {color: red}\n", r"clips.color という設定項目はありません"),
@@ -108,7 +108,7 @@ def test_config_is_immutable_and_replace_validates():
 
 
 def test_sections_round_trip(tmp_path):
-    config = Config(fps=5, clip_enabled=False, codex_enabled=False, pet_name=" ポチ ")
+    config = Config(fps=5, clip_enabled=False, video_review_enabled=False, pet_name=" ポチ ")
     assert config.pet_name == "ポチ"
     path = write(tmp_path, yaml.safe_dump(config.to_sections(), allow_unicode=True))
     assert Config.load(path) == config

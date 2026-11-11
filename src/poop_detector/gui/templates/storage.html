@@ -8,7 +8,7 @@
 {%- for day in retention_days -%}
 <option value="{{ day }}"{% if day == days %} selected{% endif %}>{{ day }}日以上前</option>
 {%- endfor -%}
-</select></label> <button>候補を表示</button></form><p class="note">手動ラベル付き、検知や確定記録にひも付いた動画、保護指定した動画、Codexが排泄候補と判定した動画は整理対象から外れます。</p>
+</select></label> <button>候補を表示</button></form><p class="note">手動ラベル付き、検知や確定記録にひも付いた動画、保護指定した動画、自動判定で排泄候補とされた動画は整理対象から外れます。</p>
 {% if not candidates %}
 <p>整理できる古い動画はありません。</p>
 {% else %}

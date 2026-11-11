@@ -74,6 +74,14 @@ def columns(path, table):
         db.close()
 
 
+def tables(path):
+    db = sqlite3.connect(path)
+    try:
+        return {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        db.close()
+
+
 def version(path):
     db = sqlite3.connect(path)
     try:
@@ -93,8 +101,9 @@ def test_new_database_is_created_at_the_latest_version(tmp_path):
     Store(tmp_path)
     path = tmp_path / "events.sqlite3"
     assert version(path) == LATEST_VERSION
+    renamed = {"codex_assessments": "video_assessments"}
     for table, expected in TABLES_V1.items():
-        assert columns(path, table) == [name for name, _ in expected]
+        assert columns(path, renamed.get(table, table)) == [name for name, _ in expected]
 
 
 def test_pre_versioning_database_keeps_its_data(tmp_path):
@@ -105,7 +114,11 @@ def test_pre_versioning_database_keeps_its_data(tmp_path):
         ("c1", "manual", "2026-11-01T00:00:00+00:00", "ready", "feces", "メモ", "tray"),
     )
     link = ("INSERT INTO clip_confirmations VALUES (?,?)", ("c1", "e1"))
-    create(path, PRE_VERSIONING, [EVENT, LABEL, clip, link])
+    assessment = (
+        "INSERT INTO codex_assessments (clip_id,label,reason,assessed_at) VALUES (?,?,?,?)",
+        ("c1", "feces", "新しい便", "2026-11-01T00:00:00+00:00"),
+    )
+    create(path, PRE_VERSIONING, [EVENT, LABEL, clip, link, assessment])
     assert version(path) == 0
 
     store, clips = Store(tmp_path), ClipStore(tmp_path)
@@ -117,6 +130,11 @@ def test_pre_versioning_database_keeps_its_data(tmp_path):
     assert row is not None
     assert (row["label"], row["note"], row["location"]) == ("feces", "メモ", "tray")
     assert clips.labels.confirmation("c1") == "e1"
+    # 版2で、判定の表の名前から判定器の製品名を外した。データはそのまま移る。
+    saved = clips.assessments.get("c1")
+    assert saved is not None
+    assert (saved["label"], saved["reason"]) == ("feces", "新しい便")
+    assert "codex_assessments" not in tables(path)
 
 
 def test_database_before_location_column_gains_missing_columns_and_tables(tmp_path):
@@ -160,9 +178,7 @@ def test_failed_migration_leaves_the_database_unchanged(tmp_path):
 
     assert version(path) == 0
     assert columns(path, "events") == before
-    assert "clips" not in {
-        row[0] for row in sqlite3.connect(path).execute("SELECT name FROM sqlite_master")
-    }
+    assert "clips" not in tables(path)
 
 
 def test_database_from_a_newer_version_is_refused(tmp_path):

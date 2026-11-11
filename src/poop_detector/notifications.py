@@ -54,7 +54,7 @@ class _ToiletNotifier:
             return False
         place = "トレー外での" if location == "outside" else ""
         return self._display(
-            f"Codexが{place}{EXCRETION_TYPES[label]}の候補を検出しました。動画を確認できます。"
+            f"動画の自動判定で{place}{EXCRETION_TYPES[label]}の候補が見つかりました。動画を確認できます。"
         )
 
     def _display(self, message: str, *, early_alert: bool = False) -> bool:

@@ -105,7 +105,7 @@ def test_monitor_sends_and_records_early_alert_alongside_codex(tmp_path, monkeyp
         Notifier(),
         max_frames=1,
         collector=Collector(),
-        codex_notifications=True,
+        review_notifications=True,
         early_alert=True,
     )
     assert calls == ["notice", "early_alert"]

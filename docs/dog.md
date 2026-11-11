@@ -40,15 +40,15 @@ uv run poop-detector check-dog --image /absolute/path/to/image.jpg --repeat 10
 
 既存のトレー範囲を登録した状態で、トレーと監視したい周囲の床を囲みます。
 トレー外で犬が約2秒とどまると、その前後の動画を保存します。
-Codex が新しい便、尿の流れ、または新しい濡れ跡を確認した場合に、トレー外の候補として通知します。`--codex` が必要です。
+動画の自動判定で新しい便、尿の流れ、または新しい濡れ跡を確認した場合に、トレー外の候補として通知します。`--video-review` が必要です。
 
 ```bash
 uv run poop-detector setup-roi --outside
-uv run poop-detector run --dog --codex --detect-outside
+uv run poop-detector run --dog --video-review --detect-outside
 ```
 
 トレー追従や見守り通知を使用中なら、`--track-tray` や `--early-alert` も起動コマンドに付けます。
-トレー外での滞在と手動保存の動画では、登録範囲内の画像を Codex に送ります。
+トレー外での滞在と手動保存の動画では、登録範囲内の画像を判定器（Codex CLI）に渡します。
 動画ラベルと確定記録には「トレー内」「トレー外」を保存できます。
 短時間で犬が通過した場合や、床の濡れが映像に出ない場合は検知できないことがあります。
 
@@ -58,7 +58,7 @@ uv run poop-detector run --dog --codex --detect-outside
 
 ```bash
 uv run poop-detector setup-activity-map
-uv run poop-detector run --dog --codex --early-alert --track-tray --activity-map
+uv run poop-detector run --dog --video-review --early-alert --track-tray --activity-map
 ```
 
 普段の監視オプションに `--activity-map` を追加してください。犬の検出が自動で有効になります。サークル全体の元映像で約1秒間隔の位置推定を行い、画像や動画の代わりに、20×20区画の日別集計を `data/activity.sqlite3` に保存します。背景には登録時の床面画像を1枚使います。
