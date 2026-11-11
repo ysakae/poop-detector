@@ -46,6 +46,7 @@
 | `commands/run.py` | `run` |
 | `commands/records.py` | `events`、`metrics`、`feedback`、`acknowledge`、`missed`、`record`、`records`、`label-gui` |
 | `commands/notify.py` | `test-notification` |
+| `commands/show_config.py`・`commands/diagnose.py` | `show-config`、`diagnose` |
 | `commands/review.py` | `video-review`、`circling-review` |
 | `commands/dog_model.py` | `setup-dog-model`、`check-dog` |
 

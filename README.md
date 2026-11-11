@@ -98,7 +98,7 @@ uv run poop-detector run
 
 Ctrl+C で停止します。通知は、`.env` に `POOP_NTFY_TOPIC` があれば ntfy、なければ macOS の通知センターに届きます。
 
-失敗の原因が表示だけで分からないときは、`uv run poop-detector --verbose run` のようにサブコマンドの前に `--verbose` を付けると、詳細なログとトレースバックが出ます。RTSP URL などの認証情報は伏せ字になりますが、不具合の報告に貼る前に内容を確かめてください。
+失敗の原因が表示だけで分からないときは、`uv run poop-detector --verbose run` のようにサブコマンドの前に `--verbose` を付けると、詳細なログとトレースバックが出ます。RTSP URL などの認証情報は伏せ字になりますが、不具合の報告に貼る前に内容を確かめてください。報告には `uv run poop-detector diagnose` の出力（バージョン、OS、有効な機能、登録の有無。URL・トピック名・保存先のパスは含まない）も添えてください。
 
 ### PyPI から入れる場合
 

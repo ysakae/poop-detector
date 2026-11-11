@@ -33,6 +33,12 @@ body:
         3.
     validations:
       required: true
+  - type: textarea
+    id: diagnose
+    attributes:
+      label: 診断情報 / Diagnostics
+      description: "`uv run poop-detector diagnose` の出力。URL・トピック名・保存先のパスは含まれません。Output of `uv run poop-detector diagnose` (contains no URLs, topics or paths)."
+      render: yaml
   - type: input
     id: os
     attributes:

@@ -8,7 +8,7 @@ from collections.abc import Sequence
 
 import cv2
 
-from .commands import dog_model, notify, records, review, run, setup, show_config
+from .commands import diagnose, dog_model, notify, records, review, run, setup, show_config
 from .commands.context import CommandContext, Handler
 from .config import Config, apply_timezone
 from .errors import UserError
@@ -37,6 +37,7 @@ HANDLERS: dict[str, Handler] = {
     "setup-dog-model": dog_model.setup_dog_model,
     "check-dog": dog_model.check_dog,
     "show-config": show_config.show_config,
+    "diagnose": diagnose.diagnose,
 }
 
 
@@ -145,6 +146,9 @@ def parser() -> argparse.ArgumentParser:
     dog_check.add_argument("--image", required=True)
     dog_check.add_argument("--repeat", type=int, default=10)
     commands.add_parser("show-config", help="設定ファイルから読んだ有効な設定を表示")
+    commands.add_parser(
+        "diagnose", help="不具合の報告に貼る診断情報を表示（URL・トピック名・パスは含まない）"
+    )
     for name, sub in commands.choices.items():
         sub.set_defaults(handler=HANDLERS[ALIASES.get(name, name)])
     return result
