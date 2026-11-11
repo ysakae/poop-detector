@@ -246,12 +246,14 @@ class Monitor:
         on_tray_state: Callable[[str], None] | None = None,
         extensions: Sequence[MonitorExtension] = (),
         clock: Clock | None = None,
+        before_align: Callable[["Monitor", Frame | None], bool] | None = None,
     ) -> None:
         self.camera, self.roi, self.config, self.notifier = camera, roi, config, notifier
         self.collector, self.review_notifications = collector, review_notifications
         self.tray_tracker, self.on_tray_state = tray_tracker, on_tray_state
         self.extensions = tuple(extensions)
         self.clock = clock or SystemClock()
+        self.before_align = before_align
         self.detector = IncrementalDetector(
             baseline,
             config.threshold,
@@ -271,6 +273,31 @@ class Monitor:
         self.process = psutil.Process()
         self.process.cpu_percent()
         self.last_health = self.clock.monotonic()
+
+    def replace_scene(
+        self,
+        roi: AnyROI,
+        baseline: Frame,
+        tracker: TrayTracker | None,
+        extensions: Sequence[MonitorExtension],
+    ) -> None:
+        """交換前の判定と参照画像を捨て、新しい場面の監視を開始する。"""
+        self.state.interrupt()
+        self.roi, self.tray_tracker = roi, tracker
+        self.detector = IncrementalDetector(
+            baseline,
+            self.config.threshold,
+            self.config.min_area,
+            self.config.occupied_ratio,
+            self.config.color_threshold,
+        )
+        self.signature = scene_signature(baseline, roi)
+        self.extensions = tuple(extensions)
+        self.state = LoopState(
+            self._new_machine(), self.camera.generation, extensions=self.extensions
+        )
+        if self.collector is not None:
+            self.collector.scene_signature = self.signature
 
     def _new_machine(self) -> Machine:
         return Machine(self.config.verify_seconds, self.config.clear_seconds)
@@ -307,6 +334,8 @@ class Monitor:
     def _read(self, tick: float) -> tuple[Frame | None, Frame | None, bool]:
         """読み込みと位置合わせ。(読んだフレーム, 位置合わせ後, 中断したか) を返す。"""
         raw = self.camera.read()
+        if self.before_align is not None and self.before_align(self, raw):
+            return raw, None, True
         reconnected = self.camera.generation != self.state.generation
         self.state.generation = self.camera.generation
         disconnected = reconnected or (raw is None and not self.camera.healthy)
@@ -466,6 +495,7 @@ def monitor(
     *,
     extensions: Sequence[MonitorExtension] = (),
     clock: Clock | None = None,
+    before_align: Callable[[Monitor, Frame | None], bool] | None = None,
 ) -> int:
     """監視ループを動かし、処理したフレーム数を返す。max_frames が 0 なら止めるまで動く。
 
@@ -497,4 +527,5 @@ def monitor(
         on_tray_state=on_tray_state,
         extensions=[*built, *extensions],
         clock=clock,
+        before_align=before_align,
     ).run(max_frames)

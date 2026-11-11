@@ -5,6 +5,7 @@ import logging
 import platform
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
 from ..capture.camera import Camera
@@ -12,6 +13,7 @@ from ..config import Config
 from ..detection.roi import ROI, AnyROI
 from ..detection.scene import load_baseline
 from ..errors import SetupRequiredError, UserError
+from ..features.tray_registration import TrayRegistration
 from ..features.tray_tracking import TrayTracker
 from ..frames import Frame
 from ..notifications import DEFAULT_NTFY_SERVER, MacNotifier, NtfyNotifier
@@ -36,9 +38,13 @@ class CommandContext:
     def root(self) -> Path:
         return Path(self.config.data_dir)
 
+    @cached_property
+    def scene_root(self) -> Path:
+        return TrayRegistration(self.root).scene_root()
+
     @property
     def roi_path(self) -> Path:
-        return self.root / "roi.json"
+        return self.scene_root / "roi.json"
 
     @property
     def outside_roi_path(self) -> Path:
@@ -46,11 +52,11 @@ class CommandContext:
 
     @property
     def baseline_path(self) -> Path:
-        return self.root / "baseline" / "empty.png"
+        return self.scene_root / "baseline" / "empty.png"
 
     @property
     def tray_reference_path(self) -> Path:
-        return self.root / "baseline" / "tray-reference.png"
+        return self.scene_root / "baseline" / "tray-reference.png"
 
     @property
     def dog_model_dir(self) -> Path:
