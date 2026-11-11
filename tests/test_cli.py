@@ -9,8 +9,9 @@ from support import spot_scene
 from poop_detector import main as cli
 from poop_detector.config import CONNECTION_KEYS
 from poop_detector.events import Store
-from poop_detector.main import load_baseline, main, save_baseline
+from poop_detector.main import main
 from poop_detector.roi import ROI, PolygonROI
+from poop_detector.scene import load_baseline, save_baseline
 
 SECRET_URL = "rtsp://private:secret@camera.invalid/live"
 

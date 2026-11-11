@@ -101,7 +101,7 @@ def test_monitor_does_not_notify_while_dog_occludes_roi(tmp_path):
     from poop_detector.config import Config
     from poop_detector.dog import DogState
     from poop_detector.events import Store
-    from poop_detector.main import monitor
+    from poop_detector.monitoring import monitor
 
     base = np.full((200, 200, 3), 200, np.uint8)
     changed = base.copy()
@@ -137,7 +137,7 @@ def test_monitor_collects_entry_exit_and_detection(tmp_path):
     from poop_detector.config import Config
     from poop_detector.dog import DogState
     from poop_detector.events import Store
-    from poop_detector.main import monitor
+    from poop_detector.monitoring import monitor
 
     base = np.full((200, 200, 3), 200, np.uint8)
     changed = base.copy()
