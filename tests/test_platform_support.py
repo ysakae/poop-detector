@@ -41,12 +41,12 @@ def test_linux_needs_display_or_wayland(environ, expected):
 def test_gui_setup_without_display_explains_how_to_prepare(command, tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("POOP_RTSP_URL", "rtsp://camera.invalid/live")
-    monkeypatch.setattr("poop_detector.main.has_display", lambda: False)
+    monkeypatch.setattr("poop_detector.commands.setup.has_display", lambda: False)
 
     def camera(*args, **kwargs):
         raise AssertionError("画面がない場合はカメラに接続しない")
 
-    monkeypatch.setattr("poop_detector.main.Camera", camera)
+    monkeypatch.setattr("poop_detector.commands.context.Camera", camera)
     assert main([command]) == 2
     assert "画面" in capsys.readouterr().err
 
@@ -55,7 +55,7 @@ def test_linux_without_ntfy_warns_that_no_notification_is_sent(tmp_path, monkeyp
     monkeypatch.chdir(tmp_path)
     for key in ("POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC"):
         monkeypatch.delenv(key, raising=False)
-    monkeypatch.setattr("poop_detector.main.platform.system", lambda: "Linux")
+    monkeypatch.setattr("poop_detector.commands.context.platform.system", lambda: "Linux")
     with caplog.at_level(logging.WARNING):
         assert main(["test-notification"]) == 2
     assert "POOP_NTFY_TOPIC" in caplog.text

@@ -108,6 +108,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # CLI と補助スクリプトは標準出力に結果を表示する。
 "src/poop_detector/main.py" = ["T201"]
+"src/poop_detector/commands/*" = ["T201"]
 "scripts/*" = ["T201"]
 # テストでは assert を使い、偽オブジェクトは本物と同じ引数を受け取るだけで使わない。
 # OpenCV の API に合わせた名前（isOpened など）と、テスト用の固定の認証情報も許す。

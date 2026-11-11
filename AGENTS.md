@@ -4,7 +4,7 @@
 
 ## プロジェクト構成
 
-- `src/poop_detector/` に Python の実装があります。`main.py` が CLI の入口で、`camera.py` が映像取得、`detection.py` が変化検知、`events.py` と `clips.py` が記録・録画を担当します。
+- `src/poop_detector/` に Python の実装があります。`main.py` が CLI の入口（引数の解析と振り分け）で、各サブコマンドの処理は `commands/`、監視ループは `monitoring.py` にあります。`camera.py` が映像取得、`detection.py` が変化検知、`events.py` と `clips.py` が記録・録画を担当します。
 - `label_gui.py` と `clip_gui.py` がラベル付け画面を提供します。ブラウザー用 JavaScript は `src/poop_detector/static/`、テストは `tests/` にあります。設定例は `config/config.example.yaml`、利用手順は `README.md`、設計の概要は `docs/architecture.md` を参照してください。
 
 ## 開発・実行コマンド

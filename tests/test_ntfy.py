@@ -70,7 +70,7 @@ def test_cli_can_send_a_distinct_test_message_on_linux(tmp_path, monkeypatch, ca
 
     monkeypatch.setenv("POOP_NTFY_TOPIC", "test-family")
     monkeypatch.delenv("POOP_NTFY_EARLY_TOPIC", raising=False)
-    monkeypatch.setattr("poop_detector.main.platform.system", lambda: "Linux")
+    monkeypatch.setattr("poop_detector.commands.context.platform.system", lambda: "Linux")
     monkeypatch.setattr("poop_detector.notifications.urlopen", open_request)
     config = tmp_path / "config.yaml"
     config.write_text("notifications: true\n")
