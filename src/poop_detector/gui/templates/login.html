@@ -1,0 +1,11 @@
+{#- パスキーでのログイン。操作は passkey.js が行う。 -#}
+{% extends "base.html" %}
+{% block content %}
+<h2>ログイン</h2>
+<p>登録したパスキー（指紋・顔・画面ロックなど）でログインします。</p>
+<p><button type="button" data-passkey="login" data-next="{{ next_path }}">パスキーでログイン</button></p>
+<p id="passkey-message" role="status"></p>
+<noscript><p>ログインには JavaScript を有効にしてください。</p></noscript>
+<p class="note">まだ登録していない場合は、管理者に招待の URL を出してもらってください。</p>
+<script defer src="/assets/passkey.js"></script>
+{% endblock %}

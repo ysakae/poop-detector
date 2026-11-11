@@ -19,7 +19,9 @@ from ..features.tray_registration import REGISTRATION_MESSAGES, TrayRegistration
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow
 from ..video.clips import CLIP_LABELS
 from .access import expired_cookie, session_ids
+from .accounts import ROLES
 from .activity_page import render_activity
+from .auth_api import safe_next
 from .clip_pages import (
     capacity_status,
     handle_clip_post,
@@ -36,6 +38,7 @@ from .pages import (
     render_records,
     save_failed_page,
 )
+from .passkeys import PasskeyError
 from .templating import render_template
 
 if TYPE_CHECKING:
@@ -198,6 +201,54 @@ def management_tray(handler: "Handler", form: Form) -> None:
     handler.redirect("/manage")
 
 
+# --- ログインとパスキーの登録（ログインしていなくても開ける） ---
+
+
+def localhost_redirect(handler: "Handler") -> bool:
+    """IP アドレスで開いたときは、パスキーを使える localhost の同じ画面へ移す。"""
+    port = handler.app.site.port
+    if (handler.headers.get("host") or "").lower() != f"127.0.0.1:{port}":
+        return False
+    handler.redirect(f"http://localhost:{port}{handler.path}")
+    return True
+
+
+@get("/login")
+def login_page(handler: "Handler", query: Query) -> None:
+    if localhost_redirect(handler):
+        return
+    page = render_template(
+        "login.html", title=handler.app.title, next_path=safe_next(first(query, "next", "/"))
+    )
+    handler.respond(200, page)
+
+
+@get("/enroll")
+def enroll_page(handler: "Handler", query: Query) -> None:
+    if localhost_redirect(handler):
+        return
+    app = handler.app
+    code = first(query, "code")
+    try:
+        enrollment = app.passkeys.enrollment(code)
+    except PasskeyError as error:
+        page = message_page(
+            "登録用 URL を使えません", str(error), "/login", "ログインへ", title=app.title
+        )
+        handler.respond(400, page)
+        return
+    page = render_template(
+        "enroll.html",
+        title=app.title,
+        person=enrollment.name or "ユーザー",
+        role=ROLES[enrollment.role],
+        adding=enrollment.user_id is not None,
+        code=code,
+        expires=local_time(enrollment.expires_at),
+    )
+    handler.respond(200, page)
+
+
 # --- ログアウト ---
 
 
@@ -227,7 +278,13 @@ def logout(handler: "Handler", _form: Form) -> None:
 # --- 画像・動画・スクリプト ---
 
 
-@get("/assets/live.js", "/assets/clips.js", "/assets/clip_storage.js", "/assets/management.js")
+@get(
+    "/assets/live.js",
+    "/assets/clips.js",
+    "/assets/clip_storage.js",
+    "/assets/management.js",
+    "/assets/passkey.js",
+)
 def asset(handler: "Handler", _query: Query) -> None:
     # 許可したパスだけが登録されているので、ファイル名はこの中のどれか。
     script = ASSETS / urlsplit(handler.path).path.rsplit("/", 1)[1]

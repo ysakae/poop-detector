@@ -103,13 +103,13 @@ class UserStore:
             row["disabled_at"],
         )
 
-    def create(self, name: str, role: str) -> str:
-        """ユーザーを作り、ID を返す。"""
+    def create(self, name: str, role: str, *, user_id: str | None = None) -> str:
+        """ユーザーを作り、ID を返す。user_id はパスキーの登録で決めた ID を使うとき。"""
         name = name.strip()
         if not name or len(name) > NAME_MAX_LENGTH:
             raise InvalidInputError(f"名前は1〜{NAME_MAX_LENGTH}文字で指定してください")
         checked = _role(role)
-        user_id = uuid4().hex
+        user_id = user_id or uuid4().hex
         try:
             with self.database.connect() as db:
                 db.execute(
@@ -134,13 +134,6 @@ class UserStore:
         with self.database.connect() as db:
             rows = db.execute("SELECT * FROM users ORDER BY created_at, name").fetchall()
         return [self._user(row) for row in rows]
-
-    def active_admins(self) -> int:
-        with self.database.connect() as db:
-            count: int = db.execute(
-                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled_at IS NULL"
-            ).fetchone()[0]
-        return count
 
     def disable(self, user_id: str) -> None:
         """ユーザーを無効にする。最後の有効な管理者は無効にできない。"""

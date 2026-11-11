@@ -9,13 +9,22 @@ import pytest
 from support import csrf_token, exchange
 
 from poop_detector.gui import routes
-from poop_detector.gui.asgi import SECURITY_HEADERS
+from poop_detector.gui.asgi import PUBLIC_PATHS, SECURITY_HEADERS, is_public
 from poop_detector.gui.routes import GET_ROUTES, POST_ROUTES
 
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 
 
-@pytest.mark.parametrize("path", sorted(GET_ROUTES))
+PROTECTED_GET = sorted(path for path in GET_ROUTES if not is_public(path))
+
+
+def test_only_login_and_enrollment_are_public():
+    """ログインしていなくても開ける場所は、ログイン・パスキーの登録・その画面のスクリプトだけ。"""
+    assert {path for path in GET_ROUTES if is_public(path)} == PUBLIC_PATHS
+    assert not any(is_public(path) for path in POST_ROUTES)
+
+
+@pytest.mark.parametrize("path", PROTECTED_GET)
 def test_every_get_route_requires_the_access_cookie(gui, path):
     server, _, _ = gui
     status, _, body = exchange(server, "GET", path, auth=False)

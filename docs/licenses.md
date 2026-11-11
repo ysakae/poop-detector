@@ -25,6 +25,13 @@ PyPI に公開する sdist と wheel、およびリポジトリには、この�
 | h11 | MIT | uvicorn の依存。HTTP/1.1 の処理 |
 | click | BSD-3-Clause | uvicorn の依存 |
 | idna | BSD-3-Clause | anyio の依存 |
+| webauthn | BSD-3-Clause | パスキー（WebAuthn）の検証 |
+| cbor2 | MIT | webauthn の依存。CBOR の読み書き |
+| cryptography | Apache-2.0 OR BSD-3-Clause | webauthn の依存。署名の検証 |
+| pyOpenSSL | Apache-2.0 | webauthn の依存。証明書の検証 |
+| pyasn1、pyasn1-modules | BSD-2-Clause | webauthn の依存。ASN.1 の読み込み |
+| cffi | MIT-0 | cryptography の依存 |
+| pycparser | BSD-3-Clause | cffi の依存 |
 
 ## 開発用の依存
 
