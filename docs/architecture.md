@@ -119,7 +119,9 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 
 ルートが使うストアやトークンは `GuiApp` にまとめ、`Exchange.app` からルートへ渡します。ルートの関数は同期の関数で、Starlette がスレッドプールで呼びます。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。
 
-外部公開しない前提でも、Host ヘッダーの検査、起動ごとのトークン、厳しい CSP を入れています。これらは `asgi.Admission` がすべての要求の前に1か所で確かめます。POST は、`asgi.dispatch` が本文の大きさと CSRF トークンも確かめてからルートに渡します。CSP などの応答ヘッダーは、`asgi.SecurityHeaders` が動画やエラーを含むすべての応答に `SECURITY_HEADERS` から付けます。要求の URL にはトークンや画像の ID が入るので、uvicorn のアクセスログは無効にしています（`tests/test_gui_asgi.py` が確かめます）。
+待ち受けは既定で `127.0.0.1` です。外から開くときは、設定の `gui` セクション（`web_address.WebOptions`）で外部の URL と信頼するプロキシを決め、HTTPS はリバースプロキシで終端します（[外から GUI を開く](remote-access.md)）。受け付ける Host と Origin は、実際のポートと外部の URL から `web_address.Site` が決めます。HTTPS かどうかは、信頼するプロキシからの `X-Forwarded-Proto` を uvicorn が反映した値で判断し、HTTPS のときだけ HSTS と Cookie の `Secure` 属性を付けます。
+
+Host ヘッダーの検査、POST の Origin の検査、起動ごとのトークン、厳しい CSP を入れています。これらは `asgi.Admission` がすべての要求の前に1か所で確かめます。POST は、`asgi.dispatch` が本文の大きさと CSRF トークンも確かめてからルートに渡します。CSP などの応答ヘッダーは、`asgi.SecurityHeaders` が動画やエラーを含むすべての応答に `SECURITY_HEADERS` から付けます。要求の URL にはトークンや画像の ID が入るので、uvicorn のアクセスログは無効にしています（`tests/test_gui_asgi.py` が確かめます）。
 
 トークンは2つあり、POST の CSRF 対策と、閲覧を含むすべての要求の認証（`gui/access.py`、起動時の URL のトークンを HttpOnly の Cookie に移す）に使います。`tests/test_gui_routes.py` は、ルートの表にあるすべてのルートで安全対策が効くことを確かめます。インラインスクリプトは CSP で動かないため、JavaScript は `gui/static/` に置き、`gui/routes.py` の `asset` のパスに加えてください。
 

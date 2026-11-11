@@ -18,6 +18,7 @@ from ..features.tray_registration import TrayRegistration, TrayScene
 from ..frames import Frame
 from ..gui.server import background_gui
 from ..video.recording import ClipCollector
+from ..web_address import WebOptions
 from .context import (
     CommandContext,
     CommandError,
@@ -170,13 +171,15 @@ def watch(
             )
             stack.enter_context(review.watch())
         if args.gui:
+            web = WebOptions.from_config(config, port=args.gui_port)
             stack.enter_context(
                 background_gui(
                     context.root,
-                    args.gui_port,
+                    web.port,
                     not args.no_browser,
                     disk_mb=config.clip_disk_mb,
                     pet_name=config.pet_name,
+                    web=web,
                 )
             )
         live = stack.enter_context(LatestCamera(open_camera(source, config), on_frame))

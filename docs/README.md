@@ -11,6 +11,7 @@
 | [video.md](video.md) | 動画。保存、容量の管理、動画の自動判定 |
 | [dog.md](dog.md) | 犬の検出。犬の存在、トレー外の検知、行動マップ、旋回候補 |
 | [docker.md](docker.md) | Docker / Linux での実行 |
+| [remote-access.md](remote-access.md) | 外から GUI を開く。外部の URL、リバースプロキシ、信頼するプロキシ |
 | [data-collection.md](data-collection.md) | データ収集の方針と今後 |
 | [privacy.md](privacy.md) | データの保存先と、機能ごとに外部へ送られる情報。GUI の安全対策と限界 |
 | [licenses.md](licenses.md) | 依存ライブラリ、犬検出モデル、FFmpeg、Docker イメージのライセンス |

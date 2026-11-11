@@ -17,6 +17,7 @@ from poop_detector.detection.scene import load_baseline, save_baseline
 from poop_detector.features.tray_registration import TrayRegistration
 from poop_detector.main import main
 from poop_detector.records.events import Store
+from poop_detector.web_address import WebOptions
 
 SECRET_URL = "rtsp://private:secret@camera.invalid/live"
 
@@ -234,7 +235,30 @@ def test_gui_passes_settings_to_the_server(cli_env, monkeypatch):
         f"data_dir: {cli_env.root}\npet_name: ポチ\nclip_disk_mb: 64\n"
     )
     assert cli_env.run("gui", "--port", "0", "--no-browser") == 0
-    assert calls == [((cli_env.root, 0, False), {"disk_mb": 64, "pet_name": "ポチ"})]
+    assert calls == [
+        ((cli_env.root, 0, False), {"disk_mb": 64, "pet_name": "ポチ", "web": WebOptions(port=0)})
+    ]
+
+
+def test_gui_uses_the_configured_address_unless_a_port_is_given(cli_env, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "poop_detector.gui.server.serve", lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+    write_config(
+        cli_env,
+        "gui: {port: 9100, public_url: 'https://toilet.example.com', trusted_proxies: ''}\n",
+    )
+    assert cli_env.run("gui", "--no-browser") == 0
+    assert cli_env.run("gui", "--no-browser", "--port", "9200") == 0
+    first, second = (kwargs["web"] for _, kwargs in calls)
+    assert (calls[0][0][1], first.port, first.public_url) == (
+        9100,
+        9100,
+        "https://toilet.example.com",
+    )
+    assert first.trusted_proxies == ""
+    assert (calls[1][0][1], second.port) == (9200, 9200)
 
 
 def test_old_gui_command_is_rejected(cli_env):
@@ -254,7 +278,7 @@ def test_run_with_gui_serves_management_and_releases_port(cli_env, monkeypatch, 
     urls = []
     requests = []
 
-    def announce(base, url, *, opened, interactive):
+    def announce(base, url, *, opened, interactive, public_url=None):
         urls.append(urlsplit(url))
         assert not opened
 
