@@ -10,6 +10,7 @@ from uuid import uuid4
 import cv2
 import numpy as np
 
+from .database import events_database
 from .frames import Frame
 
 # classify で「指定なし（既存の値を保つ）」と None（値を消す）を区別する目印。
@@ -64,11 +65,6 @@ def utcnow() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def ensure_location_column(db: sqlite3.Connection, table: str) -> None:
-    if not any(row["name"] == "location" for row in db.execute(f"PRAGMA table_info({table})")):
-        db.execute(f"ALTER TABLE {table} ADD COLUMN location TEXT")
-
-
 def validate_location(location: str | None) -> None:
     if location and location not in EXCRETION_LOCATIONS:
         raise ValueError("排泄した場所が不正です")
@@ -80,21 +76,7 @@ class Store:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
         (self.root / "events").mkdir(parents=True, exist_ok=True)
-        with self.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            db.execute("""CREATE TABLE IF NOT EXISTS events (
-                id TEXT PRIMARY KEY, timestamp TEXT, kind TEXT, score REAL,
-                detection_started TEXT, notified_at TEXT, processing_ms REAL,
-                image TEXT, feedback INTEGER, acknowledged INTEGER DEFAULT 0,
-                actual_start TEXT, actual_end TEXT, location TEXT)""")
-            ensure_location_column(db, "events")
-
-            db.execute("""CREATE TABLE IF NOT EXISTS monitor_state (
-                id INTEGER PRIMARY KEY CHECK(id=1), state TEXT, event_id TEXT)""")
-            db.execute("""CREATE TABLE IF NOT EXISTS excretion_labels (
-                event_id TEXT PRIMARY KEY, excretion_type TEXT NOT NULL, note TEXT NOT NULL)""")
-            db.execute("""CREATE TABLE IF NOT EXISTS detection_reference (
-                id INTEGER PRIMARY KEY CHECK(id=1), signature TEXT, image BLOB)""")
+        self.database = events_database(self.root)
 
     @staticmethod
     def encode_reference(frame: Frame) -> bytes:
@@ -135,9 +117,7 @@ class Store:
             db.execute("INSERT OR REPLACE INTO monitor_state VALUES (1,?,?)", (state, event_id))
 
     def connect(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self.root / "events.sqlite3")
-        db.row_factory = sqlite3.Row
-        return db
+        return self.database.connect()
 
     def record(
         self,
