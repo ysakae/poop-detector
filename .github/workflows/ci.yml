@@ -29,6 +29,8 @@ jobs:
         run: uv run ruff check .
       - name: 書式の確認
         run: uv run ruff format --check .
+      - name: 型チェック
+        run: uv run mypy
 
   package:
     name: パッケージのビルド

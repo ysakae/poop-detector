@@ -4,7 +4,8 @@ import json
 import logging
 import re
 import subprocess
-from typing import Protocol
+from collections.abc import Callable
+from typing import Any, Protocol
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -23,32 +24,32 @@ class Notifier(Protocol):
 class _ToiletNotifier:
     """通知の文面を組み立てる。送信方法はサブクラスの _deliver が担う。"""
 
-    def __init__(self, enabled, pet_name=""):
+    def __init__(self, enabled: bool, pet_name: str = "") -> None:
         self.enabled = enabled
         # 名前が未設定なら「◯◯の」を付けない文面にする。
         self.owner = f"{pet_name}の" if pet_name else ""
 
-    def title(self, *, early_alert=False):
+    def title(self, *, early_alert: bool = False) -> str:
         if early_alert:
             return f"{self.owner}見守り" if self.owner else "トイレの見守り"
         return f"{self.owner}トイレ" if self.owner else "トイレの通知"
 
-    def send_test(self, *, early_alert=False):
+    def send_test(self, *, early_alert: bool = False) -> bool:
         kind = "見守り" if early_alert else "トイレ"
         return self._display(f"{self.owner}{kind}の通知テストです。", early_alert=early_alert)
 
-    def send(self):
+    def send(self) -> bool:
         return self._display(
             f"{self.owner}トイレに変化を検出しました。排便・排尿の可能性があります。"
         )
 
-    def send_early_alert(self):
+    def send_early_alert(self) -> bool:
         return self._display(
             f"トイレで同じ場所にとどまっています。{self.owner}様子を確認してください。",
             early_alert=True,
         )
 
-    def send_assessment(self, label, *, location=None):
+    def send_assessment(self, label: str, *, location: str | None = None) -> bool:
         if label not in ("feces", "urine", "both"):
             return False
         place = "トレー外での" if location == "outside" else ""
@@ -56,11 +57,15 @@ class _ToiletNotifier:
             f"Codexが{place}{EXCRETION_TYPES[label]}の候補を検出しました。動画を確認できます。"
         )
 
-    def _display(self, message, *, early_alert=False):
+    def _display(self, message: str, *, early_alert: bool = False) -> bool:
         return self.enabled and self._deliver(message, early_alert=early_alert)
 
+    def _deliver(self, message: str, *, early_alert: bool) -> bool:
+        """通知を1件送り、受け付けられたら True を返す。"""
+        raise NotImplementedError
 
-def applescript_string(value):
+
+def applescript_string(value: str) -> str:
     """AppleScript の二重引用符の文字列として安全に埋め込めるようにする。"""
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
@@ -68,12 +73,18 @@ def applescript_string(value):
 class MacNotifier(_ToiletNotifier):
     """osascript で macOS の通知センターに通知する。"""
 
-    def __init__(self, enabled=True, runner=subprocess.run, *, pet_name=""):
+    def __init__(
+        self,
+        enabled: bool = True,
+        runner: Callable[..., Any] = subprocess.run,
+        *,
+        pet_name: str = "",
+    ) -> None:
         super().__init__(enabled, pet_name)
         self.runner = runner
 
     # macOS の通知は見守り用の送り先を分けられないため、early_alert は使わない。
-    def _deliver(self, message, *, early_alert):  # noqa: ARG002
+    def _deliver(self, message: str, *, early_alert: bool) -> bool:  # noqa: ARG002
         script = (
             f'display notification "{applescript_string(message)}" '
             f'with title "{applescript_string(self.title())}"'
@@ -92,7 +103,7 @@ class MacNotifier(_ToiletNotifier):
             return False
 
 
-def validated_ntfy_server(server):
+def validated_ntfy_server(server: str) -> str:
     """送信先の URL を検証し、末尾のスラッシュを除いて返す。"""
     parts = urlsplit(server.strip())
     if parts.scheme not in ("https", "http") or not parts.hostname:
@@ -112,14 +123,14 @@ class NtfyNotifier(_ToiletNotifier):
 
     def __init__(
         self,
-        topic,
-        enabled=True,
-        opener=None,
+        topic: str,
+        enabled: bool = True,
+        opener: Callable[..., Any] | None = None,
         *,
-        early_topic="",
-        pet_name="",
-        server=DEFAULT_NTFY_SERVER,
-    ):
+        early_topic: str = "",
+        pet_name: str = "",
+        server: str = DEFAULT_NTFY_SERVER,
+    ) -> None:
         super().__init__(enabled, pet_name)
         targets = {"POOP_NTFY_TOPIC": topic}
         if early_topic:
@@ -136,9 +147,9 @@ class NtfyNotifier(_ToiletNotifier):
         self.topic = topic
         self.early_topic = early_topic
         self.server = validated_ntfy_server(server)
-        self.opener = urlopen if opener is None else opener
+        self.opener: Callable[..., Any] = urlopen if opener is None else opener
 
-    def _deliver(self, message, *, early_alert):
+    def _deliver(self, message: str, *, early_alert: bool) -> bool:
         separate = early_alert and bool(self.early_topic)
         topic = self.early_topic if separate else self.topic
         payload = json.dumps(
@@ -154,7 +165,7 @@ class NtfyNotifier(_ToiletNotifier):
         )
         try:
             with self.opener(request, timeout=5) as response:
-                return 200 <= response.status < 300
+                return bool(200 <= response.status < 300)
         except OSError:
             logger.warning("ntfyに通知を送信できませんでした")
             return False

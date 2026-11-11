@@ -24,7 +24,8 @@ Python 3.11 以上が必要です。開発には `.python-version` の 3.12 を�
 - Ruff で除外したルールと理由は `pyproject.toml` に書いてあります。個別に `# noqa` を付けるときは、安全と判断した理由をすぐ上のコメントに書いてください。
 - コード変更では `tests/test_*.py` に `test_*` を先に追加し、失敗を確認してから最小限の実装とリファクタリングを行います。人工画像や一時ディレクトリを使い、実カメラや運用データに依存させないでください。複数のファイルで使うフィクスチャは `tests/conftest.py`、人工画像や偽のカメラなどの補助は `tests/support.py` に置きます。
 - CI は `uv run pytest --cov` でカバレッジを計測し、`pyproject.toml` の `fail_under` を下回ると失敗します。下限を下げる変更には所有者の承認が必要です。テストを足して実測が上がったら、下限も引き上げてください。
-- `uv run pytest` と併せて `uv run ruff check .` と `uv run ruff format --check .` を実行し、指摘に対処してください。文書のみの変更は `git diff --check` で確認します。
+- `uv run pytest` と併せて `uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` を実行し、指摘に対処してください。
+- 新しい関数には引数と戻り値の型注釈を付けてください。mypy は `pyproject.toml` の overrides に挙げたモジュールだけ注釈なしを許しています。モジュールの注釈を終えたら一覧から外してください。共通の画像の型は `frames.py` にあります。文書のみの変更は `git diff --check` で確認します。
 
 ## GitHub Flow
 

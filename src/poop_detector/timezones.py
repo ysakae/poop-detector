@@ -4,28 +4,28 @@
 config.apply_timezone で TZ 環境変数として反映する。
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 
-def to_local(value):
+def to_local(value: str) -> datetime:
     """タイムゾーン付きの ISO 8601 文字列をローカル時刻の datetime にする。"""
     return datetime.fromisoformat(value).astimezone()
 
 
-def local_now():
+def local_now() -> datetime:
     return datetime.now(UTC).astimezone()
 
 
-def local_today():
+def local_today() -> date:
     return local_now().date()
 
 
-def timezone_label():
+def timezone_label() -> str:
     """画面に表示するタイムゾーンの略称（JST、EST など）。"""
-    return local_now().tzname()
+    return local_now().tzname() or ""
 
 
-def parse_local(value):
+def parse_local(value: str) -> datetime:
     """フォームの日時をタイムゾーン付きにする。時差がなければローカル時刻とみなす。"""
     stamp = datetime.fromisoformat(value)
     if stamp.tzinfo is None:
