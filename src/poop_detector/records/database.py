@@ -208,6 +208,23 @@ def migrate_to_v6(db: sqlite3.Connection) -> None:
     db.execute("CREATE INDEX enrollments_by_email ON enrollments(email)")
 
 
+def migrate_to_v7(db: sqlite3.Connection) -> None:
+    """管理者の操作の監査ログ。
+
+    actor はユーザーの ID か、監視するマシンでのコマンドの操作を表す "cli"。
+    detail は利用者に見せる説明で、登録用 URL や認証情報は入れない。
+    """
+    db.execute(
+        """CREATE TABLE audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            at TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            action TEXT NOT NULL,
+            detail TEXT NOT NULL
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -216,6 +233,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v4,
     migrate_to_v5,
     migrate_to_v6,
+    migrate_to_v7,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

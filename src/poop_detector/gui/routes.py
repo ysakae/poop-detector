@@ -1,7 +1,8 @@
 """GUI の URL ごとの処理。
 
-ルートを足すときは、関数を1つ書いて @get または @post を付ける。
-安全対策（Host 検査、閲覧トークン、POST の CSRF）は asgi.py がすべてのルートの前に行う。
+ルートを足すときは、関数を1つ書いて @get または @post を付ける。管理者だけの操作は
+role="admin" を付けて登録する（既定はログインした人なら誰でも使える "member"）。
+安全対策（Host 検査、セッション、POST の CSRF、役割）は asgi.py がすべてのルートの前に行う。
 ルートは要求ごとの Exchange を受け取り、respond・redirect・stream で応答を決める。
 """
 
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from ..detection.roi import ROI, outline
 from ..features.activity_map import ActivityLayout
@@ -19,7 +20,7 @@ from ..features.tray_registration import REGISTRATION_MESSAGES, TrayRegistration
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow
 from ..video.clips import CLIP_LABELS
 from .access import expired_cookie, session_ids
-from .accounts import ROLES
+from .accounts import ROLES, Role
 from .activity_page import render_activity
 from .auth_api import safe_next
 from .clip_pages import (
@@ -60,28 +61,48 @@ GetRoute: TypeAlias = Callable[["Handler", Query], None]
 PostRoute: TypeAlias = Callable[["Handler", Form], None]
 GET_ROUTES: dict[str, GetRoute] = {}
 POST_ROUTES: dict[str, PostRoute] = {}
+# (メソッド, パス) ごとに、使うのに必要な役割。表にないルートは "member"。
+ROUTE_ROLES: dict[tuple[str, str], Role] = {}
+ADMIN_ONLY = "この操作は管理者だけができます"
 
 
-def get(*paths: str) -> Callable[[GetRoute], GetRoute]:
-    """GET のルートとして登録する。"""
+def required_role(method: str, path: str) -> Role:
+    return ROUTE_ROLES.get((method, path), "member")
+
+
+def get(*paths: str, role: Role = "member") -> Callable[[GetRoute], GetRoute]:
+    """GET のルートとして登録する。role の役割を持たない人には asgi.py が 403 を返す。"""
 
     def register(route: GetRoute) -> GetRoute:
         for path in paths:
             GET_ROUTES[path] = route
+            ROUTE_ROLES[("GET", path)] = role
         return route
 
     return register
 
 
-def post(*paths: str) -> Callable[[PostRoute], PostRoute]:
-    """POST のルートとして登録する。CSRF トークンは確認済みで呼ばれる。"""
+def post(*paths: str, role: Role = "member") -> Callable[[PostRoute], PostRoute]:
+    """POST のルートとして登録する。CSRF トークンと役割は確認済みで呼ばれる。"""
 
     def register(route: PostRoute) -> PostRoute:
         for path in paths:
             POST_ROUTES[path] = route
+            ROUTE_ROLES[("POST", path)] = role
         return route
 
     return register
+
+
+def is_admin(handler: "Handler") -> bool:
+    return handler.user is not None and handler.user.role == "admin"
+
+
+def audit(handler: "Handler", action: str, detail: str = "") -> None:
+    """ログインしている人の操作として監査ログに残す。"""
+    if handler.user is None:
+        raise RuntimeError("ログインしていない要求の操作を監査ログに残そうとしました")
+    handler.app.accounts.audit.record(handler.user.id, action, detail)
 
 
 def first(query: Query, name: str, default: str = "") -> str:
@@ -115,7 +136,7 @@ def clips_page(handler: "Handler", query: Query) -> None:
     handler.respond(200, page)
 
 
-@get("/clips/storage")
+@get("/clips/storage", role="admin")
 def storage_page(handler: "Handler", query: Query) -> None:
     app = handler.app
     page = render_storage(app.clips, handler.csrf, query, app.disk_mb, title=app.title)
@@ -165,17 +186,17 @@ def render_management(handler: "Handler", error: str | None = None) -> str:
     )
 
 
-@get("/manage")
+@get("/manage", role="admin")
 def management_page(handler: "Handler", _query: Query) -> None:
     handler.respond(200, render_management(handler))
 
 
-@get("/manage/status")
+@get("/manage/status", role="admin")
 def management_status_json(handler: "Handler", _query: Query) -> None:
     handler.respond(200, json.dumps(management_status(handler)), "application/json; charset=utf-8")
 
 
-@post("/manage/tray")
+@post("/manage/tray", role="admin")
 def management_tray(handler: "Handler", form: Form) -> None:
     registration = TrayRegistration(handler.app.root)
     try:
@@ -198,6 +219,7 @@ def management_tray(handler: "Handler", form: Form) -> None:
             render_management(handler, "操作できません。トレーの状態と範囲を確認してください。"),
         )
         return
+    audit(handler, f"tray.{action}")
     handler.redirect("/manage")
 
 
@@ -423,9 +445,36 @@ def _save_label(handler: "Handler", fields: Mapping[str, str]) -> None:
     )
 
 
-@post("/clips/request", "/clips/label", "/clips/confirm", "/clips/protect", "/clips/cleanup")
+@post("/clips/request", "/clips/label", "/clips/confirm", "/clips/protect")
 def clip_form(handler: "Handler", form: Form) -> None:
-    """動画の保存要求・ラベル・確定記録・保護・整理。処理は handler.path で分かれる。"""
+    """動画の保存要求・ラベル・確定記録・保護。処理は handler.path で分かれる。
+
+    保護の指定は誰でもできるが、解除（削除の対象に戻す）は管理者だけができる。
+    """
+    unprotect = handler.path == "/clips/protect" and form.fields.get("protected") == "0"
+    if unprotect and not is_admin(handler):
+        handler.respond(403, ADMIN_ONLY)
+        return
+    _clip_post(handler, form)
+    if unprotect and _succeeded(handler):
+        audit(handler, "clip.unprotect", form.fields.get("id", ""))
+
+
+@post("/clips/cleanup", role="admin")
+def clip_cleanup(handler: "Handler", form: Form) -> None:
+    """選んだ古い動画の録画ファイルを消す。"""
+    _clip_post(handler, form)
+    if _succeeded(handler):
+        location = urlsplit(handler.response.headers["location"] if handler.response else "")
+        removed = parse_qs(location.query).get("removed", ["0"])[0]
+        audit(handler, "clip.cleanup", f"{removed}件")
+
+
+def _clip_post(handler: "Handler", form: Form) -> None:
     handle_clip_post(
         handler, handler.app.root, form.fields, form.values.get("id", ()), title=handler.app.title
     )
+
+
+def _succeeded(handler: "Handler") -> bool:
+    return handler.response is not None and handler.response.status_code == 303

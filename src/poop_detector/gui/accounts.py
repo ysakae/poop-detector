@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from ..errors import InvalidInputError
 from ..records.database import Database
+from .audit import AuditLog
 
 Role: TypeAlias = Literal["admin", "member"]
 ROLES: dict[Role, str] = {"admin": "管理者", "member": "一般ユーザー"}
@@ -43,6 +44,11 @@ def _role(value: str) -> Role:
     if value not in ROLES:
         raise InvalidInputError("役割は admin か member を指定してください")
     return value
+
+
+def role_label(value: str) -> str:
+    """役割の表示名（管理者・一般ユーザー）。"""
+    return ROLES[_role(value)]
 
 
 def normalize_email(value: str) -> str:
@@ -184,27 +190,48 @@ class UserStore:
             rows = db.execute("SELECT * FROM users ORDER BY created_at, name").fetchall()
         return [self._user(row) for row in rows]
 
+    @staticmethod
+    def _keep_an_admin(db: sqlite3.Connection, user_id: str, message: str) -> None:
+        """この人が外れても有効な管理者が残ることを確かめる。
+
+        BEGIN IMMEDIATE の中で呼び、同時に2人を外して管理者がいなくなることを防ぐ。
+        """
+        user = db.execute("SELECT role, disabled_at FROM users WHERE id = ?", (user_id,)).fetchone()
+        if user is None:
+            raise InvalidInputError("ユーザーが見つかりません")
+        others = db.execute(
+            "SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled_at IS NULL AND id != ?",
+            (user_id,),
+        ).fetchone()[0]
+        if user["role"] == "admin" and user["disabled_at"] is None and others == 0:
+            raise InvalidInputError(message)
+
     def disable(self, user_id: str) -> None:
         """ユーザーを無効にする。最後の有効な管理者は無効にできない。"""
         with self.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT role, disabled_at FROM users WHERE id = ?", (user_id,))
-            user = row.fetchone()
-            if user is None:
-                raise InvalidInputError("ユーザーが見つかりません")
-            others = db.execute(
-                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled_at IS NULL "
-                "AND id != ?",
-                (user_id,),
-            ).fetchone()[0]
-            if user["role"] == "admin" and user["disabled_at"] is None and others == 0:
-                raise InvalidInputError(
-                    "最後の管理者は無効にできません。先に別の管理者を登録してください"
-                )
+            self._keep_an_admin(
+                db, user_id, "最後の管理者は無効にできません。先に別の管理者を登録してください"
+            )
             db.execute(
                 "UPDATE users SET disabled_at = ? WHERE id = ? AND disabled_at IS NULL",
                 (_stamp(self.clock()), user_id),
             )
+
+    def set_role(self, user_id: str, role: str) -> None:
+        """役割を変える。最後の有効な管理者は一般ユーザーにできない。"""
+        checked = _role(role)
+        with self.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if checked != "admin":
+                self._keep_an_admin(
+                    db,
+                    user_id,
+                    "最後の管理者は一般ユーザーにできません。先に別の管理者を登録してください",
+                )
+            elif db.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
+                raise InvalidInputError("ユーザーが見つかりません")
+            db.execute("UPDATE users SET role = ? WHERE id = ?", (checked, user_id))
 
     def enable(self, user_id: str) -> None:
         with self.database.connect() as db:
@@ -389,8 +416,6 @@ class EnrollmentStore:
                 raise InvalidInputError(
                     "この宛先には有効な招待または確認があります。招待は再送を使ってください"
                 )
-            if user_id is None and role != "admin":
-                raise InvalidInputError("一般ユーザーの招待は権限制御（#85）の実装後に使えます")
             name = checked_name(name)
             if (
                 user_id is None
@@ -515,12 +540,13 @@ class EnrollmentStore:
 
 
 class Accounts:
-    """ユーザー・パスキー・登録用 URL の台帳をまとめる。"""
+    """ユーザー・パスキー・登録用 URL の台帳と、監査ログをまとめる。"""
 
     def __init__(self, database: Database, *, clock: Clock = time.time) -> None:
         self.users = UserStore(database, clock)
         self.passkeys = PasskeyStore(database, clock)
         self.enrollments = EnrollmentStore(database, self.users, clock)
+        self.audit = AuditLog(database, clock)
 
     def expires_in(self, enrollment: Enrollment) -> timedelta:
         """登録用 URL が切れるまでの時間。"""

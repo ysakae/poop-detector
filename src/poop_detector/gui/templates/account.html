@@ -31,7 +31,7 @@
 </tbody></table>
 <form method="post" action="/account/passkeys/add">{{ csrf_field(token) }}<button>この端末にパスキーを追加する</button></form>
 {% if admin %}
-<h3>家族を招待する</h3>
-<p><a href="/account/invite">招待メールを送る</a> · <a href="/account/users">ユーザー管理</a></p>
+<h3>管理者の操作</h3>
+<p><a href="/account/invite">家族を招待する</a> · <a href="/account/users">ユーザー管理</a> · <a href="/account/audit">監査ログ</a></p>
 {% endif %}
 {% endblock %}

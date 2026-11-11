@@ -4,6 +4,7 @@
 StrictUndefined がエラーにするので、渡し忘れが空欄として紛れ込まない。
 """
 
+from contextvars import ContextVar
 from typing import Any
 
 from jinja2 import Environment, PackageLoader, StrictUndefined
@@ -17,6 +18,11 @@ ENVIRONMENT = Environment(
 )
 
 
+# 画面を見ている人が管理者か。asgi.dispatch がルートを呼ぶスレッドで設定する。
+# テンプレートは viewer_admin で管理者だけの操作の入口を出し分ける（拒否はサーバーで行う）。
+VIEWER_ADMIN: ContextVar[bool] = ContextVar("viewer_admin", default=False)
+
+
 def render_template(name: str, **context: Any) -> str:
     """templates/ のテンプレートを描画する。"""
-    return ENVIRONMENT.get_template(name).render(**context)
+    return ENVIRONMENT.get_template(name).render(viewer_admin=VIEWER_ADMIN.get(), **context)

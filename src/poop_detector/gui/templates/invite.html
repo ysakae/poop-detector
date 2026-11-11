@@ -9,8 +9,8 @@
 <form method="post" action="/account/invite">{{ csrf_field(token) }}
 <p><label>表示名<br><input name="name" maxlength="40" required></label></p>
 <p><label>メールアドレス<br><input name="email" type="email" maxlength="254" required></label></p>
-<p><label>役割 <select name="role"><option value="admin">管理者</option></select></label></p>
-<p class="note">登録リンクは発行から{{ minutes|int }}分間有効です。一般ユーザーの招待は権限制御の実装後に利用できます。</p>
+<p><label>役割 <select name="role"><option value="member">一般ユーザー</option><option value="admin">管理者</option></select></label></p>
+<p class="note">登録リンクは発行から{{ minutes|int }}分間有効です。一般ユーザーは閲覧・ラベル付け・記録・動画の保存と保護ができ、設定・登録・動画の削除・ユーザーの管理は管理者だけができます。</p>
 <button name="action" value="invite">招待メールを送る</button>
 </form>
 <h3>招待の再送・取り消し</h3>
