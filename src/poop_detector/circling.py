@@ -13,10 +13,12 @@ from .dog import Predict
 from .roi import AnyROI, outline
 from .tray_tracking import TrayTracker
 
-SAMPLE_SECONDS = 1 / 3
-WINDOW_SECONDS = 8
-MAX_GAP_SECONDS = 1
-MIN_POINTS = 7
+# 旋回分析は保存済みの動画に対する実験的な分析で、通知や監視には使わない。
+# 値は人工の軌跡と少数の動画で決めたもので、設定にはしない。
+SAMPLE_SECONDS = 1 / 3  # 犬の位置を調べる間隔（秒）
+WINDOW_SECONDS = 8  # 旋回を探す軌跡の長さ（秒）
+MAX_GAP_SECONDS = 1  # これより長く見失ったら軌跡を切る（秒）
+MIN_POINTS = 7  # 旋回とみなすのに必要な位置の数
 
 
 class CirclingDetector:

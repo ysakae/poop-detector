@@ -12,9 +12,10 @@ import cv2
 from .frames import Frame
 
 logger = logging.getLogger(__name__)
-FRAME_INTERVAL = 0.25
-FRAME_MAX_AGE = 3
-REQUEST_MAX_AGE = 5
+# GUI のライブ映像の内部の値。画面の更新間隔（gui/static/live.js）と合わせてある。
+FRAME_INTERVAL = 0.25  # 書き出しの最短の間隔（秒）
+FRAME_MAX_AGE = 3  # これより古い画像は GUI に返さない（秒）
+REQUEST_MAX_AGE = 5  # GUI からの要求がこれより古ければ書き出しをやめる（秒）
 
 
 class LivePreview:

@@ -224,6 +224,22 @@ SETTINGS: tuple[Setting, ...] = (
         "0 以上の数（秒）",
     ),
     Setting(
+        "early_alert_stay_seconds",
+        "early_alert",
+        "stay_seconds",
+        float,
+        _number(1, 600),
+        "1〜600 の数（秒。同じ場所にこの時間とどまったら見守り通知を送る）",
+    ),
+    Setting(
+        "early_alert_cooldown_seconds",
+        "early_alert",
+        "cooldown_seconds",
+        float,
+        _number(0, 3600),
+        "0〜3600 の数（秒。次の見守り通知までの最短の間隔）",
+    ),
+    Setting(
         "codex_enabled",
         "features",
         "codex",
@@ -312,6 +328,8 @@ class Config:
     dog_clip_cooldown_seconds: float = 60
     pet_name: str = ""
     timezone: str = ""
+    early_alert_stay_seconds: float = 4
+    early_alert_cooldown_seconds: float = 30
     codex_enabled: bool = False
     early_alert_enabled: bool = False
     track_tray_enabled: bool = False
