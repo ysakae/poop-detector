@@ -11,6 +11,7 @@ from ..capture.camera import Camera
 from ..config import Config
 from ..detection.roi import ROI, AnyROI
 from ..detection.scene import load_baseline
+from ..errors import SetupRequiredError, UserError
 from ..features.tray_tracking import TrayTracker
 from ..frames import Frame
 from ..notifications import DEFAULT_NTFY_SERVER, MacNotifier, NtfyNotifier
@@ -18,7 +19,7 @@ from ..notifications import DEFAULT_NTFY_SERVER, MacNotifier, NtfyNotifier
 logger = logging.getLogger(__name__)
 
 
-class CommandError(Exception):
+class CommandError(UserError):
     """利用者に理由を伝えて終了コード 2 で終える失敗。
 
     メッセージはそのまま表示するので、外部の例外の文字列（RTSP の URL を含みうる）を入れない。
@@ -62,6 +63,8 @@ Handler = Callable[[argparse.Namespace, CommandContext], int]
 
 def load_scene(context: CommandContext) -> tuple[AnyROI, Frame]:
     """登録済みの ROI と、空のトイレの基準画像を読む。"""
+    if not context.roi_path.is_file():
+        raise SetupRequiredError("監視範囲がありません。先に setup-roi で登録してください")
     roi = ROI.load(context.roi_path)
     return roi, load_baseline(context.baseline_path, roi)
 

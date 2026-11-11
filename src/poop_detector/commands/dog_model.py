@@ -7,6 +7,7 @@ import time
 import cv2
 import psutil
 
+from ..errors import InvalidInputError
 from .context import CommandContext
 
 
@@ -22,10 +23,10 @@ def check_dog(args: argparse.Namespace, context: CommandContext) -> int:
     from ..features.dog import DogDetector
 
     if not 1 <= args.repeat <= 100:
-        raise ValueError("繰り返し回数は1〜100です")
+        raise InvalidInputError("繰り返し回数は1〜100です")
     frame = cv2.imread(args.image)
     if frame is None:
-        raise ValueError("画像を読み込めません")
+        raise InvalidInputError("画像を読み込めません")
     model = DogDetector(context.dog_model_dir, context.config.dog_confidence)
     # 初回の推論は準備の時間を含むため、計測から外す。
     boxes = model.predict(frame)

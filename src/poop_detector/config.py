@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 from dotenv import dotenv_values
 
+from .errors import UserError
 from .video.clip_storage import DEFAULT_DISK_MIB
 
 CONNECTION_KEYS = ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC", "POOP_NTFY_SERVER")
@@ -63,10 +64,10 @@ def apply_timezone(name: str) -> None:
     # 反映後の時差が zoneinfo の値と一致するか確かめ、違えば起動を止める。
     now = datetime.now(UTC)
     if now.astimezone().utcoffset() != now.astimezone(ZoneInfo(name)).utcoffset():
-        raise ValueError(f"timezone {name} をこのマシンの時刻設定に反映できませんでした")
+        raise ConfigError(f"timezone {name} をこのマシンの時刻設定に反映できませんでした")
 
 
-class ConfigError(ValueError):
+class ConfigError(UserError, ValueError):
     """設定ファイルの誤り。項目名と許容範囲を伝える文言で、そのまま表示してよい。"""
 
 

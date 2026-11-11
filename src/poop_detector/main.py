@@ -3,15 +3,17 @@
 import argparse
 import logging
 import sys
+import traceback
 from collections.abc import Sequence
 
 import cv2
 
 from .commands import dog_model, notify, records, review, run, setup, show_config
-from .commands.context import CommandContext, CommandError, Handler
-from .config import Config, ConfigError, apply_timezone
-from .features.tray_tracking import TrayReferenceError
+from .commands.context import CommandContext, Handler
+from .config import Config, apply_timezone
+from .errors import UserError
 from .records.events import EXCRETION_TYPES
+from .redaction import RedactingFormatter, install_log_redaction, redact
 
 # 以前の名前のサブコマンド。引き続き使える。
 ALIASES = {"codex-review": "video-review"}
@@ -41,6 +43,12 @@ HANDLERS: dict[str, Handler] = {
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="犬のトイレの変化検知")
     result.add_argument("--config", default="config/config.yaml", help="設定ファイル")
+    result.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="詳細なログと、失敗したときのトレースバックを表示（URL の認証情報は伏せる）",
+    )
     commands = result.add_subparsers(dest="command", required=True)
     for name, description in [
         ("check-camera", "映像を1フレーム取得"),
@@ -142,26 +150,56 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
+def configure_logging(verbose: bool) -> None:
+    """ログの形式と詳細度を決め、どの出力にも URL の認証情報を出さないようにする。"""
+    install_log_redaction()
+    root = logging.getLogger()
+    if not root.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(RedactingFormatter("%(asctime)s %(levelname)s %(message)s"))
+        root.addHandler(handler)
+    root.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+
+def report_failure(message: str, verbose: bool) -> None:
+    """失敗の文言を標準エラーに出す。--verbose ならトレースバックも伏せ字にして添える。"""
+    print(redact(message), file=sys.stderr)
+    if verbose:
+        print(redact(traceback.format_exc()), end="", file=sys.stderr)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI の入口。終了コードを返す（成功 0、入力や設定の誤り 2）。"""
+    """CLI の入口。終了コードを返す（成功 0、入力や設定の誤り 2、想定外の誤り 1）。
+
+    外部ライブラリの例外の文字列は RTSP の URL を含みうるので表示せず、種類だけを伝える。
+    """
     args = parser().parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    configure_logging(args.verbose)
     try:
         config = Config.load(args.config)
         apply_timezone(config.timezone)
         handler: Handler = args.handler
         return handler(args, CommandContext(config))
-    except (CommandError, ConfigError, TrayReferenceError) as error:
-        # いずれもこのパッケージで書いた文言で、RTSP の URL を含まない。
-        print(error, file=sys.stderr)
+    except UserError as error:
+        # このパッケージで書いた文言なので、そのまま（念のため伏せ字にして）表示する。
+        report_failure(str(error), args.verbose)
         return 2
-    except (ValueError, TypeError, OSError, cv2.error):
-        # 外部例外の文字列に認証URLが含まれる可能性があるため出力しない。
-        print(
-            "処理できませんでした。設定・登録済みROI・基準画像・入力値を確認してください",
-            file=sys.stderr,
+    except (ValueError, OSError, cv2.error) as error:
+        report_failure(
+            f"処理できませんでした（{type(error).__name__}）。"
+            "設定・登録済みROI・基準画像・入力値を確認してください。"
+            "--verbose を付けると詳細を表示します",
+            args.verbose,
         )
         return 2
+    except Exception as error:
+        # プログラムの誤りは入力の誤りと区別し、報告に使える種類を伝える。
+        report_failure(
+            f"想定外のエラー（{type(error).__name__}）で終了しました。"
+            "不具合の可能性があります。--verbose の出力を添えて報告してください",
+            args.verbose,
+        )
+        return 1
 
 
 if __name__ == "__main__":

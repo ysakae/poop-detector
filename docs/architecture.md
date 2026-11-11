@@ -124,9 +124,28 @@
 
 データベースには UTC のタイムゾーン付き ISO 8601 で保存し、画面の表示と日別集計だけをローカル時刻に変換します（`timezones.py`）。ローカル時刻はプロセスのタイムゾーンに従い、設定の `timezone` があれば起動時に `config.apply_timezone` が `TZ` 環境変数として反映します。テストは `tests/conftest.py` で日本時間に固定しているので、実行するマシンのタイムゾーンに左右されません。
 
-## 認証情報をログに出さない仕組み
+## エラーの伝え方と、認証情報を出さない仕組み
 
-RTSP URL には認証情報が含まれます。パッケージの `__init__.py` が、どのモジュールよりも先に OpenCV と FFmpeg のログを抑制します。`main()` の最上位の例外処理は、外部例外の文字列を表示せず固定の文言だけを出します。サブコマンドが理由を伝えて終えるときは `commands.context.CommandError` を送出し、その文言だけを表示します。`CommandError` には外部の例外の文字列を入れないでください。この import 順と例外処理を崩さないでください。エラーの詳細を出したい場合も、例外メッセージをそのまま表示しないでください。
+RTSP URL には認証情報が含まれます。次の仕組みを重ねて、どの出力にも URL が出ないようにしています。この import 順と例外処理を崩さないでください。
+
+- パッケージの `__init__.py` が、どのモジュールよりも先に OpenCV と FFmpeg のログを抑制します。
+- 利用者に原因を伝える失敗は、`errors.UserError` の派生クラスで送出します。`main()` はその文言をそのまま表示し、終了コード 2 を返します。
+
+  | 例外 | 使う場面 |
+  |---|---|
+  | `SetupRequiredError` | 監視範囲・基準画像などが未登録 |
+  | `ReferenceMismatchError` | 基準画像がいまの ROI や映像と合わない |
+  | `CameraUnavailableError` | カメラから映像を取得できない |
+  | `InvalidInputError` | 引数や入力値の誤り |
+  | `AlreadyRunningError` | 同じデータを使う別の処理が動いている |
+  | `IncompatibleDataError` | データベースがこの版で扱えない |
+  | `ConfigError`・`CommandError`・`TrayReferenceError` | 設定の誤り、コマンドの前提、トレーの基準画像 |
+
+  `UserError` の文言には、外部の例外の文字列を入れないでください。`ConfigError` 以外の入力の誤りの派生クラスは `ValueError` も継承しているので、`except ValueError` で文言を受け取る GUI などはそのまま動きます。
+- 外部ライブラリ由来の `ValueError`・`OSError`・`cv2.error` は、文字列を表示せず、例外の種類と確認すべき項目だけを出します（終了コード 2）。それ以外の例外はプログラムの誤りとして、種類と報告のお願いを出します（終了コード 1）。
+- `--verbose`（`-v`）を付けると、ログを DEBUG にし、失敗したときにトレースバックを表示します。表示の前に `redaction.redact` でカメラの URL を丸ごと、ほかの URL はユーザー名とパスワードを伏せ字にします。
+- ログは `redaction.install_log_redaction` が記録を作る時点で本文を伏せ字にするので、どのハンドラーにも URL が渡りません。トレースバックは `RedactingFormatter` が伏せます。
+- コマンドの結果（JSON や完了の知らせ）は `print` で標準出力に、診断（警告や失敗の詳細）は `logging` で標準エラーに出します。
 
 ## テストの作り方
 

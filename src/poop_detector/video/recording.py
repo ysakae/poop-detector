@@ -18,6 +18,7 @@ from typing import IO, Any, Self, TypeAlias
 
 import cv2
 
+from ..errors import AlreadyRunningError
 from ..frames import Frame
 from ..records.events import utcnow
 from .clip_storage import DEFAULT_DISK_MIB, MIB, recording_usage
@@ -128,7 +129,7 @@ class ClipCollector:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             lock.close()
-            raise ValueError("別の動画監視が起動中です") from None
+            raise AlreadyRunningError("別の動画監視が起動中です") from None
         self.capture_lock = lock
         with self.store.connect() as db:
             # 前回の異常終了で残った処理中行を新しい録画と混ぜない。
