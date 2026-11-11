@@ -21,12 +21,12 @@ from typing import TYPE_CHECKING, Protocol
 import psutil
 
 from .activity_map import ActivityRecorder
-from .clips import ClipCollector
 from .config import Config
 from .detection import IncrementalDetector, Observation
 from .early_alert import EarlyAlert
 from .events import Store, utcnow
 from .frames import Frame, Mask
+from .recording import ClipCollector
 from .roi import AnyROI
 from .scene import scene_signature
 from .state_machine import Machine

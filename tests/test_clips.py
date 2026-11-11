@@ -8,7 +8,8 @@ import pytest
 
 
 def test_buffer_and_manual_capture(tmp_path):
-    from poop_detector.clips import ClipCollector, ClipStore
+    from poop_detector.clips import ClipStore
+    from poop_detector.recording import ClipCollector
 
     outputs = []
 
@@ -35,7 +36,8 @@ def test_buffer_and_manual_capture(tmp_path):
 
 
 def test_disconnect_saves_partial_and_does_not_mix_generations(tmp_path):
-    from poop_detector.clips import ClipCollector, ClipStore
+    from poop_detector.clips import ClipStore
+    from poop_detector.recording import ClipCollector
 
     def encode(samples, path, fps):
         path.write_bytes(b"mp4")
@@ -81,7 +83,7 @@ def test_no_camera_request_is_rejected(tmp_path):
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="FFmpeg未導入")
 def test_real_browser_mp4_encoder(tmp_path):
-    from poop_detector.clips import encode_mp4
+    from poop_detector.recording import encode_mp4
 
     samples = []
     for index in range(5):
@@ -101,7 +103,8 @@ def test_real_browser_mp4_encoder(tmp_path):
 
 
 def test_memory_limit_and_disk_limit_preserve_existing_files(tmp_path):
-    from poop_detector.clips import ClipCollector, ClipStore
+    from poop_detector.clips import ClipStore
+    from poop_detector.recording import ClipCollector
 
     def encode(samples, path, fps):
         path.write_bytes(b"new-video")
@@ -125,7 +128,8 @@ def test_memory_limit_and_disk_limit_preserve_existing_files(tmp_path):
 
 
 def test_second_collector_is_rejected_and_stale_requests_fail(tmp_path):
-    from poop_detector.clips import ClipCollector, ClipStore
+    from poop_detector.clips import ClipStore
+    from poop_detector.recording import ClipCollector
 
     store = ClipStore(tmp_path)
     stale = store.request()
@@ -138,7 +142,7 @@ def test_second_collector_is_rejected_and_stale_requests_fail(tmp_path):
 def test_encoder_uses_disk_spool_instead_of_payload_copy(tmp_path, monkeypatch):
     import subprocess
 
-    from poop_detector.clips import encode_mp4
+    from poop_detector.recording import encode_mp4
 
     seen = []
 
@@ -155,7 +159,8 @@ def test_encoder_uses_disk_spool_instead_of_payload_copy(tmp_path, monkeypatch):
 def test_worker_continues_after_metadata_failure(tmp_path, monkeypatch):
     import sqlite3
 
-    from poop_detector.clips import ClipCollector, ClipStore
+    from poop_detector.clips import ClipStore
+    from poop_detector.recording import ClipCollector
 
     def encode(samples, path, fps):
         path.write_bytes(b"mp4")
@@ -217,7 +222,8 @@ def test_camera_survives_recording_callback_failure():
 def test_encoding_start_metadata_failure_can_retry(tmp_path, monkeypatch):
     import sqlite3
 
-    from poop_detector.clips import ClipCollector, ClipStore
+    from poop_detector.clips import ClipStore
+    from poop_detector.recording import ClipCollector
 
     def encode(samples, path, fps):
         path.write_bytes(b"mp4")

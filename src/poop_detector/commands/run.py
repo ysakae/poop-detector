@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING
 
 from ..activity_map import ActivityLayout, ActivityRecorder, ActivityStore
 from ..camera import LatestCamera
-from ..clips import ClipCollector
 from ..config import load_connection_settings
 from ..frames import Frame
 from ..live_preview import LivePreview
 from ..monitoring import monitor
+from ..recording import ClipCollector
 from ..roi import AnyROI
 from .context import (
     CommandContext,
