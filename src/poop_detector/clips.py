@@ -1,5 +1,6 @@
 """上限付き動画バッファと、別プロセスのGUIから使える収集台帳。"""
 
+import builtins
 import fcntl
 import itertools
 import json
@@ -13,8 +14,11 @@ import tempfile
 import threading
 import time
 from collections import deque
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import TracebackType
+from typing import IO, Any, Literal, Self, TypeAlias, TypedDict, cast, get_args
 from uuid import uuid4
 
 import cv2
@@ -23,11 +27,13 @@ from .clip_storage import DEFAULT_DISK_MIB, MIB, recording_usage
 from .events import (
     EXCRETION_LOCATIONS,
     EXCRETION_TYPES,
+    EventRow,
     Store,
     ensure_location_column,
     utcnow,
     validate_location,
 )
+from .frames import Frame
 
 CLIP_LABELS = {
     "feces": "排便",
@@ -49,11 +55,67 @@ ACTIVITIES = {
 logger = logging.getLogger(__name__)
 SHORT_VISIT_SECONDS = 15
 
+# 動画の保存要求のきっかけ。dog_visit は短い入退場をまとめた録画で、要求としては受け付けない。
+RequestSource: TypeAlias = Literal[
+    "manual", "detected", "dog_enter", "dog_exit", "early_alert", "outside_stay"
+]
+ClipSource: TypeAlias = RequestSource | Literal["dog_visit"]
+ClipStatus: TypeAlias = Literal[
+    "queued", "recording", "encoding", "ready", "failed", "removing", "removed"
+]
+# (取得時刻 monotonic, 取得時刻 UTC の ISO 8601, JPEG のバイト列)
+Sample: TypeAlias = tuple[float, str, bytes]
+Encoder: TypeAlias = Callable[[Sequence[Sample], Path, float], float]
+
+
+class ClipRow(TypedDict):
+    """clips テーブルの1行。"""
+
+    id: str
+    event_id: str | None
+    source: ClipSource
+    requested_at: str
+    status: ClipStatus
+    path: str | None
+    start_at: str | None
+    end_at: str | None
+    duration: float | None
+    fps: float | None
+    trigger_offset: float | None
+    pre_available: float | None
+    post_available: float | None
+    interrupted: int
+    error: str | None
+    label: str | None
+    actual_start_offset: float | None
+    actual_end_offset: float | None
+    activity: str
+    note: str
+    scene_signature: str | None
+    location: str | None
+
+
+class AssessmentRow(TypedDict):
+    """codex_assessments テーブルの1行。"""
+
+    clip_id: str
+    label: str | None
+    activity: str | None
+    start_seconds: float | None
+    end_seconds: float | None
+    reason: str | None
+    observed_at: str | None
+    error: str | None
+    assessed_at: str
+    notice_claimed: int
+    notified_at: str | None
+    location: str | None
+
 
 class ClipStore:
     """動画の保存要求・状態・ラベルを events.sqlite3 の clips テーブルで管理する。"""
 
-    def __init__(self, root):
+    def __init__(self, root: str | Path) -> None:
         self.store = Store(root)
         self.root = Path(root)
         (self.root / "clips").mkdir(parents=True, exist_ok=True)
@@ -87,11 +149,14 @@ class ClipStore:
                 clip_id TEXT PRIMARY KEY, candidates TEXT NOT NULL,
                 sampled INTEGER NOT NULL, located INTEGER NOT NULL)""")
 
-    def circling_targets(self, scene_signature, limit, clip_id=None):
+    def circling_targets(
+        self, scene_signature: str, limit: int, clip_id: str | None = None
+    ) -> list[ClipRow]:
+        """旋回分析の対象にする動画。clip_id を指定すると分析済みでも返す。"""
         query = """SELECT c.* FROM clips c
             LEFT JOIN circling_reviews r ON r.clip_id=c.id
             WHERE c.status='ready' AND c.interrupted=0 AND c.scene_signature=?"""
-        params = [scene_signature]
+        params: list[object] = [scene_signature]
         if clip_id is None:
             query += " AND r.clip_id IS NULL"
         else:
@@ -101,16 +166,22 @@ class ClipStore:
             rows = db.execute(
                 query + " ORDER BY c.label IS NULL, c.requested_at DESC LIMIT ?", (*params, limit)
             )
-            return [dict(row) for row in rows]
+            return [cast(ClipRow, dict(row)) for row in rows]
 
-    def circling_review(self, clip_id):
+    def circling_review(self, clip_id: str) -> dict[str, Any] | None:
         with self.store.connect() as db:
             row = db.execute(
                 "SELECT * FROM circling_reviews WHERE clip_id=?", (clip_id,)
             ).fetchone()
         return {**row, "candidates": json.loads(row["candidates"])} if row else None
 
-    def save_circling_review(self, clip_id, candidates, sampled, located):
+    def save_circling_review(
+        self,
+        clip_id: str,
+        candidates: Sequence[tuple[float, float]],
+        sampled: int,
+        located: int,
+    ) -> bool:
         with self.store.connect() as db:
             return (
                 db.execute(
@@ -123,14 +194,15 @@ class ClipStore:
                 == 1
             )
 
-    def is_pinned(self, clip_id):
+    def is_pinned(self, clip_id: str) -> bool:
         with self.store.connect() as db:
             return (
                 db.execute("SELECT 1 FROM clip_protections WHERE clip_id=?", (clip_id,)).fetchone()
                 is not None
             )
 
-    def pin(self, clip_id, protected):
+    def pin(self, clip_id: str, protected: bool) -> None:
+        """動画を自動整理の対象から外す（protected=False で戻す）。"""
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT status FROM clips WHERE id=?", (clip_id,)).fetchone()
@@ -141,13 +213,14 @@ class ClipStore:
             else:
                 db.execute("DELETE FROM clip_protections WHERE clip_id=?", (clip_id,))
 
-    def queued(self):
+    def queued(self) -> list[sqlite3.Row]:
         with self.store.connect() as db:
             return db.execute(
                 "SELECT id,source FROM clips WHERE status='queued' ORDER BY requested_at DESC"
             ).fetchall()
 
-    def video_path(self, row):
+    def video_path(self, row: ClipRow | sqlite3.Row | None) -> Path | None:
+        """変換済みの動画のパス。clips/ の外を指す行や、ファイルがない行は None。"""
         if not row or row["status"] != "ready" or not row["path"]:
             return None
         path = (self.root / row["path"]).resolve()
@@ -155,14 +228,14 @@ class ClipStore:
             return path
         return None
 
-    def assessment(self, clip_id):
+    def assessment(self, clip_id: str) -> AssessmentRow | None:
         with self.store.connect() as db:
             row = db.execute(
                 "SELECT * FROM codex_assessments WHERE clip_id=?", (clip_id,)
             ).fetchone()
-        return dict(row) if row else None
+        return cast(AssessmentRow, dict(row)) if row else None
 
-    def latest_assessment(self):
+    def latest_assessment(self) -> dict[str, Any] | None:
         with self.store.connect() as db:
             row = db.execute(
                 """SELECT a.*, c.requested_at, c.label AS human_label, c.location AS human_location
@@ -171,9 +244,16 @@ class ClipStore:
             ).fetchone()
         return dict(row) if row else None
 
-    def pending_assessments(self, limit, since=None, clip_id=None, scene_signature=None):
+    def pending_assessments(
+        self,
+        limit: int,
+        since: str | None = None,
+        clip_id: str | None = None,
+        scene_signature: str | None = None,
+    ) -> list[ClipRow]:
+        """Codex の判定を待つ動画。since を指定すると、それ以降の未判定の動画だけを古い順に返す。"""
         conditions = ["c.status='ready'", "c.label IS NULL"]
-        params = []
+        params: list[object] = []
         if since is not None:
             conditions.extend(["c.requested_at>=?", "a.clip_id IS NULL"])
             params.append(since)
@@ -189,7 +269,7 @@ class ClipStore:
         # 条件はこの関数内の固定の文字列だけで組み立て、値はすべてプレースホルダーで渡す。
         with self.store.connect() as db:
             return [
-                dict(row)
+                cast(ClipRow, dict(row))
                 for row in db.execute(
                     """SELECT c.* FROM clips c
                     LEFT JOIN codex_assessments a ON a.clip_id=c.id WHERE """  # noqa: S608
@@ -201,16 +281,17 @@ class ClipStore:
 
     def save_assessment(
         self,
-        clip_id,
-        label=None,
-        activity=None,
-        start_seconds=None,
-        end_seconds=None,
-        reason=None,
-        observed_at=None,
-        error=None,
-        location=None,
-    ):
+        clip_id: str,
+        label: str | None = None,
+        activity: str | None = None,
+        start_seconds: float | None = None,
+        end_seconds: float | None = None,
+        reason: str | None = None,
+        observed_at: str | None = None,
+        error: str | None = None,
+        location: str | None = None,
+    ) -> bool:
+        """判定を保存する。既存の判定は失敗していたときだけ上書きし、保存できたら True。"""
         validate_location(location)
         with self.store.connect() as db:
             return (
@@ -238,7 +319,8 @@ class ClipStore:
                 == 1
             )
 
-    def claim_assessment_notice(self, clip_id):
+    def claim_assessment_notice(self, clip_id: str) -> bool:
+        """通知の権利を取る。同じ記録や近い時刻の同じ判定を通知済みなら False。"""
         with self.store.connect() as db:
             return (
                 db.execute(
@@ -264,7 +346,7 @@ class ClipStore:
                 == 1
             )
 
-    def finish_assessment_notice(self, clip_id, sent):
+    def finish_assessment_notice(self, clip_id: str, sent: bool) -> None:
         stamp = utcnow() if sent else None
         with self.store.connect() as db:
             db.execute(
@@ -280,26 +362,26 @@ class ClipStore:
                     (stamp, clip_id),
                 )
 
-    def live(self):
+    def live(self) -> bool:
+        """監視プロセスが動画を収集できる状態か（直近のハートビートで判断）。"""
         with self.store.connect() as db:
             row = db.execute("SELECT * FROM capture_status WHERE id=1").fetchone()
         return bool(row and row["healthy"] and time.time() - row["heartbeat"] < 10)
 
-    def heartbeat(self, healthy):
+    def heartbeat(self, healthy: bool) -> None:
         with self.store.connect() as db:
             db.execute(
                 "INSERT OR REPLACE INTO capture_status VALUES (1,?,?)", (time.time(), int(healthy))
             )
 
-    def request(self, source="manual", event_id=None, require_live=False):
-        if source not in (
-            "manual",
-            "detected",
-            "dog_enter",
-            "dog_exit",
-            "early_alert",
-            "outside_stay",
-        ):
+    def request(
+        self,
+        source: RequestSource = "manual",
+        event_id: str | None = None,
+        require_live: bool = False,
+    ) -> str:
+        """動画の保存要求を queued で登録し、ID を返す。監視側の ClipCollector.poll が拾う。"""
+        if source not in get_args(RequestSource):
             raise ValueError("保存要求の種類が不正です")
         if require_live and not self.live():
             raise ValueError("監視を動画保存有効で起動し、カメラ接続を確認してください")
@@ -318,7 +400,7 @@ class ClipStore:
             )
         return clip_id
 
-    def list(self, include_assessments=False):
+    def list(self, include_assessments: bool = False) -> list[dict[str, Any]]:
         query = "SELECT * FROM clips ORDER BY requested_at DESC"
         if include_assessments:
             query = """SELECT c.*, a.label AS codex_label, a.error AS codex_error,
@@ -328,12 +410,12 @@ class ClipStore:
         with self.store.connect() as db:
             return [dict(row) for row in db.execute(query)]
 
-    def get(self, clip_id):
+    def get(self, clip_id: str) -> ClipRow | None:
         with self.store.connect() as db:
             row = db.execute("SELECT * FROM clips WHERE id=?", (clip_id,)).fetchone()
-        return dict(row) if row else None
+        return cast(ClipRow, dict(row)) if row else None
 
-    def update(self, clip_id, **values):
+    def update(self, clip_id: str, **values: object) -> None:
         allowed = {
             "status",
             "source",
@@ -358,17 +440,20 @@ class ClipStore:
                 (*values.values(), clip_id),
             )
 
-    def confirmation(self, clip_id):
+    def confirmation(self, clip_id: str) -> str | None:
+        """動画から確定した記録の ID。"""
         with self.store.connect() as db:
             row = db.execute(
                 "SELECT event_id FROM clip_confirmations WHERE clip_id=?", (clip_id,)
             ).fetchone()
         return row["event_id"] if row else None
 
-    def record_candidates(self, clip):
+    # 以下では list メソッドと名前が重なるため、組み込みの list は builtins から参照する。
+    def record_candidates(self, clip: ClipRow) -> builtins.list[EventRow]:
+        """動画の時間帯の前後30秒に重なる、確定記録と検知イベント。"""
         start = datetime.fromisoformat(clip["start_at"] or clip["requested_at"])
         margin = timedelta(seconds=30)
-        end = start + timedelta(seconds=clip["duration"])
+        end = start + timedelta(seconds=clip["duration"] or 0)
         return [
             record
             for record in self.store.list()
@@ -384,8 +469,9 @@ class ClipStore:
             )
         ]
 
-    def record_videos(self):
-        links = {}
+    def record_videos(self) -> dict[str, builtins.list[str]]:
+        """記録の ID ごとの、ひも付いた動画の ID。"""
+        links: dict[str, builtins.list[str]] = {}
         with self.store.connect() as db:
             for row in db.execute(
                 """SELECT c.id, COALESCE(k.event_id, c.event_id) AS record_id
@@ -398,16 +484,17 @@ class ClipStore:
 
     def label(
         self,
-        clip_id,
-        label,
-        start=None,
-        end=None,
-        activity="other",
-        note="",
+        clip_id: str,
+        label: str,
+        start: float | None = None,
+        end: float | None = None,
+        activity: str = "other",
+        note: str = "",
         *,
-        record_id=None,
-        location=None,
-    ):
+        record_id: str | None = None,
+        location: str | None = None,
+    ) -> None:
+        """動画にラベルを付ける。record_id を渡すと排泄の記録としても確定する（"new" で新規）。"""
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT * FROM clips WHERE id=?", (clip_id,)).fetchone()
@@ -439,7 +526,17 @@ class ClipStore:
                 (label, start, end, activity, note, location, clip_id),
             )
 
-    def _confirm(self, db, clip, record_id, label, start, end, note, location):
+    def _confirm(
+        self,
+        db: sqlite3.Connection,
+        clip: sqlite3.Row,
+        record_id: str,
+        label: str,
+        start: float | None,
+        end: float | None,
+        note: str,
+        location: str | None,
+    ) -> str | None:
         if label not in ("feces", "urine", "both"):
             raise ValueError("確定記録には排便・排尿・両方のいずれかを選んでください")
         link = db.execute(
@@ -506,11 +603,12 @@ class ClipStore:
         return location
 
 
-def encode_mp4(samples, path, fps):
+def encode_mp4(samples: Sequence[Sample], path: Path, fps: float) -> float:
+    """JPEG のサンプルを一定の FPS の MP4 にし、動画の秒数を返す。"""
     if not samples:
         raise ValueError("保存するフレームがありません")
     # カメラの揺れる取得間隔を一定FPSへ揃える。欠落区間は同じフレームで補間する。
-    frames = []
+    frames: list[bytes] = []
     index = 0
     count = max(1, round((samples[-1][0] - samples[0][0]) * fps) + 1)
     for step in range(count):
@@ -569,38 +667,40 @@ class ClipCollector:
 
     def __init__(
         self,
-        root,
-        before=30,
-        after=30,
-        fps=5,
-        max_width=1280,
-        memory_mb=128,
-        disk_mb=DEFAULT_DISK_MIB,
-        encoder=encode_mp4,
-    ):
+        root: str | Path,
+        before: float = 30,
+        after: float = 30,
+        fps: float = 5,
+        max_width: int = 1280,
+        memory_mb: float = 128,
+        disk_mb: float = DEFAULT_DISK_MIB,
+        encoder: Encoder = encode_mp4,
+    ) -> None:
         self.store = ClipStore(root)
         self.before, self.after, self.fps = before, after, fps
         self.max_width = max_width
         self.memory_limit, self.disk_limit = int(memory_mb * 1024**2), int(disk_mb * MIB)
         self.encoder = encoder
-        self.buffer = deque()
-        self.jobs = {}
+        self.buffer: deque[Sample] = deque()
+        self.jobs: dict[str, dict[str, Any]] = {}
         self.lock = threading.RLock()
-        self.queue = queue.Queue(maxsize=4)
+        self.queue: queue.Queue[str | None] = queue.Queue(maxsize=4)
         self.worker = threading.Thread(target=self._worker, daemon=True)
-        self.generation = None
+        self.generation: tuple[int, tuple[int, ...]] | None = None
         self.last_sample = float("-inf")
         self.last_frame = float("-inf")
         self.last_poll = float("-inf")
-        self.scene_signature = None
+        self.scene_signature: str | None = None
+        self.capture_lock: IO[str] | None = None
 
-    def __enter__(self):
-        self.capture_lock = (self.store.root / ".capture.lock").open("a")
+    def __enter__(self) -> Self:
+        lock = (self.store.root / ".capture.lock").open("a")
         try:
-            fcntl.flock(self.capture_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            self.capture_lock.close()
+            lock.close()
             raise ValueError("別の動画監視が起動中です") from None
+        self.capture_lock = lock
         with self.store.store.connect() as db:
             # 前回の異常終了で残った処理中行を新しい録画と混ぜない。
             db.execute(
@@ -609,12 +709,13 @@ class ClipCollector:
         self.worker.start()
         return self
 
-    def _bytes(self):
+    def _bytes(self) -> int:
         return sum(len(s[2]) for s in self.buffer) + sum(
             sum(len(s[2]) for s in job["samples"]) for job in self.jobs.values()
         )
 
-    def feed(self, frame, now=None, generation=0):
+    def feed(self, frame: Frame | None, now: float | None = None, generation: int = 0) -> None:
+        """カメラのフレームを受け取り、clip_fps の間隔で JPEG にして保持する。"""
         now = time.monotonic() if now is None else now
         with self.lock:
             if frame is None:
@@ -653,14 +754,21 @@ class ClipCollector:
                         )
                         del self.jobs[clip_id]
 
-    def _interrupt(self):
+    def _interrupt(self) -> None:
         for clip_id, job in list(self.jobs.items()):
             if job["status"] == "recording":
                 self._finish(clip_id, interrupted=True)
         self.buffer.clear()
         self.last_sample = self.last_frame = float("-inf")
 
-    def trigger(self, event_id=None, source="detected", *, now=None):
+    def trigger(
+        self,
+        event_id: str | None = None,
+        source: RequestSource = "detected",
+        *,
+        now: float | None = None,
+    ) -> str | None:
+        """監視側から保存を要求する。同時処理数を超えたら None を返す。"""
         now = time.monotonic() if now is None else now
         with self.lock:
             if source == "dog_exit" and event_id is None:
@@ -683,7 +791,8 @@ class ClipCollector:
                 logger.warning("動画保存の同時処理数を超えています")
                 return None
 
-    def poll(self, now=None, force=False):
+    def poll(self, now: float | None = None, force: bool = False) -> None:
+        """GUI からの保存要求を拾い、録画の終わった要求を変換に回す。"""
         now = time.monotonic() if now is None else now
         with self.lock:
             if not force and now - self.last_poll < 0.2:
@@ -718,7 +827,7 @@ class ClipCollector:
                 if job["status"] == "recording" and now >= job["end"]:
                     self._finish(clip_id)
 
-    def _finish(self, clip_id, interrupted=False):
+    def _finish(self, clip_id: str, interrupted: bool = False) -> None:
         job = self.jobs[clip_id]
         samples = job["samples"]
         if not samples:
@@ -748,7 +857,7 @@ class ClipCollector:
         job["status"] = "encoding"
         self.queue.put_nowait(clip_id)
 
-    def _worker(self):
+    def _worker(self) -> None:
         while True:
             clip_id = self.queue.get()
             try:
@@ -788,13 +897,19 @@ class ClipCollector:
             finally:
                 self.queue.task_done()
 
-    def drain(self):
+    def drain(self) -> None:
         self.queue.join()
 
-    def __exit__(self, *args):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         with self.lock:
             self._interrupt()
         self.store.heartbeat(False)
         self.queue.put(None)
         self.worker.join()
-        self.capture_lock.close()
+        if self.capture_lock is not None:
+            self.capture_lock.close()
