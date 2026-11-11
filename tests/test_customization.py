@@ -166,7 +166,7 @@ def test_cli_uses_pet_name_and_ntfy_server(tmp_path, monkeypatch):
 
 
 def test_apply_timezone_changes_local_conversions():
-    from poop_detector.gui.app import local_time, parse_time
+    from poop_detector.gui.pages import local_time, parse_time
     from poop_detector.record_stats import summarize_records
 
     apply_timezone("America/New_York")
@@ -227,7 +227,7 @@ def test_cli_applies_configured_timezone(tmp_path, monkeypatch):
 
 
 def gui_page(tmp_path, **kwargs):
-    from poop_detector.gui.app import make_server
+    from poop_detector.gui.server import make_server
 
     server = make_server(tmp_path, 0, **kwargs)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

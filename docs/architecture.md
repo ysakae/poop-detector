@@ -76,9 +76,22 @@
 
 ## ラベル GUI
 
-`gui.app.make_server` は標準ライブラリの `http.server` だけで作ったサーバーで、HTML は Python の文字列で組み立てます（テンプレートエンジンやフロントエンドのビルドはありません）。画面ごとに `gui/clip_pages.py`（動画）、`gui/activity_page.py`（行動マップ）へ分かれ、`gui/static/` の JavaScript は補助的な操作だけを担います。
+標準ライブラリの `http.server` だけで作ったサーバーで、HTML は Python の文字列で組み立てます（テンプレートエンジンやフロントエンドのビルドはありません）。`gui/` は次のように分かれています。
 
-外部公開しない前提でも、Host ヘッダーの検査、起動ごとのトークン、厳しい CSP を入れています。トークンは2つあり、POST の CSRF 対策と、閲覧を含むすべての要求の認証（`gui/access.py`、起動時の URL のトークンを HttpOnly の Cookie に移す）に使います。インラインスクリプトは CSP で動かないため、JavaScript は `gui/static/` に置き、`/assets/` の許可リストへ追加してください。
+| モジュール | 役割 |
+|---|---|
+| `gui/server.py` | `make_server`・`serve`、要求ハンドラー（`Handler`）、安全対策 |
+| `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
+| `gui/pages.py` | 共通の文書の枠（`document`）、トップと排泄の記録の画面 |
+| `gui/clip_pages.py`・`gui/activity_page.py` | 動画と行動マップの画面 |
+| `gui/access.py` | 閲覧のトークンと Cookie |
+| `gui/static/` | 補助的な操作だけを担う JavaScript |
+
+ルートが使うストアやトークンは `GuiApp` にまとめ、`LabelServer.app` からハンドラーへ渡します。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。
+
+外部公開しない前提でも、Host ヘッダーの検査、起動ごとのトークン、厳しい CSP を入れています。これらは `Handler._admit` がすべてのルートの前に1か所で確かめます。POST は、本文の大きさと CSRF トークンも確かめてからルートに渡します。CSP などの応答ヘッダーは、`respond` と `redirect` が `SECURITY_HEADERS` から付けます。
+
+トークンは2つあり、POST の CSRF 対策と、閲覧を含むすべての要求の認証（`gui/access.py`、起動時の URL のトークンを HttpOnly の Cookie に移す）に使います。`tests/test_gui_routes.py` は、ルートの表にあるすべてのルートで安全対策が効くことを確かめます。インラインスクリプトは CSP で動かないため、JavaScript は `gui/static/` に置き、`gui/routes.py` の `asset` のパスに加えてください。
 
 ## 時刻とタイムゾーン
 

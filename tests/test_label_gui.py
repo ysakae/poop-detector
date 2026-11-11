@@ -223,7 +223,7 @@ class FakeServer:
 
 @pytest.fixture
 def launch(monkeypatch, capsys):
-    from poop_detector.gui import app as label_gui
+    from poop_detector.gui import server as label_gui
 
     opened = []
     monkeypatch.setattr(label_gui, "make_server", lambda *a, **k: FakeServer())

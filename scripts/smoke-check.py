@@ -17,7 +17,7 @@ import numpy as np
 from poop_detector.clips import encode_mp4
 from poop_detector.config import Config, apply_timezone
 from poop_detector.events import Store
-from poop_detector.gui.app import make_server
+from poop_detector.gui.server import make_server
 
 
 def check(name, condition):

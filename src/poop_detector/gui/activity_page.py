@@ -54,7 +54,7 @@ def heatmap(layout: ActivityLayout, cells: Sequence[Sequence[Any]], mode: str) -
 def render_activity(
     root: str | Path, query: Mapping[str, list[str]], *, title: str | None = None
 ) -> str:
-    from .app import document
+    from .pages import document
 
     page = partial(document, title=title)
 
