@@ -1,4 +1,4 @@
-"""イベント・排泄の記録の表示と入力、ラベル GUI の起動。カメラは使わない。"""
+"""イベント・排泄の記録の表示と入力、GUI の起動。カメラは使わない。"""
 
 import argparse
 import json
@@ -75,7 +75,7 @@ def record(args: argparse.Namespace, context: CommandContext) -> int:
     return 0
 
 
-def label_gui(args: argparse.Namespace, context: CommandContext) -> int:
+def gui(args: argparse.Namespace, context: CommandContext) -> int:
     from ..gui.server import serve
 
     serve(

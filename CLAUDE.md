@@ -24,7 +24,7 @@ uv run poop-detector <サブコマンド> --help          # CLI（引数は main
 
 - `run` や `setup-roi` などカメラを使うコマンドは `POOP_RTSP_URL` が必須です。接続情報は実行ディレクトリの `.env` から読み込み、同名の環境変数があればそちらを優先します（`config.load_connection_settings`）。
 - テストや手元の確認でカメラ用コマンドを実行すると、実際の `.env` が読まれます。テストでは `monkeypatch.chdir(tmp_path)` などで作業ディレクトリを切り替えてください。
-- `label-gui`、`events`、`metrics`、`record` などの記録系コマンドはカメラなしで動きます。
+- `gui`、`events`、`metrics`、`record` などの記録系コマンドはカメラなしで動きます。
 - 動画の保存には FFmpeg の `libx264`、`--video-review`（動画の自動判定）には既定の判定器の Codex CLI のログインが必要です。
 
 ## 設計の全体像

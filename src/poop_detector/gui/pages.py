@@ -1,4 +1,4 @@
-"""ラベル GUI の共通の文書の枠と、トップ（イベントのラベル付け）と排泄の記録の画面。"""
+"""GUI の共通の文書の枠と、トップ（イベントのラベル付け）と排泄の記録の画面。"""
 
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date

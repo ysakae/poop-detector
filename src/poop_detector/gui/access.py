@@ -1,4 +1,4 @@
-"""ラベル GUI の閲覧に使う、起動ごとのアクセストークンと Cookie の扱い。
+"""GUI の閲覧に使う、起動ごとのアクセストークンと Cookie の扱い。
 
 起動時に作るトークンを URL の `token` で一度だけ受け取り、HttpOnly・SameSite=Strict の
 Cookie に移す。以後は画面・画像・動画・スクリプトを含むすべての要求で Cookie を検査する。

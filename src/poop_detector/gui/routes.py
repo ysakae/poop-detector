@@ -1,4 +1,4 @@
-"""ラベル GUI の URL ごとの処理。
+"""GUI の URL ごとの処理。
 
 ルートを足すときは、関数を1つ書いて @get または @post を付ける。
 安全対策（Host 検査、閲覧トークン、POST の CSRF）は server.Handler がすべてのルートの前に行う。

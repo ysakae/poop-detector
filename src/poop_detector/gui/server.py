@@ -1,4 +1,4 @@
-"""ラベル GUI の HTTP サーバー。安全対策をすべての要求に1か所で適用し、ルートへ振り分ける。
+"""GUI の HTTP サーバー。安全対策をすべての要求に1か所で適用し、ルートへ振り分ける。
 
 すべての要求は Handler._admit を通る。
 1. Host ヘッダーが自分の待ち受け先か（DNS リバインディング対策）
@@ -8,11 +8,14 @@ POST は加えて、本文の大きさと CSRF トークンを確かめてから
 応答には respond・redirect が CSP などの安全のためのヘッダーを付ける。
 """
 
+import errno
 import hmac
 import secrets
 import sys
+import threading
 import webbrowser
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,6 +23,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from ..capture.live_preview import LivePreview
+from ..errors import UserError
 from ..records.events import Store
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
@@ -35,7 +39,7 @@ from .pages import page_title, save_failed_page
 from .routes import GET_ROUTES, POST_ROUTES, Form
 
 ACCESS_DENIED = (
-    "アクセスできません。label-gui を起動した端末に表示されたトークン付きの URL を開いてください。"
+    "アクセスできません。GUI を起動した端末に表示されたトークン付きの URL を開いてください。"
 )
 MAX_FORM_BYTES = 16384
 SECURITY_HEADERS = {
@@ -68,7 +72,7 @@ class GuiApp:
 
 
 class LabelServer(ThreadingHTTPServer):
-    """ラベル GUI のサーバー。ハンドラーは app からストアやトークンを受け取る。"""
+    """GUI のサーバー。ハンドラーは app からストアやトークンを受け取る。"""
 
     app: GuiApp
 
@@ -194,11 +198,18 @@ def make_server(
     disk_mb: float = DEFAULT_DISK_MIB,
     pet_name: str = "",
 ) -> LabelServer:
-    """127.0.0.1 だけで待ち受けるラベル GUI のサーバーを作る。
+    """127.0.0.1 だけで待ち受けるGUI のサーバーを作る。
 
     起動ごとに、保存操作の CSRF トークンと、閲覧を含むすべての要求に使うアクセストークンを作る。
     """
-    server = LabelServer(("127.0.0.1", port), Handler)
+    try:
+        server = LabelServer(("127.0.0.1", port), Handler)
+    except OSError as error:
+        if error.errno == errno.EADDRINUSE:
+            raise UserError(
+                f"GUIのポート {port} は使用中です。gui --port または run --gui-port で変更してください"
+            ) from None
+        raise
     server.app = GuiApp(
         root=Path(root),
         store=Store(root),
@@ -215,16 +226,46 @@ def make_server(
 def announce(base: str, url: str, *, opened: bool, interactive: bool) -> None:
     """起動の案内を出す。トークン付きの URL は端末に直接出すときだけ表示し、ログに残さない。"""
     if interactive:
-        print(f"ラベル付け画面: {url}", flush=True)  # noqa: T201
+        print(f"GUI: {url}", flush=True)  # noqa: T201
         print("この URL は起動中だけ有効なパスワードと同じです。他人に見せないでください。")  # noqa: T201
     elif opened:
-        print(f"ラベル付け画面をブラウザーで開きました: {base}", flush=True)  # noqa: T201
+        print(f"GUIをブラウザーで開きました: {base}", flush=True)  # noqa: T201
     else:
         print(  # noqa: T201
             "トークン付きの URL は端末にだけ表示します。出力をファイルなどへ送らずに起動するか、"
             "--no-browser を外してブラウザーで開いてください。",
             flush=True,
         )
+
+
+def open_gui_url(server: LabelServer, open_browser: bool) -> None:
+    base = f"http://127.0.0.1:{server.server_port}/"
+    url = launch_url(base, server.access_token)
+    opened = open_browser and webbrowser.open(url)
+    announce(base, url, opened=opened, interactive=sys.stdout.isatty())
+
+
+@contextmanager
+def background_gui(
+    root: str | Path,
+    port: int,
+    open_browser: bool,
+    *,
+    disk_mb: float,
+    pet_name: str,
+) -> Iterator[None]:
+    """監視中は別スレッドで GUI を提供し、監視が終われば待ち受けを閉じる。"""
+    with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name) as server:
+        thread = threading.Thread(
+            target=server.serve_forever, kwargs={"poll_interval": 0.1}, name="poop-detector-gui"
+        )
+        thread.start()
+        try:
+            open_gui_url(server, open_browser)
+            yield
+        finally:
+            server.shutdown()
+            thread.join()
 
 
 def serve(
@@ -236,11 +277,8 @@ def serve(
     pet_name: str = "",
 ) -> None:
     with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name) as server:
-        base = f"http://127.0.0.1:{server.server_port}/"
-        url = launch_url(base, server.access_token)
-        opened = open_browser and webbrowser.open(url)
-        announce(base, url, opened=opened, interactive=sys.stdout.isatty())
+        open_gui_url(server, open_browser)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            print("ラベル付け画面を終了しました")  # noqa: T201
+            print("GUIを終了しました")  # noqa: T201

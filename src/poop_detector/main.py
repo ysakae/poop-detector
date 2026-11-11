@@ -45,12 +45,19 @@ HANDLERS: dict[str, Handler] = {
     "missed": records.missed,
     "records": records.records,
     "record": records.record,
-    "label-gui": records.label_gui,
+    "gui": records.gui,
     "setup-dog-model": dog_model.setup_dog_model,
     "check-dog": dog_model.check_dog,
     "show-config": show_config.show_config,
     "diagnose": diagnose.diagnose,
 }
+
+
+def gui_port(value: str) -> int:
+    port = int(value)
+    if not 0 <= port <= 65535:
+        raise argparse.ArgumentTypeError("ポート番号は0〜65535で指定してください")
+    return port
 
 
 def parser() -> argparse.ArgumentParser:
@@ -89,6 +96,11 @@ def parser() -> argparse.ArgumentParser:
             )
         if name == "run":
             sub.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
+            sub.add_argument("--gui", action="store_true", help="監視と一緒にGUIを起動")
+            sub.add_argument("--gui-port", type=gui_port, default=8765, help="GUIのポート")
+            sub.add_argument(
+                "--no-browser", action="store_true", help="GUIをブラウザーで自動で開かない"
+            )
             sub.add_argument(
                 "--dog",
                 action="store_true",
@@ -166,8 +178,8 @@ def parser() -> argparse.ArgumentParser:
     record.add_argument("--start", required=True)
     record.add_argument("--end")
     record.add_argument("--note", default="")
-    gui = commands.add_parser("label-gui", help="画像を見ながらラベルを付ける")
-    gui.add_argument("--port", type=int, default=8765, help="ローカル画面のポート")
+    gui = commands.add_parser("gui", help="記録・ラベル付け・管理のGUIを起動")
+    gui.add_argument("--port", type=gui_port, default=8765, help="ローカル画面のポート")
     gui.add_argument("--no-browser", action="store_true", help="ブラウザを自動で開かない")
     commands.add_parser("setup-dog-model", help="犬検出モデルを固定版・ハッシュ確認付きで取得")
     dog_check = commands.add_parser("check-dog", help="静止画で犬検出と処理負荷を確認")

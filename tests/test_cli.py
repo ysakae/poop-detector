@@ -1,7 +1,10 @@
 """CLI の各サブコマンドの分岐を、偽のカメラと一時ディレクトリで検証する。"""
 
 import json
+import socket
+from http.client import HTTPConnection
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 import pytest
 import yaml
@@ -222,7 +225,7 @@ def test_record_commands_require_timezone_in_times(cli_env, capsys):
     assert Store(cli_env.root).records() == []
 
 
-def test_label_gui_passes_settings_to_the_server(cli_env, monkeypatch):
+def test_gui_passes_settings_to_the_server(cli_env, monkeypatch):
     calls = []
     monkeypatch.setattr(
         "poop_detector.gui.server.serve", lambda *args, **kwargs: calls.append((args, kwargs))
@@ -230,8 +233,66 @@ def test_label_gui_passes_settings_to_the_server(cli_env, monkeypatch):
     (cli_env.path / "config.yaml").write_text(
         f"data_dir: {cli_env.root}\npet_name: ポチ\nclip_disk_mb: 64\n"
     )
-    assert cli_env.run("label-gui", "--port", "0", "--no-browser") == 0
+    assert cli_env.run("gui", "--port", "0", "--no-browser") == 0
     assert calls == [((cli_env.root, 0, False), {"disk_mb": 64, "pet_name": "ポチ"})]
+
+
+def test_old_gui_command_is_rejected(cli_env):
+    with pytest.raises(SystemExit) as exit_info:
+        cli_env.run("label-gui", "--help")
+    assert exit_info.value.code == 2
+
+
+@pytest.mark.parametrize("monitor_fails", [False, True])
+def test_run_with_gui_serves_management_and_releases_port(cli_env, monkeypatch, monitor_fails):
+    from poop_detector.commands import run
+    from poop_detector.gui import server
+
+    baseline = register_scene(cli_env)
+    use_camera(cli_env, baseline)
+    write_config(cli_env, "pet_name: ポチ\nclips: {enabled: false}\n")
+    urls = []
+    requests = []
+
+    def announce(base, url, *, opened, interactive):
+        urls.append(urlsplit(url))
+        assert not opened
+
+    def monitor(*args, **kwargs):
+        url = urls[0]
+        conn = HTTPConnection(url.hostname, url.port, timeout=3)
+        try:
+            conn.request("GET", f"/manage?{url.query}")
+            redirect = conn.getresponse()
+            assert redirect.status == 303
+            cookie = redirect.getheader("Set-Cookie").split(";", 1)[0]
+            redirect.read()
+            conn.request("GET", "/manage", headers={"Cookie": cookie})
+            page = conn.getresponse()
+            requests.append(page.status)
+            assert "ポチ".encode() in page.read()
+        finally:
+            conn.close()
+        if monitor_fails:
+            raise RuntimeError("監視が失敗")
+
+    monkeypatch.setattr(server, "announce", announce)
+    monkeypatch.setattr(run, "monitor", monitor)
+    assert cli_env.run("run", "--gui", "--gui-port", "0", "--no-browser") == int(monitor_fails)
+    assert requests == [200]
+    with socket.socket() as connection:
+        assert connection.connect_ex((urls[0].hostname, urls[0].port)) != 0
+
+
+def test_run_with_gui_reports_occupied_port(cli_env, capsys):
+    baseline = register_scene(cli_env)
+    use_camera(cli_env, baseline)
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        port = str(busy.getsockname()[1])
+        assert cli_env.run("run", "--gui", "--gui-port", port, "--no-browser") == 2
+    assert "--gui-port" in capsys.readouterr().err
 
 
 # --- 通知 ---

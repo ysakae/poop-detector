@@ -68,8 +68,8 @@ def check_gui(root):
     session = {**host, "Cookie": f"poop_detector_session={server.access_token}"}
     try:
         for path in ("/", "/records", "/clips", "/activity"):
-            check(f"ラベル GUI の {path} が表示できる", get_status(server, path, session) == 200)
-        check("ラベル GUI はトークンなしの閲覧を拒否する", get_status(server, "/", host) == 403)
+            check(f"GUI の {path} が表示できる", get_status(server, path, session) == 200)
+        check("GUI はトークンなしの閲覧を拒否する", get_status(server, "/", host) == 403)
     finally:
         server.shutdown()
         server.server_close()

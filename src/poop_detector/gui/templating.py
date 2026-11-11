@@ -1,4 +1,4 @@
-"""ラベル GUI の HTML テンプレート（Jinja2）。
+"""GUI の HTML テンプレート（Jinja2）。
 
 値はすべて自動でエスケープする（autoescape）。テンプレートにない変数を使うと
 StrictUndefined がエラーにするので、渡し忘れが空欄として紛れ込まない。
