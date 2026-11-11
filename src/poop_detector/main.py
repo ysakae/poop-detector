@@ -18,6 +18,7 @@ from .commands import (
     run,
     setup,
     show_config,
+    users,
 )
 from .commands.context import CommandContext, Handler
 from .config import Config, apply_timezone
@@ -49,8 +50,16 @@ HANDLERS: dict[str, Handler] = {
     "setup-dog-model": dog_model.setup_dog_model,
     "check-dog": dog_model.check_dog,
     "show-config": show_config.show_config,
+    "users": users.users,
     "diagnose": diagnose.diagnose,
 }
+
+
+def enrollment_minutes(value: str) -> int:
+    minutes = int(value)
+    if not 5 <= minutes <= 1440:
+        raise argparse.ArgumentTypeError("5〜1440分で指定してください")
+    return minutes
 
 
 def gui_port(value: str) -> int:
@@ -190,6 +199,17 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("show-config", help="設定ファイルから読んだ有効な設定を表示")
     commands.add_parser(
         "diagnose", help="不具合の報告に貼る診断情報を表示（URL・トピック名・パスは含まない）"
+    )
+    accounts = commands.add_parser(
+        "users", help="GUI のユーザーの一覧・登録用 URL・復旧・無効化（このマシンで実行）"
+    )
+    accounts.add_argument("action", choices=("list", "invite", "recover", "disable", "enable"))
+    accounts.add_argument("name", nargs="?", help="ユーザーの名前")
+    accounts.add_argument(
+        "--role", choices=("admin", "member"), default="member", help="invite の役割"
+    )
+    accounts.add_argument(
+        "--minutes", type=enrollment_minutes, default=30, help="登録用 URL の有効時間（5〜1440分）"
     )
     for name, sub in commands.choices.items():
         sub.set_defaults(handler=HANDLERS[ALIASES.get(name, name)])

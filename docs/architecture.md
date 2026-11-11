@@ -47,6 +47,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `commands/records.py` | `events`、`metrics`、`feedback`、`acknowledge`、`missed`、`record`、`records`、`gui` |
 | `commands/notify.py` | `test-notification` |
 | `commands/show_config.py`・`commands/diagnose.py` | `show-config`、`diagnose` |
+| `commands/users.py` | `users`（GUI のユーザーの一覧、登録用 URL、復旧、無効化） |
 | `commands/review.py` | `video-review`、`circling-review` |
 | `commands/dog_model.py` | `setup-dog-model`、`check-dog` |
 
@@ -115,6 +116,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/access.py` | 起動トークンと、セッションの Cookie |
 | `gui/sessions.py` | サーバー側のセッション（`gui_sessions` テーブル。ID の SHA-256 だけを保存し、無操作と通算の有効期限を持つ） |
 | `gui/rate_limit.py` | 接続元ごとの要求の回数の制限 |
+| `gui/accounts.py` | ユーザー（`users`）、パスキー（`passkeys`）、登録用 URL（`enrollments`）の台帳。登録用 URL は使い捨てで、値は SHA-256 だけを保存する。最後の有効な管理者は無効にできない |
 | `gui/static/` | 補助的な操作だけを担う JavaScript |
 
 テンプレートはすべての値を自動でエスケープし、渡し忘れた変数はエラーになります。HTML を文字列で組み立てたり、`Markup` でエスケープを外したりしないでください。値の整形と分岐の判断は Python 側で行い、テンプレートは構造だけを受け持ちます。`tests/test_gui_escaping.py` は、特殊文字を含む値が各画面でエスケープされることを確かめます。
@@ -125,7 +127,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 
 Host ヘッダーの検査、POST の Origin の検査、起動ごとのトークン、厳しい CSP を入れています。回数の制限は `asgi.Throttle` が、ほかは `asgi.Admission` がすべての要求の前に1か所で確かめます。POST は、`asgi.dispatch` が本文の大きさと CSRF トークンも確かめてからルートに渡します。CSP などの応答ヘッダーは、`asgi.SecurityHeaders` が動画やエラーを含むすべての応答に `SECURITY_HEADERS` から付けます。要求の URL にはトークンや画像の ID が入るので、uvicorn のアクセスログは無効にしています（`tests/test_gui_asgi.py` が確かめます）。
 
-トークンは2つあり、POST の CSRF 対策と、セッションを始めるための起動トークンです。CSRF トークンはセッションごとで、`GuiApp.csrf_for` がセッションの ID と起動ごとの鍵の HMAC から導きます。`asgi.Admission` が確かめたセッションを scope の `state` でルートへ渡し、`Exchange.csrf` から画面のフォームに埋め込みます。起動時の URL のトークンを受け取ると `SessionStore.create` がセッションを始め、その ID を HttpOnly の Cookie に入れます。以後の要求は、Cookie のセッションを `SessionStore.check` で確かめます。セッションの台帳は、パスキー認証（#84）でユーザーとひも付けます（`user_id` 列）。`tests/test_gui_routes.py` は、ルートの表にあるすべてのルートで安全対策が効くことを確かめます。インラインスクリプトは CSP で動かないため、JavaScript は `gui/static/` に置き、`gui/routes.py` の `asset` のパスに加えてください。
+トークンは2つあり、POST の CSRF 対策と、セッションを始めるための起動トークンです。CSRF トークンはセッションごとで、`GuiApp.csrf_for` がセッションの ID と起動ごとの鍵の HMAC から導きます。`asgi.Admission` が確かめたセッションを scope の `state` でルートへ渡し、`Exchange.csrf` から画面のフォームに埋め込みます。起動時の URL のトークンを受け取ると `SessionStore.create` がセッションを始め、その ID を HttpOnly の Cookie に入れます。以後の要求は、Cookie のセッションを `SessionStore.check` で確かめます。セッションの台帳は、パスキー認証（#84）でユーザーとひも付けます（`user_id` 列）。最初の管理者の登録と、パスキーをなくしたときの復旧は、監視するマシンで実行する `users invite`・`users recover` が出す登録用 URL で行います。このマシンで実行できること自体を信頼の根拠にします。`tests/test_gui_routes.py` は、ルートの表にあるすべてのルートで安全対策が効くことを確かめます。インラインスクリプトは CSP で動かないため、JavaScript は `gui/static/` に置き、`gui/routes.py` の `asset` のパスに加えてください。
 
 ## 時刻とタイムゾーン
 

@@ -236,3 +236,23 @@ def test_version_3_database_gains_the_gui_session_table(tmp_path):
     assert version(path) == LATEST_VERSION
     assert columns(path, "gui_sessions") == ["id", "created_at", "last_seen", "user_id"]
     assert store.list()[0]["note"] == "朝の記録"
+
+
+def test_version_4_database_gains_the_account_tables(tmp_path):
+    """版4（GUI のセッションまで）のデータベースに、ユーザー・パスキー・登録用 URL の表を足す。"""
+    path = tmp_path / "events.sqlite3"
+    create(path, PRE_VERSIONING, [EVENT, LABEL])
+    db = sqlite3.connect(path)
+    try:
+        for migration in MIGRATIONS[:4]:
+            migration(db)
+        db.execute("PRAGMA user_version = 4")
+        db.commit()
+    finally:
+        db.close()
+
+    store = Store(tmp_path)
+
+    assert version(path) == LATEST_VERSION
+    assert {"users", "passkeys", "enrollments", "gui_sessions"} <= tables(path)
+    assert store.list()[0]["note"] == "朝の記録"
