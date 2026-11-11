@@ -8,8 +8,8 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from .activity_map import GRID, ActivityLayout, ActivityStore
-from .timezones import local_today, timezone_label
+from ..activity_map import GRID, ActivityLayout, ActivityStore
+from ..timezones import local_today, timezone_label
 
 PERIODS = ("1", "7", "30")
 
@@ -54,7 +54,7 @@ def heatmap(layout: ActivityLayout, cells: Sequence[Sequence[Any]], mode: str) -
 def render_activity(
     root: str | Path, query: Mapping[str, list[str]], *, title: str | None = None
 ) -> str:
-    from .label_gui import document
+    from .app import document
 
     page = partial(document, title=title)
 

@@ -34,7 +34,7 @@ def gui(tmp_path):
 
     (server, store, event_id) を返し、テストの後にサーバーを止める。
     """
-    from poop_detector.label_gui import make_server
+    from poop_detector.gui.app import make_server
 
     store = Store(tmp_path)
     event = store.record(np.full((50, 50, 3), 150, np.uint8), 0.1, None, 1)

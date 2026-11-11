@@ -191,7 +191,7 @@ def test_token_url_rejects_wrong_token_and_keeps_redirect_local(gui):
 
 
 def test_redirect_without_token_never_leaves_the_gui():
-    from poop_detector.gui_access import redirect_without_token
+    from poop_detector.gui.access import redirect_without_token
 
     assert redirect_without_token("//evil.example/", "token=t") == "/"
     assert redirect_without_token("/\\evil.example/", "token=t") == "/"
@@ -223,7 +223,7 @@ class FakeServer:
 
 @pytest.fixture
 def launch(monkeypatch, capsys):
-    from poop_detector import label_gui
+    from poop_detector.gui import app as label_gui
 
     opened = []
     monkeypatch.setattr(label_gui, "make_server", lambda *a, **k: FakeServer())
