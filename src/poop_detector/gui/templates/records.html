@@ -1,0 +1,32 @@
+{#- 確定した排泄の記録と、日別・時間帯別の集計。 -#}
+{% extends "base.html" %}
+{% block content %}
+<h2>排便・排尿の記録</h2><p><a href="/">画像の確認・記録の追加へ戻る</a></p>
+<section class="record-stats" aria-labelledby="daily-stats-title"><h3 id="daily-stats-title">1日の排便・排尿回数</h3><form method="get" action="/records" class="toolbar"><label>集計日<input type="date" name="date" value="{{ stats.day }}" required></label><label>時間帯別の集計期間<select name="days">
+{%- for value in stats.periods -%}
+<option value="{{ value }}"{% if value == stats.period %} selected{% endif %}>{{ value }}日間</option>
+{%- endfor -%}
+</select></label><button class="secondary">集計を表示</button></form><p><strong>排便 {{ stats.daily.feces }}件 ／ 排尿 {{ stats.daily.urine }}件 ／ 種類不明 {{ stats.daily.unspecified }}件</strong></p><p class="note">{{ timezone }}で集計します。開始時刻が不明な記録は記録時刻を使います。「排便・排尿」は各1件です。0件は確定記録が0件だったことを表します。</p><details open><summary>時間帯別の排便・排尿</summary><p>{{ stats.start }}〜{{ stats.day }}（{{ stats.length }}日間・記録あり{{ stats.recorded_days }}日）</p><div class="hourly-scroll" role="region" aria-label="1時間ごとの集計表" tabindex="0"><table id="hourly-stats"><thead><tr><th scope="col">時間帯</th><th scope="col">排便</th><th scope="col">排尿</th></tr></thead><tbody>
+{%- for hour, counts in stats.hourly -%}
+<tr><th scope="row">{{ "%02d"|format(hour) }}:00〜{{ "%02d"|format(hour) }}:59</th>
+{%- for kind in ("feces", "urine") -%}
+<td><meter aria-hidden="true" max="{{ stats.scale }}" value="{{ counts[kind] }}"></meter> {{ counts[kind] }}件</td>
+{%- endfor -%}
+</tr>
+{%- endfor -%}
+</tbody></table></div></details></section>
+<h3>確定記録一覧（全期間）</h3><div style="overflow:auto"><table style="width:100%;background:white;border-collapse:collapse"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>場所</th><th>登録方法</th><th>メモ</th><th>映像</th><th>操作</th></tr></thead><tbody>
+{%- for record in records -%}
+<tr>
+{%- for value in record.cells -%}
+<td style="padding:14px;border-bottom:1px solid #c8d8df">{{ value }}</td>
+{%- endfor -%}
+<td>
+{%- for clip_id in record.videos -%}
+{% if not loop.first %} {% endif %}<a href="/clips?id={{ clip_id }}">映像を見る{% if loop.index > 1 %} ({{ loop.index }}){% endif %}</a>
+{%- endfor -%}
+</td><td><a href="{{ record.url }}">編集</a></td></tr>
+{%- endfor -%}
+</tbody></table></div>
+{% if not records %}<p>確認済みの排泄記録はまだありません。</p>{% endif %}
+{% endblock %}

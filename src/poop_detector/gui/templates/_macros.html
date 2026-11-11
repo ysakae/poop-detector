@@ -1,0 +1,21 @@
+{#- 複数の画面で使う部品。 -#}
+{% macro location_field(locations, location) -%}
+<label>排泄した場所<select name="location">
+{%- for value, title in [("", "場所不明")] + locations -%}
+<option value="{{ value }}"{% if value == (location or "") %} selected{% endif %}>{{ title }}</option>
+{%- endfor -%}
+</select></label>
+{%- endmacro %}
+
+{% macro csrf_field(token) -%}
+<input type="hidden" name="csrf" value="{{ token }}">
+{%- endmacro %}
+
+{% macro capacity_status(capacity) -%}
+<p>録画容量 {{ "{:,.1f}".format(capacity.used_mib) }} / {{ "{:,}".format(capacity.disk_mb) }} MiB（{{ "%.1f"|format(capacity.percentage) }}％） ／ 上限まで残り {{ "{:,.1f}".format(capacity.remaining_mib) }} MiB</p>
+{%- if capacity.warning %}<p class="capacity-warning" role="status">{{ capacity.warning }}</p>{% endif %}
+{%- endmacro %}
+
+{% macro capacity_panel(capacity) -%}
+<section id="recording-capacity" aria-label="録画容量">{{ capacity_status(capacity) }}</section><script src="/assets/clip_storage.js" defer></script>
+{%- endmacro %}

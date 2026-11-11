@@ -1,0 +1,13 @@
+{#- 動画のラベルと一緒に、排泄の確定記録を保存する欄。 -#}
+<fieldset><legend>排便・排尿の確定記録</legend>
+{%- if confirmation.linked -%}
+<input type="hidden" name="record_id" value="{{ confirmation.linked }}"><p><a href="/?filter=all&amp;id={{ confirmation.linked }}">ひも付け済みの記録を開く</a></p><p class="note">確定した日時や種類は、ひも付け済みの記録から編集できます。</p>
+{%- else -%}
+<label>保存先<select name="record_id">
+{%- if confirmation.candidates %}<option value="">保存先を選択</option>{% endif -%}
+{%- for record in confirmation.candidates -%}
+<option value="{{ record.id }}" data-record-location="{{ record.location }}"{% if record.selected %} selected{% endif %}{% if record.disabled %} disabled{% endif %}>{{ record.time }} {{ record.label }}</option>
+{%- endfor -%}
+<option value="new" data-tray-event="{{ 1 if confirmation.tray_event else 0 }}"{% if confirmation.new_disabled %} disabled{% endif %}>新しい確定記録を作成</option></select></label><p class="note">同じ排泄がすでに記録されている場合は、その記録を選んでください。</p>
+{%- endif -%}
+<button formaction="/clips/confirm">ラベルと確定記録を保存</button></fieldset>

@@ -23,7 +23,7 @@ from .clip_pages import (
     render_storage,
     stream_video,
 )
-from .pages import SAVE_FAILED, Query, document, parse_time, render, render_records
+from .pages import Query, parse_time, render, render_records, save_failed_page
 
 if TYPE_CHECKING:
     from .server import Handler
@@ -202,7 +202,7 @@ def save_label(handler: "Handler", form: Form) -> None:
     try:
         _save_label(handler, form.fields)
     except (ValueError, UnicodeError, TypeError):
-        handler.respond(400, document(SAVE_FAILED, handler.app.title))
+        handler.respond(400, save_failed_page(handler.app.title))
         return
     mode = form.fields.get("filter", "unlabeled")
     if mode not in FILTERS:

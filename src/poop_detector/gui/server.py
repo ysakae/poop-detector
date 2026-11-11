@@ -31,7 +31,7 @@ from .access import (
     token_in_query,
     token_matches,
 )
-from .pages import SAVE_FAILED, document, page_title
+from .pages import page_title, save_failed_page
 from .routes import GET_ROUTES, POST_ROUTES, Form
 
 ACCESS_DENIED = (
@@ -168,7 +168,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         form = self._read_form()
         if form is None:
-            self.respond(400, document(SAVE_FAILED, self.app.title))
+            self.respond(400, save_failed_page(self.app.title))
             return
         if not hmac.compare_digest(form.fields.get("csrf", ""), self.app.csrf_token):
             self.respond(403, "画面を再読み込みして保存してください")
