@@ -225,8 +225,7 @@ def test_record_commands_require_timezone_in_times(cli_env, capsys):
     assert Store(cli_env.root).records() == []
 
 
-@pytest.mark.parametrize("command", ["gui", "label-gui"])
-def test_gui_passes_settings_to_the_server(cli_env, monkeypatch, command):
+def test_gui_passes_settings_to_the_server(cli_env, monkeypatch):
     calls = []
     monkeypatch.setattr(
         "poop_detector.gui.server.serve", lambda *args, **kwargs: calls.append((args, kwargs))
@@ -234,8 +233,14 @@ def test_gui_passes_settings_to_the_server(cli_env, monkeypatch, command):
     (cli_env.path / "config.yaml").write_text(
         f"data_dir: {cli_env.root}\npet_name: ポチ\nclip_disk_mb: 64\n"
     )
-    assert cli_env.run(command, "--port", "0", "--no-browser") == 0
+    assert cli_env.run("gui", "--port", "0", "--no-browser") == 0
     assert calls == [((cli_env.root, 0, False), {"disk_mb": 64, "pet_name": "ポチ"})]
+
+
+def test_old_gui_command_is_rejected(cli_env):
+    with pytest.raises(SystemExit) as exit_info:
+        cli_env.run("label-gui", "--help")
+    assert exit_info.value.code == 2
 
 
 @pytest.mark.parametrize("monitor_fails", [False, True])

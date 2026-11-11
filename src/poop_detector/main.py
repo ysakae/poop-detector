@@ -26,7 +26,7 @@ from .records.events import EXCRETION_TYPES
 from .redaction import RedactingFormatter, install_log_redaction, redact
 
 # 以前の名前のサブコマンド。引き続き使える。
-ALIASES = {"codex-review": "video-review", "label-gui": "gui"}
+ALIASES = {"codex-review": "video-review"}
 HANDLERS: dict[str, Handler] = {
     "check-camera": setup.check_camera,
     "setup-roi": setup.setup_roi,
@@ -178,9 +178,7 @@ def parser() -> argparse.ArgumentParser:
     record.add_argument("--start", required=True)
     record.add_argument("--end")
     record.add_argument("--note", default="")
-    gui = commands.add_parser(
-        "gui", aliases=["label-gui"], help="記録・ラベル付け・管理のGUIを起動"
-    )
+    gui = commands.add_parser("gui", help="記録・ラベル付け・管理のGUIを起動")
     gui.add_argument("--port", type=gui_port, default=8765, help="ローカル画面のポート")
     gui.add_argument("--no-browser", action="store_true", help="ブラウザを自動で開かない")
     commands.add_parser("setup-dog-model", help="犬検出モデルを固定版・ハッシュ確認付きで取得")
