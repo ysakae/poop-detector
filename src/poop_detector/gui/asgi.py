@@ -172,13 +172,19 @@ class Admission:
         if candidate is not None:
             secure = scope.get("scheme") == "https"
             return await self.accept_token(candidate, url.path, url.query, secure, scope)
-        if not await run_in_threadpool(self.has_session, headers.get("cookie")):
+        session_id = await run_in_threadpool(self.valid_session, headers.get("cookie"))
+        if session_id is None:
             return Response(ACCESS_DENIED, 403, media_type=HTML)
+        # ルートへは、確かめたセッションを scope の state で渡す（CSRF トークンを導く）。
+        scope.setdefault("state", {})["session_id"] = session_id
         return None
 
-    def has_session(self, cookie_header: str | None) -> bool:
-        """Cookie のセッションのどれかが有効か（データベースを読むのでスレッドで呼ぶ）。"""
-        return any(self.gui.sessions.check(value) for value in session_ids(cookie_header))
+    def valid_session(self, cookie_header: str | None) -> str | None:
+        """Cookie のセッションのうち有効なもの（データベースを読むのでスレッドで呼ぶ）。"""
+        return next(
+            (value for value in session_ids(cookie_header) if self.gui.sessions.check(value)),
+            None,
+        )
 
     async def accept_token(
         self, candidate: str, path: str, query: str, secure: bool, scope: Scope
@@ -229,8 +235,13 @@ def not_found(method: str) -> Response:
 async def dispatch(request: Request) -> Response:
     """GET_ROUTES・POST_ROUTES の関数を、要求ごとの Exchange で呼ぶ。"""
     gui: GuiApp = request.app.state.gui
+    session_id: str = request.scope["state"]["session_id"]
     exchange = Exchange(
-        gui, request_path(request.scope), request.headers, request.scope.get("scheme", "http")
+        gui,
+        request_path(request.scope),
+        request.headers,
+        request.scope.get("scheme", "http"),
+        csrf=gui.csrf_for(session_id),
     )
     url = urlsplit(exchange.path)
     if request.method == "GET":
@@ -245,7 +256,7 @@ async def dispatch(request: Request) -> Response:
         form = await read_form(request)
         if form is None:
             return Response(save_failed_page(gui.title), 400, media_type=HTML)
-        if not hmac.compare_digest(form.fields.get("csrf", ""), gui.csrf_token):
+        if not hmac.compare_digest(form.fields.get("csrf", ""), exchange.csrf):
             return Response("画面を再読み込みして保存してください", 403, media_type=HTML)
         await run_in_threadpool(post_route, exchange, form)
     if exchange.response is None:

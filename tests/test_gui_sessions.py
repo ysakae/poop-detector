@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from urllib.parse import urlencode
 
 import pytest
-from support import csrf_token, exchange, login
+from support import exchange, login
 
 from poop_detector.config import Config, ConfigError
 from poop_detector.gui.rate_limit import RateLimiter, RateLimits
@@ -144,7 +144,7 @@ def test_logout_ends_the_session(tmp_path):
         status, _, page = exchange(server, "GET", "/logout", headers=cookie, auth=False)
         assert status == 200
         assert 'action="/logout"' in page.decode()
-        body = urlencode({"csrf": csrf_token(server, "/logout")})
+        body = urlencode({"csrf": csrf_token_for(server, cookie)})
         status, headers, page = exchange(
             server, "POST", "/logout", body, {**FORM, **cookie}, auth=False
         )
@@ -209,3 +209,35 @@ def test_all_requests_have_an_upper_limit(tmp_path):
         cookie = login(server)  # トークンの受け渡しで1回
         statuses = [exchange(server, "GET", "/", headers=cookie, auth=False)[0] for _ in range(3)]
         assert statuses == [200, 200, 429]
+
+
+# --- セッションごとの CSRF トークン ---
+
+
+def test_csrf_token_belongs_to_one_session(tmp_path):
+    """別のセッション（別の人や別の端末）の画面から取ったトークンでは保存できない。"""
+    with running(tmp_path) as server:
+        mine, theirs = login(server), login(server)
+        assert mine != theirs
+        token = csrf_token_for(server, mine)
+        assert token == csrf_token_for(server, mine)  # 同じセッションなら同じ
+        assert token != csrf_token_for(server, theirs)
+        body = urlencode({"csrf": token, "action": "missed", "start": "x"})
+        # 自分のセッションでは CSRF を通り、ルートが入力の誤りを返す。
+        assert exchange(server, "POST", "/save", body, {**FORM, **mine}, auth=False)[0] == 400
+        assert exchange(server, "POST", "/save", body, {**FORM, **theirs}, auth=False)[0] == 403
+
+
+def test_csrf_token_is_not_the_session_id(tmp_path):
+    with running(tmp_path) as server:
+        cookie = login(server)
+        session_id = cookie["Cookie"].split("=", 1)[1]
+        page = exchange(server, "GET", "/", headers=cookie, auth=False)[2].decode()
+        assert session_id not in page
+
+
+def csrf_token_for(server, cookie):
+    import re
+
+    page = exchange(server, "GET", "/logout", headers=cookie, auth=False)[2].decode()
+    return re.search(r'name="csrf" value="([^"]+)"', page)[1]

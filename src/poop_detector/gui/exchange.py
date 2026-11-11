@@ -29,6 +29,8 @@ class Exchange:
     headers: Headers
     # 信頼するプロキシの背後では、X-Forwarded-Proto を反映した値（http か https）。
     scheme: str = "http"
+    # この要求のセッションの CSRF トークン。画面のフォームに埋め込む。
+    csrf: str = ""
     response: Response | None = field(default=None, init=False)
 
     def respond(
