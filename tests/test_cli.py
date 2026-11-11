@@ -15,7 +15,10 @@ from poop_detector.config import CONNECTION_KEYS, Config
 from poop_detector.detection.roi import ROI, PolygonROI
 from poop_detector.detection.scene import load_baseline, save_baseline
 from poop_detector.features.tray_registration import TrayRegistration
+from poop_detector.gui.accounts import Accounts
+from poop_detector.gui.sessions import SessionStore
 from poop_detector.main import main
+from poop_detector.records.database import events_database
 from poop_detector.records.events import Store
 from poop_detector.web_address import WebOptions
 
@@ -278,19 +281,17 @@ def test_run_with_gui_serves_management_and_releases_port(cli_env, monkeypatch, 
     urls = []
     requests = []
 
-    def announce(base, url, *, opened, interactive, public_url=None):
-        urls.append(urlsplit(url))
+    def announce(base, *, opened, public_url=None, has_users=True):
+        urls.append(urlsplit(base))
         assert not opened
 
     def monitor(*args, **kwargs):
         url = urls[0]
+        database = events_database(cli_env.root)
+        user = Accounts(database).users.create("家族A", "admin")
+        cookie = f"poop_detector_session={SessionStore(database).create(user)}"
         conn = HTTPConnection(url.hostname, url.port, timeout=3)
         try:
-            conn.request("GET", f"/manage?{url.query}")
-            redirect = conn.getresponse()
-            assert redirect.status == 303
-            cookie = redirect.getheader("Set-Cookie").split(";", 1)[0]
-            redirect.read()
             conn.request("GET", "/manage", headers={"Cookie": cookie})
             page = conn.getresponse()
             requests.append(page.status)

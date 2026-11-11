@@ -1,0 +1,18 @@
+{#- 管理者が家族を招待する。作った登録用 URL は一度だけ表示する。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>家族を招待する</h2>
+<p><a href="/account">アカウントへ戻る</a></p>
+{% if url %}
+<p>「{{ person }}」さんの登録用 URL を作りました。{{ minutes }}分以内に、本人の端末のブラウザーで開いてもらってください。この URL は一度だけ使えるパスワードと同じなので、本人以外に見せないでください。</p>
+<p><input readonly value="{{ url }}" aria-label="登録用 URL" size="60"></p>
+<p class="note">この画面を閉じると、URL はもう表示できません。必要になったら作り直してください。</p>
+{% else %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/account/invite">{{ csrf_field(token) }}
+<p><label>招待する人の名前<br><input name="name" maxlength="40" required></label></p>
+<p class="note">いまは管理者として招待します。一般ユーザーは、権限を分ける機能（#85）が入ってから招待できるようになります。</p>
+<button>登録用 URL を作る</button></form>
+{% endif %}
+{% endblock %}

@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from urllib.parse import urlencode
 
 import pytest
+from passkey_client import Client
+from soft_authenticator import SoftAuthenticator
 from support import csrf_token, exchange
 
 from poop_detector.gui.server import announce, make_server
@@ -54,19 +56,20 @@ def test_https_from_a_trusted_proxy_adds_hsts_and_secure_cookie(tmp_path):
         status, headers, _ = exchange(server, "GET", "/", headers=proxied)
         assert status == 200
         assert headers["Strict-Transport-Security"] == "max-age=31536000"
-        status, headers, _ = exchange(
-            server, "GET", f"/?token={server.access_token}", headers=proxied, auth=False
-        )
-        assert status == 303
-        assert "; Secure" in headers["Set-Cookie"]
+        browser = Client(server, "toilet.example.com", PUBLIC, https=True)
+        code = server.app.accounts.enrollments.issue("admin", name="家族A", created_by="cli")
+        assert browser.register(SoftAuthenticator(), code)[0] == 200
+        assert "; Secure" in browser.last_headers["Set-Cookie"]
 
 
 def test_plain_local_access_gets_no_hsts_or_secure_cookie(tmp_path):
     with running(tmp_path) as server:
         _, headers, _ = exchange(server, "GET", "/")
         assert "Strict-Transport-Security" not in headers
-        _, headers, _ = exchange(server, "GET", f"/?token={server.access_token}", auth=False)
-        assert "Secure" not in headers["Set-Cookie"]
+        browser = Client(server)
+        code = server.app.accounts.enrollments.issue("admin", name="家族A", created_by="cli")
+        assert browser.register(SoftAuthenticator(), code)[0] == 200
+        assert "Secure" not in browser.last_headers["Set-Cookie"]
 
 
 def test_forwarded_https_from_an_untrusted_client_is_ignored(tmp_path):
@@ -76,18 +79,19 @@ def test_forwarded_https_from_an_untrusted_client_is_ignored(tmp_path):
         assert "Strict-Transport-Security" not in response
 
 
-def test_launch_message_shows_the_public_url_only_on_a_terminal(capsys):
-    announce(
-        "http://127.0.0.1:8765/",
-        "http://127.0.0.1:8765/?token=T",
-        opened=False,
-        interactive=True,
-        public_url="https://toilet.example.com/?token=T",
-    )
+def test_launch_message_shows_local_and_public_urls(capsys):
+    announce("http://localhost:8765/", opened=False, public_url=PUBLIC + "/", has_users=True)
     out = capsys.readouterr().out
-    assert "https://toilet.example.com/?token=T" in out
-    announce("http://127.0.0.1:8765/", "x", opened=False, interactive=False, public_url="p?token=T")
-    assert "token=T" not in capsys.readouterr().out
+    assert "http://localhost:8765/" in out
+    assert PUBLIC + "/" in out
+    assert "users invite" not in out
+
+
+def test_launch_message_explains_how_to_register_the_first_admin(capsys):
+    announce("http://localhost:8765/", opened=True, public_url=None, has_users=False)
+    out = capsys.readouterr().out
+    assert "users invite" in out
+    assert "--role admin" in out
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "::1"])

@@ -19,22 +19,25 @@ from poop_detector.gui.server import make_server
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 
 
-def test_token_url_is_not_written_to_any_log(tmp_path, caplog):
-    """URL のトークンは閲覧のパスワードと同じなので、アクセスログなどに残さない。"""
+def test_enrollment_code_is_not_written_to_any_log(tmp_path, caplog):
+    """登録用 URL の値はパスワードと同じなので、アクセスログなどに残さない。"""
     caplog.set_level(logging.DEBUG)
     server = make_server(tmp_path, 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        token = server.access_token
-        status, _, _ = exchange(server, "GET", f"/?token={token}", auth=False)
-        assert status == 303
+        code = server.app.accounts.enrollments.issue("admin", name="家族A", created_by="cli")
+        localhost = {"Host": f"localhost:{server.server_port}"}
+        status, _, _ = exchange(
+            server, "GET", f"/enroll?code={code}", headers=localhost, auth=False
+        )
+        assert status == 200
         exchange(server, "GET", "/records")
     finally:
         server.shutdown()
         server.server_close()
         thread.join()
-    assert token not in caplog.text
+    assert code not in caplog.text
     assert "/records" not in caplog.text
 
 
