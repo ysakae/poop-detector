@@ -125,7 +125,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 
 Host ヘッダーの検査、POST の Origin の検査、起動ごとのトークン、厳しい CSP を入れています。回数の制限は `asgi.Throttle` が、ほかは `asgi.Admission` がすべての要求の前に1か所で確かめます。POST は、`asgi.dispatch` が本文の大きさと CSRF トークンも確かめてからルートに渡します。CSP などの応答ヘッダーは、`asgi.SecurityHeaders` が動画やエラーを含むすべての応答に `SECURITY_HEADERS` から付けます。要求の URL にはトークンや画像の ID が入るので、uvicorn のアクセスログは無効にしています（`tests/test_gui_asgi.py` が確かめます）。
 
-トークンは2つあり、POST の CSRF 対策と、セッションを始めるための起動トークンです。起動時の URL のトークンを受け取ると `SessionStore.create` がセッションを始め、その ID を HttpOnly の Cookie に入れます。以後の要求は、Cookie のセッションを `SessionStore.check` で確かめます。セッションの台帳は、パスキー認証（#84）でユーザーとひも付けます（`user_id` 列）。`tests/test_gui_routes.py` は、ルートの表にあるすべてのルートで安全対策が効くことを確かめます。インラインスクリプトは CSP で動かないため、JavaScript は `gui/static/` に置き、`gui/routes.py` の `asset` のパスに加えてください。
+トークンは2つあり、POST の CSRF 対策と、セッションを始めるための起動トークンです。CSRF トークンはセッションごとで、`GuiApp.csrf_for` がセッションの ID と起動ごとの鍵の HMAC から導きます。`asgi.Admission` が確かめたセッションを scope の `state` でルートへ渡し、`Exchange.csrf` から画面のフォームに埋め込みます。起動時の URL のトークンを受け取ると `SessionStore.create` がセッションを始め、その ID を HttpOnly の Cookie に入れます。以後の要求は、Cookie のセッションを `SessionStore.check` で確かめます。セッションの台帳は、パスキー認証（#84）でユーザーとひも付けます（`user_id` 列）。`tests/test_gui_routes.py` は、ルートの表にあるすべてのルートで安全対策が効くことを確かめます。インラインスクリプトは CSP で動かないため、JavaScript は `gui/static/` に置き、`gui/routes.py` の `asset` のパスに加えてください。
 
 ## 時刻とタイムゾーン
 

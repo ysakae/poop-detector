@@ -91,7 +91,7 @@ def first(query: Query, name: str, default: str = "") -> str:
 @get("/")
 def top_page(handler: "Handler", query: Query) -> None:
     app = handler.app
-    handler.respond(200, render(app.store, app.csrf_token, query, app.disk_mb, title=app.title))
+    handler.respond(200, render(app.store, handler.csrf, query, app.disk_mb, title=app.title))
 
 
 @get("/records")
@@ -108,14 +108,14 @@ def activity_page(handler: "Handler", query: Query) -> None:
 @get("/clips")
 def clips_page(handler: "Handler", query: Query) -> None:
     app = handler.app
-    page = render_clips(app.root, app.csrf_token, query, app.disk_mb, title=app.title)
+    page = render_clips(app.root, handler.csrf, query, app.disk_mb, title=app.title)
     handler.respond(200, page)
 
 
 @get("/clips/storage")
 def storage_page(handler: "Handler", query: Query) -> None:
     app = handler.app
-    page = render_storage(app.clips, app.csrf_token, query, app.disk_mb, title=app.title)
+    page = render_storage(app.clips, handler.csrf, query, app.disk_mb, title=app.title)
     handler.respond(200, page)
 
 
@@ -155,7 +155,7 @@ def render_management(handler: "Handler", error: str | None = None) -> str:
     return render_template(
         "management.html",
         title=app.title,
-        token=app.csrf_token,
+        token=handler.csrf,
         points=points,
         error=error,
         **management_status(handler),
@@ -204,7 +204,7 @@ def management_tray(handler: "Handler", form: Form) -> None:
 @get("/logout")
 def logout_page(handler: "Handler", _query: Query) -> None:
     app = handler.app
-    handler.respond(200, render_template("logout.html", title=app.title, token=app.csrf_token))
+    handler.respond(200, render_template("logout.html", title=app.title, token=handler.csrf))
 
 
 @post("/logout")

@@ -5,7 +5,10 @@
 要求の URL（トークンや画像の ID を含む）はアクセスログに出さない。
 """
 
+import base64
 import errno
+import hashlib
+import hmac
 import ipaddress
 import logging
 import secrets
@@ -50,13 +53,18 @@ class GuiApp:
     store: Store
     clips: ClipStore
     preview: LivePreview
-    # 保存操作の CSRF 対策に使い、画面のフォームに埋め込む。
-    csrf_token: str
+    # セッションごとの CSRF トークンを導く鍵（起動ごとに作る）。
+    csrf_secret: bytes
     # 起動時の URL で一度だけ受け取り、サーバー側のセッションを始める。
     access_token: str
     sessions: SessionStore
     title: str
     disk_mb: float
+
+    def csrf_for(self, session_id: str) -> str:
+        """セッションの CSRF トークン。セッションの ID と鍵の HMAC で、ID そのものは出さない。"""
+        digest = hmac.new(self.csrf_secret, session_id.encode(), hashlib.sha256).digest()
+        return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
 class GuiServer:
@@ -154,7 +162,7 @@ def make_server(
 ) -> GuiServer:
     """GUI のサーバーを作る。待ち受けのアドレスと外部の URL は web、ポートは port を使う。
 
-    起動ごとに、保存操作の CSRF トークンと、セッションを始めるための起動トークンを作る。
+    起動ごとに、CSRF トークンを導く鍵と、セッションを始めるための起動トークンを作る。
     limits は要求の回数の上限（テストで小さくする）。
     """
     listener = listen(web.host, port)
@@ -169,7 +177,7 @@ def make_server(
         store=Store(root),
         clips=ClipStore(root),
         preview=LivePreview(root),
-        csrf_token=secrets.token_urlsafe(32),
+        csrf_secret=secrets.token_bytes(32),
         access_token=secrets.token_urlsafe(32),
         sessions=SessionStore(
             events_database(root), SessionPolicy(web.session_idle_hours, web.session_max_days)
