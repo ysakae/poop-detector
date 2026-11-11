@@ -8,9 +8,10 @@ import yaml
 from support import spot_scene
 
 from poop_detector.commands import context, setup
-from poop_detector.config import CONNECTION_KEYS
+from poop_detector.config import CONNECTION_KEYS, Config
 from poop_detector.detection.roi import ROI, PolygonROI
 from poop_detector.detection.scene import load_baseline, save_baseline
+from poop_detector.features.tray_registration import TrayRegistration
 from poop_detector.main import main
 from poop_detector.records.events import Store
 
@@ -443,3 +444,47 @@ def test_show_config_prints_effective_settings(cli_env, capsys):
     assert data["features"]["video_review"] is True
     assert data["camera"]["fps"] == 3.0
     assert data["data_dir"] == str(cli_env.root)
+
+
+def test_run_switches_tray_in_the_same_camera_session(cli_env, monkeypatch, capsys):
+    from poop_detector.commands import run
+
+    baseline = register_scene(cli_env)
+    use_camera(cli_env, baseline)
+    write_config(cli_env, "camera: {fps: 100}\nclips: {enabled: false}\n")
+    registration = TrayRegistration(cli_env.root)
+    new_roi = ROI(0.2, 0.2, 0.6, 0.6)
+    path = cli_env.path / "new-roi.json"
+    new_roi.save(path)
+    new_baseline = baseline.copy()
+    new_baseline[55:75, 55:75] = 20
+
+    class CameraSession(StillCamera):
+        count = 0
+
+        def __init__(self, camera, on_frame):
+            self.on_frame = on_frame
+
+        def wait_ready(self, timeout):
+            return True
+
+        def read(self):
+            self.count += 1
+            if self.count == 1:
+                registration.begin()
+            elif self.count == 3:
+                assert registration.status()["phase"] == "paused"
+                registration.apply(ROI.load(path))
+            frame = new_baseline.copy()
+            self.on_frame(frame, self.generation)
+            return frame
+
+    monkeypatch.setattr(run, "LatestCamera", CameraSession)
+    assert cli_env.run("run", "--max-frames", "8") == 0
+    assert cli_env.run("tray-registration", "status") == 0
+    assert "反映しました" in capsys.readouterr().out
+    context_after = context.CommandContext(Config(data_dir=str(cli_env.root)))
+    roi, image = context.load_scene(context_after)
+    assert roi == new_roi
+    assert (image == new_roi.crop(new_baseline)).all()
+    assert Store(cli_env.root).list() == []

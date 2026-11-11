@@ -4,14 +4,17 @@ import argparse
 import logging
 from contextlib import ExitStack
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..capture.camera import LatestCamera
 from ..capture.live_preview import LivePreview
 from ..config import check_monitor_features, load_connection_settings, with_flags
-from ..detection.monitoring import monitor
+from ..detection.monitoring import Monitor, dog_observer_from_config, monitor, standard_extensions
 from ..detection.roi import AnyROI
+from ..detection.scene import scene_signature
 from ..features.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
+from ..features.tray_registration import TrayRegistration, TrayScene
 from ..frames import Frame
 from ..video.recording import ClipCollector
 from .context import (
@@ -31,6 +34,8 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from ..features.tray_tracking import TrayTracker
     from ..notifications import MacNotifier, NtfyNotifier
+    from ..video.clip_reviews import Assessment
+    from ..video.clips import ClipRow
     from ..video.review import Review, VideoJudge
 
 
@@ -71,28 +76,29 @@ def load_activity_recorder(context: CommandContext) -> ActivityRecorder:
 
 def review_watcher(
     collector: ClipCollector,
-    roi: AnyROI,
-    tray_tracker: "TrayTracker | None",
+    initial: TrayScene,
+    scenes: dict[str, TrayScene],
     outside_roi: AnyROI | None,
     notifier: "NtfyNotifier | MacNotifier",
     judge: "VideoJudge",
 ) -> "Review":
-    """監視中に保存した動画を自動判定し、根拠を確認できたときだけ通知する。"""
+    """録画時の基準で動画を自動判定する。"""
     from ..video.review import Review, inspect_clip
 
-    return Review(
-        collector.store,
-        lambda path, row: inspect_clip(
+    def inspect(path: Path, row: "ClipRow") -> "Assessment":
+        signature = row["scene_signature"]
+        scene = scenes.get(signature, initial) if signature is not None else initial
+        return inspect_clip(
             path,
             row,
-            roi,
+            scene.roi,
             judge,
-            tray_tracker=tray_tracker,
+            tray_tracker=scene.tracker,
             # 周辺範囲はトレー外での滞在と手動保存の動画だけで判定する。
             outside_roi=outside_roi if row["source"] in ("outside_stay", "manual") else None,
-        ),
-        notifier.send_assessment if notifier.enabled else None,
-    )
+        )
+
+    return Review(collector.store, inspect, notifier.send_assessment if notifier.enabled else None)
 
 
 def watch(
@@ -113,6 +119,10 @@ def watch(
         if activity is not None:
             stack.enter_context(activity.store.recording_lock())
         collector = None
+        registration = TrayRegistration(context.root)
+        initial = TrayScene(roi, baseline, tray_tracker)
+        scenes = {scene_signature(baseline, roi): initial}
+        dog_observer = dog_observer_from_config(config) if config.dog_enabled else None
         preview = LivePreview(context.root)
         preview.set_tray_state("searching" if tray_tracker is not None else "fixed")
         if config.clip_enabled:
@@ -138,10 +148,44 @@ def watch(
                 raise CommandError(
                     "動画の自動判定には動画保存（clips.enabled）を有効にしてください"
                 )
-            review = review_watcher(collector, roi, tray_tracker, outside_roi, notifier, judge)
+            review = review_watcher(collector, initial, scenes, outside_roi, notifier, judge)
             stack.enter_context(review.watch())
         live = stack.enter_context(LatestCamera(open_camera(source, config), on_frame))
         live.wait_ready(config.timeout_ms / 1000 + 1)
+
+        def before_align(engine: Monitor, frame: Frame | None) -> bool:
+            phase = registration.status()["phase"]
+            if phase not in ("begin", "paused", "apply", "failed", "cancel"):
+                return False
+            if collector is not None:
+                collector.set_maintenance(True)
+            scene = registration.poll(frame, engine.roi, track_tray=config.track_tray_enabled)
+            if scene is not None:
+                extensions = standard_extensions(
+                    scene.roi,
+                    scene.baseline,
+                    config,
+                    notifier,
+                    engine.clock,
+                    collector=collector,
+                    dog_observer=dog_observer,
+                    early_alert=config.early_alert_enabled,
+                    outside_roi=outside_roi,
+                    activity_map=activity,
+                )
+                scenes[scene_signature(scene.baseline, scene.roi)] = scene
+                engine.replace_scene(scene.roi, scene.baseline, scene.tracker, extensions)
+            paused = registration.status()["phase"] in (
+                "begin",
+                "paused",
+                "apply",
+                "failed",
+                "cancel",
+            )
+            if collector is not None:
+                collector.set_maintenance(paused)
+            return paused
+
         monitor(
             live,
             roi,
@@ -150,6 +194,8 @@ def watch(
             notifier,
             args.max_frames,
             collector,
+            dog_observer=dog_observer,
+            before_align=before_align,
             review_notifications=config.video_review_enabled,
             early_alert=config.early_alert_enabled,
             tray_tracker=tray_tracker,
