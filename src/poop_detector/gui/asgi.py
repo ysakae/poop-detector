@@ -5,9 +5,9 @@
    要求には HSTS も付ける
 2. Throttle：接続元ごとに要求の回数を数え、上限を超えたら 429 を返す（rate_limit.py）
 3. Admission：Host ヘッダーが自分の待ち受け先か外部の URL か（DNS リバインディング対策）、
-   POST の Origin が許した相手か（CSRF の多重の対策）を確かめ、起動時のトークン付き URL なら
-   サーバー側のセッションを始めて、その ID を Cookie に入れ、URL からトークンを取り除く
-   （GET のみ）。それ以外は Cookie のセッションが有効かを確かめる
+   POST の Origin が許した相手か（CSRF の多重の対策）を確かめ、Cookie のセッションが、
+   パスキーでログインした有効なユーザーのものかを確かめる。ログインしていない相手は、
+   ログイン・パスキーの登録の画面（PUBLIC_PATHS）だけを開ける
 
 HTTPS かどうか（scope の scheme）は、信頼するプロキシからの X-Forwarded-Proto を uvicorn が
 反映した値を使う。
@@ -29,12 +29,11 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..web_address import Site
+
+# account_routes は、読み込むとアカウントの画面のルートを登録する（名前は使わない）。
+from . import account_routes  # noqa: F401
 from .access import (
-    redirect_without_token,
-    session_cookie,
     session_ids,
-    token_in_query,
-    token_matches,
 )
 from .auth_api import webauthn
 from .exchange import HTML, Exchange
@@ -47,9 +46,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 TOO_MANY = "要求が多すぎます。しばらく待ってから開き直してください。"
-ACCESS_DENIED = (
-    "アクセスできません。GUI を起動した端末に表示されたトークン付きの URL を開いてください。"
-)
+ACCESS_DENIED = "アクセスできません。ブラウザーで開き、パスキーでログインしてください。"
 MAX_FORM_BYTES = 16384
 SECURITY_HEADERS = {
     "Cache-Control": "no-store",
@@ -110,12 +107,11 @@ def is_public(path: str) -> bool:
 
 
 def is_auth_attempt(scope: Scope) -> bool:
-    """回数を厳しく数える、認証の試み（起動トークン、登録用 URL、パスキーの窓口）。"""
+    """回数を厳しく数える、認証の試み（登録用 URL、パスキーの窓口）。"""
     path: str = scope["path"]
-    query = scope.get("query_string", b"").decode("latin-1")
     if scope["method"] == "POST":
         return path.startswith(PUBLIC_PREFIX)
-    return path == "/enroll" or token_in_query(query) is not None
+    return path == "/enroll"
 
 
 def wants_page(headers: Headers, method: str) -> bool:
@@ -192,10 +188,6 @@ class Admission:
         if scope["method"] == "POST" and origin is not None and origin not in self.site.origins:
             return Response("アクセスできません", 403, media_type=HTML)
         url = urlsplit(request_path(scope))
-        candidate = token_in_query(url.query) if scope["method"] == "GET" else None
-        if candidate is not None:
-            secure = scope.get("scheme") == "https"
-            return await self.accept_token(candidate, url.path, url.query, secure, scope)
         found = await run_in_threadpool(self.valid_session, headers.get("cookie"))
         if found is not None:
             # ルートへは、確かめたセッションを scope の state で渡す（CSRF トークンを導く）。
@@ -209,42 +201,22 @@ class Admission:
             return Response(b"", 303, {"Location": f"/login?{target}"})
         return Response(ACCESS_DENIED, 403, media_type=HTML)
 
-    def valid_session(self, cookie_header: str | None) -> tuple[str, str | None] | None:
+    def valid_session(self, cookie_header: str | None) -> tuple[str, str] | None:
         """Cookie のセッションのうち有効なものの (ID, ユーザーの ID)。
 
-        無効にしたユーザーのセッションは使えない。データベースを読むのでスレッドで呼ぶ。
+        ユーザーに結び付かないセッション（廃止した起動トークン方式のもの）と、無効にした
+        ユーザーのセッションは使えない。データベースを読むのでスレッドで呼ぶ。
         """
         for value in session_ids(cookie_header):
             session = self.gui.sessions.lookup(value)
             if session is None:
                 continue
-            if session.user_id is not None:
-                user = self.gui.accounts.users.get(session.user_id)
-                if user is None or not user.active:
-                    self.gui.sessions.revoke(value)
-                    continue
-            return value, session.user_id
+            user = self.gui.accounts.users.get(session.user_id) if session.user_id else None
+            if user is None or not user.active:
+                self.gui.sessions.revoke(value)
+                continue
+            return value, user.id
         return None
-
-    async def accept_token(
-        self, candidate: str, path: str, query: str, secure: bool, scope: Scope
-    ) -> Response:
-        """トークン付き URL でセッションを始め、トークンを除いた URL へ移動させる。"""
-        if not token_matches(candidate, self.gui.access_token):
-            logger.warning(
-                "GUI の起動トークンが一致しない要求を断りました（接続元 %s）", client_address(scope)
-            )
-            return Response(ACCESS_DENIED, 403, media_type=HTML)
-        session_id = await run_in_threadpool(self.gui.sessions.create)
-        max_age = self.gui.sessions.policy.max_age_seconds
-        return Response(
-            b"",
-            303,
-            {
-                "Location": redirect_without_token(path, query),
-                "Set-Cookie": session_cookie(session_id, secure=secure, max_age=max_age),
-            },
-        )
 
 
 async def read_form(request: Request) -> Form | None:
@@ -276,13 +248,17 @@ async def dispatch(request: Request) -> Response:
     """GET_ROUTES・POST_ROUTES の関数を、要求ごとの Exchange で呼ぶ。"""
     gui: GuiApp = request.app.state.gui
     # ログイン画面など、セッションがなくても開ける場所では CSRF トークンを出さない。
-    session_id: str | None = request.scope.get("state", {}).get("session_id")
+    state = request.scope.get("state", {})
+    session_id: str | None = state.get("session_id")
+    user_id: str | None = state.get("user_id")
+    user = await run_in_threadpool(gui.accounts.users.get, user_id) if user_id else None
     exchange = Exchange(
         gui,
         request_path(request.scope),
         request.headers,
         request.scope.get("scheme", "http"),
         csrf=gui.csrf_for(session_id) if session_id else "",
+        user=user,
     )
     url = urlsplit(exchange.path)
     if request.method == "GET":

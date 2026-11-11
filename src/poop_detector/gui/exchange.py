@@ -12,6 +12,7 @@ from starlette.datastructures import Headers
 from starlette.responses import Response, StreamingResponse
 
 if TYPE_CHECKING:
+    from .accounts import User
     from .server import GuiApp
 
 HTML = "text/html; charset=utf-8"
@@ -31,6 +32,8 @@ class Exchange:
     scheme: str = "http"
     # この要求のセッションの CSRF トークン。画面のフォームに埋め込む。
     csrf: str = ""
+    # ログインしているユーザー（ログインの画面など、ログインしていなくても開ける場所では None）。
+    user: "User | None" = None
     response: Response | None = field(default=None, init=False)
 
     def respond(

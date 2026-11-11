@@ -6,6 +6,7 @@
 import http.client
 import re
 from urllib.parse import urlencode
+from uuid import uuid4
 
 import cv2
 import numpy as np
@@ -51,19 +52,18 @@ class SilentNotifier:
         return False
 
 
-def login(server):
-    """起動時のトークン付き URL を開いてセッションを始め、その Cookie ヘッダーを返す。"""
-    conn = http.client.HTTPConnection(*server.server_address)
-    conn.request("GET", f"/?token={server.access_token}")
-    response = conn.getresponse()
-    response.read()
-    conn.close()
-    assert response.status == 303, response.status
-    return {"Cookie": response.headers["Set-Cookie"].split(";", 1)[0]}
+def login(server, name=None, role="admin"):
+    """ユーザーを作ってセッションを始め、その Cookie ヘッダーを返す（パスキーでのログインの代わり）。
+
+    パスキーでのログインそのものは test_gui_passkeys.py が確かめる。
+    """
+    app = server.app
+    user_id = app.accounts.users.create(name or f"テスト{uuid4().hex[:8]}", role)
+    return {"Cookie": f"poop_detector_session={app.sessions.create(user_id)}"}
 
 
 def session_cookie(server):
-    """ブラウザーがトークンをセッションに移した後と同じ Cookie ヘッダーを返す（サーバーごとに1回）。"""
+    """ログインしたブラウザーと同じ Cookie ヘッダーを返す（サーバーごとに1回だけユーザーを作る）。"""
     cookie = getattr(server, "test_cookie", None)
     if cookie is None:
         cookie = server.test_cookie = login(server)

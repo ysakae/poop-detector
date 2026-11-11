@@ -1,0 +1,23 @@
+{#- 自分のアカウント。パスキーの一覧・追加・削除と、管理者の招待への入口。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>アカウント</h2>
+<p>{{ person }}さん（{{ role }}）でログインしています。<a href="/">トップへ戻る</a></p>
+{% if deleted %}<p class="saved" role="status">パスキーを削除しました。</p>{% endif %}
+<h3>パスキー</h3>
+<p class="note">パスキーは、登録したときに開いたドメインでだけ使えます。端末をなくしたときに備えて、2つ以上の端末に登録しておくと安心です。</p>
+<table><thead><tr><th>端末の名前</th><th>ドメイン</th><th>登録</th><th>最後に使った日時</th><th></th></tr></thead><tbody>
+{% for key in keys %}
+<tr><td>{{ key.label }}</td><td>{{ key.rp_id }}</td><td>{{ key.created }}</td><td>{{ key.last_used }}</td>
+<td>{% if keys|length > 1 %}<form method="post" action="/account/passkeys/delete">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ key.id }}"><button class="secondary">削除</button></form>{% else %}最後の1つ{% endif %}</td></tr>
+{% else %}
+<tr><td colspan="5">パスキーはまだありません。</td></tr>
+{% endfor %}
+</tbody></table>
+<form method="post" action="/account/passkeys/add">{{ csrf_field(token) }}<button>この端末にパスキーを追加する</button></form>
+{% if admin %}
+<h3>家族を招待する</h3>
+<p><a href="/account/invite">招待の URL を作る</a></p>
+{% endif %}
+{% endblock %}

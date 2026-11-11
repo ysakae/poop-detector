@@ -1,6 +1,7 @@
 """実HTTP経由でラベルの保存と画像の公開範囲を確認する。"""
 
 import re
+from types import SimpleNamespace
 from urllib.parse import urlencode
 
 import pytest
@@ -158,50 +159,6 @@ def test_gui_rejects_post_without_session_even_with_csrf(gui):
     assert store.list()[0]["feedback"] is None
 
 
-def test_token_url_moves_token_into_strict_http_only_cookie(gui):
-    server, _, _ = gui
-    path = f"/records?token={server.access_token}&days=7"
-    status, headers, _ = exchange(server, "GET", path, auth=False)
-    assert status == 303
-    assert headers["Location"] == "/records?days=7"
-    cookie = headers["Set-Cookie"]
-    assert cookie.startswith("poop_detector_session=")
-    assert server.access_token not in cookie
-    assert "HttpOnly" in cookie
-    assert "SameSite=Strict" in cookie
-    assert "Path=/" in cookie
-    name, value = cookie.split(";", 1)[0].split("=", 1)
-    status, data = request(
-        server, "GET", "/records", headers={"Cookie": f"{name}={value}"}, auth=False
-    )
-    assert status == 200
-    assert "記録".encode() in data
-
-
-def test_token_url_rejects_wrong_token_and_keeps_redirect_local(gui):
-    server, _, _ = gui
-    status, headers, _ = exchange(server, "GET", "/?token=wrong", auth=False)
-    assert status == 403
-    assert "Set-Cookie" not in headers
-    for path in ("//evil.example/", "/\\evil.example/"):
-        status, headers, _ = exchange(
-            server, "GET", f"{path}?token={server.access_token}", auth=False
-        )
-        assert status == 303
-        location = headers["Location"]
-        assert location.startswith("/")
-        assert not location.startswith(("//", "/\\"))
-
-
-def test_redirect_without_token_never_leaves_the_gui():
-    from poop_detector.gui.access import redirect_without_token
-
-    assert redirect_without_token("//evil.example/", "token=t") == "/"
-    assert redirect_without_token("/\\evil.example/", "token=t") == "/"
-    assert redirect_without_token("evil", "token=t") == "/"
-    assert redirect_without_token("/clips", "token=t&id=a%20b") == "/clips?id=a+b"
-
-
 def test_gui_accepts_session_among_other_cookies_and_hides_referrer(gui):
     server, _, _ = gui
     session = session_cookie(server)["Cookie"]
@@ -215,8 +172,12 @@ def test_gui_accepts_session_among_other_cookies_and_hides_referrer(gui):
 
 class FakeServer:
     server_port = 8765
-    access_token = "secret-token"
     site = Site(8765)
+
+    def __init__(self, has_users=True):
+        self.app = SimpleNamespace(
+            accounts=SimpleNamespace(users=SimpleNamespace(list=lambda: [1] if has_users else []))
+        )
 
     def __enter__(self):
         return self
@@ -233,32 +194,29 @@ def launch(monkeypatch, capsys):
     from poop_detector.gui import server as label_gui
 
     opened = []
-    monkeypatch.setattr(label_gui, "make_server", lambda *a, **k: FakeServer())
 
-    def run(open_browser, *, tty, browser_ok=True):
+    def run(open_browser, *, has_users=True, browser_ok=True):
+        monkeypatch.setattr(label_gui, "make_server", lambda *a, **k: FakeServer(has_users))
         monkeypatch.setattr(
             label_gui.webbrowser, "open", lambda url: opened.append(url) or browser_ok
         )
-        monkeypatch.setattr(label_gui.sys.stdout, "isatty", lambda: tty)
         label_gui.serve("data", open_browser=open_browser)
         return capsys.readouterr().out
 
     return run, opened
 
 
-def test_serve_opens_browser_with_token_and_keeps_it_out_of_logs(launch):
+def test_serve_opens_localhost_for_passkeys(launch):
+    """パスキーは IP アドレスでは使えないので、localhost で開く。"""
     run, opened = launch
-    out = run(True, tty=False)
-    assert opened == ["http://127.0.0.1:8765/?token=secret-token"]
-    assert "secret-token" not in out
-    assert "http://127.0.0.1:8765/" in out
+    out = run(True)
+    assert opened == ["http://localhost:8765/"]
+    assert "http://localhost:8765/" in out
+    assert "GUIを終了しました" in out
 
 
-def test_serve_prints_token_url_only_to_terminal(launch):
+def test_serve_without_users_explains_the_first_registration(launch):
     run, opened = launch
-    assert "http://127.0.0.1:8765/?token=secret-token" in run(False, tty=True)
+    out = run(False, has_users=False)
     assert opened == []
-    out = run(False, tty=False)
-    assert "secret-token" not in out
-    assert "端末" in out
-    assert "http://127.0.0.1:8765/?token=secret-token" in run(True, tty=True, browser_ok=False)
+    assert "users invite" in out

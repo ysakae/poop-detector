@@ -2,7 +2,7 @@
 
 安全対策とルートへの振り分けは asgi.py にある。待ち受けは既定で 127.0.0.1 だけで、
 外から開くときは設定の gui.public_url と、HTTPS を終端するリバースプロキシを使う。
-要求の URL（トークンや画像の ID を含む）はアクセスログに出さない。
+要求の URL（登録用 URL の値や画像の ID を含む）はアクセスログに出さない。
 """
 
 import base64
@@ -13,7 +13,6 @@ import ipaddress
 import logging
 import secrets
 import socket
-import sys
 import threading
 import webbrowser
 from collections.abc import Iterator
@@ -32,7 +31,6 @@ from ..records.events import Store
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
 from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
-from .access import launch_url
 from .accounts import Accounts
 from .asgi import create_app
 from .pages import page_title
@@ -57,8 +55,6 @@ class GuiApp:
     preview: LivePreview
     # セッションごとの CSRF トークンを導く鍵（起動ごとに作る）。
     csrf_secret: bytes
-    # 起動時の URL で一度だけ受け取り、サーバー側のセッションを始める。
-    access_token: str
     sessions: SessionStore
     accounts: Accounts
     passkeys: PasskeyAuth
@@ -104,10 +100,6 @@ class GuiServer:
         self._server = uvicorn.Server(config)
         self._started = False
         self._stopped = threading.Event()
-
-    @property
-    def access_token(self) -> str:
-        return self.app.access_token
 
     def serve_forever(self, poll_interval: float | None = None) -> None:
         """停止を求められるまで要求を処理する。poll_interval は以前の版との互換のための引数。"""
@@ -186,7 +178,6 @@ def make_server(
         clips=ClipStore(root),
         preview=LivePreview(root),
         csrf_secret=secrets.token_bytes(32),
-        access_token=secrets.token_urlsafe(32),
         sessions=SessionStore(
             database, SessionPolicy(web.session_idle_hours, web.session_max_days)
         ),
@@ -199,39 +190,29 @@ def make_server(
     return GuiServer(app, listener, web, limits)
 
 
-def announce(
-    base: str, url: str, *, opened: bool, interactive: bool, public_url: str | None = None
-) -> None:
-    """起動の案内を出す。トークン付きの URL は端末に直接出すときだけ表示し、ログに残さない。
-
-    public_url は、外部の URL にトークンを付けたもの（設定していなければ None）。
-    """
-    if interactive:
-        print(f"GUI: {url}", flush=True)  # noqa: T201
-        if public_url:
-            print(f"外から開くとき: {public_url}", flush=True)  # noqa: T201
-        print("この URL は起動中だけ有効なパスワードと同じです。他人に見せないでください。")  # noqa: T201
-    elif opened:
-        print(f"GUIをブラウザーで開きました: {base}", flush=True)  # noqa: T201
-    else:
+def announce(base: str, *, opened: bool, public_url: str | None, has_users: bool) -> None:
+    """起動の案内を出す。URL に秘密は含まないので、ログやファイルに残ってもよい。"""
+    print(f"GUI: {base}{'（ブラウザーで開きました）' if opened else ''}", flush=True)  # noqa: T201
+    if public_url:
+        print(f"外から開くとき: {public_url}", flush=True)  # noqa: T201
+    if not has_users:
         print(  # noqa: T201
-            "トークン付きの URL は端末にだけ表示します。出力をファイルなどへ送らずに起動するか、"
-            "--no-browser を外してブラウザーで開いてください。",
+            "まだユーザーがいません。このマシンで `poop-detector users invite 名前 --role admin` "
+            "を実行し、表示された URL から管理者のパスキーを登録してください。",
             flush=True,
         )
 
 
 def open_gui_url(server: GuiServer, open_browser: bool) -> None:
-    base = f"http://127.0.0.1:{server.server_port}/"
-    url = launch_url(base, server.access_token)
-    public = server.site.public_base
-    opened = open_browser and webbrowser.open(url)
+    """GUI の URL を案内し、必要ならブラウザーで開く。パスキーは IP アドレスでは使えないので
+    localhost で開く。"""
+    base = f"http://localhost:{server.server_port}/"
+    opened = open_browser and webbrowser.open(base)
     announce(
         base,
-        url,
         opened=opened,
-        interactive=sys.stdout.isatty(),
-        public_url=launch_url(public, server.access_token) if public else None,
+        public_url=server.site.public_base,
+        has_users=bool(server.app.accounts.users.list()),
     )
 
 

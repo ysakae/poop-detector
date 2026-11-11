@@ -114,21 +114,20 @@ def running(root, **kwargs):
         thread.join()
 
 
-def test_token_url_starts_a_server_side_session(tmp_path):
+def test_start_token_no_longer_logs_in(tmp_path):
+    """起動トークン方式は廃止した。URL に token を付けても、セッションは始まらない。"""
     with running(tmp_path) as server:
-        status, headers, _ = exchange(server, "GET", f"/?token={server.access_token}", auth=False)
-        assert status == 303
-        cookie = headers["Set-Cookie"]
-        value = cookie.split(";", 1)[0].split("=", 1)[1]
-        assert value != server.access_token
-        assert "HttpOnly" in cookie
-        assert "SameSite=Strict" in cookie
-        assert f"Max-Age={30 * 86400}" in cookie
-        own = {"Cookie": f"poop_detector_session={value}"}
-        assert exchange(server, "GET", "/", headers=own, auth=False)[0] == 200
-        # 起動トークンそのものは Cookie として通らない。
-        token = {"Cookie": f"poop_detector_session={server.access_token}"}
-        assert exchange(server, "GET", "/", headers=token, auth=False)[0] == 403
+        status, headers, _ = exchange(server, "GET", "/?token=anything", auth=False)
+        assert status == 403
+        assert "Set-Cookie" not in headers
+
+
+def test_sessions_without_a_user_are_no_longer_valid(tmp_path):
+    """起動トークン方式で始めた、ユーザーに結び付かないセッションは使えない。"""
+    with running(tmp_path) as server:
+        session = server.app.sessions.create()
+        cookie = {"Cookie": f"poop_detector_session={session}"}
+        assert exchange(server, "GET", "/", headers=cookie, auth=False)[0] == 403
 
 
 def test_sessions_survive_a_restart_of_the_gui(tmp_path):
@@ -182,12 +181,17 @@ def test_rate_limiter_keeps_a_bounded_number_of_clients():
     assert len(limiter) <= 10
 
 
-def test_token_attempts_are_limited_even_with_the_right_token(tmp_path):
+def test_enrollment_attempts_are_limited_even_with_a_valid_code(tmp_path):
     with running(tmp_path, limits=RateLimits(token=(2, 300.0))) as server:
-        wrong = [exchange(server, "GET", "/?token=wrong", auth=False)[0] for _ in range(2)]
-        assert wrong == [403, 403]
+        code = server.app.accounts.enrollments.issue("admin", name="家族A", created_by="cli")
+        localhost = {"Host": f"localhost:{server.server_port}"}
+        wrong = [
+            exchange(server, "GET", "/enroll?code=wrong", headers=localhost, auth=False)[0]
+            for _ in range(2)
+        ]
+        assert wrong == [400, 400]
         status, headers, body = exchange(
-            server, "GET", f"/?token={server.access_token}", auth=False
+            server, "GET", f"/enroll?code={code}", headers=localhost, auth=False
         )
         assert status == 429
         assert int(headers["Retry-After"]) > 0
@@ -206,9 +210,9 @@ def test_posts_are_limited(tmp_path):
 
 def test_all_requests_have_an_upper_limit(tmp_path):
     with running(tmp_path, limits=RateLimits(all=(3, 60.0))) as server:
-        cookie = login(server)  # トークンの受け渡しで1回
-        statuses = [exchange(server, "GET", "/", headers=cookie, auth=False)[0] for _ in range(3)]
-        assert statuses == [200, 200, 429]
+        cookie = login(server)
+        statuses = [exchange(server, "GET", "/", headers=cookie, auth=False)[0] for _ in range(4)]
+        assert statuses == [200, 200, 200, 429]
 
 
 # --- セッションごとの CSRF トークン ---
