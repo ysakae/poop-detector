@@ -67,7 +67,7 @@ def render_clips(
     title: str | None = None,
 ) -> str:
     """動画の一覧と、選んだ動画の再生・ラベル入力欄。"""
-    from .app import document, local_time
+    from .pages import document, local_time
 
     page = partial(document, title=title)
 
@@ -293,7 +293,7 @@ def render_storage(
     title: str | None = None,
 ) -> str:
     """録画容量と、整理してよい古い動画の選択画面。"""
-    from .app import document, local_time
+    from .pages import document, local_time
 
     page = partial(document, title=title)
 
@@ -504,7 +504,7 @@ def handle_clip_post(
         handler.send_header("Location", f"/clips?id={clip_id}&saved=1")
         handler.end_headers()
     except (ValueError, TypeError) as error:
-        from .app import document
+        from .pages import document
 
         page = partial(document, title=title)
 

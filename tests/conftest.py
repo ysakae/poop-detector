@@ -34,12 +34,13 @@ def gui(tmp_path):
 
     (server, store, event_id) を返し、テストの後にサーバーを止める。
     """
-    from poop_detector.gui.app import make_server
+    from poop_detector.gui.server import make_server
 
     store = Store(tmp_path)
     event = store.record(np.full((50, 50, 3), 150, np.uint8), 0.1, None, 1)
     server = make_server(tmp_path, 0)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    # 停止の確認間隔を短くし、テストごとのサーバーの停止を待つ時間を減らす。
+    thread = threading.Thread(target=server.serve_forever, args=(0.02,), daemon=True)
     thread.start()
     yield server, store, event
     server.shutdown()

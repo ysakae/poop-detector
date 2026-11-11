@@ -77,7 +77,7 @@ def record(args: argparse.Namespace, context: CommandContext) -> int:
 
 
 def label_gui(args: argparse.Namespace, context: CommandContext) -> int:
-    from ..gui.app import serve
+    from ..gui.server import serve
 
     serve(
         context.root,
