@@ -109,6 +109,7 @@ def test_monitor_does_not_notify_while_dog_occludes_roi(tmp_path):
 
     class Camera:
         generation = 1
+        healthy = True
 
         def read(self):
             return changed
@@ -145,6 +146,7 @@ def test_monitor_collects_entry_exit_and_detection(tmp_path):
 
     class Camera:
         generation = 1
+        healthy = True
 
         def read(self):
             return changed

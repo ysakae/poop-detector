@@ -52,6 +52,10 @@ class ROI:
         x, y, w, h = self.pixels(frame.shape[1], frame.shape[0])
         return frame[y : y + h, x : x + w]
 
+    def valid_mask(self, shape: Shape) -> Mask | None:  # noqa: ARG002
+        """crop した画像のうち監視する画素。矩形はすべてを監視するので None。"""
+        return None
+
     def save(self, path: str | Path) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,6 +126,10 @@ class PolygonROI:
         transform = cv2.getPerspectiveTransform(points, target)
         return cv2.warpPerspective(frame, transform, (width, height))
 
+    def valid_mask(self, shape: Shape) -> Mask | None:  # noqa: ARG002
+        """四隅の ROI は長方形へ射影補正するので、補正後の画像はすべて監視する。"""
+        return None
+
     def save(self, path: str | Path) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -181,6 +189,10 @@ class MaskedROI(PolygonROI):
         points = np.rint(self.pixels(shape[1], shape[0])).astype(np.int32)
         x, y, width, height = cv2.boundingRect(points)
         return points, (x, y, width, height)
+
+    def valid_mask(self, shape: Shape) -> Mask | None:
+        """crop した外接矩形のうち、多角形の内側だけを監視する。"""
+        return self.mask(shape)
 
     def mask(self, shape: Shape) -> Mask:
         points, (x, y, width, height) = self._bounds(shape)
