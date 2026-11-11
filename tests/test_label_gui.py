@@ -6,6 +6,8 @@ from urllib.parse import urlencode
 import pytest
 from support import csrf_token, exchange, request
 
+from poop_detector.web_address import Site
+
 
 def post(server, fields, token=True):
     if token:
@@ -210,6 +212,7 @@ def test_gui_accepts_session_among_other_cookies_and_hides_referrer(gui):
 class FakeServer:
     server_port = 8765
     access_token = "secret-token"
+    site = Site(8765)
 
     def __enter__(self):
         return self

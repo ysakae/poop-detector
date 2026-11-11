@@ -6,6 +6,7 @@ from datetime import datetime
 
 from ..errors import InvalidInputError
 from ..records.events import Store
+from ..web_address import WebOptions
 from .context import CommandContext
 
 
@@ -78,11 +79,13 @@ def record(args: argparse.Namespace, context: CommandContext) -> int:
 def gui(args: argparse.Namespace, context: CommandContext) -> int:
     from ..gui.server import serve
 
+    web = WebOptions.from_config(context.config, port=args.port)
     serve(
         context.root,
-        args.port,
+        web.port,
         not args.no_browser,
         disk_mb=context.config.clip_disk_mb,
         pet_name=context.config.pet_name,
+        web=web,
     )
     return 0

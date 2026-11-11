@@ -12,9 +12,14 @@ COOKIE_NAME = "poop_detector_session"
 TOKEN_PARAM = "token"  # noqa: S105
 
 
-def session_cookie(token: str) -> str:
-    """Set-Cookie に入れる値。ブラウザーを閉じると消えるセッション Cookie にする。"""
-    return f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Strict"
+def session_cookie(token: str, *, secure: bool = False) -> str:
+    """Set-Cookie に入れる値。ブラウザーを閉じると消えるセッション Cookie にする。
+
+    secure は HTTPS で届いた要求のとき。HTTP では送られなくなるので、同じマシンからの
+    HTTP の接続では付けない。
+    """
+    cookie = f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Strict"
+    return f"{cookie}; Secure" if secure else cookie
 
 
 def has_session(cookie_header: str | None, token: str) -> bool:

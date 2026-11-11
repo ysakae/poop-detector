@@ -1,10 +1,13 @@
 """GUI のサーバー。uvicorn で ASGI アプリ（asgi.py）を動かし、起動と停止を受け持つ。
 
-安全対策とルートへの振り分けは asgi.py にある。待ち受けは 127.0.0.1 だけで、
+安全対策とルートへの振り分けは asgi.py にある。待ち受けは既定で 127.0.0.1 だけで、
+外から開くときは設定の gui.public_url と、HTTPS を終端するリバースプロキシを使う。
 要求の URL（トークンや画像の ID を含む）はアクセスログに出さない。
 """
 
 import errno
+import ipaddress
+import logging
 import secrets
 import socket
 import sys
@@ -24,9 +27,12 @@ from ..errors import UserError
 from ..records.events import Store
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
+from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
 from .access import launch_url
 from .asgi import create_app
 from .pages import page_title
+
+logger = logging.getLogger(__name__)
 
 # 停止の要求から、処理中の応答（動画の配信など）を待つ上限の秒数。
 SHUTDOWN_GRACE_SECONDS = 5
@@ -54,14 +60,19 @@ class GuiServer:
     ソケットは作った時点で待ち受けを始めるので、serve_forever の前に届いた接続も待たせておける。
     """
 
-    def __init__(self, app: GuiApp, listener: socket.socket) -> None:
+    def __init__(self, app: GuiApp, listener: socket.socket, web: WebOptions) -> None:
         self.app = app
         self.socket = listener
         host, port = listener.getsockname()[:2]
         self.server_address: tuple[str, int] = (host, port)
         self.server_port: int = port
+        self.site = Site(port, web.public_url)
+        proxies = proxy_list(web.trusted_proxies)
         config = uvicorn.Config(
-            create_app(app, port),
+            create_app(app, self.site),
+            # 信頼するプロキシからの X-Forwarded-For・X-Forwarded-Proto だけを反映する。
+            proxy_headers=bool(proxies),
+            forwarded_allow_ips=proxies or None,
             log_config=None,
             log_level="warning",
             access_log=False,
@@ -107,12 +118,13 @@ class GuiServer:
         self.server_close()
 
 
-def listen(port: int) -> socket.socket:
-    """127.0.0.1 の port で待ち受けるソケット。使用中なら利用者向けの文言で止める。"""
-    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+def listen(host: str, port: int) -> socket.socket:
+    """host の port で待ち受けるソケット。使用中なら利用者向けの文言で止める。"""
+    family = socket.AF_INET6 if ipaddress.ip_address(host).version == 6 else socket.AF_INET
+    listener = socket.socket(family, socket.SOCK_STREAM)
     try:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        listener.bind(("127.0.0.1", port))
+        listener.bind((host, port))
         listener.listen(128)
     except OSError as error:
         listener.close()
@@ -130,12 +142,19 @@ def make_server(
     *,
     disk_mb: float = DEFAULT_DISK_MIB,
     pet_name: str = "",
+    web: WebOptions = LOCAL_ONLY,
 ) -> GuiServer:
-    """127.0.0.1 だけで待ち受ける GUI のサーバーを作る。
+    """GUI のサーバーを作る。待ち受けのアドレスと外部の URL は web、ポートは port を使う。
 
     起動ごとに、保存操作の CSRF トークンと、閲覧を含むすべての要求に使うアクセストークンを作る。
     """
-    listener = listen(port)
+    listener = listen(web.host, port)
+    if not ipaddress.ip_address(web.host).is_loopback and not web.public_url:
+        logger.warning(
+            "GUI を %s で待ち受けます。外から開く場合は gui.public_url に https の URL を設定し、"
+            "HTTPS を終端するリバースプロキシを通してください",
+            web.host,
+        )
     app = GuiApp(
         root=Path(root),
         store=Store(root),
@@ -146,13 +165,20 @@ def make_server(
         title=page_title(pet_name),
         disk_mb=disk_mb,
     )
-    return GuiServer(app, listener)
+    return GuiServer(app, listener, web)
 
 
-def announce(base: str, url: str, *, opened: bool, interactive: bool) -> None:
-    """起動の案内を出す。トークン付きの URL は端末に直接出すときだけ表示し、ログに残さない。"""
+def announce(
+    base: str, url: str, *, opened: bool, interactive: bool, public_url: str | None = None
+) -> None:
+    """起動の案内を出す。トークン付きの URL は端末に直接出すときだけ表示し、ログに残さない。
+
+    public_url は、外部の URL にトークンを付けたもの（設定していなければ None）。
+    """
     if interactive:
         print(f"GUI: {url}", flush=True)  # noqa: T201
+        if public_url:
+            print(f"外から開くとき: {public_url}", flush=True)  # noqa: T201
         print("この URL は起動中だけ有効なパスワードと同じです。他人に見せないでください。")  # noqa: T201
     elif opened:
         print(f"GUIをブラウザーで開きました: {base}", flush=True)  # noqa: T201
@@ -167,8 +193,15 @@ def announce(base: str, url: str, *, opened: bool, interactive: bool) -> None:
 def open_gui_url(server: GuiServer, open_browser: bool) -> None:
     base = f"http://127.0.0.1:{server.server_port}/"
     url = launch_url(base, server.access_token)
+    public = server.site.public_base
     opened = open_browser and webbrowser.open(url)
-    announce(base, url, opened=opened, interactive=sys.stdout.isatty())
+    announce(
+        base,
+        url,
+        opened=opened,
+        interactive=sys.stdout.isatty(),
+        public_url=launch_url(public, server.access_token) if public else None,
+    )
 
 
 @contextmanager
@@ -179,9 +212,10 @@ def background_gui(
     *,
     disk_mb: float,
     pet_name: str,
+    web: WebOptions = LOCAL_ONLY,
 ) -> Iterator[None]:
     """監視中は別スレッドで GUI を提供し、監視が終われば待ち受けを閉じる。"""
-    with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name) as server:
+    with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name, web=web) as server:
         thread = threading.Thread(target=server.serve_forever, name="poop-detector-gui")
         thread.start()
         try:
@@ -199,8 +233,9 @@ def serve(
     *,
     disk_mb: float = DEFAULT_DISK_MIB,
     pet_name: str = "",
+    web: WebOptions = LOCAL_ONLY,
 ) -> None:
-    with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name) as server:
+    with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name, web=web) as server:
         open_gui_url(server, open_browser)
         try:
             server.serve_forever()

@@ -1,10 +1,14 @@
 """GUI の ASGI アプリ。安全対策をすべての要求に1か所で適用し、ルートへ振り分ける。
 
 すべての要求は外側から順に次を通る。
-1. SecurityHeaders：どの応答にも CSP などの安全のためのヘッダーを付ける
-2. Admission：Host ヘッダーが自分の待ち受け先か（DNS リバインディング対策）を確かめ、
-   起動時のトークン付き URL ならトークンを Cookie に移して URL から取り除き（GET のみ）、
-   閲覧用の Cookie を持つかを確かめる
+1. SecurityHeaders：どの応答にも CSP などの安全のためのヘッダーを付ける。HTTPS で届いた
+   要求には HSTS も付ける
+2. Admission：Host ヘッダーが自分の待ち受け先か外部の URL か（DNS リバインディング対策）、
+   POST の Origin が許した相手か（CSRF の多重の対策）を確かめ、起動時のトークン付き URL なら
+   トークンを Cookie に移して URL から取り除き（GET のみ）、閲覧用の Cookie を持つかを確かめる
+
+HTTPS かどうか（scope の scheme）は、信頼するプロキシからの X-Forwarded-Proto を uvicorn が
+反映した値を使う。
 POST は加えて、本文の大きさと CSRF トークンを確かめてからルートに渡す。
 """
 
@@ -21,6 +25,7 @@ from starlette.responses import Response
 from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from ..web_address import Site
 from .access import (
     has_session,
     redirect_without_token,
@@ -50,6 +55,8 @@ SECURITY_HEADERS = {
     "Cross-Origin-Resource-Policy": "same-origin",
     "Referrer-Policy": "no-referrer",
 }
+# HTTPS で届いた要求にだけ付ける。サブドメインには広げない（利用者の他のサイトに影響するため）。
+HSTS = "max-age=31536000"
 
 
 def request_path(scope: Scope) -> str:
@@ -77,6 +84,8 @@ class SecurityHeaders:
                 for name, value in SECURITY_HEADERS.items():
                     if name not in headers:
                         headers[name] = value
+                if scope.get("scheme") == "https":
+                    headers["Strict-Transport-Security"] = HSTS
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
@@ -85,10 +94,10 @@ class SecurityHeaders:
 class Admission:
     """Host・起動時のトークン・閲覧用の Cookie を確かめ、通さない要求にはここで応答する。"""
 
-    def __init__(self, app: ASGIApp, gui: "GuiApp", port: int) -> None:
+    def __init__(self, app: ASGIApp, gui: "GuiApp", site: Site) -> None:
         self.app = app
         self.gui = gui
-        self.hosts = (f"127.0.0.1:{port}", f"localhost:{port}")
+        self.site = site
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -103,17 +112,20 @@ class Admission:
     def refusal(self, scope: Scope) -> Response | None:
         """通さないときの応答。通すなら None。"""
         headers = Headers(scope=scope)
-        if headers.get("host") not in self.hosts:
+        if (headers.get("host") or "").lower() not in self.site.hosts:
+            return Response("アクセスできません", 403, media_type=HTML)
+        origin = headers.get("origin")
+        if scope["method"] == "POST" and origin is not None and origin not in self.site.origins:
             return Response("アクセスできません", 403, media_type=HTML)
         url = urlsplit(request_path(scope))
         candidate = token_in_query(url.query) if scope["method"] == "GET" else None
         if candidate is not None:
-            return self.accept_token(candidate, url.path, url.query)
+            return self.accept_token(candidate, url.path, url.query, scope.get("scheme") == "https")
         if not has_session(headers.get("cookie"), self.gui.access_token):
             return Response(ACCESS_DENIED, 403, media_type=HTML)
         return None
 
-    def accept_token(self, candidate: str, path: str, query: str) -> Response:
+    def accept_token(self, candidate: str, path: str, query: str, secure: bool) -> Response:
         """トークン付き URL を Cookie に移し、トークンを除いた URL へ移動させる。"""
         if not token_matches(candidate, self.gui.access_token):
             return Response(ACCESS_DENIED, 403, media_type=HTML)
@@ -122,7 +134,7 @@ class Admission:
             303,
             {
                 "Location": redirect_without_token(path, query),
-                "Set-Cookie": session_cookie(self.gui.access_token),
+                "Set-Cookie": session_cookie(self.gui.access_token, secure=secure),
             },
         )
 
@@ -182,13 +194,13 @@ async def unknown_path(request: Request, _error: Exception) -> Response:
     return not_found(request.method)
 
 
-def create_app(gui: "GuiApp", port: int) -> Starlette:
+def create_app(gui: "GuiApp", site: Site) -> Starlette:
     """ルートの表から ASGI アプリを作る。表に後から足したルートも dispatch が見つける。"""
     app = Starlette(
         routes=[Route("/{path:path}", dispatch, methods=["GET", "POST"])],
         middleware=[
             Middleware(SecurityHeaders),
-            Middleware(Admission, gui=gui, port=port),
+            Middleware(Admission, gui=gui, site=site),
         ],
         exception_handlers={404: unknown_path, 405: unknown_path},
     )

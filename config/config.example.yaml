@@ -74,3 +74,15 @@ dog:
 review:
   provider: codex   # codex、claude、gemini
   model: ""         # Claude/Gemini は画像入力と JSON Schema に対応するモデル名が必要
+
+# GUI（gui コマンドと run --gui）の待ち受けと、外から開くときの設定
+gui:
+  # 待ち受ける IP アドレス。既定は同じマシンだけ。Docker の中では 0.0.0.0 にする
+  host: 127.0.0.1
+  # gui --port、run --gui-port を指定すれば、そちらを使う
+  port: 8765
+  # インターネットから開くときの URL（https://ドメイン名）。HTTPS はリバースプロキシで終端する。
+  # 空なら同じマシンからだけ開ける。手順は docs/remote-access.md
+  public_url: ""
+  # X-Forwarded-Proto などを信頼するプロキシの IP アドレスかネットワーク（カンマ区切り）
+  trusted_proxies: 127.0.0.1

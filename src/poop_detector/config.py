@@ -17,6 +17,14 @@ from dotenv import dotenv_values
 
 from .errors import UserError
 from .video.clip_storage import DEFAULT_DISK_MIB
+from .web_address import (
+    DEFAULT_PORT,
+    DEFAULT_TRUSTED_PROXIES,
+    LOCAL_HOST,
+    valid_listen_host,
+    valid_proxies,
+    valid_public_url,
+)
 
 CONNECTION_KEYS = ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC", "POOP_NTFY_SERVER")
 PET_NAME_MAX_LENGTH = 32
@@ -301,6 +309,33 @@ SETTINGS: tuple[Setting, ...] = (
         "true または false（--detect-outside と同じ）",
     ),
 )
+SETTINGS += (
+    Setting(
+        "gui_host",
+        "gui",
+        "host",
+        str,
+        valid_listen_host,
+        "待ち受ける IP アドレス（既定は同じマシンだけの 127.0.0.1）",
+    ),
+    Setting("gui_port", "gui", "port", int, _number(1, 65535), "1〜65535 の整数"),
+    Setting(
+        "gui_public_url",
+        "gui",
+        "public_url",
+        str,
+        valid_public_url,
+        "外から開くときの https://ドメイン名（空なら外から開かない。開発用に http://localhost も可）",
+    ),
+    Setting(
+        "gui_trusted_proxies",
+        "gui",
+        "trusted_proxies",
+        str,
+        valid_proxies,
+        "転送のヘッダーを信頼するプロキシの IP アドレスかネットワーク（カンマ区切り。* は不可）",
+    ),
+)
 SETTINGS_BY_ATTR = {setting.attr: setting for setting in SETTINGS}
 SETTINGS_BY_NAME = {(setting.section, setting.key): setting for setting in SETTINGS}
 SECTIONS = tuple(dict.fromkeys(setting.section for setting in SETTINGS if setting.section))
@@ -360,6 +395,10 @@ class Config:
     track_tray_enabled: bool = False
     activity_map_enabled: bool = False
     detect_outside_enabled: bool = False
+    gui_host: str = LOCAL_HOST
+    gui_port: int = DEFAULT_PORT
+    gui_public_url: str = ""
+    gui_trusted_proxies: str = DEFAULT_TRUSTED_PROXIES
 
     def __post_init__(self) -> None:
         for setting in SETTINGS:
