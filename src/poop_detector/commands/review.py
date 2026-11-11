@@ -60,7 +60,7 @@ def circling_review(args: argparse.Namespace, context: CommandContext) -> int:
     check_limit(args.limit)
     roi, baseline = load_scene(context)
     store = ClipStore(context.root)
-    rows = store.circling_targets(scene_signature(baseline, roi), args.limit, args.clip)
+    rows = store.circling.targets(scene_signature(baseline, roi), args.limit, args.clip)
     if not rows:
         print("現在の画角で分析できる保存済み動画がありません")
         return 2 if args.clip else 0
@@ -76,7 +76,7 @@ def circling_review(args: argparse.Namespace, context: CommandContext) -> int:
             candidates, sampled, located = inspect_circling(
                 path, model.predict, roi, tray_tracker=tracker
             )
-            if not store.save_circling_review(clip_id, candidates, sampled, located):
+            if not store.circling.save(clip_id, candidates, sampled, located):
                 raise OSError("動画の状態が変わりました")
         except (OSError, ValueError, cv2.error):
             failed += 1

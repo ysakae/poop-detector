@@ -6,7 +6,15 @@
 
 監視（`poop-detector run`）とラベル GUI（`poop-detector label-gui`）は別プロセスで、直接は通信しません。`config.data_dir`（既定 `data/`）の中身だけが接点です。
 
-- `events.sqlite3` — `events.Store` と `clips.ClipStore` が同じファイルにテーブルを持ちます。接続とスキーマは `database.py` が管理します。スキーマの版を `PRAGMA user_version` に記録し、開くときに未適用の移行処理を順に適用します（版管理を入れる前のデータベースは版0として扱い、版1への移行でいまの形にそろえます）。
+- `events.sqlite3` — 次の台帳が同じファイルにテーブルを持ちます。
+  - `events.Store`：検知イベントと排泄の記録
+  - `clips.ClipStore`：動画の保存要求と状態
+  - `clip_reviews.AssessmentStore`：Codex の判定
+  - `clip_reviews.CirclingReviews`：旋回候補
+  - `clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
+  - `clip_storage`：保持期間・保護・整理
+
+  接続とスキーマは `database.py` が管理します。スキーマの版を `PRAGMA user_version` に記録し、開くときに未適用の移行処理を順に適用します（版管理を入れる前のデータベースは版0として扱い、版1への移行でいまの形にそろえます）。
 - GUI からの「今の前後の動画を保存」は `clips` テーブルへ `queued` 行を入れるだけで、監視側の `ClipCollector.poll()` が拾います。監視の生存は `capture_status` のハートビートで判定します。
 - ライブ映像は `LivePreview` が `.live-preview.jpg` を書き、GUI が `.live-preview-request` の更新時刻で要求を伝えます。
 - `activity.sqlite3` は行動マップ専用の別データベースです。

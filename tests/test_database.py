@@ -116,7 +116,7 @@ def test_pre_versioning_database_keeps_its_data(tmp_path):
     row = clips.get("c1")
     assert row is not None
     assert (row["label"], row["note"], row["location"]) == ("feces", "メモ", "tray")
-    assert clips.confirmation("c1") == "e1"
+    assert clips.labels.confirmation("c1") == "e1"
 
 
 def test_database_before_location_column_gains_missing_columns_and_tables(tmp_path):

@@ -51,7 +51,8 @@ def test_invalid_record_is_not_saved(tmp_path):
 def test_legacy_positive_keeps_feces_label(tmp_path):
     store = Store(tmp_path)
     event = store.record(np.full((50, 50, 3), 180, np.uint8), 0.1, None, 1)
-    store.feedback(event, True)
+    # 種類を記録する前の版では、排泄ありを feedback=1 だけで表していた。
+    store.update(event, feedback=1)
     assert store.records()[0]["excretion_type"] == "feces"
 
 

@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 import pytest
 
+from poop_detector.clip_labels import ClipLabel
 from poop_detector.clips import ClipStore
 from poop_detector.codex_review import Assessment, Review, inspect_clip, parse_assessment
 from poop_detector.main import parser
@@ -38,20 +39,20 @@ def test_live_review_preserves_human_labels_and_deduplicates(tmp_path):
     store = ClipStore(tmp_path)
     when = datetime.now(UTC)
     ids = [ready(store, when + timedelta(seconds=offset)) for offset in (0, 2, 20, 40)]
-    store.label(ids[0], "none", activity="feeding")
+    store.labels.save(ids[0], ClipLabel("none", activity="feeding"))
     notified = []
     review = Review(store, lambda path, row: FECES, lambda label: notified.append(label) or True)
     review.run(limit=10, since=when.isoformat())
     review.run(limit=10, since=when.isoformat())
     assert store.get(ids[0])["label"] == "none"
-    assert store.assessment(ids[0]) is None
-    assert all(store.assessment(clip_id)["label"] == "feces" for clip_id in ids[1:])
+    assert store.assessments.get(ids[0]) is None
+    assert all(store.assessments.get(clip_id)["label"] == "feces" for clip_id in ids[1:])
     assert notified == ["feces", "feces", "feces"]
 
     duplicate = ready(store, when + timedelta(seconds=42))
     review.run(limit=10, since=when.isoformat())
-    assert store.assessment(duplicate)["label"] == "feces"
-    assert store.assessment(duplicate)["notified_at"] is None
+    assert store.assessments.get(duplicate)["label"] == "feces"
+    assert store.assessments.get(duplicate)["notified_at"] is None
     assert len(notified) == 3
 
 
@@ -66,10 +67,10 @@ def test_backfill_never_notifies_and_live_skips_feeding(tmp_path):
         lambda label: pytest.fail("通知対象外です"),
     )
     review.run(limit=10, since=when.isoformat())
-    assert store.assessment(old) is None
-    assert store.assessment(live)["activity"] == "feeding"
+    assert store.assessments.get(old) is None
+    assert store.assessments.get(live)["activity"] == "feeding"
     review.run(limit=10)
-    assert store.assessment(old)["label"] == "feces"
+    assert store.assessments.get(old)["label"] == "feces"
     assert store.get(old)["label"] is None
 
 
@@ -81,9 +82,9 @@ def test_failed_review_is_visible_and_can_be_retried(tmp_path):
         raise OSError("認証情報を含むかもしれない出力")
 
     assert Review(store, fail).run(limit=1) == (0, 1)
-    assert "認証情報" not in store.assessment(clip_id)["error"]
+    assert "認証情報" not in store.assessments.get(clip_id)["error"]
     assert Review(store, lambda path, row: FECES).run(limit=1, clip_id=clip_id) == (1, 0)
-    assert store.assessment(clip_id)["error"] is None
+    assert store.assessments.get(clip_id)["error"] is None
 
 
 def test_rejects_positive_with_invalid_time_or_missing_evidence():
@@ -202,8 +203,8 @@ def test_backfill_uses_matching_camera_scene(tmp_path):
     store.update(old, scene_signature="old")
     review = Review(store, lambda path, row: FECES, scene_signature="scene")
     assert review.run(limit=3) == (1, 0)
-    assert store.assessment(current)["label"] == "feces"
-    assert store.assessment(old) is None
+    assert store.assessments.get(current)["label"] == "feces"
+    assert store.assessments.get(old) is None
 
 
 def test_duplicate_both_is_not_a_second_notice(tmp_path):
@@ -220,7 +221,7 @@ def test_duplicate_both_is_not_a_second_notice(tmp_path):
     )
     assert review.run(limit=3, since=when.isoformat()) == (2, 0)
     assert notices == ["feces"]
-    assert store.assessment(duplicate)["label"] == "both"
+    assert store.assessments.get(duplicate)["label"] == "both"
 
 
 def test_single_frame_does_not_reach_codex(tmp_path):

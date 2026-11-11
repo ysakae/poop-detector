@@ -2,6 +2,9 @@
 
 from support import ready_clip, request, submit
 
+from poop_detector.clip_labels import ClipLabel
+from poop_detector.clip_reviews import Assessment
+
 
 def test_video_range_and_labels(gui):
     from poop_detector.clips import ClipStore
@@ -58,13 +61,15 @@ def test_codex_draft_is_visible_without_overwriting_human_label(gui):
     clips = ClipStore(store.root)
     clip = clips.request()
     clips.update(clip, status="ready", duration=10)
-    clips.save_assessment(
+    clips.assessments.save(
         clip,
-        label="feces",
-        activity="excreting",
-        start_seconds=2,
-        end_seconds=4,
-        reason="<新しい便が見えます>",
+        Assessment(
+            label="feces",
+            activity="excreting",
+            start_seconds=2,
+            end_seconds=4,
+            reason="<新しい便が見えます>",
+        ),
     )
     _, body = request(server, "GET", "/clips?id=" + clip)
     page = body.decode()
@@ -73,10 +78,10 @@ def test_codex_draft_is_visible_without_overwriting_human_label(gui):
     assert 'name="label" value="feces" checked' in page
     assert clips.get(clip)["label"] is None
 
-    clips.label(clip, "none", activity="feeding")
+    clips.labels.save(clip, ClipLabel("none", activity="feeding"))
     _, body = request(server, "GET", "/clips?id=" + clip)
     assert 'name="label" value="none" checked' in body.decode()
-    assert clips.assessment(clip)["label"] == "feces"
+    assert clips.assessments.get(clip)["label"] == "feces"
 
 
 def test_clip_links_keep_addressable_details_for_partial_navigation(gui):

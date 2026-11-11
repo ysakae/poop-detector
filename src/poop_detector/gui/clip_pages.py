@@ -7,6 +7,7 @@ from io import BufferedIOBase
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+from ..clip_labels import ClipLabel
 from ..clip_storage import (
     CLEANUP_LIMIT,
     DEFAULT_DISK_MIB,
@@ -14,6 +15,8 @@ from ..clip_storage import (
     RETENTION_DAYS,
     cleanup_candidates,
     cleanup_selected,
+    is_protected,
+    protect,
     recording_usage,
     retention_days,
 )
@@ -92,7 +95,7 @@ def clip_detail(store: ClipStore, row: Mapping[str, Any]) -> dict[str, Any]:
         "removed": (status == "removed") if status in ("removed", "removing") else None,
         "failed": status == "failed",
         "error": row["error"] or "動画を保存できませんでした",
-        "pinned": status == "ready" and store.is_pinned(row["id"]),
+        "pinned": status == "ready" and is_protected(store, row["id"]),
         "duration": row["duration"],
         "trigger_offset": row["trigger_offset"] or 0,
         "start_time": local_time(row["start_at"]),
@@ -104,7 +107,7 @@ def clip_detail(store: ClipStore, row: Mapping[str, Any]) -> dict[str, Any]:
 
 def circling_detail(store: ClipStore, row: Mapping[str, Any]) -> dict[str, Any] | None:
     """保存済みの旋回候補。排泄の開始記録より前なら、その差も出す。"""
-    circling = store.circling_review(row["id"])
+    circling = store.circling.get(row["id"])
     if circling is None:
         return None
     actual_start = row["actual_start_offset"]
@@ -194,7 +197,7 @@ def render_clips(
     rows = store.list(include_assessments=True)
     selected = query.get("id", [""])[0]
     row = next((r for r in rows if r["id"] == selected), rows[0] if rows else None)
-    raw_assessment = store.assessment(row["id"]) if row else None
+    raw_assessment = store.assessments.get(row["id"]) if row else None
     context: dict[str, Any] = {
         "clip": None,
         "circling": None,
@@ -310,12 +313,12 @@ def confirmation_info(
     location: str | None,
 ) -> dict[str, Any]:
     """動画のラベルと一緒に、排泄の確定記録を保存する欄。保存先の記録を選ばせる。"""
-    linked = store.confirmation(clip["id"])
+    linked = store.labels.confirmation(clip["id"])
     if linked:
         return {"linked": linked}
     original = clip["event_id"]
     candidates = []
-    for record in store.record_candidates(cast(ClipRow, clip)):
+    for record in store.labels.record_candidates(cast(ClipRow, clip)):
         known_location = record["location"] or ("tray" if record["kind"] == "SUSPECTED" else "")
         disabled = bool(location and known_location and location != known_location)
         label = EXCRETION_TYPES[record["excretion_type"]] if record["feedback"] == 1 else "検知"
@@ -420,21 +423,21 @@ def handle_clip_post(
             clip_id = fields.get("id", "")
             if fields.get("protected") not in ("0", "1"):
                 raise ValueError("保護の設定を確認してください")
-            store.pin(clip_id, fields["protected"] == "1")
+            protect(store, clip_id, fields["protected"] == "1")
         else:
             clip_id = fields.get("id", "")
             start = float(fields["start"]) if fields.get("start") else None
             end = float(fields["end"]) if fields.get("end") else None
-            store.label(
-                clip_id,
+            clip_label = ClipLabel(
                 fields.get("label", ""),
                 start,
                 end,
                 fields.get("activity", "other"),
                 fields.get("note", ""),
-                record_id=fields.get("record_id", "") if handler.path == "/clips/confirm" else None,
-                location=fields.get("location"),
+                fields.get("location"),
             )
+            record_id = fields.get("record_id", "") if handler.path == "/clips/confirm" else None
+            store.labels.save(clip_id, clip_label, record_id=record_id)
         handler.send_response(303)
         handler.send_header("Location", f"/clips?id={clip_id}&saved=1")
         handler.end_headers()

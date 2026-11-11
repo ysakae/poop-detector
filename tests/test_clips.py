@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 import pytest
 
+from poop_detector.clip_labels import ClipLabel
+
 
 def test_buffer_and_manual_capture(tmp_path):
     from poop_detector.clips import ClipStore
@@ -60,7 +62,7 @@ def test_labels_and_video_time_bounds(tmp_path):
     store = ClipStore(tmp_path)
     clip = store.request("manual")
     store.update(clip, status="ready", duration=10)
-    store.label(clip, "urine", 2, 5, "other", "目視確認")
+    store.labels.save(clip, ClipLabel("urine", 2, 5, "other", "目視確認"))
     assert store.get(clip)["label"] == "urine"
     for start, end, message in [
         (5, 2, "完了は開始以降"),
@@ -68,8 +70,8 @@ def test_labels_and_video_time_bounds(tmp_path):
         (2, 11, "動画内の秒数"),
     ]:
         with pytest.raises(ValueError, match=message):
-            store.label(clip, "feces", start, end)
-    store.label(clip, "none", activity="feeding")
+            store.labels.save(clip, ClipLabel("feces", start, end))
+    store.labels.save(clip, ClipLabel("none", activity="feeding"))
     assert store.get(clip)["activity"] == "feeding"
     assert store.get(clip)["actual_start_offset"] is None
 

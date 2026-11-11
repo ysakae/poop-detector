@@ -6,6 +6,8 @@ from threading import Thread
 import numpy as np
 from support import request, submit
 
+from poop_detector.clip_labels import ClipLabel
+from poop_detector.clip_reviews import Assessment
 from poop_detector.clip_storage import MIB, cleanup_selected
 from poop_detector.clips import ClipStore
 from poop_detector.gui.server import make_server
@@ -76,9 +78,9 @@ def test_storage_cleanup_preserves_labels_links_and_newly_pinned_videos(gui):
     pinned, pinned_path = saved_clip(clips)
     positive, positive_path = saved_clip(clips)
     recent, recent_path = saved_clip(clips, days_ago=1)
-    clips.label(labeled, "none")
-    clips.save_assessment(positive, label="urine")
-    clips.save_assessment(target, label="none", reason="映像を確認しました")
+    clips.labels.save(labeled, ClipLabel("none"))
+    clips.assessments.save(positive, Assessment(label="urine"))
+    clips.assessments.save(target, Assessment(label="none", reason="映像を確認しました"))
 
     status, page = request(server, "GET", "/clips/storage")
     assert status == 200
@@ -105,7 +107,7 @@ def test_storage_cleanup_preserves_labels_links_and_newly_pinned_videos(gui):
     )
     assert not target_path.exists()
     assert clips.get(target)["status"] == "removed"
-    assert clips.assessment(target)["reason"] == "映像を確認しました"
+    assert clips.assessments.get(target)["reason"] == "映像を確認しました"
     assert all(
         path.exists()
         for path in (pinned_path, linked_path, labeled_path, positive_path, recent_path)
