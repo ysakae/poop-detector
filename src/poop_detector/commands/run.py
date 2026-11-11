@@ -16,6 +16,7 @@ from ..detection.scene import scene_signature
 from ..features.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
 from ..features.tray_registration import TrayRegistration, TrayScene
 from ..frames import Frame
+from ..gui.server import background_gui
 from ..video.recording import ClipCollector
 from .context import (
     CommandContext,
@@ -168,6 +169,16 @@ def watch(
                 model=config.review_model or None,
             )
             stack.enter_context(review.watch())
+        if args.gui:
+            stack.enter_context(
+                background_gui(
+                    context.root,
+                    args.gui_port,
+                    not args.no_browser,
+                    disk_mb=config.clip_disk_mb,
+                    pet_name=config.pet_name,
+                )
+            )
         live = stack.enter_context(LatestCamera(open_camera(source, config), on_frame))
         live.wait_ready(config.timeout_ms / 1000 + 1)
 

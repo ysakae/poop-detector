@@ -18,10 +18,10 @@ uv run poop-detector run
 
 ![動画ラベル画面。左に動画の一覧、右に再生中の動画と自動判定の候補が並ぶ（人工データ）](images/label-gui-clips.jpg)
 
-別のターミナルでラベル GUI を起動し、「動画を確認・保存する」を開いてください。
+別のターミナルで GUI を起動し、「動画を確認・保存する」を開いてください。
 
 ```bash
-uv run poop-detector label-gui
+uv run poop-detector gui
 ```
 
 - 「今の前後の動画を保存」は監視・カメラ接続中に使えます。食事・座る・匂いを嗅ぐなど、排泄以外の場面も保存してください。
@@ -81,7 +81,7 @@ uv run poop-detector run --dog --video-review
 
 ```bash
 uv run poop-detector video-review --limit 5
-uv run poop-detector label-gui
+uv run poop-detector gui
 ```
 
-`video-review --clip 動画ID` で対象を1件に絞れます。動画の ID はラベル GUI で選んだときの URL の `id` です。
+`video-review --clip 動画ID` で対象を1件に絞れます。動画の ID は GUI で選んだときの URL の `id` です。

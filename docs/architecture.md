@@ -14,13 +14,13 @@
 | `video/` | 中核・任意 | 動画の台帳・録画・保持（中核）、動画の自動判定と判定器（任意） |
 | `features/` | 任意 | 犬の検出、見守り通知、トレー追従、行動マップ |
 | `experimental/` | 実験的 | トレー外検知（`outside.py`）、旋回分析（`circling.py`） |
-| `commands/`・`gui/` | — | CLI のサブコマンドと、ラベル GUI |
+| `commands/`・`gui/` | — | CLI のサブコマンドと、GUI |
 
 最上位には、設定（`config.py`）、通知（`notifications.py`）、画像の型（`frames.py`）、時刻（`timezones.py`）、対応 OS の判定（`platform_support.py`）、CLI の入口（`main.py`）を置いています。監視ループの本体（`detection.monitoring.Monitor`）は、任意・実験的な機能に依存しません。それらは `MonitorExtension` として差し込み、設定から拡張を組み立てる `standard_extensions` だけが各機能を読み込みます。
 
 ## 2つのプロセスが `data/` を介して連携する
 
-監視（`poop-detector run`）とラベル GUI（`poop-detector label-gui`）は別プロセスで、直接は通信しません。`config.data_dir`（既定 `data/`）の中身だけが接点です。
+GUI は `poop-detector gui` で単独起動できます。`poop-detector run --gui` では監視プロセス内の別スレッドで待ち受け、監視の終了時に閉じます。どちらの方式でも `config.data_dir`（既定 `data/`）を通じて監視と GUI がデータを共有します。
 
 - `events.sqlite3` — 次の台帳が同じファイルにテーブルを持ちます。
   - `records.events.Store`：検知イベントと排泄の記録
@@ -44,7 +44,7 @@
 |---|---|
 | `commands/setup.py` | `check-camera`、`setup-roi`、`setup-activity-map`、`capture-baseline` |
 | `commands/run.py` | `run` |
-| `commands/records.py` | `events`、`metrics`、`feedback`、`acknowledge`、`missed`、`record`、`records`、`label-gui` |
+| `commands/records.py` | `events`、`metrics`、`feedback`、`acknowledge`、`missed`、`record`、`records`、`gui` |
 | `commands/notify.py` | `test-notification` |
 | `commands/show_config.py`・`commands/diagnose.py` | `show-config`、`diagnose` |
 | `commands/review.py` | `video-review`、`circling-review` |
@@ -99,13 +99,13 @@
 
 `notifications.py` の `_ToiletNotifier` が文面を持ち、`MacNotifier`（osascript）と `NtfyNotifier`（ntfy サーバーへの HTTP POST、既定は ntfy.sh）が送信だけを実装します。文面の犬の名前は設定の `pet_name` から受け取り、`MacNotifier` は AppleScript の文字列としてエスケープしてから埋め込みます。`POOP_NTFY_TOPIC` があれば ntfy、なければ macOS 通知を使います。通知先を増やすときは `_deliver` を実装したサブクラスを足してください。ntfy の無料トピックは公開扱いなので、本文に映像やカメラの URL を入れないでください。
 
-## ラベル GUI
+## GUI
 
 標準ライブラリの `http.server` で作ったサーバーで、HTML は Jinja2 のテンプレート（`gui/templates/`）で作ります。フロントエンドのビルドはありません。`gui/` は次のように分かれています。
 
 | モジュール | 役割 |
 |---|---|
-| `gui/server.py` | `make_server`・`serve`、要求ハンドラー（`Handler`）、安全対策 |
+| `gui/server.py` | `make_server`・`serve`・`background_gui`、要求ハンドラー（`Handler`）、安全対策 |
 | `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
 | `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（トップと記録、動画、行動マップ） |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル |

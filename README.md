@@ -5,7 +5,7 @@
 犬のトイレを RTSP カメラで見守り、排便・排尿の「可能性」をスマートフォンや Mac に通知するローカル監視ツールです。
 空のトイレの画像と今の映像を比べ、変化が一定時間残ったときに知らせます。映像は手元のマシンで処理し、クラウドへは送りません（任意の動画の自動判定を除く）。
 
-![ラベル GUI のトップ画面。ライブ映像、直近の動画の自動判定、記録の一覧が並ぶ（人工データ）](docs/images/label-gui-top.jpg)
+![GUI のトップ画面。ライブ映像、直近の動画の自動判定、記録の一覧が並ぶ（人工データ）](docs/images/label-gui-top.jpg)
 
 > **English summary:** poop-detector watches a dog's toilet tray through an RTSP camera and notifies you when a lasting change suggests the dog has pooped or peed. It compares frames with an empty-tray baseline on your own machine; it does not recognize feces or urine itself. The documentation is in Japanese.
 
@@ -38,7 +38,7 @@
 |---|---|---|---|---|
 | 中核 | 差分による排泄候補の検知 | `run` | 空のトイレの基準画像と監視範囲の登録が必要。排泄物そのものは識別しない | [判定の仕組み](docs/detection.md) |
 | 中核 | macOS 通知・ntfy 通知 | 既定（`.env` で ntfy に切り替え） | macOS 以外では ntfy の設定が必要 | [通知](docs/notifications.md) |
-| 中核 | ラベル付けと排泄の記録 | `label-gui` | 同じマシンのブラウザーで使う。起動ごとのトークン付き URL で開く | [記録とラベル付け](docs/records.md) |
+| 中核 | 記録・ラベル付け・管理の GUI | `gui`、`run --gui` | 同じマシンのブラウザーで使う。起動ごとのトークン付き URL で開く | [記録とラベル付け](docs/records.md) |
 | 中核 | 検知前後の動画の保存 | 既定で有効（`clips.enabled`） | FFmpeg の `libx264` が必要。常時録画はしない | [動画](docs/video.md) |
 | 任意 | 多角形の監視範囲 | `setup-roi --polygon` | 登録には画面のあるマシンが必要 | [初期設定](docs/setup.md) |
 | 任意 | トレー追従 | `features.track_tray`、`--track-tray` | トレーの縁が映っていること。縁が隠れている間は判定を保留する | [初期設定](docs/setup.md#カメラやトレーの小さなずれに追従する) |
@@ -110,13 +110,21 @@ uv tool install poop-detector
 
 コマンドは作業用のディレクトリで実行してください。そのディレクトリの `.env`、`config/config.yaml`、`data/` を使います。ひな形はリポジトリの [`.env.example`](.env.example) と [`config/config.example.yaml`](config/config.example.yaml) を参考にしてください。
 
-## 記録とラベル付け
+## GUI
 
-監視とは別のターミナルでラベル GUI を起動すると、起動ごとに変わるトークン付きの URL（`http://127.0.0.1:8765/?token=...`）がブラウザーで開きます。トークンを持たないブラウザーやプログラムは画面や映像を閲覧できません。
+監視と一緒に GUI を起動するには、普段の監視コマンドに `--gui` を加えます。Ctrl+C で両方を終了します。
 
 ```bash
-uv run poop-detector label-gui
+uv run poop-detector run --gui
 ```
+
+保存済みの記録を見たり、起動済みの監視に GUI を追加したりする場合は、単独で起動できます。
+
+```bash
+uv run poop-detector gui
+```
+
+どちらの起動方法でも、起動ごとに変わるトークン付き URL が同じマシンのブラウザーで開きます。「管理」ではカメラや監視の状態確認とトレーの再登録ができます。
 
 通知された画像や動画に「排便」「排尿」「誤検知」などのラベルを付け、目視で確認した排泄や見逃しを記録できます。記録は日別・時間帯別に集計でき、検知の精度の評価にも使います。詳しくは [記録とラベル付け](docs/records.md) を参照してください。
 
@@ -134,7 +142,7 @@ uv run poop-detector label-gui
 
 - [初期設定](docs/setup.md) — カメラ、`.env`、監視領域、基準画像、トレー追従
 - [判定の仕組み](docs/detection.md) — 差分検知、排尿の検知、見守り通知、設定項目、制限
-- [記録とラベル付け](docs/records.md) — ラベル GUI、排泄の記録、評価指標
+- [記録とラベル付け](docs/records.md) — GUI、排泄の記録、評価指標
 - [通知](docs/notifications.md) — macOS の通知と ntfy
 - [動画](docs/video.md) — 動画の保存、容量の管理、動画の自動判定
 - [犬の検出](docs/dog.md) — 犬の存在、トレー外の検知、行動マップ、旋回候補
