@@ -10,17 +10,21 @@ import sqlite3
 import subprocess
 import tempfile
 import threading
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from types import TracebackType
+from typing import Any, Protocol, Self, cast
 
 import cv2
 import numpy as np
 
-from .clips import ACTIVITIES, CLIP_LABELS
+from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
 from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, utcnow
-from .roi import full_mask, outline
+from .frames import Frame, Mask
+from .roi import AnyROI, MaskedROI, full_mask, outline
+from .tray_tracking import TrayTracker
 
 logger = logging.getLogger(__name__)
 EVIDENCE = {"feces": "new_stool", "urine": "new_wet_patch", "both": "both_visible"}
@@ -79,7 +83,10 @@ class Assessment:
     location: str | None = None
 
 
-def parse_assessment(output, duration, *, include_location=False):
+def parse_assessment(
+    output: object, duration: float, *, include_location: bool = False
+) -> Assessment:
+    """Codex の出力を検証する。根拠・時刻・位置が足りなければ ValueError。"""
     if not isinstance(output, dict):
         raise ValueError("Codexの判定形式が不正です")
     label, activity = output.get("label"), output.get("activity")
@@ -116,8 +123,9 @@ class TrayNotVisibleError(ValueError):
     """動画の中でトレーの位置を確かめられるフレームが足りない。"""
 
 
-def save_sheet(destination, tiles, timestamps):
-    labeled = []
+def save_sheet(destination: Path, tiles: Sequence[Frame], timestamps: Sequence[float]) -> None:
+    """画像に秒数を書き入れ、4列のコンタクトシートとして保存する。"""
+    labeled: list[Frame] = []
     for tile, timestamp in zip(tiles, timestamps, strict=True):
         framed = cv2.copyMakeBorder(tile, 26, 0, 0, 0, cv2.BORDER_CONSTANT)
         cv2.putText(framed, f"{timestamp:.2f}s", (6, 19), 0, 0.55, (255, 255, 255), 1)
@@ -131,7 +139,10 @@ def save_sheet(destination, tiles, timestamps):
         raise OSError("Codex判定用画像を保存できません")
 
 
-def save_difference_sheet(destination, tiles, timestamps, mask):
+def save_difference_sheet(
+    destination: Path, tiles: Sequence[Frame], timestamps: Sequence[float], mask: Mask
+) -> None:
+    """最初の3コマの中央値との差を強調した比較画像を保存する。"""
     # 網目の細かな模様をぼかし、ROI外との境界のにじみを除く。
     sigma = max(1, min(mask.shape) / 70)
     margin = math.ceil(2 * sigma)
@@ -144,7 +155,7 @@ def save_difference_sheet(destination, tiles, timestamps, mask):
         for tile in tiles
     ]
     reference = np.median(smoothed[:3], axis=0)
-    differences = []
+    differences: list[Frame] = []
     for gray in smoothed:
         delta = gray - reference
         delta -= np.median(delta[interior])
@@ -155,12 +166,21 @@ def save_difference_sheet(destination, tiles, timestamps, mask):
 
 
 def write_sheet(
-    path, destination, roi, duration, *, tray_tracker=None, outside_roi=None, difference_path=None
-):
+    path: Path,
+    destination: Path,
+    roi: AnyROI,
+    duration: float,
+    *,
+    tray_tracker: TrayTracker | None = None,
+    outside_roi: AnyROI | None = None,
+    difference_path: Path | None = None,
+) -> list[float]:
+    """動画から最大24コマを取り出してシートにし、各コマの秒数を返す。"""
     capture = cv2.VideoCapture(str(path))
-    tiles = []
-    timestamps = []
-    mask = None
+    tiles: list[Frame] = []
+    timestamps: list[float] = []
+    mask: Mask | None = None
+    count = 0
     compare = difference_path is not None and tray_tracker is not None and outside_roi is None
     try:
         fps = capture.get(cv2.CAP_PROP_FPS)
@@ -175,13 +195,14 @@ def write_sheet(
                 raise ValueError("動画の一部を読み込めません")
             if tray_tracker is not None:
                 if outside_roi is None:
-                    frame = tray_tracker.align(frame)
+                    aligned = tray_tracker.align(frame)
                 else:
-                    frame = tray_tracker.align(
+                    aligned = tray_tracker.align(
                         frame, source_mask=full_mask(outside_roi, frame.shape)
                     )
-                if frame is None:
+                if aligned is None:
                     continue
+                frame = aligned
             if outside_roi is None:
                 crop = roi.crop(frame)
             else:
@@ -189,10 +210,11 @@ def write_sheet(
                 cv2.polylines(annotated, [outline(roi, frame.shape)], True, (0, 255, 0), 2)
                 crop = outside_roi.crop(annotated)
             scale = min(480 / crop.shape[1], 300 / crop.shape[0])
-            tile = cv2.resize(crop, tuple(max(1, round(n * scale)) for n in crop.shape[1::-1]))
+            height, width = crop.shape[:2]
+            tile = cv2.resize(crop, (max(1, round(width * scale)), max(1, round(height * scale))))
             if compare and mask is None:
                 mask = np.full(tile.shape[:2], 255, np.uint8)
-                if hasattr(roi, "mask"):
+                if isinstance(roi, MaskedROI):
                     mask = cv2.resize(
                         roi.mask(frame.shape), tile.shape[1::-1], interpolation=cv2.INTER_NEAREST
                     )
@@ -203,17 +225,27 @@ def write_sheet(
     if tray_tracker is not None and len(tiles) < max(2, math.ceil(count * 2 / 3)):
         raise TrayNotVisibleError("位置を確認できるフレームが不足しています")
     save_sheet(destination, tiles, timestamps)
-    if compare and len(tiles) >= 4:
+    if compare and len(tiles) >= 4 and difference_path is not None and mask is not None:
         save_difference_sheet(difference_path, tiles, timestamps, mask)
     return timestamps
 
 
-def codex_environment():
+def codex_environment() -> dict[str, str]:
+    """Codex CLI に渡す最小限の環境変数。RTSP の URL などは渡さない。"""
     keys = ("HOME", "PATH", "CODEX_HOME", "TMPDIR", "LANG", "LC_ALL")
     return {key: os.environ[key] for key in keys if key in os.environ}
 
 
-def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None, outside_roi=None):
+def inspect_clip(
+    path: Path,
+    row: ClipRow,
+    roi: AnyROI,
+    runner: Callable[..., Any] = subprocess.run,
+    *,
+    tray_tracker: TrayTracker | None = None,
+    outside_roi: AnyROI | None = None,
+) -> Assessment:
+    """動画をシートにして Codex CLI に読み取り専用で判定させ、結果を検証して返す。"""
     outside_stay = row.get("source") == "outside_stay"
     if outside_stay and outside_roi is None:
         raise ValueError("トレー外の動画には --detect-outside が必要です")
@@ -225,7 +257,7 @@ def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None, ou
                 path,
                 folder / "frames.jpg",
                 roi,
-                row["duration"],
+                row["duration"] or 0,
                 tray_tracker=tray_tracker,
                 outside_roi=outside_roi,
                 difference_path=difference_path,
@@ -286,7 +318,7 @@ def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None, ou
         )
         assessment = parse_assessment(
             json.loads(result.read_text(encoding="utf-8")),
-            row["duration"],
+            row["duration"] or 0,
             include_location=outside_roi is not None,
         )
         if (
@@ -306,7 +338,8 @@ def inspect_clip(path, row, roi, runner=subprocess.run, *, tray_tracker=None, ou
         return assessment
 
 
-def require_codex():
+def require_codex() -> None:
+    """Codex CLI がインストール済みでログインしているか確かめる。"""
     if not shutil.which("codex"):
         raise ValueError("Codex CLIをインストールし、codex loginでログインしてください")
     try:
@@ -324,16 +357,38 @@ def require_codex():
         raise ValueError("codex loginでCodex CLIにログインしてください")
 
 
+class AssessmentNotifier(Protocol):
+    """Codex の判定を通知する関数（NtfyNotifier.send_assessment など）。"""
+
+    def __call__(self, label: str, *, location: str | None = None) -> bool: ...
+
+
+# 動画のパスと行から判定を返す関数。inspect_clip に ROI などを束ねたもの。
+Inspector = Callable[[Path, ClipRow], Assessment]
+
+
 class Review:
     """変換済みの動画を Codex で判定し、結果を保存して必要なら通知する。"""
 
-    def __init__(self, store, inspect, notify=None, scene_signature=None):
+    def __init__(
+        self,
+        store: ClipStore,
+        inspect: Inspector,
+        notify: AssessmentNotifier | None = None,
+        scene_signature: str | None = None,
+    ) -> None:
         self.store = store
         self.inspect = inspect
         self.notify = notify
         self.scene_signature = scene_signature
 
-    def run(self, limit, since=None, clip_id=None):
+    def run(
+        self, limit: int, since: str | None = None, clip_id: str | None = None
+    ) -> tuple[int, int]:
+        """未判定の動画を判定し、(判定した件数, 失敗した件数) を返す。
+
+        since を指定した監視中の実行だけが通知し、別の判定が実行中なら何もしない。
+        """
         with (self.store.root / ".codex.lock").open("a") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -343,7 +398,7 @@ class Review:
                 raise ValueError("別のCodex判定が実行中です。完了後に再試行してください") from None
             return self._run(limit, since, clip_id)
 
-    def _run(self, limit, since, clip_id):
+    def _run(self, limit: int, since: str | None, clip_id: str | None) -> tuple[int, int]:
         completed = failures = 0
         rows = self.store.pending_assessments(limit, since, clip_id, self.scene_signature)
         for row in rows:
@@ -354,8 +409,8 @@ class Review:
                 result = self.inspect(path, row)
                 observed_at = (
                     (
-                        datetime.fromisoformat(row["start_at"])
-                        + timedelta(seconds=result.end_seconds)
+                        datetime.fromisoformat(cast(str, row["start_at"]))
+                        + timedelta(seconds=cast(float, result.end_seconds))
                     ).isoformat()
                     if result.label in EVIDENCE
                     else None
@@ -389,24 +444,24 @@ class Review:
                 self.store.finish_assessment_notice(row["id"], sent)
         return completed, failures
 
-    def watch(self):
+    def watch(self) -> "ReviewWorker":
         return ReviewWorker(self)
 
 
 class ReviewWorker:
     """監視中に新しい動画を定期的に探し、別スレッドで Review を実行する。"""
 
-    def __init__(self, review):
+    def __init__(self, review: Review) -> None:
         self.review = review
         self.since = utcnow()
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._poll, daemon=True)
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         self.thread.start()
         return self
 
-    def _poll(self):
+    def _poll(self) -> None:
         while not self.stop.is_set():
             try:
                 completed, failed = self.review.run(limit=1, since=self.since)
@@ -415,6 +470,11 @@ class ReviewWorker:
                 completed = failed = 0
             self.stop.wait(20 if failed else (0 if completed else 3))
 
-    def __exit__(self, *args):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.stop.set()
         self.thread.join(timeout=1)

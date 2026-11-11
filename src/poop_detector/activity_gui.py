@@ -1,9 +1,12 @@
 """登録した床面に滞在時間と通過回数を重ねる。"""
 
 import sqlite3
+from collections.abc import Mapping, Sequence
 from datetime import date
 from functools import partial
 from html import escape
+from pathlib import Path
+from typing import Any
 
 from .activity_map import GRID, ActivityLayout, ActivityStore
 from .timezones import local_today, timezone_label
@@ -11,7 +14,8 @@ from .timezones import local_today, timezone_label
 PERIODS = ("1", "7", "30")
 
 
-def heatmap(layout, cells, mode):
+def heatmap(layout: ActivityLayout, cells: Sequence[Sequence[Any]], mode: str) -> str:
+    """マス目ごとの滞在時間（mode=stay）か通過回数（mode=pass）を SVG で描く。"""
     metric = 3 if mode == "pass" else 2
     total = sum(row[metric] for row in cells)
     color = "#f29527" if mode == "pass" else "#0086a0"
@@ -47,7 +51,9 @@ def heatmap(layout, cells, mode):
     return content + "</svg>"
 
 
-def render_activity(root, query, *, title=None):
+def render_activity(
+    root: str | Path, query: Mapping[str, list[str]], *, title: str | None = None
+) -> str:
     from .label_gui import document
 
     page = partial(document, title=title)
