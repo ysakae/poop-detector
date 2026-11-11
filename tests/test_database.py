@@ -109,7 +109,8 @@ def test_new_database_is_created_at_the_latest_version(tmp_path):
     assert version(path) == LATEST_VERSION
     renamed = {"codex_assessments": "video_assessments"}
     for table, expected in TABLES_V1.items():
-        assert columns(path, renamed.get(table, table)) == [name for name, _ in expected]
+        extra = ["provider", "model"] if table == "codex_assessments" else []
+        assert columns(path, renamed.get(table, table)) == [name for name, _ in expected] + extra
 
 
 def test_pre_versioning_database_keeps_its_data(tmp_path):
@@ -140,6 +141,7 @@ def test_pre_versioning_database_keeps_its_data(tmp_path):
     saved = clips.assessments.get("c1")
     assert saved is not None
     assert (saved["label"], saved["reason"]) == ("feces", "新しい便")
+    assert (saved["provider"], saved["model"]) == ("codex", None)
     assert "codex_assessments" not in tables(path)
 
 

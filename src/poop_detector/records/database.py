@@ -134,8 +134,18 @@ def migrate_to_v2(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE codex_assessments RENAME TO video_assessments")
 
 
+def migrate_to_v3(db: sqlite3.Connection) -> None:
+    """自動判定に判定器とモデルを記録する。既存の判定器は Codex CLI。"""
+    db.execute("ALTER TABLE video_assessments ADD COLUMN provider TEXT NOT NULL DEFAULT 'codex'")
+    db.execute("ALTER TABLE video_assessments ADD COLUMN model TEXT")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
-MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (migrate_to_v1, migrate_to_v2)
+MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
+    migrate_to_v1,
+    migrate_to_v2,
+    migrate_to_v3,
+)
 LATEST_VERSION = len(MIGRATIONS)
 
 

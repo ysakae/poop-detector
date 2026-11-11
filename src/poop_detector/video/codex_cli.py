@@ -23,8 +23,9 @@ class CodexCliJudge:
 
     name = "Codex CLI"
 
-    def __init__(self, runner: Callable[..., Any] = subprocess.run) -> None:
+    def __init__(self, runner: Callable[..., Any] = subprocess.run, *, model: str = "") -> None:
         self.runner = runner
+        self.model = model
 
     def check(self) -> None:
         """Codex CLI がインストール済みでログインしているか確かめる。"""
@@ -55,6 +56,7 @@ class CodexCliJudge:
                 "--ask-for-approval",
                 "never",
                 "exec",
+                *(["--model", self.model] if self.model else []),
                 "--sandbox",
                 "read-only",
                 "--ignore-user-config",

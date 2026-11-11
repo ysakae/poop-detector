@@ -48,7 +48,7 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
     context = replace(context, config=check_monitor_features(config))
     config = context.config
     outside_roi = load_outside_roi(context) if config.detect_outside_enabled else None
-    judge = ready_judge() if config.video_review_enabled else None
+    judge = ready_judge(config) if config.video_review_enabled else None
     settings = load_connection_settings()
     notifier, _ = build_notifier(context.config, settings, sends=True)
     source = camera_source(settings)
@@ -76,6 +76,9 @@ def review_watcher(
     outside_roi: AnyROI | None,
     notifier: "NtfyNotifier | MacNotifier",
     judge: "VideoJudge",
+    *,
+    provider: str,
+    model: str | None,
 ) -> "Review":
     """監視中に保存した動画を自動判定し、根拠を確認できたときだけ通知する。"""
     from ..video.review import Review, inspect_clip
@@ -92,6 +95,8 @@ def review_watcher(
             outside_roi=outside_roi if row["source"] in ("outside_stay", "manual") else None,
         ),
         notifier.send_assessment if notifier.enabled else None,
+        provider=provider,
+        model=model,
     )
 
 
@@ -138,7 +143,16 @@ def watch(
                 raise CommandError(
                     "動画の自動判定には動画保存（clips.enabled）を有効にしてください"
                 )
-            review = review_watcher(collector, roi, tray_tracker, outside_roi, notifier, judge)
+            review = review_watcher(
+                collector,
+                roi,
+                tray_tracker,
+                outside_roi,
+                notifier,
+                judge,
+                provider=config.review_provider,
+                model=config.review_model or None,
+            )
             stack.enter_context(review.watch())
         live = stack.enter_context(LatestCamera(open_camera(source, config), on_frame))
         live.wait_ready(config.timeout_ms / 1000 + 1)

@@ -86,6 +86,8 @@ class AssessmentStore:
         *,
         observed_at: str | None = None,
         error: str | None = None,
+        provider: str = "codex",
+        model: str | None = None,
     ) -> bool:
         """判定（失敗なら error）を保存する。既存の判定は失敗していたときだけ上書きし、保存できたら True。"""
         values = assessment or Assessment()
@@ -97,12 +99,13 @@ class AssessmentStore:
             return (
                 db.execute(
                     """INSERT INTO video_assessments
-                (clip_id,label,activity,start_seconds,end_seconds,reason,observed_at,error,assessed_at,location)
-                SELECT id,?,?,?,?,?,?,?,?,? FROM clips WHERE id=? AND label IS NULL AND status='ready'
+                (clip_id,label,activity,start_seconds,end_seconds,reason,observed_at,error,assessed_at,location,provider,model)
+                SELECT id,?,?,?,?,?,?,?,?,?,?,? FROM clips WHERE id=? AND label IS NULL AND status='ready'
                 ON CONFLICT(clip_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,
                 start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds,
                 reason=excluded.reason,observed_at=excluded.observed_at,error=excluded.error,
-                assessed_at=excluded.assessed_at,location=excluded.location WHERE video_assessments.error IS NOT NULL""",
+                assessed_at=excluded.assessed_at,location=excluded.location,
+                provider=excluded.provider,model=excluded.model WHERE video_assessments.error IS NOT NULL""",
                     (
                         label,
                         activity,
@@ -113,6 +116,8 @@ class AssessmentStore:
                         error,
                         utcnow(),
                         location,
+                        provider,
+                        model,
                         clip_id,
                     ),
                 ).rowcount

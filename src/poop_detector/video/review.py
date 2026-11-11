@@ -337,11 +337,15 @@ class Review:
         inspect: Inspector,
         notify: AssessmentNotifier | None = None,
         scene_signature: str | None = None,
+        *,
+        provider: str = "codex",
+        model: str | None = None,
     ) -> None:
         self.store = store
         self.inspect = inspect
         self.notify = notify
         self.scene_signature = scene_signature
+        self.provider, self.model = provider, model
 
     def run(
         self, limit: int, since: str | None = None, clip_id: str | None = None
@@ -381,12 +385,16 @@ class Review:
             except (ValueError, TypeError, OSError, subprocess.SubprocessError, cv2.error):
                 self.store.assessments.save(
                     row["id"],
-                    error="自動判定に失敗しました。動画・判定器のログイン・接続を確認してください",
+                    error="自動判定に失敗しました。動画・判定器の認証・接続を確認してください",
+                    provider=self.provider,
+                    model=self.model,
                 )
                 logger.warning("自動判定に失敗しました（動画 %s）", row["id"])
                 failures += 1
                 continue
-            stored = self.store.assessments.save(row["id"], result, observed_at=observed_at)
+            stored = self.store.assessments.save(
+                row["id"], result, observed_at=observed_at, provider=self.provider, model=self.model
+            )
             if not stored:
                 continue
             completed += 1

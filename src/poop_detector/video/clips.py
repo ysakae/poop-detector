@@ -87,6 +87,8 @@ class AssessmentRow(TypedDict):
     notice_claimed: int
     notified_at: str | None
     location: str | None
+    provider: str
+    model: str | None
 
 
 class ClipStore:

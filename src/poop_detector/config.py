@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import time
 import unicodedata
 from collections.abc import Callable
@@ -23,9 +24,13 @@ logger = logging.getLogger(__name__)
 
 
 def load_connection_settings() -> dict[str, str]:
+    return load_secret_settings(CONNECTION_KEYS)
+
+
+def load_secret_settings(keys: tuple[str, ...]) -> dict[str, str]:
     path = Path(".env")
     values = dotenv_values(path, interpolate=False, encoding="utf-8-sig") if path.is_file() else {}
-    return {key: os.environ.get(key, values.get(key) or "") for key in CONNECTION_KEYS}
+    return {key: os.environ.get(key, values.get(key) or "") for key in keys}
 
 
 def validated_pet_name(value: Any) -> str:
@@ -240,6 +245,22 @@ SETTINGS: tuple[Setting, ...] = (
         "0〜3600 の数（秒。次の見守り通知までの最短の間隔）",
     ),
     Setting(
+        "review_provider",
+        "review",
+        "provider",
+        str,
+        lambda value: value in ("codex", "claude", "gemini"),
+        "codex、claude、gemini のいずれか",
+    ),
+    Setting(
+        "review_model",
+        "review",
+        "model",
+        str,
+        lambda value: value == "" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", value)),
+        "英数字で始まるモデル名（空なら Codex の既定）",
+    ),
+    Setting(
         "video_review_enabled",
         "features",
         "video_review",
@@ -332,6 +353,8 @@ class Config:
     timezone: str = ""
     early_alert_stay_seconds: float = 4
     early_alert_cooldown_seconds: float = 30
+    review_provider: str = "codex"
+    review_model: str = ""
     video_review_enabled: bool = False
     early_alert_enabled: bool = False
     track_tray_enabled: bool = False
