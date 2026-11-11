@@ -12,7 +12,7 @@ uv run poop-detector run
 
 保存のきっかけは、差分による検知のほか、犬の入場・退場（`--dog`）、見守り通知（`--early-alert`）、トレー外での滞在（`--detect-outside`）、GUI からの手動保存です。
 
-設定は `config/config.example.yaml` の `clip_*` で変更できます。`clip_enabled: false` で動画保存を止め、画像検知だけに戻せます。
+設定は `config/config.yaml` の `clips` セクションで変更できます（項目は `config/config.example.yaml` を参照）。`clips.enabled: false` で動画保存を止め、画像検知だけに戻せます。
 
 ## 動画の確認とラベル付け
 

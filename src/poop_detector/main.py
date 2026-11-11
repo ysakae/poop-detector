@@ -7,9 +7,9 @@ from collections.abc import Sequence
 
 import cv2
 
-from .commands import dog_model, notify, records, review, run, setup
+from .commands import dog_model, notify, records, review, run, setup, show_config
 from .commands.context import CommandContext, CommandError, Handler
-from .config import Config, apply_timezone
+from .config import Config, ConfigError, apply_timezone
 from .events import EXCRETION_TYPES
 from .tray_tracking import TrayReferenceError
 
@@ -32,6 +32,7 @@ HANDLERS: dict[str, Handler] = {
     "label-gui": records.label_gui,
     "setup-dog-model": dog_model.setup_dog_model,
     "check-dog": dog_model.check_dog,
+    "show-config": show_config.show_config,
 }
 
 
@@ -53,7 +54,11 @@ def parser() -> argparse.ArgumentParser:
         if name in ("setup-roi", "setup-activity-map", "capture-baseline"):
             sub.add_argument("--replace", action="store_true", help="既存設定を明示的に更新")
         if name in ("capture-baseline", "run"):
-            sub.add_argument("--track-tray", action="store_true", help="トレーの縁による位置追従")
+            sub.add_argument(
+                "--track-tray",
+                action="store_true",
+                help="トレーの縁による位置追従（features.track_tray と同じ）",
+            )
         if name == "setup-roi":
             sub.add_argument("--outside", action="store_true", help="トレーと周囲の床を囲む")
             sub.add_argument(
@@ -61,16 +66,30 @@ def parser() -> argparse.ArgumentParser:
             )
         if name == "run":
             sub.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
-            sub.add_argument("--dog", action="store_true", help="犬の存在・出入り検出を有効化")
             sub.add_argument(
-                "--activity-map", action="store_true", help="サークル内の滞在・通過を集計"
-            )
-            sub.add_argument("--codex", action="store_true", help="動画のCodex判定候補で通知")
-            sub.add_argument(
-                "--detect-outside", action="store_true", help="トレー外の排泄候補も検知"
+                "--dog",
+                action="store_true",
+                help="犬の存在・出入り検出を有効化（dog.enabled と同じ）",
             )
             sub.add_argument(
-                "--early-alert", action="store_true", help="トイレ滞在の見守りを録画完了前に通知"
+                "--activity-map",
+                action="store_true",
+                help="サークル内の滞在・通過を集計（features.activity_map と同じ）",
+            )
+            sub.add_argument(
+                "--codex",
+                action="store_true",
+                help="動画のCodex判定候補で通知（features.codex と同じ）",
+            )
+            sub.add_argument(
+                "--detect-outside",
+                action="store_true",
+                help="トレー外の排泄候補も検知（features.detect_outside と同じ）",
+            )
+            sub.add_argument(
+                "--early-alert",
+                action="store_true",
+                help="トイレ滞在の見守りを録画完了前に通知（features.early_alert と同じ）",
             )
         if name == "test-notification":
             sub.add_argument(
@@ -111,6 +130,7 @@ def parser() -> argparse.ArgumentParser:
     dog_check = commands.add_parser("check-dog", help="静止画で犬検出と処理負荷を確認")
     dog_check.add_argument("--image", required=True)
     dog_check.add_argument("--repeat", type=int, default=10)
+    commands.add_parser("show-config", help="設定ファイルから読んだ有効な設定を表示")
     for name, sub in commands.choices.items():
         sub.set_defaults(handler=HANDLERS[name])
     return result
@@ -125,8 +145,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         apply_timezone(config.timezone)
         handler: Handler = args.handler
         return handler(args, CommandContext(config))
-    except (CommandError, TrayReferenceError) as error:
-        # どちらもこのパッケージで書いた文言で、RTSP の URL を含まない。
+    except (CommandError, ConfigError, TrayReferenceError) as error:
+        # いずれもこのパッケージで書いた文言で、RTSP の URL を含まない。
         print(error, file=sys.stderr)
         return 2
     except (ValueError, TypeError, OSError, cv2.error):

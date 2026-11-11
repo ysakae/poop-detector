@@ -7,7 +7,7 @@
 | `POOP_NTFY_TOPIC` なし | macOS の通知センター（Linux では通知されません） |
 | `POOP_NTFY_TOPIC` あり | ntfy（macOS・Linux とも） |
 
-どちらの場合も `config/config.yaml` の `notifications: true`（既定）が必要です。`pet_name` を設定すると、通知のタイトルと本文に犬の名前が入ります。通知を使わない場合は `notifications: false` にしてください。
+どちらの場合も `config/config.yaml` の `notifications.enabled: true`（既定）が必要です。`pet_name` を設定すると、通知のタイトルと本文に犬の名前が入ります。通知を使わない場合は `notifications.enabled: false` にしてください。
 
 ## 通知のテスト
 

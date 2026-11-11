@@ -48,11 +48,11 @@ def test_config_defaults_have_no_pet_name_and_follow_machine_timezone():
 @pytest.mark.parametrize(
     ("values", "message"),
     [
-        ({"pet_name": 3}, "文字列で指定"),
+        ({"pet_name": 3}, "pet_name は"),
         ({"pet_name": "x" * 33}, "32文字以内"),
         ({"pet_name": "ポ\nチ"}, "制御文字"),
         ({"timezone": "Mars/Base"}, "IANAタイムゾーン名"),
-        ({"timezone": 9}, "IANAタイムゾーン名"),
+        ({"timezone": 9}, "timezone は.*IANA タイムゾーン名"),
     ],
 )
 def test_config_rejects_invalid_pet_name_and_timezone(values, message):

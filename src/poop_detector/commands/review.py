@@ -30,11 +30,13 @@ def codex_review(args: argparse.Namespace, context: CommandContext) -> int:
     from ..clips import ClipStore
     from ..codex_review import Review, inspect_clip
 
-    outside_roi = load_outside_roi(context) if args.detect_outside else None
+    detect_outside = args.detect_outside or context.config.detect_outside_enabled
+    outside_roi = load_outside_roi(context) if detect_outside else None
     require_codex_login()
     check_limit(args.limit)
     roi, baseline = load_scene(context)
-    tray_tracker = load_tray_tracker(context, baseline, roi, args.track_tray)
+    track_tray = args.track_tray or context.config.track_tray_enabled
+    tray_tracker = load_tray_tracker(context, baseline, roi, track_tray)
     review = Review(
         ClipStore(context.root),
         lambda path, row: inspect_clip(
@@ -64,7 +66,8 @@ def circling_review(args: argparse.Namespace, context: CommandContext) -> int:
     if not rows:
         print("現在の画角で分析できる保存済み動画がありません")
         return 2 if args.clip else 0
-    tracker = load_tray_tracker(context, baseline, roi, args.track_tray)
+    track_tray = args.track_tray or context.config.track_tray_enabled
+    tracker = load_tray_tracker(context, baseline, roi, track_tray)
     model = DogDetector(context.dog_model_dir, context.config.dog_confidence)
     failed = 0
     for row in rows:
