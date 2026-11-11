@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<div class="toolbar"><a href="/">ライブ映像・排泄の記録</a> <a href="/clips/storage">録画容量と整理</a></div>
+<h2>管理</h2>
+<div class="management-layout" id="management" data-phase="{{ phase }}">
+<section class="management-preview" aria-labelledby="preview-heading">
+<h3 id="preview-heading">トレーの映像</h3>
+<canvas id="tray-preview" width="640" height="360" data-points="{{ points | tojson | forceescape }}" aria-label="トレーの映像と検知範囲"></canvas>
+<p class="note" id="preview-message" role="status">映像を取得しています。</p>
+<button type="button" class="secondary" id="preview-refresh">映像を撮り直す</button>
+{% if phase in ("paused", "failed") %}
+<button type="button" class="secondary" id="edit-roi">新しい範囲を描く</button>
+<button type="button" class="secondary" id="undo-roi" hidden>頂点を1つ戻す</button>
+<button type="button" class="secondary" id="keep-roi" hidden>現在の範囲を使う</button>
+{% endif %}
+</section>
+<section class="management-controls" aria-labelledby="status-heading">
+<h3 id="status-heading">稼働状況</h3>
+<dl class="management-status">
+<dt>監視</dt><dd id="manage-monitor">{{ monitor }}</dd>
+<dt>カメラ</dt><dd id="manage-camera">{{ camera }}</dd>
+<dt>最終映像</dt><dd id="manage-frame_time">{{ frame_time }}</dd>
+<dt>トレー</dt><dd id="manage-tracking">{{ tracking }}</dd>
+</dl>
+<h3>トレー交換</h3>
+<p id="manage-message" role="status">{{ message }}</p>
+{% if error %}<p class="message" role="alert">{{ error }}</p>{% endif %}
+{% if phase in ("idle", "applied", "cancelled") %}
+<form method="post" action="/manage/tray">{{ csrf_field(token) }}
+<button name="action" value="begin">トレー交換を開始</button></form>
+<p class="note">監視の一時保留を確認してからトレーを交換してください。</p>
+{% endif %}
+{% if phase in ("paused", "failed") %}
+<form method="post" action="/manage/tray" id="apply-tray">{{ csrf_field(token) }}
+<input type="hidden" name="roi" id="new-roi">
+<p><label><input type="checkbox" name="confirm_empty" value="yes" required> 空のトレーと検知範囲を確認しました</label></p>
+<button name="action" value="apply" id="apply-tray-button" disabled>新しい基準を反映</button></form>
+{% endif %}
+{% if phase in ("begin", "paused", "apply", "failed") %}
+<form method="post" action="/manage/tray" class="management-cancel">{{ csrf_field(token) }}
+<button name="action" value="cancel" class="secondary">交換を取り消す</button></form>
+<p class="note">取り消す場合は、先にトレーを交換前の状態に戻してください。</p>
+{% endif %}
+</section>
+</div>
+<script defer src="/assets/management.js"></script>
+{% endblock %}

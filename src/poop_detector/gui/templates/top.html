@@ -9,7 +9,7 @@
 <option value="{{ value }}" {% if value == mode %}selected{% endif %}>{{ text }}</option>
 {%- endfor -%}
 </select></label> <button class="secondary">表示</button></form>
-<p>未ラベル {{ metrics.unlabeled }}件 ／ 排便 {{ counts.feces }}件 ／ 排尿 {{ counts.urine }}件 ／ 種類不明 {{ counts.unknown }}件</p><a href="/records">排便・排尿の記録を見る</a> <a href="/clips">動画を確認・保存する</a> <a href="/activity">サークルの行動マップ</a></div>
+<p>未ラベル {{ metrics.unlabeled }}件 ／ 排便 {{ counts.feces }}件 ／ 排尿 {{ counts.urine }}件 ／ 種類不明 {{ counts.unknown }}件</p><a href="/records">排便・排尿の記録を見る</a> <a href="/clips">動画を確認・保存する</a> <a href="/activity">サークルの行動マップ</a> <a href="/manage">管理</a></div>
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
 <p class="note">自動検知は排泄の疑いです。便・尿の種類は確認して記録してください。尿跡が残っていても追加の変化を監視します。同じ跡は再通知せず、判断できない排泄は手動で記録できます。</p>
 <div class="workspace"><nav aria-label="イベント一覧">

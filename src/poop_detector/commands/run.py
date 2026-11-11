@@ -154,6 +154,7 @@ def watch(
         live.wait_ready(config.timeout_ms / 1000 + 1)
 
         def before_align(engine: Monitor, frame: Frame | None) -> bool:
+            preview.pulse(engine.camera.healthy)
             phase = registration.status()["phase"]
             if phase not in ("begin", "paused", "apply", "failed", "cancel"):
                 return False

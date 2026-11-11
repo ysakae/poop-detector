@@ -27,6 +27,8 @@ class LivePreview:
         self.request_path = self.root / ".live-preview-request"
         self.tray_state_path = self.root / ".live-preview-tray-state"
         self.last_attempt = float("-inf")
+        self.monitor_path = self.root / ".live-preview-monitor"
+        self.last_pulse = float("-inf")
 
     def publish(self, frame: Frame | None, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
@@ -75,6 +77,26 @@ class LivePreview:
             return self.tray_state_path.read_text(encoding="ascii")
         except (OSError, UnicodeError):
             return "fixed"
+
+    def pulse(self, healthy: bool) -> None:
+        """録画が無効・保留中でも監視とカメラの状態を共有する。"""
+        now = time.monotonic()
+        if now - self.last_pulse < 1:
+            return
+        self.last_pulse = now
+        try:
+            self._write(self.monitor_path, b"connected" if healthy else b"searching")
+        except OSError:
+            logger.warning("監視の稼働状態を保存できません")
+
+    def monitor_status(self) -> str:
+        try:
+            with self.monitor_path.open("r", encoding="ascii") as status:
+                if time.time() - os.fstat(status.fileno()).st_mtime <= 5:
+                    return status.read()
+        except (OSError, UnicodeError):
+            pass
+        return "offline"
 
     def read(self) -> tuple[bytes, str] | None:
         """GUI 側から呼び、最新の JPEG と撮影時刻を返す。呼ぶたびに監視側へ書き出しを要求する。"""

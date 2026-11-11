@@ -11,3 +11,12 @@ fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:bold;margin-bottom:
 .live-view{margin:0}.live-view img{width:100%;aspect-ratio:16/9;object-fit:contain}.live-view img[hidden]{display:none}.live-view figcaption{padding:10px 12px;text-align:left}.live-result{background:white;border-radius:12px;padding:16px 20px}.live-result h3{margin:0 0 8px}
 .record-stats{background:white;padding:20px;border-radius:12px;margin:16px 0}.record-stats h3{margin:0 0 8px}.record-stats input[type=date]{font:inherit;padding:8px;display:block;margin-top:7px}.record-stats details{padding:0}.hourly-scroll{max-height:22rem;overflow:auto}.hourly-scroll table{width:100%;border-collapse:collapse;text-align:left}.hourly-scroll th,.hourly-scroll td{padding:6px 10px;border-bottom:1px solid #dce6ea;white-space:nowrap}.hourly-scroll thead{position:sticky;top:0;background:white}.hourly-scroll meter{width:clamp(35px,12vw,160px)}
 @media(max-width:800px){header{display:block}.workspace,.live-grid{grid-template-columns:1fr}nav{max-height:190px}article{padding:16px}.times{gap:12px}main{padding:16px}}
+
+.management-layout {display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,1fr);gap:20px;align-items:start}
+.management-preview,.management-controls {background:#fff;padding:18px;border-radius:12px}
+#tray-preview {display:block;width:100%;height:auto;background:#273639;border-radius:8px}
+#tray-preview[data-editing] {cursor:crosshair}
+.management-status {display:grid;grid-template-columns:auto 1fr;gap:8px 14px}
+.management-status dd {margin:0;overflow-wrap:anywhere}
+.management-cancel {margin-top:12px}
+@media(max-width:720px){.management-layout{grid-template-columns:1fr}}
