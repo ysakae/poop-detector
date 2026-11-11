@@ -9,6 +9,8 @@ from pathlib import Path
 
 import cv2
 
+from .frames import Frame
+
 logger = logging.getLogger(__name__)
 FRAME_INTERVAL = 0.25
 FRAME_MAX_AGE = 3
@@ -18,14 +20,14 @@ REQUEST_MAX_AGE = 5
 class LivePreview:
     """GUI から要求があったときだけ、最新フレームを .live-preview.jpg に書き出す。"""
 
-    def __init__(self, root):
+    def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
         self.frame_path = self.root / ".live-preview.jpg"
         self.request_path = self.root / ".live-preview-request"
         self.tray_state_path = self.root / ".live-preview-tray-state"
         self.last_attempt = float("-inf")
 
-    def publish(self, frame, now=None):
+    def publish(self, frame: Frame | None, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
         if frame is None or now - self.last_attempt < FRAME_INTERVAL:
             return
@@ -48,7 +50,8 @@ class LivePreview:
             logger.warning("ライブ映像のプレビューを更新できません")
             self.last_attempt = now + REQUEST_MAX_AGE
 
-    def _write(self, path, data):
+    def _write(self, path: Path, data: bytes) -> None:
+        """GUI が書きかけのファイルを読まないよう、一時ファイルから置き換える。"""
         with tempfile.NamedTemporaryFile(
             dir=self.root, prefix=".live-preview-", delete=False
         ) as output:
@@ -60,19 +63,20 @@ class LivePreview:
             finally:
                 temporary.unlink(missing_ok=True)
 
-    def set_tray_state(self, state):
+    def set_tray_state(self, state: str) -> None:
         try:
             self._write(self.tray_state_path, state.encode("ascii"))
         except OSError:
             logger.warning("トレーの追従状態を保存できません")
 
-    def tray_state(self):
+    def tray_state(self) -> str:
         try:
             return self.tray_state_path.read_text(encoding="ascii")
         except (OSError, UnicodeError):
             return "fixed"
 
-    def read(self):
+    def read(self) -> tuple[bytes, str] | None:
+        """GUI 側から呼び、最新の JPEG と撮影時刻を返す。呼ぶたびに監視側へ書き出しを要求する。"""
         try:
             self.request_path.touch(mode=0o600)
             with self.frame_path.open("rb") as frame:

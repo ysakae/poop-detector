@@ -2,11 +2,16 @@
 
 import math
 from collections import deque
+from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 
-from .roi import outline
+from .dog import Predict
+from .roi import AnyROI, outline
+from .tray_tracking import TrayTracker
 
 SAMPLE_SECONDS = 1 / 3
 WINDOW_SECONDS = 8
@@ -17,11 +22,13 @@ MIN_POINTS = 7
 class CirclingDetector:
     """犬の位置の軌跡から、その場で回る動き（排泄の前兆候補）を見つける。"""
 
-    def __init__(self):
-        self.path = deque()
-        self.last_seen = None
+    def __init__(self) -> None:
+        # (時刻, x, y, 犬の大きさ)
+        self.path: deque[tuple[float, float, float, float]] = deque()
+        self.last_seen: float | None = None
 
-    def update(self, stamp, x, y, size):
+    def update(self, stamp: float, x: float, y: float, size: float) -> tuple[float, float] | None:
+        """位置を1つ足し、旋回を見つけたらその開始と終了の秒数を返す。"""
         if self.last_seen is not None and stamp - self.last_seen > MAX_GAP_SECONDS:
             self.path.clear()
         self.last_seen = stamp
@@ -40,7 +47,8 @@ class CirclingDetector:
         return None
 
 
-def is_loop(samples):
+def is_loop(samples: NDArray[Any]) -> bool:
+    """軌跡が、ほぼ一周してもとの位置へ戻る動きか。"""
     points = samples[:, 1:3]
     size = np.median(samples[:, 3])
     if samples[-1, 0] - samples[0, 0] < 1.5:
@@ -63,10 +71,17 @@ def is_loop(samples):
     )
 
 
-def inspect_circling(path, predict, roi, *, tray_tracker=None):
+def inspect_circling(
+    path: str | Path,
+    predict: Predict,
+    roi: AnyROI,
+    *,
+    tray_tracker: TrayTracker | None = None,
+) -> tuple[list[tuple[float, float]], int, int]:
+    """動画を1/3秒ごとに調べ、(旋回候補, 調べたコマ数, 犬の位置が分かったコマ数) を返す。"""
     capture = cv2.VideoCapture(str(path))
     detector = CirclingDetector()
-    candidates = []
+    candidates: list[tuple[float, float]] = []
     sampled = located = 0
     next_sample = 0.0
     try:
@@ -86,11 +101,12 @@ def inspect_circling(path, predict, roi, *, tray_tracker=None):
                 raise ValueError("動画の一部を読み込めません")
             sampled += 1
             if tray_tracker is not None:
-                frame = tray_tracker.align(frame)
-                if frame is None:
+                aligned = tray_tracker.align(frame)
+                if aligned is None:
                     continue
+                frame = aligned
             boundary = outline(roi, frame.shape)
-            positions = []
+            positions: list[tuple[float, float, float]] = []
             for x1, y1, x2, y2 in predict(frame):
                 x, y = (x1 + x2) / 2, (y1 + y2) / 2
                 size = math.sqrt((x2 - x1) * (y2 - y1))
