@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 from urllib.parse import urlencode, urlsplit
 
+from ..detection.roi import ROI, outline
 from ..features.activity_map import ActivityLayout
+from ..features.tray_registration import REGISTRATION_MESSAGES, TrayRegistration
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow
 from ..video.clips import CLIP_LABELS
 from .activity_page import render_activity
@@ -23,7 +25,8 @@ from .clip_pages import (
     render_storage,
     stream_video,
 )
-from .pages import Query, parse_time, render, render_records, save_failed_page
+from .pages import Query, local_time, parse_time, render, render_records, save_failed_page
+from .templating import render_template
 
 if TYPE_CHECKING:
     from .server import Handler
@@ -111,12 +114,86 @@ def capacity(handler: "Handler", _query: Query) -> None:
     handler.respond(200, capacity_status(handler.app.clips.root, handler.app.disk_mb))
 
 
+def management_status(handler: "Handler") -> dict[str, Any]:
+    app = handler.app
+    status = TrayRegistration(app.root).status()
+    monitor = app.preview.monitor_status()
+    snapshot = app.preview.read()
+    return {
+        "phase": status["phase"],
+        "message": status["error"] or REGISTRATION_MESSAGES[status["phase"]],
+        "monitor": "停止中または未確認" if monitor == "offline" else "稼働中",
+        "camera": {"connected": "接続中", "searching": "再接続中"}.get(monitor, "未確認"),
+        "frame_time": local_time(snapshot[1]) if snapshot else "未取得",
+        "tracking": (
+            {"tracking": "追従中", "searching": "探索中", "fixed": "固定範囲"}.get(
+                app.preview.tray_state(), "未確認"
+            )
+            if monitor != "offline"
+            else "未確認"
+        ),
+    }
+
+
+def render_management(handler: "Handler", error: str | None = None) -> str:
+    app = handler.app
+    try:
+        roi = ROI.load(TrayRegistration(app.root).scene_root() / "roi.json")
+        points = (outline(roi, (1001, 1001, 3)) / 1000).tolist()
+    except (OSError, ValueError, TypeError):
+        points = []
+    return render_template(
+        "management.html",
+        title=app.title,
+        token=app.csrf_token,
+        points=points,
+        error=error,
+        **management_status(handler),
+    )
+
+
+@get("/manage")
+def management_page(handler: "Handler", _query: Query) -> None:
+    handler.respond(200, render_management(handler))
+
+
+@get("/manage/status")
+def management_status_json(handler: "Handler", _query: Query) -> None:
+    handler.respond(200, json.dumps(management_status(handler)), "application/json; charset=utf-8")
+
+
+@post("/manage/tray")
+def management_tray(handler: "Handler", form: Form) -> None:
+    registration = TrayRegistration(handler.app.root)
+    try:
+        action = form.fields.get("action")
+        if action == "begin":
+            registration.begin()
+        elif action == "cancel":
+            registration.cancel()
+        elif action == "apply":
+            if form.fields.get("confirm_empty") != "yes":
+                raise ValueError("空のトレーを確認してください")
+            value = form.fields.get("roi")
+            roi = ROI.from_mapping(json.loads(value)) if value else None
+            registration.apply(roi)
+        else:
+            raise ValueError("操作を確認してください")
+    except (ValueError, TypeError, AttributeError, OSError):
+        handler.respond(
+            400,
+            render_management(handler, "操作できません。トレーの状態と範囲を確認してください。"),
+        )
+        return
+    handler.redirect("/manage")
+
+
 # --- 画像・動画・スクリプト ---
 
 
-@get("/assets/live.js", "/assets/clips.js", "/assets/clip_storage.js")
+@get("/assets/live.js", "/assets/clips.js", "/assets/clip_storage.js", "/assets/management.js")
 def asset(handler: "Handler", _query: Query) -> None:
-    # 許可した3つのパスだけが登録されているので、ファイル名はこの中のどれか。
+    # 許可したパスだけが登録されているので、ファイル名はこの中のどれか。
     script = ASSETS / urlsplit(handler.path).path.rsplit("/", 1)[1]
     handler.respond(200, script.read_bytes(), "text/javascript; charset=utf-8")
 

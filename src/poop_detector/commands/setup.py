@@ -13,7 +13,7 @@ from ..detection.roi import ROI, AnyROI, select_polygon
 from ..detection.scene import save_baseline
 from ..errors import CameraUnavailableError
 from ..features.activity_map import LAYOUT_FILE, ActivityLayout
-from ..features.tray_registration import TrayRegistration
+from ..features.tray_registration import REGISTRATION_MESSAGES, TrayRegistration
 from ..features.tray_tracking import TrayTracker
 from ..frames import Frame
 from ..platform_support import has_display
@@ -100,18 +100,6 @@ def capture_baseline(args: argparse.Namespace, context: CommandContext) -> int:
     save_baseline(context.baseline_path, roi.crop(frame), roi)
     print("基準画像を保存しました")
     return 0
-
-
-REGISTRATION_MESSAGES = {
-    "idle": "トレー交換の要求はありません",
-    "begin": "監視が交換開始を受け付けるのを待っています",
-    "paused": "監視を一時保留しました。空のトレーを用意してください",
-    "apply": "新しい基準を検証中です",
-    "applied": "新しいトレーの基準を反映しました",
-    "failed": "新しい基準の反映に失敗しました",
-    "cancel": "監視が取消を受け付けるのを待っています",
-    "cancelled": "トレーの交換を取り消しました",
-}
 
 
 def registration_roi(args: argparse.Namespace, context: CommandContext) -> AnyROI | None:

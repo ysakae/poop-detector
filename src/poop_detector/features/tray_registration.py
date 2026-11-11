@@ -21,6 +21,18 @@ from .tray_tracking import TrayTracker
 Phase = Literal["idle", "begin", "paused", "apply", "applied", "failed", "cancel", "cancelled"]
 
 
+REGISTRATION_MESSAGES = {
+    "idle": "トレー交換の要求はありません",
+    "begin": "監視が交換開始を受け付けるのを待っています",
+    "paused": "監視を一時保留しました。空のトレーを用意してください",
+    "apply": "新しい基準を検証中です",
+    "applied": "新しいトレーの基準を反映しました",
+    "failed": "新しい基準の反映に失敗しました",
+    "cancel": "監視が取消を受け付けるのを待っています",
+    "cancelled": "トレーの交換を取り消しました",
+}
+
+
 class RegistrationStatus(TypedDict):
     """監視と操作側が共有する登録の状態。"""
 
