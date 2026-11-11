@@ -13,6 +13,7 @@ import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -23,7 +24,7 @@ from .roi import full_mask, outline
 
 logger = logging.getLogger(__name__)
 EVIDENCE = {"feces": "new_stool", "urine": "new_wet_patch", "both": "both_visible"}
-SCHEMA = {
+SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "label": {"type": "string", "enum": list(CLIP_LABELS)},

@@ -18,6 +18,7 @@ uv run pytest --cov                                # カバレッジ付き（CI 
 uv run pytest tests/test_cli.py                    # 1ファイル（--cov は付けない）
 uv run pytest tests/test_cli.py -k setup_roi       # 名前で絞り込み
 uv run ruff check . && uv run ruff format --check . # テストと必ず併せて実行
+uv run mypy                                        # 型チェック（対象は pyproject.toml の [tool.mypy]）
 uv run poop-detector <サブコマンド> --help          # CLI（入口は main.py の parser()）
 ```
 
