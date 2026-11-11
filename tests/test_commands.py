@@ -14,7 +14,7 @@ from poop_detector.commands.context import (
     load_outside_roi,
 )
 from poop_detector.commands.records import require_timezones
-from poop_detector.config import Config
+from poop_detector.config import Config, ConfigError, check_monitor_features, with_flags
 from poop_detector.main import HANDLERS, parser
 from poop_detector.notifications import MacNotifier, NtfyNotifier
 from poop_detector.roi import ROI
@@ -36,14 +36,36 @@ def test_every_subcommand_has_a_handler():
         assert sub.get_default("handler") is HANDLERS[name]
 
 
-def test_enabling_dog_detection_returns_a_new_config(tmp_path):
-    config = Config(data_dir=str(tmp_path))
-    original = CommandContext(config)
-    enabled = original.with_dog_detection()
-    assert enabled.config.dog_enabled is True
-    assert original.config.dog_enabled is False
-    assert config.dog_enabled is False
-    assert enabled.root == original.root == tmp_path
+def test_flags_add_features_without_changing_the_config():
+    config = Config(early_alert_enabled=True)
+    merged = with_flags(config, codex=True, dog=True)
+    assert (merged.codex_enabled, merged.dog_enabled, merged.early_alert_enabled) == (
+        True,
+        True,
+        True,
+    )
+    assert (config.codex_enabled, config.dog_enabled) == (False, False)
+    # フラグを付けなくても、設定で有効な機能はそのまま。
+    assert with_flags(config).early_alert_enabled is True
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        ({"detect_outside_enabled": True}, r"features\.detect_outside / --detect-outside.*--codex"),
+        ({"codex_enabled": True, "clip_enabled": False}, r"clips\.enabled"),
+    ],
+)
+def test_missing_feature_dependencies_are_explained(values, message):
+    with pytest.raises(ConfigError, match=message):
+        check_monitor_features(Config(**values))
+
+
+def test_activity_map_and_outside_detection_turn_on_dog_detection():
+    assert check_monitor_features(Config(activity_map_enabled=True)).dog_enabled is True
+    config = check_monitor_features(Config(codex_enabled=True, detect_outside_enabled=True))
+    assert config.dog_enabled is True
+    assert check_monitor_features(Config()).dog_enabled is False
 
 
 def test_context_paths_follow_data_dir(tmp_path):

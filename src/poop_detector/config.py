@@ -1,9 +1,11 @@
 """YAMLの動作設定と、.envで管理する接続情報。"""
 
+import logging
 import os
 import time
 import unicodedata
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Self
@@ -16,6 +18,7 @@ from .clip_storage import DEFAULT_DISK_MIB
 
 CONNECTION_KEYS = ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC", "POOP_NTFY_SERVER")
 PET_NAME_MAX_LENGTH = 32
+logger = logging.getLogger(__name__)
 
 
 def load_connection_settings() -> dict[str, str]:
@@ -63,9 +66,226 @@ def apply_timezone(name: str) -> None:
         raise ValueError(f"timezone {name} をこのマシンの時刻設定に反映できませんでした")
 
 
-@dataclass
+class ConfigError(ValueError):
+    """設定ファイルの誤り。項目名と許容範囲を伝える文言で、そのまま表示してよい。"""
+
+
+@dataclass(frozen=True)
+class Setting:
+    """設定の1項目。YAML の section.key と、Config の属性の対応と検証。"""
+
+    attr: str
+    section: str  # 空ならファイルの最上位に書く
+    key: str
+    kind: type
+    valid: Callable[[Any], bool]
+    rule: str
+
+    @property
+    def name(self) -> str:
+        return f"{self.section}.{self.key}" if self.section else self.key
+
+
+def _number(
+    low: float, high: float = float("inf"), *, low_open: bool = False, high_open: bool = False
+) -> Callable[[Any], bool]:
+    def valid(value: Any) -> bool:
+        above = low < value if low_open else low <= value
+        below = value < high if high_open else value <= high
+        return bool(above and below and value < float("inf"))
+
+    return valid
+
+
+def _always(_value: Any) -> bool:
+    return True
+
+
+FINITE = "有限の数"
+SETTINGS: tuple[Setting, ...] = (
+    Setting("data_dir", "", "data_dir", str, bool, "データの保存先のディレクトリ"),
+    Setting(
+        "timezone",
+        "",
+        "timezone",
+        str,
+        _always,
+        "Asia/Tokyo などの IANA タイムゾーン名（空ならマシンの設定）",
+    ),
+    Setting(
+        "pet_name",
+        "",
+        "pet_name",
+        str,
+        _always,
+        f"{PET_NAME_MAX_LENGTH}文字以内の犬の名前（空なら名前を出さない）",
+    ),
+    Setting(
+        "fps",
+        "camera",
+        "fps",
+        float,
+        _number(0, low_open=True),
+        "0 より大きい数（1秒あたりの判定回数）",
+    ),
+    Setting(
+        "timeout_ms",
+        "camera",
+        "timeout_ms",
+        int,
+        _number(0, low_open=True),
+        "0 より大きい整数（ミリ秒）",
+    ),
+    Setting("retry_seconds", "camera", "retry_seconds", float, _number(0), "0 以上の数（秒）"),
+    Setting(
+        "verify_seconds",
+        "detection",
+        "verify_seconds",
+        float,
+        _number(0, low_open=True),
+        "0 より大きい数（秒）",
+    ),
+    Setting(
+        "clear_seconds",
+        "detection",
+        "clear_seconds",
+        float,
+        _number(0, low_open=True),
+        "0 より大きい数（秒）",
+    ),
+    Setting("threshold", "detection", "threshold", int, _number(1, 255), "1〜255 の整数"),
+    Setting(
+        "color_threshold",
+        "detection",
+        "color_threshold",
+        int,
+        _number(0, 255),
+        "0〜255 の整数（0 で色差の検知を無効化）",
+    ),
+    Setting(
+        "min_area",
+        "detection",
+        "min_area",
+        int,
+        _number(0, low_open=True),
+        "0 より大きい整数（画素）",
+    ),
+    Setting(
+        "occupied_ratio",
+        "detection",
+        "occupied_ratio",
+        float,
+        _number(0, 1, low_open=True),
+        "0 より大きく 1 以下の数",
+    ),
+    Setting("notifications", "notifications", "enabled", bool, _always, "true または false"),
+    Setting("clip_enabled", "clips", "enabled", bool, _always, "true または false"),
+    Setting(
+        "clip_before_seconds",
+        "clips",
+        "before_seconds",
+        float,
+        _number(0, 300),
+        "0〜300 の数（秒）",
+    ),
+    Setting(
+        "clip_after_seconds", "clips", "after_seconds", float, _number(0, 300), "0〜300 の数（秒）"
+    ),
+    Setting("clip_fps", "clips", "fps", float, _number(1, 30), "1〜30 の数"),
+    Setting(
+        "clip_max_width", "clips", "max_width", int, _number(160, 3840), "160〜3840 の整数（画素）"
+    ),
+    Setting("clip_memory_mb", "clips", "memory_mb", float, _number(8, 4096), "8〜4096 の数（MiB）"),
+    Setting("clip_disk_mb", "clips", "disk_mb", float, _number(8), "8 以上の数（MiB）"),
+    Setting("dog_enabled", "dog", "enabled", bool, _always, "true または false"),
+    Setting("dog_fps", "dog", "fps", float, _number(0.2, 10), "0.2〜10 の数"),
+    Setting(
+        "dog_confidence",
+        "dog",
+        "confidence",
+        float,
+        _number(0, 1, low_open=True, high_open=True),
+        "0 より大きく 1 未満の数",
+    ),
+    Setting(
+        "dog_exit_seconds",
+        "dog",
+        "exit_seconds",
+        float,
+        _number(0, 60, low_open=True),
+        "60 以下で、2 / dog.fps 以上の数（秒）",
+    ),
+    Setting(
+        "dog_clip_cooldown_seconds",
+        "dog",
+        "clip_cooldown_seconds",
+        float,
+        _number(0),
+        "0 以上の数（秒）",
+    ),
+    Setting(
+        "codex_enabled",
+        "features",
+        "codex",
+        bool,
+        _always,
+        "true または false（run --codex と同じ）",
+    ),
+    Setting(
+        "early_alert_enabled",
+        "features",
+        "early_alert",
+        bool,
+        _always,
+        "true または false（run --early-alert と同じ）",
+    ),
+    Setting(
+        "track_tray_enabled",
+        "features",
+        "track_tray",
+        bool,
+        _always,
+        "true または false（--track-tray と同じ）",
+    ),
+    Setting(
+        "activity_map_enabled",
+        "features",
+        "activity_map",
+        bool,
+        _always,
+        "true または false（run --activity-map と同じ）",
+    ),
+    Setting(
+        "detect_outside_enabled",
+        "features",
+        "detect_outside",
+        bool,
+        _always,
+        "true または false（--detect-outside と同じ）",
+    ),
+)
+SETTINGS_BY_ATTR = {setting.attr: setting for setting in SETTINGS}
+SETTINGS_BY_NAME = {(setting.section, setting.key): setting for setting in SETTINGS}
+SECTIONS = tuple(dict.fromkeys(setting.section for setting in SETTINGS if setting.section))
+
+
+def _check(setting: Setting, value: Any) -> None:
+    """型と範囲を確かめ、違えば項目名と許容範囲を伝える。"""
+    if setting.kind is bool:
+        ok = isinstance(value, bool)
+    elif setting.kind is str:
+        ok = isinstance(value, str)
+    elif setting.kind is int:
+        ok = isinstance(value, int) and not isinstance(value, bool)
+    else:
+        ok = isinstance(value, int | float) and not isinstance(value, bool)
+    if not ok or not setting.valid(value):
+        raise ConfigError(f"{setting.name} は{setting.rule}で指定してください（値: {value!r}）")
+
+
+@dataclass(frozen=True)
 class Config:
-    """config.yaml の動作設定。値の範囲は作成時に検証する。"""
+    """config.yaml の動作設定。作成時に検証し、作った後は変えない（変えるときは replace）。"""
 
     fps: float = 3.0
     timeout_ms: int = 5000
@@ -83,8 +303,8 @@ class Config:
     clip_after_seconds: float = 30
     clip_fps: float = 5
     clip_max_width: int = 1280
-    clip_memory_mb: int = 128
-    clip_disk_mb: int = DEFAULT_DISK_MIB
+    clip_memory_mb: float = 128
+    clip_disk_mb: float = DEFAULT_DISK_MIB
     dog_enabled: bool = False
     dog_fps: float = 1
     dog_confidence: float = 0.4
@@ -92,43 +312,139 @@ class Config:
     dog_clip_cooldown_seconds: float = 60
     pet_name: str = ""
     timezone: str = ""
+    codex_enabled: bool = False
+    early_alert_enabled: bool = False
+    track_tray_enabled: bool = False
+    activity_map_enabled: bool = False
+    detect_outside_enabled: bool = False
 
     def __post_init__(self) -> None:
-        self.pet_name = validated_pet_name(self.pet_name)
-        validate_timezone(self.timezone)
-        for name in ("fps", "timeout_ms", "verify_seconds", "clear_seconds", "min_area"):
-            if not 0 < getattr(self, name) < float("inf"):
-                raise ValueError(f"{name}は正の有限値にしてください")
-        if not 0 <= self.retry_seconds < float("inf"):
-            raise ValueError("再接続待機時間が不正です")
-        if not 0 < self.occupied_ratio <= 1 or not 0 < self.threshold < 256:
-            raise ValueError("画像差分設定が不正です")
-        if not 0 <= self.color_threshold < 256:
-            raise ValueError("color_thresholdは0〜255です（0で色差検知を無効化）")
-        if not isinstance(self.notifications, bool):
-            raise ValueError("notificationsはtrueまたはfalseです")
-        if not isinstance(self.clip_enabled, bool):
-            raise ValueError("clip_enabledはtrueまたはfalseです")
-        if not isinstance(self.dog_enabled, bool):
-            raise ValueError("dog_enabledはtrueまたはfalseです")
-        if not (
-            0.2 <= self.dog_fps <= 10
-            and 0 < self.dog_confidence < 1
-            and 2 / self.dog_fps <= self.dog_exit_seconds <= 60
-            and 0 <= self.dog_clip_cooldown_seconds < float("inf")
-        ):
-            raise ValueError("犬の検出設定を確認してください")
-        if not (
-            0 <= self.clip_before_seconds <= 300
-            and 0 <= self.clip_after_seconds <= 300
-            and 1 <= self.clip_fps <= 30
-            and 160 <= self.clip_max_width <= 3840
-            and 8 <= self.clip_memory_mb <= 4096
-            and self.clip_disk_mb >= 8
-        ):
-            raise ValueError("動画設定の範囲を確認してください")
+        for setting in SETTINGS:
+            _check(setting, getattr(self, setting.attr))
+        try:
+            # 前後の空白を除いた名前を持つ。不変なので object.__setattr__ で一度だけ設定する。
+            object.__setattr__(self, "pet_name", validated_pet_name(self.pet_name))
+            validate_timezone(self.timezone)
+        except ValueError as error:
+            raise ConfigError(str(error)) from None
+        # 犬の検出の間隔より短い時間では、退場を判断できない。
+        if self.dog_exit_seconds < 2 / self.dog_fps:
+            raise ConfigError(
+                f"dog.exit_seconds は 2 / dog.fps（{2 / self.dog_fps:g}秒）以上にしてください"
+            )
 
     @classmethod
     def load(cls, path: str | Path) -> Self:
+        """設定ファイルを読む。ファイルがなければ既定値。"""
         path = Path(path)
-        return cls(**(yaml.safe_load(path.read_text()) or {})) if path.exists() else cls()
+        if not path.exists():
+            return cls()
+        try:
+            data = yaml.safe_load(path.read_text()) or {}
+        except yaml.YAMLError:
+            raise ConfigError(f"{path} を YAML として読めません") from None
+        return cls(**settings_from_yaml(data))
+
+    def to_sections(self) -> dict[str, Any]:
+        """設定ファイルと同じセクションの形の辞書（show-config で表示する）。"""
+        result: dict[str, Any] = {}
+        for setting in SETTINGS:
+            value = getattr(self, setting.attr)
+            if setting.section:
+                result.setdefault(setting.section, {})[setting.key] = value
+            else:
+                result[setting.key] = value
+        return result
+
+    def enabled_features(self) -> list[str]:
+        """有効な機能の名前（起動時のログに出す）。"""
+        names = {
+            "clip_enabled": "動画保存",
+            "dog_enabled": "犬の検出",
+            "codex_enabled": "Codex 判定",
+            "early_alert_enabled": "見守り通知",
+            "track_tray_enabled": "トレー追従",
+            "activity_map_enabled": "行動マップ",
+            "detect_outside_enabled": "トレー外検知",
+            "notifications": "通知",
+        }
+        return [text for attr, text in names.items() if getattr(self, attr)]
+
+
+def settings_from_yaml(data: Any) -> dict[str, Any]:
+    """YAML の内容を Config の属性名の辞書にする。
+
+    セクションの書き方（clips: {enabled: true}）と、0.1.0 の開発中の平らな書き方
+    （clip_enabled: true）の両方を読む。平らな書き方には、新しい書き方を警告で案内する。
+    """
+    if not isinstance(data, dict):
+        raise ConfigError("設定ファイルは「項目: 値」の形で書いてください")
+    values: dict[str, Any] = {}
+    legacy: list[str] = []
+    for key, value in data.items():
+        if key in SECTIONS and isinstance(value, dict):
+            for inner, inner_value in value.items():
+                setting = SETTINGS_BY_NAME.get((key, inner))
+                if setting is None:
+                    raise ConfigError(f"{key}.{inner} という設定項目はありません")
+                _store(values, setting, inner_value)
+        elif (setting := SETTINGS_BY_NAME.get(("", key))) is not None:
+            _store(values, setting, value)
+        elif (setting := SETTINGS_BY_ATTR.get(key)) is not None:
+            legacy.append(f"{key} → {setting.name}")
+            _store(values, setting, value)
+        else:
+            raise ConfigError(f"{key} という設定項目はありません")
+    if legacy:
+        logger.warning(
+            "古い書き方の設定項目があります。次のように書き換えてください: %s", "、".join(legacy)
+        )
+    return values
+
+
+def _store(values: dict[str, Any], setting: Setting, value: Any) -> None:
+    if setting.attr in values:
+        raise ConfigError(f"{setting.name} が二重に設定されています")
+    values[setting.attr] = value
+
+
+def with_flags(
+    config: Config,
+    *,
+    codex: bool = False,
+    early_alert: bool = False,
+    track_tray: bool = False,
+    activity_map: bool = False,
+    detect_outside: bool = False,
+    dog: bool = False,
+) -> Config:
+    """コマンドラインのフラグで有効にした機能を、設定に重ねる（フラグは有効にするだけ）。"""
+    return replace(
+        config,
+        codex_enabled=config.codex_enabled or codex,
+        early_alert_enabled=config.early_alert_enabled or early_alert,
+        track_tray_enabled=config.track_tray_enabled or track_tray,
+        activity_map_enabled=config.activity_map_enabled or activity_map,
+        detect_outside_enabled=config.detect_outside_enabled or detect_outside,
+        dog_enabled=config.dog_enabled or dog,
+    )
+
+
+def check_monitor_features(config: Config) -> Config:
+    """監視で使う機能の組み合わせを確かめ、必要な機能を補った設定を返す。
+
+    足りない条件は、設定ファイルの項目名とフラグの両方を示して伝える。
+    """
+    if config.detect_outside_enabled and not config.codex_enabled:
+        raise ConfigError(
+            "トレー外検知（features.detect_outside / --detect-outside）には、"
+            "Codex 判定（features.codex / --codex）が必要です"
+        )
+    if config.codex_enabled and not config.clip_enabled:
+        raise ConfigError(
+            "Codex 判定（features.codex / --codex）には、動画保存（clips.enabled）を有効にしてください"
+        )
+    if (config.activity_map_enabled or config.detect_outside_enabled) and not config.dog_enabled:
+        logger.info("行動マップ・トレー外検知のため、犬の検出を有効にします")
+        return replace(config, dog_enabled=True)
+    return config

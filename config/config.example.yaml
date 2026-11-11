@@ -1,32 +1,63 @@
-# config/config.yamlにコピーして調整してください。
-fps: 3.0
-timeout_ms: 5000
-retry_seconds: 2.0
-verify_seconds: 3.0
-clear_seconds: 3.0
-# 画像差分の濃度閾値・最小輪郭面積（ROI内ピクセル）
-threshold: 30
-# 色差の閾値。0で色差の検知を無効化。
-color_threshold: 20
-min_area: 40
-occupied_ratio: 0.18
-notifications: true
-# 通知と画面に表示する犬の名前（空なら名前を出さない文面）
-pet_name: ""
+# config/config.yaml にコピーして調整してください。書かなかった項目は既定値になります。
+# 有効な設定は `poop-detector show-config` で確認できます。
+
+# データ（画像・動画・データベース）の保存先
+data_dir: data
 # 日別集計と画面の時刻のタイムゾーン（例: Asia/Tokyo）。空ならマシンの設定に従う。
 timezone: ""
-data_dir: data
-# 検知前後の短い動画（常時録画はしない）
-clip_enabled: true
-clip_before_seconds: 30
-clip_after_seconds: 30
-clip_fps: 5
-clip_max_width: 1280
-clip_memory_mb: 128
-clip_disk_mb: 4096
-# 犬の存在・出入りの検出（モデルを準備してから有効化、run --dogでも指定可）
-dog_enabled: false
-dog_fps: 1
-dog_confidence: 0.4
-dog_exit_seconds: 2
-dog_clip_cooldown_seconds: 60
+# 通知と画面に表示する犬の名前（空なら名前を出さない文面）
+pet_name: ""
+
+# 監視で使う機能。run の --codex などのフラグは、ここで false でも一時的に有効にする。
+features:
+  # 保存した動画を Codex CLI で判定し、根拠が見えたときだけ通知する（clips.enabled が必要）
+  codex: false
+  # 録画を待たずに、トイレでの滞在を知らせる
+  early_alert: false
+  # トレーの縁を目印に、カメラのずれを補正する（capture-baseline で縁の画像も登録する）
+  track_tray: false
+  # サークル内の滞在時間と通過回数を記録する（犬の検出を自動で有効にする）
+  activity_map: false
+  # トレー外での排泄の候補も判定する（codex が必要。犬の検出を自動で有効にする）
+  detect_outside: false
+
+camera:
+  # 1秒あたりの判定回数
+  fps: 3.0
+  timeout_ms: 5000
+  retry_seconds: 2.0
+
+detection:
+  # 候補がこの秒数続いたら記録する
+  verify_seconds: 3.0
+  # 空がこの秒数続いたら、清掃後の状態を通知済み状態として覚え直す
+  clear_seconds: 3.0
+  # 画像差分の濃度の閾値（1〜255）
+  threshold: 30
+  # 色差の閾値。0 で色差の検知を無効にする
+  color_threshold: 20
+  # 候補にする最小の面積（ROI 内の画素）
+  min_area: 40
+  # ROI のこの割合以上が変われば、犬などによる遮蔽として判定を保留する
+  occupied_ratio: 0.18
+
+notifications:
+  enabled: true
+
+# 検知や犬の出入りの前後の短い動画（常時録画はしない）
+clips:
+  enabled: true
+  before_seconds: 30
+  after_seconds: 30
+  fps: 5
+  max_width: 1280
+  memory_mb: 128
+  disk_mb: 4096
+
+# 犬の存在・出入りの検出（setup-dog-model でモデルを準備してから有効にする。run --dog でも指定可）
+dog:
+  enabled: false
+  fps: 1
+  confidence: 0.4
+  exit_seconds: 2
+  clip_cooldown_seconds: 60

@@ -33,6 +33,33 @@ timezone: Asia/Tokyo
 
 データベースには時刻を UTC で保存しているため、`timezone` を変えると、これまでの記録も新しいタイムゾーンで表示・集計されます。ただし、行動マップの日別集計は記録したときの日付で保存しているので、過去の分の日付の区切りは変わりません。
 
+## 使う機能を設定ファイルで有効にする
+
+Codex 判定や見守り通知などの機能は、`run` のフラグのほかに、`config/config.yaml` の `features` セクションでも有効にできます。普段使う機能を書いておけば、起動は `uv run poop-detector run` だけで済みます。
+
+```yaml
+features:
+  codex: true          # --codex と同じ（clips.enabled が必要）
+  early_alert: true    # --early-alert と同じ
+  track_tray: true     # --track-tray と同じ（capture-baseline にも効く）
+  activity_map: false  # --activity-map と同じ（犬の検出を自動で有効にする）
+  detect_outside: false  # --detect-outside と同じ（codex が必要）
+dog:
+  enabled: true        # --dog と同じ
+```
+
+- フラグは、設定で `false` の機能も、その起動のときだけ有効にします（フラグで無効にはできません）。
+- 必要な条件が足りないときは、起動時に設定の項目名とフラグの両方を示して止まります。
+- 起動時のログに「有効な機能」を出します。設定ファイルから読んだ値は、次のコマンドで確認できます。
+
+```bash
+uv run poop-detector show-config
+```
+
+設定ファイルは `camera`・`detection`・`notifications`・`clips`・`dog`・`features` のセクションに分かれています。項目と許容範囲は `config/config.example.yaml` にあります。範囲外の値や存在しない項目は、その項目名と許容範囲を表示して止まります。
+
+0.1.0 の開発中の、セクションのない書き方（`clip_enabled: true` など）も読み込めます。その場合は、新しい書き方（`clips.enabled`）を警告で案内します。
+
 ## カメラの設定
 
 RTSP で映像を配信できるカメラが必要です。以下は Eufy のカメラでの設定例です。

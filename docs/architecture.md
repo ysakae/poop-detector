@@ -33,7 +33,7 @@
 | `commands/review.py` | `codex-review`、`circling-review` |
 | `commands/dog_model.py` | `setup-dog-model`、`check-dog` |
 
-処理は `(args, CommandContext)` を受け取り、終了コードを返します。`CommandContext` は設定とデータの保存先の場所を持ちます。設定は書き換えず、`--dog` などを反映した新しい文脈を作ります（`with_dog_detection`）。ROI と基準画像の読み込み、通知先の選択、カメラの接続など、複数のコマンドで使う準備は `commands/context.py` にあります。サブコマンドを足すときは、`parser()` に引数を、`HANDLERS` に処理を加えてください。
+処理は `(args, CommandContext)` を受け取り、終了コードを返します。`CommandContext` は設定とデータの保存先の場所を持ちます。設定（`config.Config`）は不変で、`run` は `--codex` などのフラグを `config.with_flags` で設定に重ね、機能の依存関係を `config.check_monitor_features` の1か所で確かめます。設定ファイルの各項目（セクション・名前・型・許容範囲）は `config.SETTINGS` の表で定義し、検証のエラーはその表から項目名と範囲を示します。ROI と基準画像の読み込み、通知先の選択、カメラの接続など、複数のコマンドで使う準備は `commands/context.py` にあります。サブコマンドを足すときは、`parser()` に引数を、`HANDLERS` に処理を加えてください。
 
 ## 監視ループ（`monitoring.Monitor`）
 

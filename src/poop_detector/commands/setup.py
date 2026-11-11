@@ -81,7 +81,7 @@ def capture_baseline(args: argparse.Namespace, context: CommandContext) -> int:
         raise ValueError("基準は登録済みです。更新する場合は--replaceを指定してください")
     frame = capture_frame(context)
     roi = ROI.load(context.roi_path)
-    if args.track_tray:
+    if args.track_tray or context.config.track_tray_enabled:
         # トレーの縁を確認できない画像は、追従の基準にしない（TrayReferenceError）。
         TrayTracker(frame, roi)
         path = context.tray_reference_path

@@ -3,7 +3,7 @@
 `Dockerfile` からイメージを作れます。GitHub Actions（`.github/workflows/ci.yml`）で、イメージのビルドと、コンテナ内での動画の作成・ラベル GUI・CLI の動作を人工データで確認しています。実際のカメラをつないだ監視は未確認です。
 
 ROI の設定には画面が必要なため、画面のあるマシンで登録した `data/roi.json` をコピーしてから、コンテナ内で `capture-baseline` を実行してください（[画面のない環境で使う](setup.md#画面のない環境で使う)）。
-Linux で通知する場合は `.env` に `POOP_NTFY_TOPIC` を設定します。macOS の通知は Linux では使えません。通知を使わない場合は `notifications: false` にしてください。
+Linux で通知する場合は `.env` に `POOP_NTFY_TOPIC` を設定します。macOS の通知は Linux では使えません。通知を使わない場合は `notifications.enabled: false` にしてください。
 
 ```bash
 docker build -t poop-detector .

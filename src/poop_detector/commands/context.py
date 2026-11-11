@@ -4,7 +4,7 @@ import argparse
 import logging
 import platform
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..camera import Camera
@@ -54,10 +54,6 @@ class CommandContext:
     @property
     def dog_model_dir(self) -> Path:
         return self.root / "models" / "dog-yolox"
-
-    def with_dog_detection(self) -> "CommandContext":
-        """犬の検出を有効にした設定の文脈を返す。もとの設定は書き換えない。"""
-        return replace(self, config=replace(self.config, dog_enabled=True))
 
 
 # サブコマンドの処理。終了コード（成功 0、入力や設定の誤り 2）を返す。

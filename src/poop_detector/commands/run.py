@@ -1,12 +1,14 @@
 """監視の起動（poop-detector run）。"""
 
 import argparse
+import logging
 from contextlib import ExitStack
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from ..activity_map import ActivityLayout, ActivityRecorder, ActivityStore
 from ..camera import LatestCamera
-from ..config import load_connection_settings
+from ..config import check_monitor_features, load_connection_settings, with_flags
 from ..frames import Frame
 from ..live_preview import LivePreview
 from ..monitoring import monitor
@@ -24,6 +26,8 @@ from .context import (
 )
 from .review import require_codex_login
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from ..codex_review import Review
     from ..notifications import MacNotifier, NtfyNotifier
@@ -32,24 +36,27 @@ if TYPE_CHECKING:
 
 def run(args: argparse.Namespace, context: CommandContext) -> int:
     """引数の組み合わせを確かめてから、カメラ・動画収集・Codex 判定を準備して監視する。"""
-    if args.dog or args.activity_map:
-        context = context.with_dog_detection()
-    outside_roi = None
-    if args.detect_outside:
-        if not args.codex:
-            raise CommandError("トレー外検知には --codex が必要です")
-        outside_roi = load_outside_roi(context)
-        context = context.with_dog_detection()
-    if args.codex:
-        if not context.config.clip_enabled:
-            raise CommandError("--codexには動画保存を有効にしてください")
+    config = with_flags(
+        context.config,
+        codex=args.codex,
+        early_alert=args.early_alert,
+        track_tray=args.track_tray,
+        activity_map=args.activity_map,
+        detect_outside=args.detect_outside,
+        dog=args.dog,
+    )
+    context = replace(context, config=check_monitor_features(config))
+    config = context.config
+    outside_roi = load_outside_roi(context) if config.detect_outside_enabled else None
+    if config.codex_enabled:
         require_codex_login()
     settings = load_connection_settings()
     notifier, _ = build_notifier(context.config, settings, sends=True)
     source = camera_source(settings)
     roi, baseline = load_scene(context)
-    tray_tracker = load_tray_tracker(context, baseline, roi, args.track_tray)
-    activity = load_activity_recorder(context) if args.activity_map else None
+    tray_tracker = load_tray_tracker(context, baseline, roi, config.track_tray_enabled)
+    activity = load_activity_recorder(context) if config.activity_map_enabled else None
+    logger.info("有効な機能: %s", "、".join(config.enabled_features()) or "なし")
     return watch(
         args, context, source, notifier, roi, baseline, tray_tracker, outside_roi, activity
     )
@@ -124,7 +131,7 @@ def watch(
                 collector.feed(frame, generation=generation)
             preview.publish(frame)
 
-        if args.codex:
+        if config.codex_enabled:
             if collector is None:
                 raise CommandError("--codexには動画保存を有効にしてください")
             review = codex_watcher(collector, roi, tray_tracker, outside_roi, notifier)
@@ -139,8 +146,8 @@ def watch(
             notifier,
             args.max_frames,
             collector,
-            codex_notifications=args.codex,
-            early_alert=args.early_alert,
+            codex_notifications=config.codex_enabled,
+            early_alert=config.early_alert_enabled,
             tray_tracker=tray_tracker,
             on_tray_state=preview.set_tray_state,
             outside_roi=outside_roi,
