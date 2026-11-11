@@ -65,7 +65,10 @@ class ROI:
     @classmethod
     def load(cls, path: str | Path) -> "AnyROI":
         """保存した JSON の内容から、矩形・四隅・多角形のどの ROI かを選んで読み込む。"""
-        data = json.loads(Path(path).read_text())
+        return cls.from_mapping(json.loads(Path(path).read_text()))
+
+    @classmethod
+    def from_mapping(cls, data: dict[str, Any]) -> "AnyROI":
         if data.get("mode") == "mask":
             return MaskedROI(**data)
         return PolygonROI(**data) if "points" in data else cls(**data)

@@ -122,6 +122,7 @@ class ClipCollector:
         self.last_poll = float("-inf")
         self.scene_signature: str | None = None
         self.capture_lock: IO[str] | None = None
+        self.maintenance = False
 
     def __enter__(self) -> Self:
         lock = (self.store.root / ".capture.lock").open("a")
@@ -139,6 +140,14 @@ class ClipCollector:
         self.worker.start()
         return self
 
+    def set_maintenance(self, paused: bool) -> None:
+        """交換作業のフレームを録画の前後に含めない。"""
+        with self.lock:
+            if paused and not self.maintenance:
+                self._interrupt()
+                self.store.heartbeat(False)
+            self.maintenance = paused
+
     def _bytes(self) -> int:
         return sum(len(s[2]) for s in self.buffer) + sum(
             sum(len(s[2]) for s in job["samples"]) for job in self.jobs.values()
@@ -148,6 +157,8 @@ class ClipCollector:
         """カメラのフレームを受け取り、clip_fps の間隔で JPEG にして保持する。"""
         now = time.monotonic() if now is None else now
         with self.lock:
+            if self.maintenance:
+                return
             if frame is None:
                 if self.buffer or self.jobs:
                     self._interrupt()
@@ -172,7 +183,11 @@ class ClipCollector:
             while self.buffer and (now - self.buffer[0][0] > self.before + 1e-6):
                 self.buffer.popleft()
             for job in self.jobs.values():
-                if job["status"] == "recording" and job["trigger"] < now <= job["end"] + 1e-6:
+                if (
+                    job["status"] == "recording"
+                    and not job.get("interrupted")
+                    and job["trigger"] < now <= job["end"] + 1e-6
+                ):
                     job["samples"].append(sample)
             while self.buffer and self._bytes() > self.memory_limit:
                 self.buffer.popleft()
@@ -201,10 +216,13 @@ class ClipCollector:
         """監視側から保存を要求する。同時処理数を超えたら None を返す。"""
         now = time.monotonic() if now is None else now
         with self.lock:
+            if self.maintenance:
+                return None
             if source == "dog_exit" and event_id is None:
                 for clip_id, job in reversed(self.jobs.items()):
                     if (
                         job["status"] == "recording"
+                        and not job.get("interrupted")
                         and job["source"] == "dog_enter"
                         and 0 <= now - job["trigger"] <= SHORT_VISIT_SECONDS
                         and now <= job["end"]
@@ -225,6 +243,8 @@ class ClipCollector:
         """GUI からの保存要求を拾い、録画の終わった要求を変換に回す。"""
         now = time.monotonic() if now is None else now
         with self.lock:
+            if self.maintenance:
+                return
             if not force and now - self.last_poll < 0.2:
                 return
             self.last_poll = now
@@ -254,7 +274,7 @@ class ClipCollector:
                         clip_id, status="recording", scene_signature=self.scene_signature
                     )
             for clip_id, job in list(self.jobs.items()):
-                if job["status"] == "recording" and now >= job["end"]:
+                if job["status"] == "recording" and (job.get("interrupted") or now >= job["end"]):
                     self._finish(clip_id)
 
     def _finish(self, clip_id: str, interrupted: bool = False) -> None:
