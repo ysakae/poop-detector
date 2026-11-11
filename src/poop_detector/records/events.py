@@ -46,13 +46,6 @@ class EventRow(TypedDict):
     note: str
 
 
-class MonitorState(TypedDict):
-    """監視側が最後に書いた状態と、そのときのイベント。"""
-
-    state: str
-    event_id: str | None
-
-
 def validate_times(start: str | None, end: str | None) -> None:
     for value in (start, end):
         if value and datetime.fromisoformat(value).utcoffset() is None:
@@ -103,18 +96,6 @@ class Store:
             db.execute(
                 "INSERT OR REPLACE INTO detection_reference VALUES (1,?,?)", (signature, image)
             )
-            db.execute("INSERT OR REPLACE INTO monitor_state VALUES (1,'EMPTY',NULL)")
-
-    def monitor_state(self) -> MonitorState:
-        with self.connect() as db:
-            row = db.execute("SELECT state,event_id FROM monitor_state WHERE id=1").fetchone()
-            if row is None:
-                return {"state": "EMPTY", "event_id": None}
-            return {"state": row["state"], "event_id": row["event_id"]}
-
-    def set_monitor_state(self, state: str, event_id: str | None = None) -> None:
-        with self.connect() as db:
-            db.execute("INSERT OR REPLACE INTO monitor_state VALUES (1,?,?)", (state, event_id))
 
     def connect(self) -> sqlite3.Connection:
         return self.database.connect()

@@ -204,3 +204,11 @@ def test_store_and_clip_store_share_one_connection_setup(tmp_path):
     with clips.connect() as db:
         assert db.execute("SELECT id FROM events").fetchone()["id"] == event
     assert clips.store.database.path == store.database.path
+
+
+def test_store_no_longer_exposes_unused_monitor_state(tmp_path):
+    """監視の状態は誰も読まないので書かない。古い表は既存データを守るため残す。"""
+    store = Store(tmp_path)
+    assert not hasattr(store, "monitor_state")
+    assert not hasattr(store, "set_monitor_state")
+    assert "monitor_state" in tables(tmp_path / "events.sqlite3")

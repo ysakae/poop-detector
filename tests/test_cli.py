@@ -192,7 +192,6 @@ def test_capture_baseline_with_tray_tracking_rejects_a_frame_without_tray(cli_en
 def test_record_commands_store_and_list_excretions(cli_env, capsys):
     store = Store(cli_env.root)
     event = store.record(spot_scene()[1], 0.3, "2026-11-01T00:00:00+00:00", 1)
-    store.set_monitor_state("SUSPECTED", event)
 
     assert cli_env.run("feedback", event, "true", "--type", "urine", "--note", "朝") == 0
     assert cli_env.run("feedback", event, "true", "--start", "2026-11-01T09:00:00+09:00") == 0
@@ -201,7 +200,8 @@ def test_record_commands_store_and_list_excretions(cli_env, capsys):
     assert row["note"] == "朝"
 
     assert cli_env.run("acknowledge", event) == 0
-    assert Store(cli_env.root).monitor_state()["state"] == "ACKNOWLEDGED"
+    acknowledged = next(r for r in Store(cli_env.root).list() if r["id"] == event)
+    assert acknowledged["acknowledged"] == 1
 
     assert cli_env.run("missed", "--start", "2026-11-01T10:00:00+09:00", "--type", "feces") == 0
     assert cli_env.run("record", "--type", "feces", "--start", "2026-11-01T11:00:00+09:00") == 0

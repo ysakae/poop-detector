@@ -101,7 +101,6 @@ def _always(_value: Any) -> bool:
     return True
 
 
-FINITE = "有限の数"
 SETTINGS: tuple[Setting, ...] = (
     Setting("data_dir", "", "data_dir", str, bool, "データの保存先のディレクトリ"),
     Setting(

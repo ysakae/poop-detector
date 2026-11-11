@@ -5,7 +5,7 @@ import logging
 import re
 import subprocess
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -13,12 +13,6 @@ from .records.events import EXCRETION_TYPES
 
 DEFAULT_NTFY_SERVER = "https://ntfy.sh"
 logger = logging.getLogger(__name__)
-
-
-class Notifier(Protocol):
-    """監視ループが使う通知の最小のインターフェース。"""
-
-    def send(self) -> bool: ...
 
 
 class _ToiletNotifier:

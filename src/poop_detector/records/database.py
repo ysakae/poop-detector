@@ -30,6 +30,7 @@ TABLES_V1: dict[str, Sequence[tuple[str, str]]] = {
         ("actual_end", "TEXT"),
         ("location", "TEXT"),
     ],
+    # 版1で作った表。いまは読み書きしないが、既存のデータベースを変えないよう残す。
     "monitor_state": [
         ("id", "INTEGER PRIMARY KEY CHECK(id=1)"),
         ("state", "TEXT"),

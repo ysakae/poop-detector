@@ -12,7 +12,7 @@ ROI 面積の18%以上が変わると犬などの遮蔽とみなし、広範囲�
 
 ## 状態と再通知の抑制
 
-状態は EMPTY / OCCUPIED / VERIFYING / SUSPECTED / ACKNOWLEDGED です。
+状態は EMPTY / OCCUPIED / VERIFYING / SUSPECTED です。飼い主の確認（`acknowledge`）は記録の項目で、状態には影響しません。
 画像差分から CONFIRMED にはしません。切断や遮蔽では継続確認のタイマーをリセットします。
 通知した跡は「通知済み状態」として保存し、同じ跡の再通知を抑制します。
 その状態との差分から、空の基準画像とも異なり、基準へ戻る方向ではない追加の変化を検知します。
