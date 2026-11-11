@@ -125,3 +125,25 @@ def remove_video(store: "ClipStore", clip_id: str, before: str) -> bool:
         file[0].unlink(missing_ok=True)
         db.execute("UPDATE clips SET status='removed',path=NULL WHERE id=?", (clip_id,))
     return True
+
+
+def is_protected(store: "ClipStore", clip_id: str) -> bool:
+    """自動整理の対象から外した動画か。"""
+    with store.connect() as db:
+        return (
+            db.execute("SELECT 1 FROM clip_protections WHERE clip_id=?", (clip_id,)).fetchone()
+            is not None
+        )
+
+
+def protect(store: "ClipStore", clip_id: str, protected: bool) -> None:
+    """動画を自動整理の対象から外す（protected=False で戻す）。"""
+    with store.connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT status FROM clips WHERE id=?", (clip_id,)).fetchone()
+        if row is None or row["status"] != "ready":
+            raise ValueError("保護する動画を確認してください")
+        if protected:
+            db.execute("INSERT OR IGNORE INTO clip_protections VALUES (?)", (clip_id,))
+        else:
+            db.execute("DELETE FROM clip_protections WHERE clip_id=?", (clip_id,))

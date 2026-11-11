@@ -12,6 +12,7 @@ import pytest
 from jinja2 import UndefinedError
 from support import request
 
+from poop_detector.clip_reviews import Assessment
 from poop_detector.clips import ClipStore
 from poop_detector.events import Store
 from poop_detector.gui.server import make_server
@@ -31,12 +32,9 @@ def evil_gui(tmp_path):
     ready = clips.request("manual", event_id=event)
     (tmp_path / "clips" / f"{ready}.mp4").write_bytes(b"0")
     clips.update(ready, status="ready", path=f"clips/{ready}.mp4", duration=10)
-    clips.save_assessment(
+    clips.assessments.save(
         ready,
-        label="urine",
-        activity="other",
-        end_seconds=3,
-        reason=EVIL,
+        Assessment(label="urine", activity="other", end_seconds=3, reason=EVIL),
         observed_at=datetime.now(UTC).isoformat(),
     )
     failed = clips.request("manual")

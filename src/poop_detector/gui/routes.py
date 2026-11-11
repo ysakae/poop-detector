@@ -177,7 +177,7 @@ def live_frame(handler: "Handler", _query: Query) -> None:
 @get("/live/assessment")
 def live_assessment(handler: "Handler", _query: Query) -> None:
     """直近の Codex の判定を、ライブ映像の横に出す JSON で返す。"""
-    row = handler.app.clips.latest_assessment()
+    row = handler.app.clips.assessments.latest()
     payload: dict[str, Any] | None = None
     if row:
         payload = {

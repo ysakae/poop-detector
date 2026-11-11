@@ -11,7 +11,6 @@ import subprocess
 import tempfile
 import threading
 from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import TracebackType
@@ -20,6 +19,7 @@ from typing import Any, Protocol, Self, cast
 import cv2
 import numpy as np
 
+from .clip_reviews import Assessment
 from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
 from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, utcnow
 from .frames import Frame, Mask
@@ -69,18 +69,6 @@ OUTSIDE_CONTEXT = """犬とトイレ周辺の連続画像です。左上から�
 確認できた排泄物や尿の流れの位置を location に記入してください。緑の枠内は tray、
 枠外は outside です。犬の体の位置で判断しないでください。排泄なし・判別不能の
 場合は null とし、境界上で位置が分からない場合は uncertain を返してください。"""
-
-
-@dataclass(frozen=True)
-class Assessment:
-    """Codex が動画を見て返した判定（排泄の種類、行動、時刻、根拠）。"""
-
-    label: str
-    activity: str
-    start_seconds: float | None
-    end_seconds: float | None
-    reason: str
-    location: str | None = None
 
 
 def parse_assessment(
@@ -400,7 +388,7 @@ class Review:
 
     def _run(self, limit: int, since: str | None, clip_id: str | None) -> tuple[int, int]:
         completed = failures = 0
-        rows = self.store.pending_assessments(limit, since, clip_id, self.scene_signature)
+        rows = self.store.assessments.pending(limit, since, clip_id, self.scene_signature)
         for row in rows:
             try:
                 path = self.store.video_path(row)
@@ -416,16 +404,14 @@ class Review:
                     else None
                 )
             except (ValueError, TypeError, OSError, subprocess.SubprocessError, cv2.error):
-                self.store.save_assessment(
+                self.store.assessments.save(
                     row["id"],
                     error="Codex判定に失敗しました。動画・ログイン・接続を確認してください",
                 )
                 logger.warning("Codex判定に失敗しました（動画 %s）", row["id"])
                 failures += 1
                 continue
-            stored = self.store.save_assessment(
-                row["id"], **asdict(result), observed_at=observed_at
-            )
+            stored = self.store.assessments.save(row["id"], result, observed_at=observed_at)
             if not stored:
                 continue
             completed += 1
@@ -434,14 +420,14 @@ class Review:
                 and self.notify is not None
                 and result.label in EXCRETION_TYPES
                 and not row["interrupted"]
-                and self.store.claim_assessment_notice(row["id"])
+                and self.store.assessments.claim_notice(row["id"])
             ):
                 sent = (
                     self.notify(result.label, location="outside")
                     if result.location == "outside"
                     else self.notify(result.label)
                 )
-                self.store.finish_assessment_notice(row["id"], sent)
+                self.store.assessments.finish_notice(row["id"], sent)
         return completed, failures
 
     def watch(self) -> "ReviewWorker":

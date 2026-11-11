@@ -236,7 +236,7 @@ def render_records(
     store: Store, clips: ClipStore, query: Query, *, title: str | None = None
 ) -> str:
     records = store.records()
-    video_links = clips.record_videos()
+    video_links = clips.labels.record_videos()
     return render_template(
         "records.html",
         title=title or APP_TITLE,

@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 from support import request
 
+from poop_detector.clip_labels import ClipLabel
+from poop_detector.clip_reviews import Assessment
 from poop_detector.clips import ClipStore
 from poop_detector.live_preview import LivePreview
 
@@ -40,8 +42,10 @@ def test_home_shows_latest_codex_assessment_and_manual_label(gui):
     latest = clip_store.request()
     for clip_id, label in ((old, "urine"), (latest, "feces")):
         clip_store.update(clip_id, status="ready", duration=10)
-        clip_store.save_assessment(clip_id, label=label, activity="excreting", reason="<根拠>")
-    clip_store.label(latest, "none", activity="feeding")
+        clip_store.assessments.save(
+            clip_id, Assessment(label=label, activity="excreting", reason="<根拠>")
+        )
+    clip_store.labels.save(latest, ClipLabel("none", activity="feeding"))
 
     status, page = request(server, "GET", "/")
     assert status == 200

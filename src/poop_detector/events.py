@@ -292,25 +292,6 @@ class Store:
             if cursor.rowcount != 1:
                 raise ValueError("イベントが見つかりません")
 
-    def feedback(
-        self,
-        event_id: str,
-        actual: bool,
-        actual_start: str | None = None,
-        actual_end: str | None = None,
-    ) -> None:
-        self.update(
-            event_id, feedback=int(actual), actual_start=actual_start, actual_end=actual_end
-        )
-
-    def missed(self, actual_start: str, actual_end: str | None = None) -> None:
-        with self.connect() as db:
-            db.execute(
-                """INSERT INTO events (id,timestamp,kind,feedback,actual_start,actual_end)
-                VALUES (?,?,?,?,?,?)""",
-                (uuid4().hex, actual_start, "MISSED", 1, actual_start, actual_end),
-            )
-
     def metrics(self) -> dict[str, Any]:
         """目視の判定から Precision・Recall・通知の遅れなどを集計する。"""
         rows = self.list()

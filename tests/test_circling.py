@@ -7,6 +7,7 @@ import numpy as np
 from support import request
 
 from poop_detector.circling import CirclingDetector
+from poop_detector.clip_labels import ClipLabel
 from poop_detector.clips import ClipStore
 from poop_detector.main import main
 from poop_detector.roi import ROI
@@ -64,7 +65,7 @@ def test_cli_saves_rotation_with_seek_link_without_modifying_label(gui, monkeypa
         duration=13 / 3,
         scene_signature=scene_signature(frame, roi),
     )
-    clips.label(clip_id, "none", activity="walking")
+    clips.labels.save(clip_id, ClipLabel("none", activity="walking"))
     config = root / "config.yaml"
     config.write_text(f"data_dir: {root}")
 
@@ -78,7 +79,7 @@ def test_cli_saves_rotation_with_seek_link_without_modifying_label(gui, monkeypa
 
     monkeypatch.setattr("poop_detector.dog.DogDetector", DogDetector)
     assert main(["--config", str(config), "circling-review", "--clip", clip_id]) == 0
-    row = clips.circling_review(clip_id)
+    row = clips.circling.get(clip_id)
     assert len(row["candidates"]) == 1
     assert clips.get(clip_id)["label"] == "none"
     _, page = request(server, "GET", f"/clips?id={clip_id}")
