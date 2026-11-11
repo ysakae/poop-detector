@@ -5,7 +5,7 @@ import threading
 import numpy as np
 from support import spot_scene
 
-from poop_detector.camera import Camera, LatestCamera
+from poop_detector.capture.camera import Camera, LatestCamera
 
 
 def test_camera_reconnects_and_releases():

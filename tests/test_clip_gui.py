@@ -2,12 +2,12 @@
 
 from support import ready_clip, request, submit
 
-from poop_detector.clip_labels import ClipLabel
-from poop_detector.clip_reviews import Assessment
+from poop_detector.video.clip_labels import ClipLabel
+from poop_detector.video.clip_reviews import Assessment
 
 
 def test_video_range_and_labels(gui):
-    from poop_detector.clips import ClipStore
+    from poop_detector.video.clips import ClipStore
 
     server, store, _ = gui
     clips = ClipStore(store.root)
@@ -44,7 +44,7 @@ def test_video_range_and_labels(gui):
 
 
 def test_manual_request_requires_running_camera(gui):
-    from poop_detector.clips import ClipStore
+    from poop_detector.video.clips import ClipStore
 
     server, store, _ = gui
     assert submit(server, "/clips/request", {})[0] == 409
@@ -55,7 +55,7 @@ def test_manual_request_requires_running_camera(gui):
 
 
 def test_codex_draft_is_visible_without_overwriting_human_label(gui):
-    from poop_detector.clips import ClipStore
+    from poop_detector.video.clips import ClipStore
 
     server, store, _ = gui
     clips = ClipStore(store.root)
@@ -85,7 +85,7 @@ def test_codex_draft_is_visible_without_overwriting_human_label(gui):
 
 
 def test_clip_links_keep_addressable_details_for_partial_navigation(gui):
-    from poop_detector.clips import ClipStore
+    from poop_detector.video.clips import ClipStore
 
     server, store, _ = gui
     clips = ClipStore(store.root)
@@ -102,7 +102,7 @@ def test_clip_links_keep_addressable_details_for_partial_navigation(gui):
 
 
 def test_video_confirmation_converts_offsets_and_reuses_existing_record(gui):
-    from poop_detector.clips import ClipStore
+    from poop_detector.video.clips import ClipStore
 
     server, store, _ = gui
     clips = ClipStore(store.root)
@@ -139,7 +139,7 @@ def test_video_confirmation_converts_offsets_and_reuses_existing_record(gui):
 
 
 def test_video_confirmation_preserves_unknown_time_and_can_use_original_event(gui):
-    from poop_detector.clips import ClipStore
+    from poop_detector.video.clips import ClipStore
 
     server, store, event_id = gui
     clips = ClipStore(store.root)
@@ -181,7 +181,7 @@ def test_video_confirmation_preserves_unknown_time_and_can_use_original_event(gu
 
 
 def test_invalid_confirmation_leaves_video_label_and_records_intact(gui):
-    from poop_detector.clips import ClipStore
+    from poop_detector.video.clips import ClipStore
 
     server, store, _ = gui
     clips = ClipStore(store.root)

@@ -10,8 +10,8 @@ from uuid import uuid4
 import cv2
 import numpy as np
 
+from ..frames import Frame
 from .database import events_database
-from .frames import Frame
 
 # classify で「指定なし（既存の値を保つ）」と None（値を消す）を区別する目印。
 _UNSET: Final[Any] = object()

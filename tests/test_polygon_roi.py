@@ -4,11 +4,11 @@ import cv2
 import numpy as np
 import pytest
 
-from poop_detector.roi import ROI
+from poop_detector.detection.roi import ROI
 
 
 def test_polygon_roundtrip_scaling_and_warp(tmp_path):
-    from poop_detector.roi import PolygonROI
+    from poop_detector.detection.roi import PolygonROI
 
     points = [(20, 20), (80, 30), (70, 80), (30, 70)]
     roi = PolygonROI.from_pixels(points, 101, 101)
@@ -37,15 +37,15 @@ def test_polygon_roundtrip_scaling_and_warp(tmp_path):
     ],
 )
 def test_invalid_polygon_is_rejected(points, message):
-    from poop_detector.roi import PolygonROI
+    from poop_detector.detection.roi import PolygonROI
 
     with pytest.raises(ValueError, match=message):
         PolygonROI.from_pixels(points, 101, 101)
 
 
 def test_polygon_baseline_metadata_roundtrip(tmp_path):
-    from poop_detector.roi import PolygonROI
-    from poop_detector.scene import load_baseline, save_baseline
+    from poop_detector.detection.roi import PolygonROI
+    from poop_detector.detection.scene import load_baseline, save_baseline
 
     roi = PolygonROI.from_pixels([(10, 10), (90, 20), (80, 90), (20, 80)], 101, 101)
     frame = np.full((101, 101, 3), 150, np.uint8)
@@ -63,7 +63,7 @@ def save_roi(tmp_path, roi):
 
 
 def test_selector_four_clicks_and_cancel(monkeypatch):
-    from poop_detector.roi import select_polygon
+    from poop_detector.detection.roi import select_polygon
 
     frame = np.zeros((101, 101, 3), np.uint8)
     callback = None

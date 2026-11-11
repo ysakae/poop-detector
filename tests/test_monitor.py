@@ -4,11 +4,11 @@ import cv2
 import pytest
 from support import FrameSource, SilentNotifier, spot_scene
 
-from poop_detector.camera import Camera
+from poop_detector.capture.camera import Camera
 from poop_detector.config import Config
-from poop_detector.events import Store
-from poop_detector.monitoring import monitor
-from poop_detector.roi import ROI
+from poop_detector.detection.monitoring import monitor
+from poop_detector.detection.roi import ROI
+from poop_detector.records.events import Store
 
 
 @pytest.mark.parametrize("review_notifications", [False, True])

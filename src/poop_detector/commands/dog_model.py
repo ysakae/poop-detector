@@ -11,7 +11,7 @@ from .context import CommandContext
 
 
 def setup_dog_model(_args: argparse.Namespace, context: CommandContext) -> int:
-    from ..dog import setup_model
+    from ..features.dog import setup_model
 
     print(f"犬検出モデルを確認しました: {setup_model(context.dog_model_dir)}")
     return 0
@@ -19,7 +19,7 @@ def setup_dog_model(_args: argparse.Namespace, context: CommandContext) -> int:
 
 def check_dog(args: argparse.Namespace, context: CommandContext) -> int:
     """静止画で犬を検出し、検出枠と推論時間・負荷を JSON で表示する。"""
-    from ..dog import DogDetector
+    from ..features.dog import DogDetector
 
     if not 1 <= args.repeat <= 100:
         raise ValueError("繰り返し回数は1〜100です")

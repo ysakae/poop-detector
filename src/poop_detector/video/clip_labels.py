@@ -5,8 +5,8 @@ import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
+from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, validate_location
 from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
-from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, validate_location
 
 
 @dataclass(frozen=True)

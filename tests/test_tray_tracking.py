@@ -7,13 +7,13 @@ import cv2
 import numpy as np
 import pytest
 
-from poop_detector.codex_cli import CodexCliJudge
 from poop_detector.config import Config
-from poop_detector.early_alert import EarlyAlert
+from poop_detector.detection.monitoring import monitor
+from poop_detector.detection.roi import ROI
+from poop_detector.features.early_alert import EarlyAlert
+from poop_detector.features.tray_tracking import TrayTracker
 from poop_detector.main import parser
-from poop_detector.monitoring import monitor
-from poop_detector.roi import ROI
-from poop_detector.tray_tracking import TrayTracker
+from poop_detector.video.codex_cli import CodexCliJudge
 
 
 def tray_scene():
@@ -145,7 +145,7 @@ def test_tracking_flag_is_available_for_capture_monitor_and_review():
 
 
 def test_missing_tray_in_clip_holds_codex_judgment(tmp_path):
-    from poop_detector.video_review import inspect_clip
+    from poop_detector.video.review import inspect_clip
 
     frame, roi = tray_scene()
     tracker = TrayTracker(frame, roi)
@@ -169,7 +169,7 @@ def test_missing_tray_in_clip_holds_codex_judgment(tmp_path):
 
 
 def test_tray_reference_must_match_current_baseline(tmp_path):
-    from poop_detector.tray_tracking import TrayReferenceError
+    from poop_detector.features.tray_tracking import TrayReferenceError
 
     frame, roi = tray_scene()
     reference = tmp_path / "tray.png"
@@ -195,7 +195,7 @@ def test_plain_white_rim_can_be_registered_without_markers():
 
 @pytest.mark.parametrize(("evidence_at", "label"), [(3, "uncertain"), (5, "feces")])
 def test_codex_evidence_must_come_from_a_tracked_frame(tmp_path, evidence_at, label):
-    from poop_detector.video_review import inspect_clip
+    from poop_detector.video.review import inspect_clip
 
     frame, roi = tray_scene()
     path = tmp_path / "partial.mp4"

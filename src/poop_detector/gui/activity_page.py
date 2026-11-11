@@ -7,7 +7,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from ..activity_map import GRID, ActivityLayout, ActivityStore
+from ..features.activity_map import GRID, ActivityLayout, ActivityStore
 from ..timezones import local_today, timezone_label
 from .templating import render_template
 

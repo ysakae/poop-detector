@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from .frames import Frame, Mask, Shape
+from ..frames import Frame, Mask, Shape
 
 Point: TypeAlias = Sequence[float]
 

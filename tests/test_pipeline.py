@@ -10,13 +10,13 @@ import time
 import pytest
 from support import spot_scene
 
-from poop_detector.clips import ClipStore
 from poop_detector.commands import context
 from poop_detector.config import CONNECTION_KEYS
-from poop_detector.events import Store
+from poop_detector.detection.roi import ROI
+from poop_detector.detection.scene import save_baseline
 from poop_detector.main import main
-from poop_detector.roi import ROI
-from poop_detector.scene import save_baseline
+from poop_detector.records.events import Store
+from poop_detector.video.clips import ClipStore
 
 pytestmark = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="FFmpeg が必要です")
 

@@ -19,13 +19,13 @@ from typing import Any, Protocol, Self, cast
 import cv2
 import numpy as np
 
+from ..detection.roi import AnyROI, MaskedROI, full_mask, outline
+from ..features.tray_tracking import TrayTracker
+from ..frames import Frame, Mask
+from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, utcnow
 from .clip_reviews import Assessment
 from .clip_storage import REVIEW_LOCK
 from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
-from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, utcnow
-from .frames import Frame, Mask
-from .roi import AnyROI, MaskedROI, full_mask, outline
-from .tray_tracking import TrayTracker
 
 logger = logging.getLogger(__name__)
 EVIDENCE = {"feces": "new_stool", "urine": "new_wet_patch", "both": "both_visible"}

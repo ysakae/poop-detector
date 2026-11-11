@@ -6,9 +6,9 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from .config import Config
-from .detection import Detector
-from .frames import Frame, Mask
+from ..config import Config
+from ..detection.difference import Detector
+from ..frames import Frame, Mask
 
 # 滞在の長さと通知の間隔は設定（early_alert.stay_seconds・cooldown_seconds）で変えられる。
 # 以下は、長辺240画素に縮小した画像で調整した判定の内部の値。カメラや画角ではなく

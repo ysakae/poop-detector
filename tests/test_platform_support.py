@@ -94,7 +94,7 @@ def test_any_submodule_import_silences_opencv_logs_first():
 
     code = (
         "import os, sys\n"
-        "import poop_detector.camera\n"
+        "import poop_detector.capture.camera\n"
         "print(os.environ['OPENCV_LOG_LEVEL'], os.environ['OPENCV_FFMPEG_LOGLEVEL'])\n"
     )
     result = subprocess.run(

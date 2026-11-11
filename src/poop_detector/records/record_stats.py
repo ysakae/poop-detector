@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 from datetime import date
 from typing import Any
 
-from .timezones import to_local
+from ..timezones import to_local
 
 
 def summarize_records(

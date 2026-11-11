@@ -9,10 +9,10 @@ from support import spot_scene
 
 from poop_detector.commands import context, setup
 from poop_detector.config import CONNECTION_KEYS
-from poop_detector.events import Store
+from poop_detector.detection.roi import ROI, PolygonROI
+from poop_detector.detection.scene import load_baseline, save_baseline
 from poop_detector.main import main
-from poop_detector.roi import ROI, PolygonROI
-from poop_detector.scene import load_baseline, save_baseline
+from poop_detector.records.events import Store
 
 SECRET_URL = "rtsp://private:secret@camera.invalid/live"
 
@@ -162,7 +162,7 @@ def test_setup_needs_a_display(cli_env, capsys):
 
 
 def test_setup_activity_map_requires_replace_to_overwrite(cli_env, capsys):
-    from poop_detector.activity_map import ActivityLayout
+    from poop_detector.features.activity_map import ActivityLayout
 
     baseline, _ = spot_scene()
     use_camera(cli_env, baseline)
@@ -281,7 +281,7 @@ def test_mac_test_notification_reports_result(cli_env, monkeypatch, capsys, acce
 def test_detect_outside_requires_codex_and_registered_area(cli_env, monkeypatch, capsys):
     assert cli_env.run("run", "--detect-outside") == 2
     assert "--video-review" in capsys.readouterr().err
-    monkeypatch.setattr("poop_detector.codex_cli.CodexCliJudge.check", lambda self: None)
+    monkeypatch.setattr("poop_detector.video.codex_cli.CodexCliJudge.check", lambda self: None)
     assert cli_env.run("run", "--codex", "--detect-outside") == 2
     assert "setup-roi --outside" in capsys.readouterr().err
 
@@ -294,13 +294,13 @@ def test_codex_requires_clips_and_login(cli_env, monkeypatch, capsys):
     def missing(self):
         raise ValueError("Codex CLIをインストールしてください")
 
-    monkeypatch.setattr("poop_detector.codex_cli.CodexCliJudge.check", missing)
+    monkeypatch.setattr("poop_detector.video.codex_cli.CodexCliJudge.check", missing)
     assert cli_env.run("codex-review") == 2
     assert "Codex CLI" in capsys.readouterr().err
 
 
 def test_codex_review_checks_limit_and_reports_counts(cli_env, monkeypatch, capsys):
-    monkeypatch.setattr("poop_detector.codex_cli.CodexCliJudge.check", lambda self: None)
+    monkeypatch.setattr("poop_detector.video.codex_cli.CodexCliJudge.check", lambda self: None)
     assert cli_env.run("codex-review", "--limit", "0") == 2
     assert "--limit" in capsys.readouterr().err
     register_scene(cli_env)
@@ -325,7 +325,7 @@ def test_run_with_activity_map_requires_floor(cli_env, capsys):
 
 
 def test_setup_dog_model_reports_saved_directory(cli_env, monkeypatch, capsys):
-    monkeypatch.setattr("poop_detector.dog.setup_model", lambda directory: directory)
+    monkeypatch.setattr("poop_detector.features.dog.setup_model", lambda directory: directory)
     assert cli_env.run("setup-dog-model") == 0
     assert "dog-yolox" in capsys.readouterr().out
 
@@ -340,7 +340,7 @@ def test_check_dog_validates_input_and_prints_measurements(cli_env, monkeypatch,
         def predict(self, frame):
             return [[1, 2, 3, 4]]
 
-    monkeypatch.setattr("poop_detector.dog.DogDetector", Detector)
+    monkeypatch.setattr("poop_detector.features.dog.DogDetector", Detector)
     image = cli_env.path / "dog.png"
     cv2.imwrite(str(image), spot_scene()[1])
     assert cli_env.run("check-dog", "--image", str(image), "--repeat", "0") == 2
@@ -383,7 +383,7 @@ def test_codex_in_config_needs_clip_recording(cli_env, capsys):
 def test_flags_still_enable_features_on_top_of_the_config(cli_env, monkeypatch, capsys):
     """既存の起動コマンド（フラグ）は、設定で無効でもそのまま使える。"""
     write_config(cli_env, "features: {codex: false}\n")
-    monkeypatch.setattr("poop_detector.codex_cli.CodexCliJudge.check", lambda self: None)
+    monkeypatch.setattr("poop_detector.video.codex_cli.CodexCliJudge.check", lambda self: None)
     assert cli_env.run("run", "--codex", "--detect-outside") == 2
     assert "setup-roi --outside" in capsys.readouterr().err
 

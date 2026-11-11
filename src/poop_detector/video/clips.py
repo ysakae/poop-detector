@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict, cast, get_args
 from uuid import uuid4
 
-from .events import (
+from ..records.events import (
     Store,
     utcnow,
 )

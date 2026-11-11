@@ -12,11 +12,11 @@ import pytest
 from jinja2 import UndefinedError
 from support import request
 
-from poop_detector.clip_reviews import Assessment
-from poop_detector.clips import ClipStore
-from poop_detector.events import Store
 from poop_detector.gui.server import make_server
 from poop_detector.gui.templating import render_template
+from poop_detector.records.events import Store
+from poop_detector.video.clip_reviews import Assessment
+from poop_detector.video.clips import ClipStore
 
 EVIL = "<script>alert(\"x\")</script> & 'q' <b>太字</b>"
 RAW = ("<script>alert", "<b>太字")

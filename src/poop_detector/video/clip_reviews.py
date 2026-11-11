@@ -5,9 +5,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
+from ..records.database import Database
+from ..records.events import utcnow, validate_location
 from .clips import AssessmentRow, ClipRow
-from .database import Database
-from .events import utcnow, validate_location
 
 
 @dataclass(frozen=True)

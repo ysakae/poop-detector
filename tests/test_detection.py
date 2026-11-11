@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from support import spot_scene
 
-from poop_detector.detection import Detector
+from poop_detector.detection.difference import Detector
 
 
 def test_detection_small_object_and_illumination():

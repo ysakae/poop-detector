@@ -9,7 +9,7 @@ from typing import Any, Protocol
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-from .events import EXCRETION_TYPES
+from .records.events import EXCRETION_TYPES
 
 DEFAULT_NTFY_SERVER = "https://ntfy.sh"
 logger = logging.getLogger(__name__)

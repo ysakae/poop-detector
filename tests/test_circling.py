@@ -6,12 +6,12 @@ import cv2
 import numpy as np
 from support import request
 
-from poop_detector.circling import CirclingDetector
-from poop_detector.clip_labels import ClipLabel
-from poop_detector.clips import ClipStore
+from poop_detector.detection.roi import ROI
+from poop_detector.detection.scene import save_baseline, scene_signature
+from poop_detector.experimental.circling import CirclingDetector
 from poop_detector.main import main
-from poop_detector.roi import ROI
-from poop_detector.scene import save_baseline, scene_signature
+from poop_detector.video.clip_labels import ClipLabel
+from poop_detector.video.clips import ClipStore
 
 
 def circle_points():
@@ -77,7 +77,7 @@ def test_cli_saves_rotation_with_seek_link_without_modifying_label(gui, monkeypa
             x, y = map(round, next(self.points))
             return [(x - 10, y - 10, x + 10, y + 10)]
 
-    monkeypatch.setattr("poop_detector.dog.DogDetector", DogDetector)
+    monkeypatch.setattr("poop_detector.features.dog.DogDetector", DogDetector)
     assert main(["--config", str(config), "circling-review", "--clip", clip_id]) == 0
     row = clips.circling.get(clip_id)
     assert len(row["candidates"]) == 1

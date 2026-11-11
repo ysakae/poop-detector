@@ -20,20 +20,21 @@ from typing import TYPE_CHECKING, Protocol
 
 import psutil
 
-from .activity_map import ActivityRecorder
-from .config import Config
-from .detection import IncrementalDetector, Observation
-from .early_alert import EarlyAlert
-from .events import Store, utcnow
-from .frames import Frame, Mask
-from .recording import ClipCollector
+from ..config import Config
+from ..features.activity_map import ActivityRecorder
+from ..features.early_alert import EarlyAlert
+from ..features.tray_tracking import TrayTracker
+from ..frames import Frame, Mask
+from ..records.events import Store, utcnow
+from ..video.recording import ClipCollector
+from .difference import IncrementalDetector, Observation
 from .roi import AnyROI
 from .scene import scene_signature
 from .state_machine import Machine
-from .tray_tracking import TrayTracker
 
 if TYPE_CHECKING:
-    from .dog import DogObserver, DogState, DogTransition, OutsideWatch, Predict
+    from ..experimental.outside import OutsideWatch
+    from ..features.dog import DogObserver, DogState, DogTransition, Predict
 
 logger = logging.getLogger(__name__)
 HEALTH_LOG_SECONDS = 30
@@ -404,7 +405,7 @@ class Monitor:
 
 def dog_observer_from_config(config: Config) -> "DogObserver":
     """設定の犬検出モデルを読み込む。モデルがなければ準備の方法をログに出して送出する。"""
-    from .dog import DogDetector, DogObserver
+    from ..features.dog import DogDetector, DogObserver
 
     try:
         model = DogDetector(Path(config.data_dir) / "models" / "dog-yolox", config.dog_confidence)
@@ -441,7 +442,7 @@ def standard_extensions(
     if dog_observer is not None:
         watch = None
         if outside_roi is not None:
-            from .dog import OutsideWatch
+            from ..experimental.outside import OutsideWatch
 
             watch = OutsideWatch(roi, outside_roi, config.dog_exit_seconds)
         extensions.append(DogExtension(dog_observer, roi, config, clock, collector, watch))

@@ -15,9 +15,9 @@ from poop_detector.commands.context import (
 )
 from poop_detector.commands.records import require_timezones
 from poop_detector.config import Config, ConfigError, check_monitor_features, with_flags
+from poop_detector.detection.roi import ROI
 from poop_detector.main import ALIASES, HANDLERS, parser
 from poop_detector.notifications import MacNotifier, NtfyNotifier
-from poop_detector.roi import ROI
 
 SETTINGS = {
     "POOP_RTSP_URL": "",

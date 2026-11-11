@@ -9,7 +9,7 @@ from pathlib import Path
 
 import cv2
 
-from .frames import Frame
+from ..frames import Frame
 
 logger = logging.getLogger(__name__)
 # GUI のライブ映像の内部の値。画面の更新間隔（gui/static/live.js）と合わせてある。

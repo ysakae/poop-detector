@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 from dotenv import dotenv_values
 
-from .clip_storage import DEFAULT_DISK_MIB
+from .video.clip_storage import DEFAULT_DISK_MIB
 
 CONNECTION_KEYS = ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC", "POOP_NTFY_SERVER")
 PET_NAME_MAX_LENGTH = 32

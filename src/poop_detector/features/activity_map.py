@@ -17,10 +17,10 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from ..detection.roi import MaskedROI, PolygonROI
+from ..frames import Frame, Shape
+from ..timezones import local_now
 from .dog import Box, Predict
-from .frames import Frame, Shape
-from .roi import MaskedROI, PolygonROI
-from .timezones import local_now
 
 # 床面を 0〜1 に正規化した座標と、GRID×GRID のマス目の位置。
 FloorPoint: TypeAlias = tuple[float, float]

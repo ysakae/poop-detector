@@ -3,11 +3,11 @@
 import numpy as np
 import pytest
 
-from poop_detector.roi import ROI, MaskedROI
+from poop_detector.detection.roi import ROI, MaskedROI
 
 
 def test_model_decodes_dog_only_and_clips_box():
-    from poop_detector.dog import DogDetector
+    from poop_detector.features.dog import DogDetector
 
     class Net:
         def setInput(self, blob):
@@ -27,7 +27,7 @@ def test_model_decodes_dog_only_and_clips_box():
 
 
 def test_observer_entrance_exit_and_roi_occlusion():
-    from poop_detector.dog import DogObserver
+    from poop_detector.features.dog import DogObserver
 
     boxes = [(20, 20, 50, 50)]
 
@@ -49,7 +49,7 @@ def test_observer_entrance_exit_and_roi_occlusion():
 
 
 def test_polygon_outside_bbox_is_not_occlusion():
-    from poop_detector.dog import overlaps_roi
+    from poop_detector.features.dog import overlaps_roi
 
     roi = MaskedROI.from_pixels(
         [(50, 10), (90, 30), (90, 70), (50, 90), (10, 70), (10, 30)], 101, 101
@@ -59,7 +59,7 @@ def test_polygon_outside_bbox_is_not_occlusion():
 
 
 def test_inference_failure_is_held_until_recovery():
-    from poop_detector.dog import DogObserver
+    from poop_detector.features.dog import DogObserver
 
     class Detector:
         def predict(self, frame):
@@ -71,14 +71,14 @@ def test_inference_failure_is_held_until_recovery():
 
 
 def test_missing_model_does_not_download_silently(tmp_path):
-    from poop_detector.dog import DogDetector
+    from poop_detector.features.dog import DogDetector
 
     with pytest.raises(FileNotFoundError):
         DogDetector(tmp_path)
 
 
 def test_visible_dog_outside_roi_enters_when_moving_inside():
-    from poop_detector.dog import DogObserver
+    from poop_detector.features.dog import DogObserver
 
     boxes = [(70, 70, 90, 90)]
 
@@ -99,9 +99,9 @@ def test_visible_dog_outside_roi_enters_when_moving_inside():
 
 def test_monitor_does_not_notify_while_dog_occludes_roi(tmp_path):
     from poop_detector.config import Config
-    from poop_detector.dog import DogState
-    from poop_detector.events import Store
-    from poop_detector.monitoring import monitor
+    from poop_detector.detection.monitoring import monitor
+    from poop_detector.features.dog import DogState
+    from poop_detector.records.events import Store
 
     base = np.full((200, 200, 3), 200, np.uint8)
     changed = base.copy()
@@ -136,9 +136,9 @@ def test_monitor_does_not_notify_while_dog_occludes_roi(tmp_path):
 
 def test_monitor_collects_entry_exit_and_detection(tmp_path):
     from poop_detector.config import Config
-    from poop_detector.dog import DogState
-    from poop_detector.events import Store
-    from poop_detector.monitoring import monitor
+    from poop_detector.detection.monitoring import monitor
+    from poop_detector.features.dog import DogState
+    from poop_detector.records.events import Store
 
     base = np.full((200, 200, 3), 200, np.uint8)
     changed = base.copy()

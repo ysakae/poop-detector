@@ -9,11 +9,11 @@ from dataclasses import dataclass
 import pytest
 from support import SilentNotifier, spot_scene
 
-from poop_detector import monitoring
 from poop_detector.config import Config
-from poop_detector.events import Store
-from poop_detector.roi import ROI
-from poop_detector.scene import scene_signature
+from poop_detector.detection import monitoring
+from poop_detector.detection.roi import ROI
+from poop_detector.detection.scene import scene_signature
+from poop_detector.records.events import Store
 
 ROI_ALL = ROI(0, 0, 1, 1)
 EMPTY, STAIN = spot_scene()

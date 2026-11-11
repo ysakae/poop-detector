@@ -2,19 +2,35 @@
 
 監視ツールの内部構造のうち、複数のファイルを読まないと分からない部分をまとめます。利用者向けの操作手順は [README](../README.md)、開発の規約は [AGENTS.md](../AGENTS.md) を参照してください。
 
+## パッケージの構成
+
+サブパッケージは、README の機能表の成熟度（中核・任意・実験的）に対応しています。
+
+| サブパッケージ | 区分 | 中身 |
+|---|---|---|
+| `detection/` | 中核 | 差分の判定（`difference.py`）、継続確認の状態遷移、監視範囲（ROI）、基準画像、監視ループ（`monitoring.py`） |
+| `capture/` | 中核 | カメラの映像の取得と再接続、GUI へのライブ映像 |
+| `records/` | 中核 | 検知イベントと排泄の記録の台帳、集計、SQLite の接続とスキーマの版 |
+| `video/` | 中核・任意 | 動画の台帳・録画・保持（中核）、動画の自動判定と判定器（任意） |
+| `features/` | 任意 | 犬の検出、見守り通知、トレー追従、行動マップ |
+| `experimental/` | 実験的 | トレー外検知（`outside.py`）、旋回分析（`circling.py`） |
+| `commands/`・`gui/` | — | CLI のサブコマンドと、ラベル GUI |
+
+最上位には、設定（`config.py`）、通知（`notifications.py`）、画像の型（`frames.py`）、時刻（`timezones.py`）、対応 OS の判定（`platform_support.py`）、CLI の入口（`main.py`）を置いています。監視ループの本体（`detection.monitoring.Monitor`）は、任意・実験的な機能に依存しません。それらは `MonitorExtension` として差し込み、設定から拡張を組み立てる `standard_extensions` だけが各機能を読み込みます。
+
 ## 2つのプロセスが `data/` を介して連携する
 
 監視（`poop-detector run`）とラベル GUI（`poop-detector label-gui`）は別プロセスで、直接は通信しません。`config.data_dir`（既定 `data/`）の中身だけが接点です。
 
 - `events.sqlite3` — 次の台帳が同じファイルにテーブルを持ちます。
-  - `events.Store`：検知イベントと排泄の記録
-  - `clips.ClipStore`：動画の保存要求と状態
-  - `clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
-  - `clip_reviews.CirclingReviews`：旋回候補
-  - `clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
-  - `clip_storage`：保持期間・保護・整理
+  - `records.events.Store`：検知イベントと排泄の記録
+  - `video.clips.ClipStore`：動画の保存要求と状態
+  - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
+  - `video.clip_reviews.CirclingReviews`：旋回候補
+  - `video.clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
+  - `video.clip_storage`：保持期間・保護・整理
 
-  接続とスキーマは `database.py` が管理します。スキーマの版を `PRAGMA user_version` に記録し、開くときに未適用の移行処理を順に適用します（版管理を入れる前のデータベースは版0として扱い、版1への移行でいまの形にそろえます）。
+  接続とスキーマは `records/database.py` が管理します。スキーマの版を `PRAGMA user_version` に記録し、開くときに未適用の移行処理を順に適用します（版管理を入れる前のデータベースは版0として扱い、版1への移行でいまの形にそろえます）。
 - GUI からの「今の前後の動画を保存」は `clips` テーブルへ `queued` 行を入れるだけで、監視側の `ClipCollector.poll()` が拾います。監視の生存は `capture_status` のハートビートで判定します。
 - ライブ映像は `LivePreview` が `.live-preview.jpg` を書き、GUI が `.live-preview-request` の更新時刻で要求を伝えます。
 - `activity.sqlite3` は行動マップ専用の別データベースです。
@@ -35,7 +51,7 @@
 
 処理は `(args, CommandContext)` を受け取り、終了コードを返します。`CommandContext` は設定とデータの保存先の場所を持ちます。設定（`config.Config`）は不変で、`run` は `--video-review` などのフラグを `config.with_flags` で設定に重ね、機能の依存関係を `config.check_monitor_features` の1か所で確かめます。設定ファイルの各項目（セクション・名前・型・許容範囲）は `config.SETTINGS` の表で定義し、検証のエラーはその表から項目名と範囲を示します。ROI と基準画像の読み込み、通知先の選択、カメラの接続など、複数のコマンドで使う準備は `commands/context.py` にあります。サブコマンドを足すときは、`parser()` に引数を、`HANDLERS` に処理を加えてください。
 
-## 監視ループ（`monitoring.Monitor`）
+## 監視ループ（`detection.monitoring.Monitor`）
 
 `LatestCamera` が取得専用スレッドで RTSP を読み続け、最新の1フレームだけを保持します。全フレームはコールバックで `ClipCollector.feed`（リングバッファ）と `LivePreview` に渡ります。監視ループは `config.fps` の間隔で最新フレームだけを処理します。
 
@@ -66,7 +82,7 @@
 - 空の基準画像は自動更新しません。`setup-roi` と `capture-baseline` は `--replace` を明示したときだけ上書きします。`load_baseline` は保存時の ROI と一致しない基準を拒否します。
 - ROI の端に接する差分は、面積が小さくても遮蔽（`occupied`）として保留します。
 
-## ROI の種類（`roi.py`）
+## ROI の種類（`detection/roi.py`）
 
 `ROI`（矩形）、`PolygonROI`（旧版の四隅・射影補正あり）、`MaskedROI`（現行の多角形・射影補正なし・マスクあり）があり、`ROI.load` が JSON の内容から型を選びます。座標はすべて正規化して保存します。`mask` を持つかどうかで処理が分岐するため、ROI を扱うコードは3種類すべてで確認してください。
 
@@ -74,9 +90,9 @@
 
 `ClipCollector` が JPEG 圧縮したフレームをメモリー上限付きで保持し、トリガー前後を切り出して作業スレッドで MP4 に変換します。クリップの `source`（`detected`、`manual`、`dog_enter`、`dog_exit`、`early_alert`、`outside_stay`）で後段の扱いが変わります。
 
-`--video-review` では `video_review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を判定器（`video_review.VideoJudge`）に渡して JSON スキーマに沿った判定を受け取ります。判定器は差し替えられる作りで、既定の実装は Codex CLI（`codex_cli.CodexCliJudge`）です。このモードでは差分だけの通知を抑え、判定器が根拠を確認した場合にだけ通知します。`video-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
+`--video-review` では `video.review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を判定器（`video.review.VideoJudge`）に渡して JSON スキーマに沿った判定を受け取ります。判定器は差し替えられる作りで、既定の実装は Codex CLI（`video.codex_cli.CodexCliJudge`）です。このモードでは差分だけの通知を抑え、判定器が根拠を確認した場合にだけ通知します。`video-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
 
-`circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。
+`circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`experimental/circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。
 
 ## 通知先
 

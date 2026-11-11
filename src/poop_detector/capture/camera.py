@@ -9,7 +9,7 @@ from typing import Any, Self
 
 import cv2
 
-from .frames import Frame
+from ..frames import Frame
 
 # LatestCamera が取得したフレームごとに呼ぶ処理。引数はフレーム（取得失敗時は None）と接続の世代。
 FrameCallback = Callable[[Frame | None, int], None]

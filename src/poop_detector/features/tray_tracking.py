@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from .frames import Frame, Mask
-from .roi import ROI, AnyROI
+from ..detection.roi import ROI, AnyROI
+from ..frames import Frame, Mask
 
 # 縮小した映像上の 2×3 のアフィン変換。
 Transform = NDArray[Any]

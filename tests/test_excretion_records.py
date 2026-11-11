@@ -4,8 +4,8 @@ import cv2
 import numpy as np
 import pytest
 
-from poop_detector.detection import Detector
-from poop_detector.events import Store
+from poop_detector.detection.difference import Detector
+from poop_detector.records.events import Store
 
 
 def test_chromatic_change_with_equal_brightness_is_candidate():

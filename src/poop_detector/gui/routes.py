@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 from urllib.parse import urlencode, urlsplit
 
-from ..activity_map import ActivityLayout
-from ..clips import CLIP_LABELS
-from ..events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow
+from ..features.activity_map import ActivityLayout
+from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow
+from ..video.clips import CLIP_LABELS
 from .activity_page import render_activity
 from .clip_pages import (
     capacity_status,

@@ -10,8 +10,8 @@ import cv2
 from .commands import dog_model, notify, records, review, run, setup, show_config
 from .commands.context import CommandContext, CommandError, Handler
 from .config import Config, ConfigError, apply_timezone
-from .events import EXCRETION_TYPES
-from .tray_tracking import TrayReferenceError
+from .features.tray_tracking import TrayReferenceError
+from .records.events import EXCRETION_TYPES
 
 # 以前の名前のサブコマンド。引き続き使える。
 ALIASES = {"codex-review": "video-review"}

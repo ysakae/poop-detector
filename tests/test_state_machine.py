@@ -1,6 +1,6 @@
 """継続確認・重複抑止・解除の状態遷移を検証する。"""
 
-from poop_detector.state_machine import Machine
+from poop_detector.detection.state_machine import Machine
 
 
 def test_machine_persistence_duplicates_and_clear():

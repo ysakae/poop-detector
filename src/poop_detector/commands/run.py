@@ -6,14 +6,14 @@ from contextlib import ExitStack
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ..activity_map import ActivityLayout, ActivityRecorder, ActivityStore
-from ..camera import LatestCamera
+from ..capture.camera import LatestCamera
+from ..capture.live_preview import LivePreview
 from ..config import check_monitor_features, load_connection_settings, with_flags
+from ..detection.monitoring import monitor
+from ..detection.roi import AnyROI
+from ..features.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
 from ..frames import Frame
-from ..live_preview import LivePreview
-from ..monitoring import monitor
-from ..recording import ClipCollector
-from ..roi import AnyROI
+from ..video.recording import ClipCollector
 from .context import (
     CommandContext,
     CommandError,
@@ -29,9 +29,9 @@ from .review import ready_judge
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from ..features.tray_tracking import TrayTracker
     from ..notifications import MacNotifier, NtfyNotifier
-    from ..tray_tracking import TrayTracker
-    from ..video_review import Review, VideoJudge
+    from ..video.review import Review, VideoJudge
 
 
 def run(args: argparse.Namespace, context: CommandContext) -> int:
@@ -78,7 +78,7 @@ def review_watcher(
     judge: "VideoJudge",
 ) -> "Review":
     """監視中に保存した動画を自動判定し、根拠を確認できたときだけ通知する。"""
-    from ..video_review import Review, inspect_clip
+    from ..video.review import Review, inspect_clip
 
     return Review(
         collector.store,
