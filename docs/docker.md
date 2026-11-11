@@ -15,6 +15,7 @@ docker run --rm -v "$PWD/.env:/app/.env:ro" -v "$PWD/data:/app/data" -v "$PWD/co
 - コンテナのタイムゾーンは通常 UTC です。日別の集計を自分の地域の日付で区切るには、`config/config.yaml` の `timezone`（例: `Asia/Tokyo`）を設定してください。
 - ラベル GUI はコンテナ内で使用しません。
 - コンテナの UID とボリュームの書き込み権限は、実際の環境で確認してください。
+- イメージには GPL の構成の FFmpeg が入ります。ビルドしたイメージを他の人に配布する場合は、[ライセンスの条件](licenses.md#docker-イメージ)を満たしてください。
 
 ## インストール先での動作確認
 

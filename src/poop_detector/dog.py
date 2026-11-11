@@ -3,14 +3,23 @@
 import hashlib
 import logging
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Literal, TypeAlias
 from urllib.request import urlopen
 
 import cv2
 import numpy as np
 
-from .roi import full_mask, outline
+from .frames import Frame, Shape
+from .roi import AnyROI, full_mask, outline
+
+# 犬の検出枠。画素座標の (左, 上, 右, 下)。
+Box: TypeAlias = tuple[int, int, int, int]
+# 画像から犬の検出枠を求める関数。DogDetector.predict と、テスト用の差し替え。
+Predict: TypeAlias = Callable[[Frame], list[Box]]
+DogTransition: TypeAlias = Literal["dog_enter", "dog_exit"]
 
 REVISION = "48b10fa505aeb51fbd127fc60a5c660040e823b7"
 MODEL_FILES = {
@@ -20,7 +29,8 @@ MODEL_FILES = {
 logger = logging.getLogger(__name__)
 
 
-def setup_model(directory):
+def setup_model(directory: str | Path) -> Path:
+    """固定したリビジョンのモデルを取得し、SHA256 を確かめて保存する。既存のファイルは検証だけ。"""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     for name, expected in MODEL_FILES.items():
@@ -45,7 +55,9 @@ def setup_model(directory):
 
 
 class DogDetector:
-    def __init__(self, directory, confidence=0.4, net=None):
+    """OpenCV Zoo の YOLOX で、画像内の犬の検出枠を求める。"""
+
+    def __init__(self, directory: str | Path, confidence: float = 0.4, net: Any = None) -> None:
         self.confidence = confidence
         if net is None:
             directory = Path(directory)
@@ -59,7 +71,8 @@ class DogDetector:
             net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
             net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
         self.net = net
-        grids, strides = [], []
+        grids: list[np.ndarray] = []
+        strides: list[np.ndarray] = []
         for stride in (8, 16, 32):
             x, y = np.meshgrid(np.arange(640 // stride), np.arange(640 // stride))
             grid = np.stack([x, y], axis=-1).reshape(-1, 2)
@@ -68,7 +81,7 @@ class DogDetector:
         self.grids = np.concatenate(grids).astype(np.float32)
         self.strides = np.concatenate(strides).astype(np.float32)
 
-    def predict(self, frame):
+    def predict(self, frame: Frame) -> list[Box]:
         height, width = frame.shape[:2]
         scale = min(640 / width, 640 / height)
         resized = cv2.resize(frame, (max(1, int(width * scale)), max(1, int(height * scale))))
@@ -90,7 +103,7 @@ class DogDetector:
         sizes = np.exp(np.clip(output[selected, 2:4], -20, 20)) * self.strides[selected] / scale
         boxes = np.concatenate([center - sizes / 2, sizes], axis=1)
         keep = cv2.dnn.NMSBoxes(boxes.tolist(), scores[selected].tolist(), self.confidence, 0.5)
-        results = []
+        results: list[Box] = []
         for index in np.asarray(keep, dtype=int).reshape(-1):
             x, y, w, h = boxes[index]
             x1, x2 = np.clip(np.rint([x, x + w]), 0, width - 1).astype(int)
@@ -100,7 +113,7 @@ class DogDetector:
         return results
 
 
-def overlaps_roi(box, roi, shape):
+def overlaps_roi(box: Box, roi: AnyROI, shape: Shape) -> bool:
     height, width = shape[:2]
     mask = full_mask(roi, shape)
     x1, y1, x2, y2 = box
@@ -109,27 +122,36 @@ def overlaps_roi(box, roi, shape):
 
 @dataclass
 class DogState:
+    """犬の検出結果。ROI への重なりと、入場・退場の変化を含む。"""
+
     present: bool
     on_roi: bool
-    transition: str | None
-    boxes: list
+    transition: DogTransition | None
+    boxes: list[Box]
     inference_ms: float
     error: bool = False
 
 
 class DogObserver:
-    def __init__(self, detector, fps=1, exit_seconds=2):
+    """一定間隔で犬を検出し、トイレへの入場と退場を判定する。"""
+
+    def __init__(self, detector: "DogDetector", fps: float = 1, exit_seconds: float = 2) -> None:
         self.detector, self.fps, self.exit_seconds = detector, fps, exit_seconds
         self.reset()
 
-    def reset(self):
+    def reset(self) -> None:
         self.last_inference = self.last_seen = self.last_roi = float("-inf")
         self.previous_roi = False
-        self.boxes = []
+        self.boxes: list[Box] = []
         self.error = False
         self.inference_ms = 0.0
 
-    def update(self, frame, roi, now=None):
+    def predict(self, frame: Frame) -> list[Box]:
+        """間隔や状態に関係なく、frame の犬の検出枠を求める（行動マップなど）。"""
+        return self.detector.predict(frame)
+
+    def update(self, frame: Frame, roi: AnyROI, now: float | None = None) -> DogState:
+        """fps の間隔で推論し、検出が exit_seconds 途切れるまでは同じ状態を保つ。"""
         now = time.monotonic() if now is None else now
         if now - self.last_inference >= 1 / self.fps:
             self.last_inference = now
@@ -147,7 +169,7 @@ class DogObserver:
             self.inference_ms = (time.perf_counter() - start) * 1000
         present = now - self.last_seen < self.exit_seconds
         occupied = now - self.last_roi < self.exit_seconds
-        transition = None
+        transition: DogTransition | None = None
         if not self.error and occupied != self.previous_roi:
             transition = "dog_enter" if occupied else "dog_exit"
             self.previous_roi = occupied
@@ -159,21 +181,23 @@ class DogObserver:
 class OutsideWatch:
     """トレー外で立ち止まった場面を、滞在ごとに一度録画する。"""
 
-    def __init__(self, tray, scope, exit_seconds):
+    def __init__(self, tray: AnyROI, scope: AnyROI, exit_seconds: float) -> None:
         self.tray = tray
         self.scope = scope
         self.exit_seconds = exit_seconds
         self.reset()
 
-    def reset(self):
-        self.anchor = None
+    def reset(self) -> None:
+        self.anchor: tuple[float, float] | None = None
+        self.started_at = float("-inf")
         self.last_seen = float("-inf")
         self.recorded = False
 
-    def update(self, boxes, shape, now):
+    def update(self, boxes: Sequence[Box], shape: Shape, now: float) -> bool:
+        """トレー外の範囲で2秒以上立ち止まったら、その滞在で1回だけ True を返す。"""
         tray = outline(self.tray, shape)
         scope = outline(self.scope, shape)
-        candidates = []
+        candidates: list[tuple[int, tuple[float, float], int]] = []
         for x1, y1, x2, y2 in boxes:
             center = ((x1 + x2) / 2, (y1 + y2) / 2)
             if (

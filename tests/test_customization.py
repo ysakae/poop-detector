@@ -46,17 +46,17 @@ def test_config_defaults_have_no_pet_name_and_follow_machine_timezone():
 
 
 @pytest.mark.parametrize(
-    "values",
+    ("values", "message"),
     [
-        {"pet_name": 3},
-        {"pet_name": "x" * 33},
-        {"pet_name": "ポ\nチ"},
-        {"timezone": "Mars/Base"},
-        {"timezone": 9},
+        ({"pet_name": 3}, "文字列で指定"),
+        ({"pet_name": "x" * 33}, "32文字以内"),
+        ({"pet_name": "ポ\nチ"}, "制御文字"),
+        ({"timezone": "Mars/Base"}, "IANAタイムゾーン名"),
+        ({"timezone": 9}, "IANAタイムゾーン名"),
     ],
 )
-def test_config_rejects_invalid_pet_name_and_timezone(values):
-    with pytest.raises(ValueError):
+def test_config_rejects_invalid_pet_name_and_timezone(values, message):
+    with pytest.raises(ValueError, match=message):
         Config(**values)
 
 
@@ -125,17 +125,17 @@ def test_ntfy_server_defaults_to_ntfy_sh():
 
 
 @pytest.mark.parametrize(
-    "server",
+    ("server", "message"),
     [
-        "ftp://ntfy.example.com",
-        "https://user:secret@ntfy.example.com",
-        "https://ntfy.example.com/?topic=x",
-        "https://",
-        "ntfy.example.com",
+        ("ftp://ntfy.example.com", "で始まる"),
+        ("https://user:secret@ntfy.example.com", "認証情報"),
+        ("https://ntfy.example.com/?topic=x", "認証情報"),
+        ("https://", "で始まる"),
+        ("ntfy.example.com", "で始まる"),
     ],
 )
-def test_ntfy_rejects_unsafe_server(server):
-    with pytest.raises(ValueError):
+def test_ntfy_rejects_unsafe_server(server, message):
+    with pytest.raises(ValueError, match=message):
         NtfyNotifier("family", server=server)
 
 

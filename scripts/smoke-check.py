@@ -32,6 +32,8 @@ def check_video(root):
         image = np.full((120, 160, 3), 200, np.uint8)
         cv2.circle(image, (20 + step * 12, 60), 10, (40, 60, 90), -1)
         ok, jpeg = cv2.imencode(".jpg", image)
+        if not ok:
+            raise RuntimeError("JPEG に変換できません")
         frames.append((step / 5, "2026-11-10T00:00:00+00:00", jpeg.tobytes()))
     path = root / "clips" / "smoke.mp4"
     path.parent.mkdir()
@@ -48,18 +50,26 @@ def check_timezone():
     check("timezone: Asia/Tokyo を反映できる（タイムゾーン情報がある）", True)
 
 
+def get_status(server, path, headers):
+    conn = http.client.HTTPConnection(*server.server_address)
+    conn.request("GET", path, headers=headers)
+    status = conn.getresponse().status
+    conn.close()
+    return status
+
+
 def check_gui(root):
     Store(root).record(np.full((60, 80, 3), 150, np.uint8), 0.1, None, 1)
     server = make_server(root, 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    host = {"Host": f"127.0.0.1:{server.server_port}"}
+    # 起動時のトークンをブラウザーに移した後と同じ Cookie を付ける。
+    session = {**host, "Cookie": f"poop_detector_session={server.access_token}"}
     try:
         for path in ("/", "/records", "/clips", "/activity"):
-            conn = http.client.HTTPConnection(*server.server_address)
-            conn.request("GET", path, headers={"Host": f"127.0.0.1:{server.server_port}"})
-            status = conn.getresponse().status
-            conn.close()
-            check(f"ラベル GUI の {path} が表示できる", status == 200)
+            check(f"ラベル GUI の {path} が表示できる", get_status(server, path, session) == 200)
+        check("ラベル GUI はトークンなしの閲覧を拒否する", get_status(server, "/", host) == 403)
     finally:
         server.shutdown()
         server.server_close()
@@ -69,7 +79,8 @@ def check_gui(root):
 def check_cli(root):
     config = root / "config.yaml"
     config.write_text(f"data_dir: {root}\nnotifications: false\n")
-    result = subprocess.run(
+    # 同じ Python で自分の CLI を起動するだけで、外部の入力は使わない。
+    result = subprocess.run(  # noqa: S603
         [sys.executable, "-m", "poop_detector.main", "--config", str(config), "events"],
         capture_output=True,
         text=True,

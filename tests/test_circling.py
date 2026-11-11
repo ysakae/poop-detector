@@ -4,13 +4,13 @@ import math
 
 import cv2
 import numpy as np
-from test_label_gui import gui as gui
-from test_label_gui import request
+from support import request
 
 from poop_detector.circling import CirclingDetector
 from poop_detector.clips import ClipStore
-from poop_detector.main import main, save_baseline, scene_signature
+from poop_detector.main import main
 from poop_detector.roi import ROI
+from poop_detector.scene import save_baseline, scene_signature
 
 
 def circle_points():
@@ -82,4 +82,5 @@ def test_cli_saves_rotation_with_seek_link_without_modifying_label(gui, monkeypa
     assert len(row["candidates"]) == 1
     assert clips.get(clip_id)["label"] == "none"
     _, page = request(server, "GET", f"/clips?id={clip_id}")
-    assert "旋回候補".encode() in page and b'data-video-seek="0.0"' in page
+    assert "旋回候補".encode() in page
+    assert b'data-video-seek="0.0"' in page

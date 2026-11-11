@@ -14,3 +14,8 @@ data/
 .DS_Store
 
 work/
+
+# カバレッジの計測結果
+.coverage
+.coverage.*
+htmlcov/

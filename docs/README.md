@@ -13,12 +13,14 @@
 | [docker.md](docker.md) | Docker / Linux での実行 |
 | [data-collection.md](data-collection.md) | データ収集の方針と今後 |
 | [privacy.md](privacy.md) | データの保存先と、機能ごとに外部へ送られる情報。ラベル GUI の安全対策と限界 |
+| [licenses.md](licenses.md) | 依存ライブラリ、犬検出モデル、FFmpeg、Docker イメージのライセンス |
 
 ## 開発者向け
 
 | ファイル | 内容 |
 |---|---|
 | [architecture.md](architecture.md) | 設計の概要。監視とラベル GUI の連携、監視ループの流れ、検知の不変条件など |
+| [releasing.md](releasing.md) | リリースと PyPI への公開の手順（メンテナー向け） |
 | [validation.json](validation.json) | 初期 MVP の差分検知の処理時間と負荷の実測値 |
 | [dog-model-validation.json](dog-model-validation.json) | 犬検出モデル（OpenCV Zoo YOLOX-s）の検出結果と推論時間の実測値 |
 

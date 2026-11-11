@@ -19,39 +19,40 @@ def test_polygon_roundtrip_scaling_and_warp(tmp_path):
     frame = np.zeros((101, 101, 3), np.uint8)
     cv2.fillConvexPoly(frame, np.array(points), (100, 100, 100))
     crop = loaded.crop(frame)
-    assert crop.shape[0] > 40 and crop.shape[1] > 40
+    assert crop.shape[0] > 40
+    assert crop.shape[1] > 40
     assert np.all(crop[5:-5, 5:-5] == 100)
     assert np.mean(crop[:, :, 0] == 0) < 0.01
 
 
 @pytest.mark.parametrize(
-    "points",
+    ("points", "message"),
     [
-        [(0, 0), (90, 90), (90, 0), (0, 90)],
-        [(0, 0), (90, 0), (45, 10), (0, 90)],
-        [(10, 10), (10, 10), (10, 10), (10, 10)],
-        [(0, 0), (90, 0), (90, 90)],
-        [(-1, 0), (90, 0), (90, 90), (0, 90)],
-        [(0, 0), (float("nan"), 0), (90, 90), (0, 90)],
+        ([(0, 0), (90, 90), (90, 0), (0, 90)], "交差やくぼみ"),
+        ([(0, 0), (90, 0), (45, 10), (0, 90)], "交差やくぼみ"),
+        ([(10, 10), (10, 10), (10, 10), (10, 10)], "交差やくぼみ"),
+        ([(0, 0), (90, 0), (90, 90)], "正しい座標"),
+        ([(-1, 0), (90, 0), (90, 90), (0, 90)], "画像の内側"),
+        ([(0, 0), (float("nan"), 0), (90, 90), (0, 90)], "正しい座標"),
     ],
 )
-def test_invalid_polygon_is_rejected(points):
+def test_invalid_polygon_is_rejected(points, message):
     from poop_detector.roi import PolygonROI
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=message):
         PolygonROI.from_pixels(points, 101, 101)
 
 
 def test_polygon_baseline_metadata_roundtrip(tmp_path):
-    from poop_detector.main import load_baseline, save_baseline
     from poop_detector.roi import PolygonROI
+    from poop_detector.scene import load_baseline, save_baseline
 
     roi = PolygonROI.from_pixels([(10, 10), (90, 20), (80, 90), (20, 80)], 101, 101)
     frame = np.full((101, 101, 3), 150, np.uint8)
     path = tmp_path / "empty.png"
     save_baseline(path, roi.crop(frame), roi)
     assert np.array_equal(load_baseline(path, ROI.load(save_roi(tmp_path, roi))), roi.crop(frame))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="ROIが変わっています"):
         load_baseline(path, ROI(0, 0, 1, 1))
 
 
@@ -85,7 +86,7 @@ def test_selector_four_clicks_and_cancel(monkeypatch):
     monkeypatch.setattr(cv2, "waitKey", enter)
     assert select_polygon(frame).crop(frame).size > 0
     monkeypatch.setattr(cv2, "waitKey", lambda *args: 27)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="ROI選択を取り消しました"):
         select_polygon(frame)
 
 

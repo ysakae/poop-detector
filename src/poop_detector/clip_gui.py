@@ -1,8 +1,13 @@
 """ローカル動画の再生と、動作学習用ラベルの入力画面。"""
 
 import re
+from collections.abc import Callable, Iterable, Mapping
+from email.message import Message
 from functools import partial
 from html import escape
+from io import BufferedIOBase
+from pathlib import Path
+from typing import Any, Protocol, cast
 
 from .clip_storage import (
     CLEANUP_LIMIT,
@@ -14,7 +19,7 @@ from .clip_storage import (
     recording_usage,
     retention_days,
 )
-from .clips import ACTIVITIES, CLIP_LABELS, ClipStore
+from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
 from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES
 
 STATES = {
@@ -26,6 +31,22 @@ STATES = {
     "removing": "整理中",
     "removed": "整理済み",
 }
+
+
+class ClipHandler(Protocol):
+    """動画の配信とフォームの処理に使う、ラベル GUI のリクエストハンドラーの部分。"""
+
+    path: str
+    # 型スタブでは Message は総称型だが、実行時には添字を付けられないため文字列で書く。
+    headers: "Message[str, str]"
+    wfile: BufferedIOBase
+
+    def send_response(self, code: int, message: str | None = None) -> None: ...
+    def send_header(self, keyword: str, value: str) -> None: ...
+    def end_headers(self) -> None: ...
+    def respond(self, status: int, data: str | bytes) -> None: ...
+
+
 SOURCES = {
     "manual": "手動保存",
     "detected": "差分検知",
@@ -37,7 +58,15 @@ SOURCES = {
 }
 
 
-def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
+def render_clips(
+    root: str | Path,
+    token: str,
+    query: Mapping[str, list[str]],
+    disk_mb: float = DEFAULT_DISK_MIB,
+    *,
+    title: str | None = None,
+) -> str:
+    """動画の一覧と、選んだ動画の再生・ラベル入力欄。"""
     from .label_gui import document, local_time
 
     page = partial(document, title=title)
@@ -135,38 +164,38 @@ def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
                         content += f" ／ 排泄の開始記録より {actual_start - end:.1f}秒前に検出"
                     content += "</p>"
                 content += "</div>"
-            draft = {}
+            # Codex の判定があり、まだ人がラベルを付けていなければ、入力欄の初期値にする。
+            draft: dict[str, Any] = {}
             if assessment:
                 if assessment["error"]:
                     content += '<div class="message">' + escape(assessment["error"]) + "</div>"
                 else:
                     content += (
                         '<div class="message"><strong>Codex判定候補 ／ '
-                        + escape(CLIP_LABELS[assessment["label"]])
+                        + escape(CLIP_LABELS[cast(str, assessment["label"])])
                         + (
                             f"（{EXCRETION_LOCATIONS[assessment['location']]}）"
-                            if assessment["location"]
+                            if assessment["location"] is not None
                             else ""
                         )
                         + " ／ "
-                        + escape(ACTIVITIES[assessment["activity"]])
+                        + escape(ACTIVITIES[cast(str, assessment["activity"])])
                         + "</strong><br>"
-                        + escape(assessment["reason"])
+                        + escape(assessment["reason"] or "")
                     )
-                    for field, title in (
-                        ("start_seconds", "開始候補へ移動"),
-                        ("end_seconds", "完了候補へ移動"),
+                    for seconds, button_title in (
+                        (assessment["start_seconds"], "開始候補へ移動"),
+                        (assessment["end_seconds"], "完了候補へ移動"),
                     ):
-                        seconds = assessment[field]
                         if seconds is not None:
                             content += (
                                 f'<p><button class="secondary" type="button" data-video-seek="{seconds}">'
-                                f"{title}（{seconds:g}秒）</button></p>"
+                                f"{button_title}（{seconds:g}秒）</button></p>"
                             )
                     if assessment["notified_at"]:
                         content += "<br>通知済み " + escape(local_time(assessment["notified_at"]))
                     if row["label"] is None:
-                        draft = assessment
+                        draft = dict(assessment)
                         content += "<br>動画を確認してからラベルを保存してください。"
                     content += "</div>"
             content += (
@@ -217,7 +246,7 @@ def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
             )
             content += f'<p>{message} <a href="/clips/storage">録画の整理を開く</a></p>'
             if assessment and assessment["reason"]:
-                label = CLIP_LABELS.get(assessment["label"], "判定結果")
+                label = CLIP_LABELS.get(assessment["label"] or "", "判定結果")
                 content += f"<p>{escape(label)} ／ {escape(assessment['reason'])}</p>"
         elif row["status"] == "failed":
             content += "<p>" + escape(row["error"] or "動画を保存できませんでした") + "</p>"
@@ -226,7 +255,8 @@ def render_clips(root, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
     return page(content + '</article></div><script src="/assets/clips.js" defer></script>')
 
 
-def capacity_status(root, disk_mb):
+def capacity_status(root: Path, disk_mb: float) -> str:
+    """録画容量の使用量と、上限に近づいたときの警告。"""
     used = recording_usage(root)
     capacity = disk_mb * MIB
     percentage = 100 * used / capacity
@@ -246,7 +276,7 @@ def capacity_status(root, disk_mb):
     return content + f'<p class="capacity-warning" role="status">{warning}</p>'
 
 
-def capacity_panel(root, disk_mb):
+def capacity_panel(root: Path, disk_mb: float) -> str:
     return (
         '<section id="recording-capacity" aria-label="録画容量">'
         + capacity_status(root, disk_mb)
@@ -254,7 +284,15 @@ def capacity_panel(root, disk_mb):
     )
 
 
-def render_storage(store, token, query, disk_mb, *, title=None):
+def render_storage(
+    store: ClipStore,
+    token: str,
+    query: Mapping[str, list[str]],
+    disk_mb: float,
+    *,
+    title: str | None = None,
+) -> str:
+    """録画容量と、整理してよい古い動画の選択画面。"""
     from .label_gui import document, local_time
 
     page = partial(document, title=title)
@@ -314,7 +352,7 @@ def render_storage(store, token, query, disk_mb, *, title=None):
     return page(content)
 
 
-def location_field(location):
+def location_field(location: str | None) -> str:
     content = '<label>排泄した場所<select name="location">'
     for value, title in (("", "場所不明"), *EXCRETION_LOCATIONS.items()):
         selected = " selected" if value == (location or "") else ""
@@ -322,7 +360,13 @@ def location_field(location):
     return content + "</select></label>"
 
 
-def confirmation_fields(store, clip, local_time, location):
+def confirmation_fields(
+    store: ClipStore,
+    clip: Mapping[str, Any],
+    local_time: Callable[[str | None], str],
+    location: str | None,
+) -> str:
+    """動画のラベルと一緒に、排泄の確定記録を保存する欄。保存先の記録を選ばせる。"""
     linked = store.confirmation(clip["id"])
     content = "<fieldset><legend>排便・排尿の確定記録</legend>"
     if linked:
@@ -332,7 +376,7 @@ def confirmation_fields(store, clip, local_time, location):
             '<p class="note">確定した日時や種類は、ひも付け済みの記録から編集できます。</p>'
         )
     else:
-        candidates = store.record_candidates(clip)
+        candidates = store.record_candidates(cast(ClipRow, clip))
         original = clip["event_id"]
         content += '<label>保存先<select name="record_id">'
         if candidates:
@@ -360,7 +404,8 @@ def confirmation_fields(store, clip, local_time, location):
     )
 
 
-def stream_video(handler, root, clip_id):
+def stream_video(handler: ClipHandler, root: str | Path, clip_id: str) -> None:
+    """動画を Range 要求に対応して返す。"""
     store = ClipStore(root)
     path = store.video_path(store.get(clip_id))
     if path is None:
@@ -389,7 +434,7 @@ def stream_video(handler, root, clip_id):
             handler.send_header("Content-Range", f"bytes */{size}")
             handler.send_header("Content-Length", "0")
             handler.end_headers()
-            return
+            return None
     handler.send_response(206 if range_header else 200)
     handler.send_header("Content-Type", "video/mp4")
     handler.send_header("Accept-Ranges", "bytes")
@@ -412,7 +457,15 @@ def stream_video(handler, root, clip_id):
         pass
 
 
-def handle_clip_post(handler, root, fields, selected_ids=(), *, title=None):
+def handle_clip_post(
+    handler: ClipHandler,
+    root: str | Path,
+    fields: Mapping[str, str],
+    selected_ids: Iterable[str] = (),
+    *,
+    title: str | None = None,
+) -> None:
+    """/clips/ 以下のフォームを処理し、成功したら一覧へ戻す。"""
     store = ClipStore(root)
     try:
         if handler.path == "/clips/cleanup":
@@ -425,7 +478,7 @@ def handle_clip_post(handler, root, fields, selected_ids=(), *, title=None):
                 "Location", f"/clips/storage?days={days}&removed={removed}&skipped={skipped}"
             )
             handler.end_headers()
-            return
+            return None
         if handler.path == "/clips/request":
             clip_id = store.request(require_live=True)
         elif handler.path == "/clips/protect":
@@ -439,7 +492,7 @@ def handle_clip_post(handler, root, fields, selected_ids=(), *, title=None):
             end = float(fields["end"]) if fields.get("end") else None
             store.label(
                 clip_id,
-                fields.get("label"),
+                fields.get("label", ""),
                 start,
                 end,
                 fields.get("activity", "other"),

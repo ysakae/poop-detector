@@ -1,56 +1,15 @@
 """実HTTP経由でラベルの保存と画像の公開範囲を確認する。"""
 
-import http.client
 import re
-import threading
 from urllib.parse import urlencode
 
-import numpy as np
 import pytest
-
-from poop_detector.events import Store
-
-
-@pytest.fixture
-def gui(tmp_path):
-    from poop_detector.label_gui import make_server
-
-    store = Store(tmp_path)
-    event = store.record(np.full((50, 50, 3), 150, np.uint8), 0.1, None, 1)
-    server = make_server(tmp_path, 0)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    yield server, store, event
-    server.shutdown()
-    server.server_close()
-    thread.join()
-
-
-def session_cookie(server):
-    """起動時のトークンをブラウザーに移した後と同じ Cookie ヘッダーを返す。"""
-    return {"Cookie": f"poop_detector_session={server.access_token}"}
-
-
-def exchange(server, method, path, body=None, headers=None, auth=True):
-    """状態コード、応答ヘッダー、本文を返す。auth=False でトークンを持たない相手を再現する。"""
-    conn = http.client.HTTPConnection(*server.server_address)
-    sent = {**(session_cookie(server) if auth else {}), **(headers or {})}
-    conn.request(method, path, body=body, headers=sent)
-    response = conn.getresponse()
-    result = response.status, response.headers, response.read()
-    conn.close()
-    return result
-
-
-def request(server, method, path, body=None, headers=None, auth=True):
-    status, _, data = exchange(server, method, path, body, headers, auth)
-    return status, data
+from support import csrf_token, exchange, request
 
 
 def post(server, fields, token=True):
     if token:
-        _, page = request(server, "GET", "/")
-        fields["csrf"] = re.search(r'name="csrf" value="([^"]+)"', page.decode())[1]
+        fields = {**fields, "csrf": csrf_token(server)}
     return request(
         server,
         "POST",

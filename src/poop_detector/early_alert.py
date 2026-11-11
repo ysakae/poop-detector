@@ -1,9 +1,14 @@
 """トイレ領域内で動いた後、同じ場所にとどまる場面を検知する。"""
 
+from typing import Any
+
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 
+from .config import Config
 from .detection import Detector
+from .frames import Frame, Mask
 
 SAMPLE_SECONDS = 1
 STAY_SECONDS = 4
@@ -16,7 +21,9 @@ MIN_MOTION_RATIO = 0.08
 
 
 class EarlyAlert:
-    def __init__(self, baseline, config):
+    """録画の完了を待たず、トイレの同じ場所での滞在を見つけて知らせる。"""
+
+    def __init__(self, baseline: Frame, config: Config) -> None:
         height, width = baseline.shape[:2]
         scale = 240 / max(width, height)
         self.size = (max(1, round(width * scale)), max(1, round(height * scale)))
@@ -28,14 +35,15 @@ class EarlyAlert:
         self.last_alert = float("-inf")
         self.reset()
 
-    def reset(self):
+    def reset(self) -> None:
         self.sampled_at = float("-inf")
-        self.anchor = None
-        self.started_at = None
+        self.anchor: NDArray[Any] | None = None
+        self.started_at: float | None = None
         self.alerted = False
-        self.previous_gray = None
+        self.previous_gray: Frame | None = None
 
-    def update(self, frame, valid_mask, now):
+    def update(self, frame: Frame, valid_mask: Mask | None, now: float) -> bool:
+        """1秒ごとに標本を取り、同じ場所に STAY_SECONDS とどまったら1回だけ True を返す。"""
         elapsed = now - self.sampled_at
         if elapsed < SAMPLE_SECONDS:
             return False

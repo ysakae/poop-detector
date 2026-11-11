@@ -3,7 +3,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY pyproject.toml uv.lock ./
+# パッケージのビルドに readme と license-files が必要
+COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
 RUN uv sync --frozen --no-dev
 COPY config ./config

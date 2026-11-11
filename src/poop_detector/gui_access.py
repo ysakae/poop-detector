@@ -8,7 +8,8 @@ import hmac
 from urllib.parse import parse_qsl, urlencode
 
 COOKIE_NAME = "poop_detector_session"
-TOKEN_PARAM = "token"
+# URL の問い合わせ文字列で使う名前で、トークンの値ではない。
+TOKEN_PARAM = "token"  # noqa: S105
 
 
 def session_cookie(token: str) -> str:

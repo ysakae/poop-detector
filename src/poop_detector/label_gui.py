@@ -5,11 +5,13 @@ import json
 import secrets
 import sys
 import webbrowser
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlsplit
+from typing import Any, TypeAlias, cast
+from urllib.parse import SplitResult, parse_qs, urlencode, urlsplit
 
 from .activity_gui import render_activity
 from .activity_map import ActivityLayout
@@ -24,7 +26,7 @@ from .clip_gui import (
 )
 from .clip_storage import DEFAULT_DISK_MIB
 from .clips import CLIP_LABELS, ClipStore
-from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, Store
+from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
 from .gui_access import (
     has_session,
     launch_url,
@@ -38,6 +40,16 @@ from .record_stats import summarize_records
 from .timezones import local_today, parse_local, timezone_label, to_local
 
 ASSETS = Path(__file__).with_name("static")
+
+
+class LabelServer(ThreadingHTTPServer):
+    """ラベル GUI のサーバー。起動ごとのアクセストークンを持つ。"""
+
+    access_token: str = ""
+
+
+# parse_qs で読んだ問い合わせ文字列。同じ名前の値はリストになる。
+Query: TypeAlias = Mapping[str, list[str]]
 STATS_PERIODS = ("7", "30", "90")
 APP_TITLE = "トイレ記録"
 ACCESS_DENIED = (
@@ -80,24 +92,27 @@ fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:bold;margin-bottom:
 """
 
 
-def local_time(value, form=False):
+def local_time(value: str | None, form: bool = False) -> str:
+    """保存した UTC の時刻を、画面表示用（form=True なら入力欄用）のローカル時刻にする。"""
     if not value:
         return ""
     stamp = to_local(value)
     return stamp.strftime("%Y-%m-%dT%H:%M:%S" if form else "%Y/%m/%d %H:%M:%S")
 
 
-def parse_time(value):
+def parse_time(value: str | None) -> str | None:
+    """フォームの日時を、保存用のタイムゾーン付き ISO 8601 にする。"""
     if not value:
         return None
     return parse_local(value).isoformat()
 
 
-def page_title(pet_name=""):
+def page_title(pet_name: str = "") -> str:
     return f"{pet_name}の{APP_TITLE}" if pet_name else APP_TITLE
 
 
-def document(content, title=None):
+def document(content: str, title: str | None = None) -> str:
+    """本文を共通の見出しとスタイルで包み、HTML の文書にする。"""
     title = escape(title or APP_TITLE)
     return (
         '<!doctype html><html lang="ja"><meta charset="utf-8">'
@@ -108,7 +123,15 @@ def document(content, title=None):
     )
 
 
-def render(store, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
+def render(
+    store: Store,
+    token: str,
+    query: Query,
+    disk_mb: float = DEFAULT_DISK_MIB,
+    *,
+    title: str | None = None,
+) -> str:
+    """トップ画面。イベントの一覧と、選んだイベントのラベル入力欄。"""
     filters = {
         "unlabeled": "未ラベル",
         "all": "すべて",
@@ -203,7 +226,7 @@ def render(store, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
                 + f'<input type="hidden" name="filter" value="{mode}">'
                 + '<fieldset><legend>実際にはどうでしたか？</legend><div class="choices">'
             )
-            choices = list(EXCRETION_TYPES.items())
+            choices: list[tuple[str, str]] = list(EXCRETION_TYPES.items())
             if row["kind"] == "SUSPECTED":
                 choices += [("false", "誤検知"), ("unknown", "保留・未ラベル")]
             elif row["kind"] == "VIDEO":
@@ -216,20 +239,22 @@ def render(store, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
                 else "unknown"
             )
             for value, label in choices:
-                if value == "feces":
-                    label = "排便だった"
+                text = "排便だった" if value == "feces" else label
                 checked = "checked" if value == selected_label else ""
                 content += (
                     f'<label class="choice"><input type="radio" name="label" '
-                    f'value="{value}" {checked} required>{label}</label>'
+                    f'value="{value}" {checked} required>{text}</label>'
                 )
             content += "</div></fieldset>" + location_field(row["location"])
             content += (
                 '<p class="note">「種類不明」は排泄を確認したが便・尿の区別が付かない場合に選びます。開始・完了時刻は分かる場合だけ入力してください。'
                 + f'{escape(timezone_label())}です。</p><div class="times">'
             )
-            for name, label in [("start", "排泄の開始"), ("end", "排泄の完了")]:
-                value = escape(local_time(row["actual_" + name], form=True))
+            for name, label, actual in [
+                ("start", "排泄の開始", row["actual_start"]),
+                ("end", "排泄の完了", row["actual_end"]),
+            ]:
+                value = escape(local_time(actual, form=True))
                 content += f'<label>{label}<input type="datetime-local" step="1" name="{name}" value="{value}"></label>'
             content += (
                 '</div><p><label>メモ（任意）<br><textarea name="note" rows="3" maxlength="2000" style="width:100%">'
@@ -260,7 +285,7 @@ def render(store, token, query, disk_mb=DEFAULT_DISK_MIB, *, title=None):
     return document(LIVE_PANEL + capacity_panel(store.root, disk_mb) + content, title)
 
 
-def render_record_stats(records, query):
+def render_record_stats(records: Iterable[EventRow], query: Query) -> str:
     try:
         day = date.fromisoformat(query.get("date", [""])[0])
     except ValueError:
@@ -301,7 +326,9 @@ def render_record_stats(records, query):
     return content + "</tbody></table></div></details></section>"
 
 
-def render_records(store, clips, query, *, title=None):
+def render_records(
+    store: Store, clips: ClipStore, query: Query, *, title: str | None = None
+) -> str:
     records = store.records()
     video_links = clips.record_videos()
     content = '<h2>排便・排尿の記録</h2><p><a href="/">画像の確認・記録の追加へ戻る</a></p>'
@@ -322,7 +349,7 @@ def render_records(store, clips, query, *, title=None):
             recorded_at,
             local_time(row["actual_end"]),
             EXCRETION_TYPES[row["excretion_type"]],
-            EXCRETION_LOCATIONS.get(row["location"], "場所不明"),
+            EXCRETION_LOCATIONS.get(row["location"] or "", "場所不明"),
             source,
             row["note"],
         ]
@@ -341,7 +368,17 @@ def render_records(store, clips, query, *, title=None):
     return document(content, title)
 
 
-def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
+def make_server(
+    root: str | Path,
+    port: int = 8765,
+    *,
+    disk_mb: float = DEFAULT_DISK_MIB,
+    pet_name: str = "",
+) -> LabelServer:
+    """127.0.0.1 だけで待ち受けるラベル GUI のサーバーを作る。
+
+    起動ごとに、保存操作の CSRF トークンと、閲覧を含むすべての要求に使うアクセストークンを作る。
+    """
     store = Store(root)
     clips = ClipStore(root)
     preview = LivePreview(root)
@@ -351,14 +388,20 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
     title = page_title(pet_name)
 
     class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *args):
+        def log_message(self, format: str, *args: Any) -> None:
             pass
 
-        def respond(self, status, data, mime="text/html; charset=utf-8", headers=None):
-            data = data.encode() if isinstance(data, str) else data
+        def respond(
+            self,
+            status: int,
+            data: str | bytes,
+            mime: str = "text/html; charset=utf-8",
+            headers: Mapping[str, str] | None = None,
+        ) -> None:
+            body = data.encode() if isinstance(data, str) else data
             self.send_response(status)
             self.send_header("Content-Type", mime)
-            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header(
@@ -372,20 +415,23 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
             for name, value in (headers or {}).items():
                 self.send_header(name, value)
             self.end_headers()
-            self.wfile.write(data)
+            self.wfile.write(body)
 
-        def host_allowed(self):
-            port = self.server.server_port
+        def host_allowed(self) -> bool:
+            """DNS リバインディングを防ぐため、Host ヘッダーが自分の待ち受け先か確かめる。"""
+            port = cast(ThreadingHTTPServer, self.server).server_port
             return self.headers.get("Host") in (f"127.0.0.1:{port}", f"localhost:{port}")
 
-        def authorized(self):
+        def authorized(self) -> bool:
+            """起動時のトークンを移した Cookie を持つ要求か。"""
             return has_session(self.headers.get("Cookie"), access)
 
-        def accept_token(self, url):
+        def accept_token(self, url: SplitResult) -> None:
             """トークン付き URL を Cookie に移し、トークンを除いた URL へ移動させる。"""
             candidate = token_in_query(url.query)
-            if not token_matches(candidate, access):
-                return self.respond(403, ACCESS_DENIED)
+            if candidate is None or not token_matches(candidate, access):
+                self.respond(403, ACCESS_DENIED)
+                return
             self.send_response(303)
             self.send_header("Location", redirect_without_token(url.path, url.query))
             self.send_header("Set-Cookie", session_cookie(access))
@@ -394,7 +440,7 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
             self.send_header("Content-Length", "0")
             self.end_headers()
 
-        def do_GET(self):
+        def do_GET(self) -> None:
             if not self.host_allowed():
                 return self.respond(403, "アクセスできません")
             url = urlsplit(self.path)
@@ -422,9 +468,9 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
                 return self.respond(200, data, "image/jpeg", headers)
             if url.path == "/live/assessment":
                 row = clips.latest_assessment()
-                data = None
+                payload: dict[str, Any] | None = None
                 if row:
-                    data = {
+                    payload = {
                         "clip_id": row["clip_id"],
                         "label": "判定失敗" if row["error"] else CLIP_LABELS[row["label"]],
                         "reason": row["error"] or row["reason"],
@@ -434,7 +480,7 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
                         "location": EXCRETION_LOCATIONS.get(row["location"]),
                         "human_location": EXCRETION_LOCATIONS.get(row["human_location"]),
                     }
-                return self.respond(200, json.dumps(data), "application/json; charset=utf-8")
+                return self.respond(200, json.dumps(payload), "application/json; charset=utf-8")
             if url.path == "/records":
                 return self.respond(200, render_records(store, clips, query, title=title))
             if url.path == "/activity":
@@ -464,7 +510,7 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
                         return self.respond(200, path.read_bytes(), "image/jpeg")
             return self.respond(404, "画像または記録が見つかりません")
 
-        def do_POST(self):
+        def do_POST(self) -> None:
             if not self.host_allowed():
                 return self.respond(403, "アクセスできません")
             if not self.authorized():
@@ -489,6 +535,7 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
                 if self.path.startswith("/clips/"):
                     return handle_clip_post(self, root, fields, data.get("id", ()), title=title)
                 event_id = fields.get("id")
+                row: EventRow | None = None
                 if fields.get("action") in ("missed", "manual"):
                     start = parse_time(fields.get("start"))
                     end = parse_time(fields.get("end"))
@@ -513,6 +560,8 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
                 if start and end and datetime.fromisoformat(end) < datetime.fromisoformat(start):
                     raise ValueError
                 if fields.get("action") in ("missed", "manual"):
+                    if start is None:
+                        raise ValueError
                     store.add_excretion(
                         fields.get("type", "unspecified"),
                         start,
@@ -522,6 +571,8 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
                         location=fields.get("location"),
                     )
                 else:
+                    if row is None or event_id is None:
+                        raise ValueError
                     label = "unspecified" if fields["label"] == "true" else fields["label"]
                     store.classify(
                         event_id,
@@ -556,27 +607,34 @@ def make_server(root, port=8765, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
                     ),
                 )
 
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server = LabelServer(("127.0.0.1", port), Handler)
     server.access_token = access
     return server
 
 
-def announce(base, url, *, opened, interactive):
+def announce(base: str, url: str, *, opened: bool, interactive: bool) -> None:
     """起動の案内を出す。トークン付きの URL は端末に直接出すときだけ表示し、ログに残さない。"""
     if interactive:
-        print(f"ラベル付け画面: {url}", flush=True)
-        print("この URL は起動中だけ有効なパスワードと同じです。他人に見せないでください。")
+        print(f"ラベル付け画面: {url}", flush=True)  # noqa: T201
+        print("この URL は起動中だけ有効なパスワードと同じです。他人に見せないでください。")  # noqa: T201
     elif opened:
-        print(f"ラベル付け画面をブラウザーで開きました: {base}", flush=True)
+        print(f"ラベル付け画面をブラウザーで開きました: {base}", flush=True)  # noqa: T201
     else:
-        print(
+        print(  # noqa: T201
             "トークン付きの URL は端末にだけ表示します。出力をファイルなどへ送らずに起動するか、"
             "--no-browser を外してブラウザーで開いてください。",
             flush=True,
         )
 
 
-def serve(root, port=8765, open_browser=True, *, disk_mb=DEFAULT_DISK_MIB, pet_name=""):
+def serve(
+    root: str | Path,
+    port: int = 8765,
+    open_browser: bool = True,
+    *,
+    disk_mb: float = DEFAULT_DISK_MIB,
+    pet_name: str = "",
+) -> None:
     with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name) as server:
         base = f"http://127.0.0.1:{server.server_port}/"
         url = launch_url(base, server.access_token)
@@ -585,4 +643,4 @@ def serve(root, port=8765, open_browser=True, *, disk_mb=DEFAULT_DISK_MIB, pet_n
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            print("ラベル付け画面を終了しました")
+            print("ラベル付け画面を終了しました")  # noqa: T201

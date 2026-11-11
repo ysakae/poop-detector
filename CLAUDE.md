@@ -13,11 +13,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 uv sync --frozen                                   # 依存関係を導入
-uv run pytest                                      # 全テスト（約20秒、カメラ・FFmpeg不要のものが中心）
-uv run pytest tests/test_core.py                   # 1ファイル
-uv run pytest tests/test_core.py -k occlusion      # 名前で絞り込み
+uv run pytest                                      # 全テスト（約20秒、カメラ不要。test_pipeline.py は FFmpeg がなければ省略）
+uv run pytest --cov                                # カバレッジ付き（CI と同じ。下限は pyproject.toml の fail_under）
+uv run pytest tests/test_cli.py                    # 1ファイル（--cov は付けない）
+uv run pytest tests/test_cli.py -k setup_roi       # 名前で絞り込み
 uv run ruff check . && uv run ruff format --check . # テストと必ず併せて実行
-uv run poop-detector <サブコマンド> --help          # CLI（入口は main.py の parser()）
+uv run mypy                                        # 型チェック（対象は pyproject.toml の [tool.mypy]）
+uv run poop-detector <サブコマンド> --help          # CLI（引数は main.py の parser()、処理は commands/）
 ```
 
 - `run` や `setup-roi` などカメラを使うコマンドは `POOP_RTSP_URL` が必須です。接続情報は実行ディレクトリの `.env` から読み込み、同名の環境変数があればそちらを優先します（`config.load_connection_settings`）。

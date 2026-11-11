@@ -6,8 +6,7 @@ import time
 
 import cv2
 import numpy as np
-from test_label_gui import gui as gui
-from test_label_gui import request
+from support import request
 
 from poop_detector.clips import ClipStore
 from poop_detector.live_preview import LivePreview
@@ -55,7 +54,8 @@ def test_home_shows_latest_codex_assessment_and_manual_label(gui):
     assert data["label"] == "排便"
     assert data["human_label"] == "排泄なし"
     assert data["reason"] == "<根拠>"
-    assert data["requested_at"] and data["assessed_at"]
+    assert data["requested_at"]
+    assert data["assessed_at"]
 
 
 def test_live_preview_rejects_other_hosts(gui):
@@ -65,15 +65,17 @@ def test_live_preview_rejects_other_hosts(gui):
 
 
 def test_monitoring_command_shares_frames_without_clip_recording(gui, monkeypatch):
-    from poop_detector import main as cli
+    from poop_detector.commands import context
+    from poop_detector.main import main
     from poop_detector.roi import ROI
+    from poop_detector.scene import save_baseline
 
     server, store, _ = gui
     monkeypatch.chdir(store.root)
     frame = np.full((60, 100, 3), 190, dtype=np.uint8)
     roi = ROI(0, 0, 1, 1)
     roi.save(store.root / "roi.json")
-    cli.save_baseline(store.root / "baseline" / "empty.png", frame, roi)
+    save_baseline(store.root / "baseline" / "empty.png", frame, roi)
     config = store.root / "test-config.yaml"
     config.write_text(
         f"data_dir: {store.root}\nclip_enabled: false\nnotifications: false\nfps: 20\n"
@@ -94,8 +96,8 @@ def test_monitoring_command_shares_frames_without_clip_recording(gui, monkeypatc
             time.sleep(0.02)
             return frame.copy()
 
-    monkeypatch.setattr(cli, "Camera", Camera)
+    monkeypatch.setattr(context, "Camera", Camera)
     monkeypatch.setenv("POOP_RTSP_URL", "test-camera")
     assert request(server, "GET", "/live/frame")[0] == 503
-    assert cli.main(["--config", str(config), "run", "--max-frames", "2"]) == 0
+    assert main(["--config", str(config), "run", "--max-frames", "2"]) == 0
     assert request(server, "GET", "/live/frame")[0] == 200

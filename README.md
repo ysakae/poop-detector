@@ -89,6 +89,16 @@ uv run poop-detector run
 
 Ctrl+C で停止します。通知は、`.env` に `POOP_NTFY_TOPIC` があれば ntfy、なければ macOS の通知センターに届きます。
 
+### PyPI から入れる場合
+
+0.1.0 を PyPI に公開した後は、リポジトリを取得せずに次のコマンドでも入れられます。
+
+```bash
+uv tool install poop-detector
+```
+
+コマンドは作業用のディレクトリで実行してください。そのディレクトリの `.env`、`config/config.yaml`、`data/` を使います。ひな形はリポジトリの [`.env.example`](.env.example) と [`config/config.example.yaml`](config/config.example.yaml) を参考にしてください。
+
 ## 記録とラベル付け
 
 監視とは別のターミナルでラベル GUI を起動すると、起動ごとに変わるトークン付きの URL（`http://127.0.0.1:8765/?token=...`）がブラウザーで開きます。トークンを持たないブラウザーやプログラムは画面や映像を閲覧できません。
@@ -122,12 +132,17 @@ uv run poop-detector label-gui
 - [データの保存先と外部への送信](docs/privacy.md)
 - [設計の概要](docs/architecture.md) — 開発者向け
 
+## ライセンス
+
+[MIT License](LICENSE) です。犬検出モデル（OpenCV Zoo の YOLOX）はリポジトリに含めず、`setup-dog-model` で取得します。モデルは Apache License 2.0 で、取得時にモデルの `LICENSE` も一緒に保存します。依存ライブラリ、FFmpeg、Docker イメージのライセンスは [依存ライブラリと取得物のライセンス](docs/licenses.md) にまとめています。
+
 ## 開発
 
 ```bash
-uv run pytest
+uv run pytest --cov
 uv run ruff check .
 uv run ruff format --check .
+uv run mypy
 ```
 
-テストは人工画像と一時ディレクトリを使い、実カメラや実データには依存しません。プルリクエストと `main` への push では、GitHub Actions が Ruff の検査と書式の確認、Ubuntu の Python 3.11・3.12 でのテスト、Docker イメージの確認を行います。Issue やプルリクエストを送る前に [コントリビューションの手引き](CONTRIBUTING.md) と [行動規範](CODE_OF_CONDUCT.md) を読んでください。
+テストは人工画像と一時ディレクトリを使い、実カメラや実データには依存しません。プルリクエストと `main` への push では、GitHub Actions が Ruff の検査と書式の確認、mypy の型チェック、パッケージのビルド、Ubuntu の Python 3.11・3.12 でのテストとカバレッジの下限の確認、Docker イメージの確認を行います。変更履歴は [CHANGELOG.md](CHANGELOG.md) にあります。Issue やプルリクエストを送る前に [コントリビューションの手引き](CONTRIBUTING.md) と [行動規範](CODE_OF_CONDUCT.md) を読んでください。

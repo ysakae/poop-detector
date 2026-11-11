@@ -4,9 +4,7 @@ import json
 
 import cv2
 import numpy as np
-from test_clip_gui import ready_clip, submit
-from test_label_gui import gui as gui
-from test_label_gui import request
+from support import ready_clip, request, submit
 
 from poop_detector.clips import ClipStore
 from poop_detector.codex_review import inspect_clip
@@ -131,7 +129,7 @@ def test_outside_notice_is_distinct_and_does_not_mark_tray_event(gui):
 
 
 def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path, monkeypatch):
-    from poop_detector import main
+    from poop_detector import monitoring
     from poop_detector.config import Config
     from poop_detector.dog import DogState
 
@@ -142,6 +140,7 @@ def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path,
 
     class Camera:
         generation = 1
+        healthy = True
 
         def read(self):
             nonlocal now
@@ -153,7 +152,8 @@ def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path,
             return DogState(True, False, None, [(13, 25, 30, 45)], 1)
 
     class Collector:
-        sources = []
+        def __init__(self):
+            self.sources = []
 
         def poll(self):
             pass
@@ -166,11 +166,11 @@ def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path,
         def send(self):
             raise AssertionError("犬が立ち止まっただけで通知しない")
 
-    monkeypatch.setattr(main.time, "monotonic", lambda: now)
-    monkeypatch.setattr(main.time, "sleep", lambda _: None)
+    monkeypatch.setattr(monitoring.time, "monotonic", lambda: now)
+    monkeypatch.setattr(monitoring.time, "sleep", lambda _: None)
     collector = Collector()
     assert (
-        main.monitor(
+        monitoring.monitor(
             Camera(),
             tray,
             tray.crop(frame),

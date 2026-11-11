@@ -4,12 +4,12 @@ from datetime import date, datetime
 
 import numpy as np
 import pytest
-from test_label_gui import gui as gui
-from test_label_gui import request
+from support import request
 
 from poop_detector.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
 from poop_detector.config import Config
-from poop_detector.main import main, monitor, parser
+from poop_detector.main import main, parser
+from poop_detector.monitoring import monitor
 from poop_detector.roi import ROI, MaskedROI, PolygonROI
 
 
@@ -44,14 +44,17 @@ def test_activity_gui_shows_switches_and_uses_saved_floor_image(gui):
     calibration.save(store.root, np.full((100, 100, 3), 150, np.uint8))
     status, page = request(server, "GET", "/activity?mode=pass&days=7&date=2026-11-10")
     assert status == 200
-    assert "通過回数".encode() in page and "集計データはまだありません".encode() in page
+    assert "通過回数".encode() in page
+    assert "集計データはまだありません".encode() in page
     assert request(server, "GET", f"/activity/background?id={calibration.id}")[0] == 200
     assert request(server, "GET", "/activity/background?id=../events.sqlite3")[0] == 404
     ActivityStore(store.root).add(calibration.id, date(2026, 11, 10), 1, (3, 4), (5, 6))
     _, page = request(server, "GET", "/activity?mode=pass&days=7&date=2026-11-10")
-    assert b'<rect x="5" y="6"' in page and b'<rect x="3" y="4"' not in page
+    assert b'<rect x="5" y="6"' in page
+    assert b'<rect x="3" y="4"' not in page
     _, page = request(server, "GET", "/activity?mode=stay&days=7&date=2026-11-10")
-    assert b'<rect x="3" y="4"' in page and b'<rect x="5" y="6"' not in page
+    assert b'<rect x="3" y="4"' in page
+    assert b'<rect x="5" y="6"' not in page
 
 
 def test_monitor_observes_raw_frame_even_when_tray_is_unavailable(tmp_path):
@@ -60,6 +63,7 @@ def test_monitor_observes_raw_frame_even_when_tray_is_unavailable(tmp_path):
 
     class Camera:
         generation = 1
+        healthy = True
 
         def read(self):
             return raw
@@ -72,6 +76,9 @@ def test_monitor_observes_raw_frame_even_when_tray_is_unavailable(tmp_path):
 
     class Observer:
         detector = Model()
+
+        def predict(self, frame):
+            return self.detector.predict(frame)
 
         def reset(self):
             pass
@@ -128,10 +135,12 @@ def test_setup_activity_accepts_concave_floor_and_ignores_positions_in_cutout(
     config = tmp_path / "config.yaml"
     config.write_text(f"data_dir: {tmp_path}")
     monkeypatch.setenv("POOP_RTSP_URL", "test")
-    monkeypatch.setattr("poop_detector.main.Camera", lambda *args: Camera())
-    monkeypatch.setattr("poop_detector.main.select_polygon", lambda frame, title: concave_floor())
+    monkeypatch.setattr("poop_detector.commands.context.Camera", lambda *args: Camera())
+    monkeypatch.setattr(
+        "poop_detector.commands.setup.select_polygon", lambda frame, title: concave_floor()
+    )
     # ウィンドウは開かないので、画面のない CI でも登録処理まで進める。
-    monkeypatch.setattr("poop_detector.main.has_display", lambda: True)
+    monkeypatch.setattr("poop_detector.commands.setup.has_display", lambda: True)
     assert main(["--config", str(config), "setup-activity-map"]) == 0
     calibration = ActivityLayout.load(tmp_path)
     assert calibration.roi == concave_floor()

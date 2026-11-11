@@ -4,7 +4,8 @@ import numpy as np
 
 from poop_detector.config import Config
 from poop_detector.early_alert import EarlyAlert
-from poop_detector.main import monitor, parser
+from poop_detector.main import parser
+from poop_detector.monitoring import monitor
 from poop_detector.roi import ROI
 
 
@@ -63,6 +64,7 @@ def test_monitor_sends_and_records_early_alert_alongside_codex(tmp_path, monkeyp
 
     class Camera:
         generation = 1
+        healthy = True
 
         def read(self):
             return stays.copy()

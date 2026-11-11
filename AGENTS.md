@@ -4,7 +4,7 @@
 
 ## プロジェクト構成
 
-- `src/poop_detector/` に Python の実装があります。`main.py` が CLI の入口で、`camera.py` が映像取得、`detection.py` が変化検知、`events.py` と `clips.py` が記録・録画を担当します。
+- `src/poop_detector/` に Python の実装があります。`main.py` が CLI の入口（引数の解析と振り分け）で、各サブコマンドの処理は `commands/`、監視ループは `monitoring.py` にあります。`camera.py` が映像取得、`detection.py` が変化検知、`events.py` と `clips.py` が記録・録画を担当します。
 - `label_gui.py` と `clip_gui.py` がラベル付け画面を提供します。ブラウザー用 JavaScript は `src/poop_detector/static/`、テストは `tests/` にあります。設定例は `config/config.example.yaml`、利用手順は `README.md`、設計の概要は `docs/architecture.md` を参照してください。
 
 ## 開発・実行コマンド
@@ -20,8 +20,12 @@ Python 3.11 以上が必要です。開発には `.python-version` の 3.12 を�
 ## コード規約とテスト
 
 - Python は4スペースで字下げし、変数・関数・モジュールは `snake_case`、クラスは `PascalCase` とします。Ruff の行長設定は100文字です。ユーザーへの説明とコード内のコメントは日本語で書いてください。
-- コード変更では `tests/test_*.py` に `test_*` を先に追加し、失敗を確認してから最小限の実装とリファクタリングを行います。人工画像や一時ディレクトリを使い、実カメラや運用データに依存させないでください。数値のカバレッジ基準は設けていません。
-- `uv run pytest` と併せて `uv run ruff check .` と `uv run ruff format --check .` を実行し、指摘に対処してください。文書のみの変更は `git diff --check` で確認します。
+- モジュールと公開クラスには、目的を1行で書いた docstring を付けます（Ruff の `D100`、`D101`）。関数の docstring は、名前と引数だけでは分からない前提や副作用があるときに書き、全関数に機械的に付けることはしません。
+- Ruff で除外したルールと理由は `pyproject.toml` に書いてあります。個別に `# noqa` を付けるときは、安全と判断した理由をすぐ上のコメントに書いてください。
+- コード変更では `tests/test_*.py` に `test_*` を先に追加し、失敗を確認してから最小限の実装とリファクタリングを行います。人工画像や一時ディレクトリを使い、実カメラや運用データに依存させないでください。複数のファイルで使うフィクスチャは `tests/conftest.py`、人工画像や偽のカメラなどの補助は `tests/support.py` に置きます。
+- CI は `uv run pytest --cov` でカバレッジを計測し、`pyproject.toml` の `fail_under` を下回ると失敗します。下限を下げる変更には所有者の承認が必要です。テストを足して実測が上がったら、下限も引き上げてください。
+- `uv run pytest` と併せて `uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` を実行し、指摘に対処してください。
+- `src/` の関数には、引数と戻り値の型注釈を付けてください（mypy の `disallow_untyped_defs`）。共通の画像の型は `frames.py` にあります。OpenCV の型スタブと合わずに `# type: ignore` を付けるときは、理由をすぐ上のコメントに書いてください。文書のみの変更は `git diff --check` で確認します。
 
 ## GitHub Flow
 

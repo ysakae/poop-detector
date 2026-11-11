@@ -6,6 +6,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
@@ -17,13 +18,13 @@ CONNECTION_KEYS = ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC", 
 PET_NAME_MAX_LENGTH = 32
 
 
-def load_connection_settings():
+def load_connection_settings() -> dict[str, str]:
     path = Path(".env")
     values = dotenv_values(path, interpolate=False, encoding="utf-8-sig") if path.is_file() else {}
     return {key: os.environ.get(key, values.get(key) or "") for key in CONNECTION_KEYS}
 
 
-def validated_pet_name(value):
+def validated_pet_name(value: Any) -> str:
     """通知文と画面に埋め込む名前を検証し、前後の空白を除いて返す。"""
     if not isinstance(value, str):
         raise ValueError("pet_nameは文字列で指定してください")
@@ -36,7 +37,7 @@ def validated_pet_name(value):
     return name
 
 
-def validate_timezone(value):
+def validate_timezone(value: Any) -> None:
     """空ならマシンの設定を使う。値があれば IANA のタイムゾーン名か確かめる。"""
     if not isinstance(value, str):
         raise ValueError("timezoneはAsia/TokyoなどのIANAタイムゾーン名で指定してください")
@@ -48,7 +49,7 @@ def validate_timezone(value):
         raise ValueError("timezoneはAsia/TokyoなどのIANAタイムゾーン名で指定してください") from None
 
 
-def apply_timezone(name):
+def apply_timezone(name: str) -> None:
     """プロセスのローカル時刻を指定のタイムゾーンにする。空なら変更しない。"""
     if not name:
         return
@@ -64,6 +65,8 @@ def apply_timezone(name):
 
 @dataclass
 class Config:
+    """config.yaml の動作設定。値の範囲は作成時に検証する。"""
+
     fps: float = 3.0
     timeout_ms: int = 5000
     retry_seconds: float = 2.0
@@ -90,7 +93,7 @@ class Config:
     pet_name: str = ""
     timezone: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.pet_name = validated_pet_name(self.pet_name)
         validate_timezone(self.timezone)
         for name in ("fps", "timeout_ms", "verify_seconds", "clear_seconds", "min_area"):
@@ -126,6 +129,6 @@ class Config:
             raise ValueError("動画設定の範囲を確認してください")
 
     @classmethod
-    def load(cls, path):
+    def load(cls, path: str | Path) -> Self:
         path = Path(path)
         return cls(**(yaml.safe_load(path.read_text()) or {})) if path.exists() else cls()

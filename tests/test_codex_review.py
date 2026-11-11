@@ -87,17 +87,21 @@ def test_failed_review_is_visible_and_can_be_retried(tmp_path):
 
 
 def test_rejects_positive_with_invalid_time_or_missing_evidence():
-    output = dict(
-        label="urine",
-        activity="excreting",
-        start_seconds=1,
-        end_seconds=9,
-        evidence="new_wet_patch",
-        reason="新しい尿跡",
-    )
+    output = {
+        "label": "urine",
+        "activity": "excreting",
+        "start_seconds": 1,
+        "end_seconds": 9,
+        "evidence": "new_wet_patch",
+        "reason": "新しい尿跡",
+    }
     assert parse_assessment(output, 10).label == "urine"
-    for overrides in ({"end_seconds": 12}, {"evidence": "none"}, {"start_seconds": True}):
-        with pytest.raises(ValueError):
+    for overrides, message in [
+        ({"end_seconds": 12}, "動画範囲外"),
+        ({"evidence": "none"}, "根拠がありません"),
+        ({"start_seconds": True}, "動画範囲外"),
+    ]:
+        with pytest.raises(ValueError, match=message):
             parse_assessment(output | overrides, 10)
 
 
@@ -122,14 +126,14 @@ def test_image_and_schema_reach_codex(tmp_path, monkeypatch):
         assert json.loads((folder / "schema.json").read_text())["additionalProperties"] is False
         (folder / "result.json").write_text(
             json.dumps(
-                dict(
-                    label="none",
-                    activity="feeding",
-                    start_seconds=None,
-                    end_seconds=None,
-                    evidence="none",
-                    reason=FEEDING.reason,
-                )
+                {
+                    "label": "none",
+                    "activity": "feeding",
+                    "start_seconds": None,
+                    "end_seconds": None,
+                    "evidence": "none",
+                    "reason": FEEDING.reason,
+                }
             )
         )
 
@@ -168,14 +172,14 @@ def test_tracked_mesh_video_supplies_difference_without_amplifying_existing_mark
         assert last_in_top_row[201, 263] < 100
         (folder / "result.json").write_text(
             json.dumps(
-                dict(
-                    label="none",
-                    activity="feeding",
-                    start_seconds=None,
-                    end_seconds=None,
-                    evidence="none",
-                    reason=FEEDING.reason,
-                )
+                {
+                    "label": "none",
+                    "activity": "feeding",
+                    "start_seconds": None,
+                    "end_seconds": None,
+                    "evidence": "none",
+                    "reason": FEEDING.reason,
+                }
             )
         )
 
@@ -225,7 +229,7 @@ def test_single_frame_does_not_reach_codex(tmp_path):
     assert writer.isOpened()
     writer.write(np.zeros((64, 96, 3), dtype=np.uint8))
     writer.release()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="フレームを取得できません"):
         inspect_clip(
             path,
             {"duration": 0.2},

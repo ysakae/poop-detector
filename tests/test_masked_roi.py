@@ -41,19 +41,19 @@ def test_concave_polygon_is_supported():
 
 
 @pytest.mark.parametrize(
-    "points",
+    ("points", "message"),
     [
-        [(0, 0), (90, 90), (90, 0), (0, 90)],
-        [(0, 0), (90, 0)],
-        [(0, 0), (90, 0), (90, 90), (0, 0)],
-        [(0, 0), (float("nan"), 0), (90, 90)],
-        [(0, 0), (50, 50), (90, 90)],
+        ([(0, 0), (90, 90), (90, 0), (0, 90)], "面積のない多角形"),
+        ([(0, 0), (90, 0)], "3点以上"),
+        ([(0, 0), (90, 0), (90, 90), (0, 0)], "面積のない多角形"),
+        ([(0, 0), (float("nan"), 0), (90, 90)], "3点以上"),
+        ([(0, 0), (50, 50), (90, 90)], "面積のない多角形"),
     ],
 )
-def test_invalid_masked_polygon_is_rejected(points):
+def test_invalid_masked_polygon_is_rejected(points, message):
     from poop_detector.roi import MaskedROI
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=message):
         MaskedROI.from_pixels(points, 101, 101)
 
 
@@ -71,8 +71,8 @@ def test_polygon_boundary_occlusion_and_lighting():
 
 
 def test_masked_baseline_metadata_is_distinct_from_warp(tmp_path):
-    from poop_detector.main import load_baseline, save_baseline
     from poop_detector.roi import MaskedROI, PolygonROI
+    from poop_detector.scene import load_baseline, save_baseline
 
     points = [(10, 10), (90, 10), (90, 90), (10, 90)]
     roi = MaskedROI.from_pixels(points, 101, 101)
@@ -80,7 +80,7 @@ def test_masked_baseline_metadata_is_distinct_from_warp(tmp_path):
     frame = np.full((101, 101, 3), 180, np.uint8)
     save_baseline(path, roi.crop(frame), roi)
     assert np.array_equal(load_baseline(path, roi), roi.crop(frame))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="ROIが変わっています"):
         load_baseline(path, PolygonROI.from_pixels(points, 101, 101))
 
 
