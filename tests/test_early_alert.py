@@ -32,6 +32,21 @@ def test_alert_requires_a_stay_in_one_place_and_only_fires_once():
     assert alert.update(moved, None, 45)
 
 
+def test_stay_and_cooldown_come_from_the_config():
+    """early_alert.stay_seconds と cooldown_seconds で、通知までの滞在と間隔を変えられる。"""
+    empty, stays, moved = frames()
+    alert = EarlyAlert(empty, Config(early_alert_stay_seconds=6, early_alert_cooldown_seconds=60))
+    for t, frame in enumerate((stays, moved, stays, stays, stays, stays, stays, stays)):
+        assert not alert.update(frame, None, t), t
+    assert alert.update(stays, None, 8)
+    assert not alert.update(empty, None, 40)
+    # 新しい場所での滞在でも、前の通知から60秒たつまでは通知しない。
+    assert not any(alert.update(moved, None, t) for t in range(41, 66))
+    assert not alert.update(empty, None, 66)
+    assert not any(alert.update(stays, None, t) for t in range(67, 73))
+    assert alert.update(stays, None, 73)
+
+
 def test_gap_and_masked_motion_do_not_trigger():
     empty, stays, _ = frames()
     alert = EarlyAlert(empty, Config())

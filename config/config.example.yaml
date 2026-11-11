@@ -44,6 +44,13 @@ detection:
 notifications:
   enabled: true
 
+# 見守り通知（features.early_alert）の調整
+early_alert:
+  # 同じ場所にこの秒数とどまったら通知する
+  stay_seconds: 4
+  # 次の見守り通知までの最短の間隔（秒）
+  cooldown_seconds: 30
+
 # 検知や犬の出入りの前後の短い動画（常時録画はしない）
 clips:
   enabled: true

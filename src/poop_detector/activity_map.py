@@ -26,6 +26,7 @@ from .timezones import local_now
 FloorPoint: TypeAlias = tuple[float, float]
 Cell: TypeAlias = tuple[int, int]
 
+# マス目の数。保存済みの集計（activity_cells の x・y）がこの数に依存するので、設定にはしない。
 GRID = 20
 LAYOUT_FILE = "activity-layout.json"
 logger = logging.getLogger(__name__)

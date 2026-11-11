@@ -13,6 +13,7 @@ from .roi import ROI, AnyROI
 # 縮小した映像上の 2×3 のアフィン変換。
 Transform = NDArray[Any]
 
+# 追従に使う特徴点の最小の数。縁の形の照合の内部の値で、設定にはしない。
 MIN_MATCHES = 6
 FLOW_CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.02)
 

@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 MIB = 1024**2
 DEFAULT_DISK_MIB = 4096
-RETENTION_DAYS = (1, 3, 7, 14, 30)
-CLEANUP_LIMIT = 100
+RETENTION_DAYS = (1, 3, 7, 14, 30)  # 整理の画面で選べる古さ（日）
+CLEANUP_LIMIT = 100  # 1回の整理で表示・削除する最大の本数（画面とデータベースの負荷を抑える）
 logger = logging.getLogger(__name__)
 
 CANDIDATE_SQL = """

@@ -24,6 +24,8 @@ from .events import utcnow
 from .frames import Frame
 
 logger = logging.getLogger(__name__)
+# 入場からこの秒数以内の退場は、入場の録画を延ばして1本にまとめる（短い出入りで動画を分けない）。
+# 録画の前後の長さ（clips.before_seconds・after_seconds）で実質の長さは調整できるので、設定にはしない。
 SHORT_VISIT_SECONDS = 15
 # (取得時刻 monotonic, 取得時刻 UTC の ISO 8601, JPEG のバイト列)
 Sample: TypeAlias = tuple[float, str, bytes]
