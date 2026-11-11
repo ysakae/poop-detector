@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import cv2
 
+from ..config import Config
 from ..detection.scene import scene_signature
 from .context import (
     CommandContext,
@@ -22,12 +23,12 @@ if TYPE_CHECKING:
     from ..video.review import VideoJudge
 
 
-def ready_judge() -> "VideoJudge":
-    """既定の判定器を用意し、使える状態か確かめる。"""
-    from ..video.review import default_judge
+def ready_judge(config: Config) -> "VideoJudge":
+    """設定で選んだ判定器を用意し、使える状態か確かめる。"""
+    from ..video.providers import build_judge
 
-    judge = default_judge()
     try:
+        judge = build_judge(config.review_provider, config.review_model)
         judge.check()
     except ValueError as error:
         # インストールとログインの案内だけで、外部の出力は含まない。
@@ -42,7 +43,7 @@ def video_review(args: argparse.Namespace, context: CommandContext) -> int:
 
     detect_outside = args.detect_outside or context.config.detect_outside_enabled
     outside_roi = load_outside_roi(context) if detect_outside else None
-    judge = ready_judge()
+    judge = ready_judge(context.config)
     check_limit(args.limit)
     roi, baseline = load_scene(context)
     track_tray = args.track_tray or context.config.track_tray_enabled
@@ -53,6 +54,8 @@ def video_review(args: argparse.Namespace, context: CommandContext) -> int:
             path, row, roi, judge, tray_tracker=tray_tracker, outside_roi=outside_roi
         ),
         scene_signature=scene_signature(baseline, roi),
+        provider=context.config.review_provider,
+        model=context.config.review_model or None,
     )
     try:
         completed, failed = review.run(args.limit, clip_id=args.clip)

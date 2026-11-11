@@ -69,3 +69,8 @@ dog:
   confidence: 0.4
   exit_seconds: 2
   clip_cooldown_seconds: 60
+
+# 動画の自動判定器（features.video_review を有効にして使う）
+review:
+  provider: codex   # codex、claude、gemini
+  model: ""         # Claude/Gemini は画像入力と JSON Schema に対応するモデル名が必要

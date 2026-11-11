@@ -357,3 +357,12 @@ def test_old_feature_name_in_config_still_works(tmp_path, caplog):
     with caplog.at_level("WARNING", logger="poop_detector.config"):
         assert Config.load(path).video_review_enabled is True
     assert "features.codex → features.video_review" in caplog.text
+
+
+def test_review_records_the_selected_provider_and_model(tmp_path):
+    store = ClipStore(tmp_path)
+    clip_id = ready(store, datetime.now(UTC))
+    review = Review(store, lambda path, row: FECES, provider="claude", model="configured-model")
+    assert review.run(limit=1, clip_id=clip_id) == (1, 0)
+    row = store.assessments.get(clip_id)
+    assert (row["provider"], row["model"]) == ("claude", "configured-model")

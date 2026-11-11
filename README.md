@@ -125,7 +125,7 @@ uv run poop-detector label-gui
 - 基準画像、ROI、イベント画像、動画、SQLite のデータベースは、既定でリポジトリ直下の `data/` に保存します。室内の映像を含むので、取り扱いに注意してください
 - RTSP URL には認証情報が含まれます。`.env` にだけ書き、Git にコミットしないでください。ルーターの RTSP ポートを外部に公開しないでください
 - ntfy を使うと、通知の短い本文が ntfy のサーバー（既定は `ntfy.sh`）に送られます。映像やカメラの URL は送りません。無料トピックは名前を知っている人なら誰でも読めます
-- `--video-review` を使うと、動画から切り出した画像が Codex CLI を通じて外部のサービスに送られます
+- `--video-review` を使うと、動画から切り出した画像が 選んだ判定器の提供元へ送られます
 - `setup-dog-model` は犬検出モデルを GitHub から取得します。監視の開始時に自動で取得することはありません
 
 `data/`、`.env`、`config/config.yaml` は Git の管理対象外です。詳しくは [データの保存先と外部への送信](docs/privacy.md) を、脆弱性の報告方法は [SECURITY.md](SECURITY.md) を参照してください。
