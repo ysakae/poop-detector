@@ -163,9 +163,14 @@ class DogObserver:
                     self.last_seen = now
                 if any(overlaps_roi(box, roi, frame.shape) for box in self.boxes):
                     self.last_roi = now
+            # 推論の失敗は OpenCV の DNN やモデルの形に由来し、種類を絞れない。
+            # 失敗の間は排泄判定を保留する（安全側）ので、種類を問わず捕捉して再試行する。
             except Exception:
                 self.error = True
-                logger.error("犬の推論に失敗しました。排泄判定を保留して再試行します")
+                logger.error(
+                    "犬の推論に失敗しました。排泄判定を保留して再試行します",
+                    exc_info=logger.isEnabledFor(logging.DEBUG),
+                )
             self.inference_ms = (time.perf_counter() - start) * 1000
         present = now - self.last_seen < self.exit_seconds
         occupied = now - self.last_roi < self.exit_seconds

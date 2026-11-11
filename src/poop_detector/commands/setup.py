@@ -8,6 +8,7 @@ import cv2
 from ..config import load_connection_settings
 from ..detection.roi import ROI, AnyROI, select_polygon
 from ..detection.scene import save_baseline
+from ..errors import CameraUnavailableError
 from ..features.activity_map import LAYOUT_FILE, ActivityLayout
 from ..features.tray_tracking import TrayTracker
 from ..frames import Frame
@@ -26,12 +27,12 @@ def require_display() -> None:
 
 
 def capture_frame(context: CommandContext) -> Frame:
-    """カメラから1フレームを取る。接続できなければ ValueError（URL は表示しない）。"""
+    """カメラから1フレームを取る。接続できなければ CameraUnavailableError（URL は表示しない）。"""
     source = camera_source(load_connection_settings())
     with open_camera(source, context.config) as camera:
         frame = camera.read()
     if frame is None:
-        raise ValueError("映像を取得できません。EufyのRTSP設定と接続を確認してください")
+        raise CameraUnavailableError("映像を取得できません。EufyのRTSP設定と接続を確認してください")
     return frame
 
 
@@ -47,7 +48,7 @@ def setup_roi(args: argparse.Namespace, context: CommandContext) -> int:
     # 先に接続情報を確かめてから、登録済みかどうかを確かめる（以前からの順序）。
     camera_source(load_connection_settings())
     if path.exists() and not args.replace:
-        raise ValueError("ROIは登録済みです。更新する場合は--replaceを指定してください")
+        raise CommandError("ROIは登録済みです。更新する場合は--replaceを指定してください")
     frame = capture_frame(context)
     roi: AnyROI
     if args.outside:
@@ -78,7 +79,7 @@ def setup_activity_map(args: argparse.Namespace, context: CommandContext) -> int
 def capture_baseline(args: argparse.Namespace, context: CommandContext) -> int:
     camera_source(load_connection_settings())
     if context.baseline_path.exists() and not args.replace:
-        raise ValueError("基準は登録済みです。更新する場合は--replaceを指定してください")
+        raise CommandError("基準は登録済みです。更新する場合は--replaceを指定してください")
     frame = capture_frame(context)
     roi = ROI.load(context.roi_path)
     if args.track_tray or context.config.track_tray_enabled:

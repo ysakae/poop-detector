@@ -1,7 +1,7 @@
 """保存済みの動画の後処理（自動判定と、旋回候補の分析）。通知はしない。"""
 
 import argparse
-import sys
+import logging
 from typing import TYPE_CHECKING
 
 import cv2
@@ -15,6 +15,8 @@ from .context import (
     load_scene,
     load_tray_tracker,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..video.review import VideoJudge
@@ -91,7 +93,7 @@ def circling_review(args: argparse.Namespace, context: CommandContext) -> int:
                 raise OSError("動画の状態が変わりました")
         except (OSError, ValueError, cv2.error):
             failed += 1
-            print(f"{clip_id} 旋回分析に失敗しました", file=sys.stderr)
+            logger.warning("%s 旋回分析に失敗しました", clip_id)
             continue
         offsets = "、".join(f"{start:.1f}〜{end:.1f}秒" for start, end in candidates)
         print(

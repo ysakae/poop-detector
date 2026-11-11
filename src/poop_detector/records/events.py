@@ -10,6 +10,7 @@ from uuid import uuid4
 import cv2
 import numpy as np
 
+from ..errors import InvalidInputError
 from ..frames import Frame
 from .database import events_database
 
@@ -49,9 +50,9 @@ class EventRow(TypedDict):
 def validate_times(start: str | None, end: str | None) -> None:
     for value in (start, end):
         if value and datetime.fromisoformat(value).utcoffset() is None:
-            raise ValueError("時刻にはタイムゾーンが必要です")
+            raise InvalidInputError("時刻にはタイムゾーンが必要です")
     if start and end and datetime.fromisoformat(end) < datetime.fromisoformat(start):
-        raise ValueError("完了は開始以降を指定してください")
+        raise InvalidInputError("完了は開始以降を指定してください")
 
 
 def utcnow() -> str:
@@ -60,7 +61,7 @@ def utcnow() -> str:
 
 def validate_location(location: str | None) -> None:
     if location and location not in EXCRETION_LOCATIONS:
-        raise ValueError("排泄した場所が不正です")
+        raise InvalidInputError("排泄した場所が不正です")
 
 
 class Store:
@@ -178,10 +179,10 @@ class Store:
         location: str | None = None,
     ) -> None:
         if label not in (*EXCRETION_TYPES, "false", "unknown"):
-            raise ValueError("種類が不正です")
+            raise InvalidInputError("種類が不正です")
         row = db.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
         if row is None:
-            raise ValueError("記録が見つかりません")
+            raise InvalidInputError("記録が見つかりません")
         previous = db.execute(
             "SELECT note FROM excretion_labels WHERE event_id=?", (event_id,)
         ).fetchone()
@@ -190,11 +191,11 @@ class Store:
         note = (previous["note"] if previous else "") if note is _UNSET else note
         validate_times(start, end)
         if not isinstance(note, str) or len(note) > 2000:
-            raise ValueError("メモは2000文字以内にしてください")
+            raise InvalidInputError("メモは2000文字以内にしてください")
         if row["kind"] in ("MANUAL", "MISSED") and (label in ("false", "unknown") or not start):
-            raise ValueError("手動・見逃し記録には種類と開始時刻が必要です")
+            raise InvalidInputError("手動・見逃し記録には種類と開始時刻が必要です")
         if row["kind"] == "VIDEO" and label == "false":
-            raise ValueError("動画からの記録を取り消す場合は保留を選択してください")
+            raise InvalidInputError("動画からの記録を取り消す場合は保留を選択してください")
         feedback = 0 if label == "false" else None if label == "unknown" else 1
         excretion_type = label if label in EXCRETION_TYPES else "unspecified"
         validate_location(location)
@@ -219,7 +220,7 @@ class Store:
         location: str | None = None,
     ) -> str:
         if not start:
-            raise ValueError("種類と開始時刻が必要です")
+            raise InvalidInputError("種類と開始時刻が必要です")
         with self.connect() as db:
             return self._insert_excretion(
                 db,
@@ -245,11 +246,11 @@ class Store:
         location: str | None = None,
     ) -> str:
         if excretion_type not in EXCRETION_TYPES:
-            raise ValueError("排泄の種類を指定してください")
+            raise InvalidInputError("排泄の種類を指定してください")
         validate_times(timestamp, None)
         validate_times(start, end)
         if not isinstance(note, str) or len(note) > 2000:
-            raise ValueError("メモは2000文字以内にしてください")
+            raise InvalidInputError("メモは2000文字以内にしてください")
         validate_location(location)
         event_id = uuid4().hex
         db.execute(
@@ -271,7 +272,7 @@ class Store:
                 (*values.values(), event_id),
             )
             if cursor.rowcount != 1:
-                raise ValueError("イベントが見つかりません")
+                raise InvalidInputError("イベントが見つかりません")
 
     def metrics(self) -> dict[str, Any]:
         """目視の判定から Precision・Recall・通知の遅れなどを集計する。"""

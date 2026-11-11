@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from ..errors import ReferenceMismatchError
 from ..frames import Frame, Mask
 
 # empty: 基準と同じ、candidate: 小さな変化の候補、occupied: 遮蔽、unstable: 広範囲の変動
@@ -50,7 +51,9 @@ class Detector:
 
     def valid_region(self, frame: Frame, valid_mask: Mask | None = None) -> NDArray[np.bool_]:
         if frame.shape != self.shape:
-            raise ValueError("基準画像と解像度が異なります。基準画像を再登録してください")
+            raise ReferenceMismatchError(
+                "基準画像と解像度が異なります。基準画像を再登録してください"
+            )
         if valid_mask is None:
             valid = np.ones(frame.shape[:2], dtype=bool)
         else:

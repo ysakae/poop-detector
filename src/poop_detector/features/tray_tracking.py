@@ -8,6 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..detection.roi import ROI, AnyROI
+from ..errors import UserError
 from ..frames import Frame, Mask
 
 # 縮小した映像上の 2×3 のアフィン変換。
@@ -32,7 +33,7 @@ def _optical_flow(previous: Frame, following: Frame, points: NDArray[Any]) -> tu
     )
 
 
-class TrayReferenceError(ValueError):
+class TrayReferenceError(UserError, ValueError):
     """トレー追従用の基準画像がないか、使えない。"""
 
 

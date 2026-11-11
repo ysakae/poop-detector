@@ -4,6 +4,7 @@ import argparse
 import json
 from datetime import datetime
 
+from ..errors import InvalidInputError
 from ..records.events import Store
 from .context import CommandContext
 
@@ -13,7 +14,7 @@ def require_timezones(args: argparse.Namespace) -> None:
     for field in ("start", "end"):
         value = getattr(args, field, None)
         if value and datetime.fromisoformat(value).utcoffset() is None:
-            raise ValueError("時刻には+09:00などのタイムゾーンが必要です")
+            raise InvalidInputError("時刻には+09:00などのタイムゾーンが必要です")
 
 
 def _print_json(value: object) -> None:

@@ -105,9 +105,12 @@ class LatestCamera:
                 if self.on_frame is not None:
                     try:
                         self.on_frame(frame, self.camera.generation)
+                    # 動画の保存やライブ映像など、差し込まれた処理の失敗で映像の取得を
+                    # 止めないため、種類を問わず捕捉する。詳細は --verbose で伏せ字にして出す。
                     except Exception:
                         logging.getLogger(__name__).error(
-                            "動画処理でエラーが発生しました。映像取得は継続します"
+                            "動画処理でエラーが発生しました。映像取得は継続します",
+                            exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
                         )
                 with self._lock:
                     self._latest = (frame, self.camera.generation)

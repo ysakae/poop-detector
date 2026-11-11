@@ -20,6 +20,7 @@ import cv2
 import numpy as np
 
 from ..detection.roi import AnyROI, MaskedROI, full_mask, outline
+from ..errors import AlreadyRunningError
 from ..features.tray_tracking import TrayTracker
 from ..frames import Frame, Mask
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, utcnow
@@ -355,7 +356,9 @@ class Review:
             except BlockingIOError:
                 if since is not None:
                     return 0, 0
-                raise ValueError("別の自動判定が実行中です。完了後に再試行してください") from None
+                raise AlreadyRunningError(
+                    "別の自動判定が実行中です。完了後に再試行してください"
+                ) from None
             return self._run(limit, since, clip_id)
 
     def _run(self, limit: int, since: str | None, clip_id: str | None) -> tuple[int, int]:

@@ -18,6 +18,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..detection.roi import MaskedROI, PolygonROI
+from ..errors import AlreadyRunningError
 from ..frames import Frame, Shape
 from ..timezones import local_now
 from .dog import Box, Predict
@@ -115,7 +116,7 @@ class ActivityStore:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                raise ValueError("別の行動マップ監視が起動中です") from None
+                raise AlreadyRunningError("別の行動マップ監視が起動中です") from None
             yield
 
     def add(

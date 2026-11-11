@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..errors import AlreadyRunningError
+
 if TYPE_CHECKING:
     # clips がこのモジュールを読み込むため、型の参照だけにする。
     from .clips import ClipStore
@@ -100,7 +102,9 @@ def cleanup_selected(store: "ClipStore", clip_ids: Iterable[str], days: int) -> 
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise ValueError("動画の自動判定中です。完了後にもう一度お試しください") from None
+            raise AlreadyRunningError(
+                "動画の自動判定中です。完了後にもう一度お試しください"
+            ) from None
         for clip_id in ids:
             try:
                 removed += remove_video(store, clip_id, before)

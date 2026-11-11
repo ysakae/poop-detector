@@ -108,7 +108,7 @@ def test_errors_never_print_the_camera_url(cli_env, capsys):
     assert cli_env.run("check-camera") == 2
     err = capsys.readouterr().err
     assert "secret" not in err
-    assert "処理できませんでした" in err
+    assert "映像を取得できません" in err
 
 
 # --- 範囲と基準画像の登録 ---
@@ -217,7 +217,7 @@ def test_record_commands_store_and_list_excretions(cli_env, capsys):
 
 def test_record_commands_require_timezone_in_times(cli_env, capsys):
     assert cli_env.run("record", "--type", "feces", "--start", "2026-11-01T11:00:00") == 2
-    assert "処理できませんでした" in capsys.readouterr().err
+    assert "タイムゾーンが必要です" in capsys.readouterr().err
     assert Store(cli_env.root).records() == []
 
 
@@ -311,7 +311,27 @@ def test_codex_review_checks_limit_and_reports_counts(cli_env, monkeypatch, caps
 def test_run_requires_registered_scene(cli_env, capsys):
     use_camera(cli_env, spot_scene()[0])
     assert cli_env.run("run", "--max-frames", "1") == 2
-    assert "secret" not in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "secret" not in err
+    assert "setup-roi" in err
+
+
+def test_run_requires_a_baseline_after_the_roi(cli_env, capsys):
+    use_camera(cli_env, spot_scene()[0])
+    cli_env.root.mkdir(parents=True)
+    ROI(0, 0, 1, 1).save(cli_env.root / "roi.json")
+    assert cli_env.run("run", "--max-frames", "1") == 2
+    assert "capture-baseline" in capsys.readouterr().err
+
+
+def test_run_explains_a_baseline_from_another_roi(cli_env, capsys):
+    use_camera(cli_env, spot_scene()[0])
+    register_scene(cli_env)
+    ROI(0, 0, 0.5, 0.5).save(cli_env.root / "roi.json")
+    assert cli_env.run("run", "--max-frames", "1") == 2
+    err = capsys.readouterr().err
+    assert "ROIが変わっています" in err
+    assert "処理できませんでした" not in err
 
 
 def test_run_with_activity_map_requires_floor(cli_env, capsys):

@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from ..errors import InvalidInputError
 from ..frames import Frame, Mask, Shape
 
 Point: TypeAlias = Sequence[float]
@@ -33,7 +34,7 @@ class ROI:
             and self.x + self.width <= 1
             and self.y + self.height <= 1
         ):
-            raise ValueError("ROIは画像内の空でない領域を指定してください")
+            raise InvalidInputError("ROIは画像内の空でない領域を指定してください")
 
     @classmethod
     def from_pixels(cls, rect: Sequence[float], width: int, height: int) -> Self:
@@ -79,11 +80,11 @@ class PolygonROI:
     def __post_init__(self) -> None:
         points = np.asarray(self.points, dtype=np.float32)
         if points.shape != (4, 2) or not np.isfinite(points).all():
-            raise ValueError("四隅を正しい座標で指定してください")
+            raise InvalidInputError("四隅を正しい座標で指定してください")
         if np.any(points < 0) or np.any(points > 1):
-            raise ValueError("四隅は画像の内側を指定してください")
+            raise InvalidInputError("四隅は画像の内側を指定してください")
         if not cv2.isContourConvex(points) or abs(cv2.contourArea(points)) < 1e-6:
-            raise ValueError("交差やくぼみのない四角形を周回順に指定してください")
+            raise InvalidInputError("交差やくぼみのない四角形を周回順に指定してください")
         # JSON往復でタプル・リストの違いによる基準画像の不一致を防ぐ。
         object.__setattr__(self, "points", points.tolist())
 
@@ -169,11 +170,11 @@ class MaskedROI(PolygonROI):
             or not np.isfinite(points).all()
             or self.mode != "mask"
         ):
-            raise ValueError("3点以上の正しい頂点を指定してください")
+            raise InvalidInputError("3点以上の正しい頂点を指定してください")
         if np.any(points < 0) or np.any(points > 1):
-            raise ValueError("頂点は画像の内側を指定してください")
+            raise InvalidInputError("頂点は画像の内側を指定してください")
         if len(np.unique(points, axis=0)) != len(points) or abs(cv2.contourArea(points)) < 1e-6:
-            raise ValueError("重複する頂点や面積のない多角形は指定できません")
+            raise InvalidInputError("重複する頂点や面積のない多角形は指定できません")
         count = len(points)
         for i in range(count):
             for j in range(i + 1, count):
@@ -182,7 +183,7 @@ class MaskedROI(PolygonROI):
                 if _segments_intersect(
                     points[i], points[(i + 1) % count], points[j], points[(j + 1) % count]
                 ):
-                    raise ValueError("辺が交差しない順に頂点を指定してください")
+                    raise InvalidInputError("辺が交差しない順に頂点を指定してください")
         object.__setattr__(self, "points", points.tolist())
 
     def _bounds(self, shape: Shape) -> tuple[NDArray[np.int32], tuple[int, int, int, int]]:
@@ -264,7 +265,7 @@ def select_polygon(frame: Frame, window: str = "トイレの多角形を指定")
             cv2.imshow(window, preview)
             key = cv2.waitKey(20) & 0xFF
             if key == 27 or cv2.getWindowProperty(window, cv2.WND_PROP_VISIBLE) < 1:
-                raise ValueError("ROI選択を取り消しました")
+                raise InvalidInputError("ROI選択を取り消しました")
             if key in (ord("r"), ord("R")):
                 points.clear()
             elif key in (8, 127) and points:

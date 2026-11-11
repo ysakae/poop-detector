@@ -12,6 +12,8 @@ import sqlite3
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from ..errors import IncompatibleDataError
+
 # 版1のテーブル（版1の時点の名前）。(列名, 型と既定値) の順で、新しいテーブルはこの順に作る。
 # 既存のテーブルに足りない列は、ALTER TABLE で末尾に加える。
 TABLES_V1: dict[str, Sequence[tuple[str, str]]] = {
@@ -116,7 +118,7 @@ def _create_or_complete(
     for name, kind in columns:
         if name not in existing:
             if "NOT NULL" in kind or "PRIMARY KEY" in kind:
-                raise ValueError(f"{table} テーブルを最新の形に移行できません")
+                raise IncompatibleDataError(f"{table} テーブルを最新の形に移行できません")
             db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
 
 
@@ -152,7 +154,7 @@ def migrate(db: sqlite3.Connection) -> int:
     try:
         version = schema_version(db)
         if version > LATEST_VERSION:
-            raise ValueError(
+            raise IncompatibleDataError(
                 "データベースがこの版より新しい poop-detector で作られています。"
                 "poop-detector を更新してください"
             )
