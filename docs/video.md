@@ -54,7 +54,7 @@ GUI では使用量と上限までの残りを表示し、使用率が75％・90
 ## 動画の自動判定と通知を使う
 
 保存した動画を判定器に見せ、新しい便や尿の根拠を確かめます。既定は Codex CLI です。設定の `review.provider` で `codex`、`claude`、`gemini` を選べます。
-Codex CLI をインストールし、`codex login status` でログイン状態を確認します。
+[判定器とモデルを選ぶ](#判定器とモデルを選ぶ)を参照し、使う CLI にログインします。
 監視に使っているターミナルで監視を停止し、次のコマンドで起動します。動画の保存を有効にしておく必要があります。
 
 ```bash
@@ -70,9 +70,23 @@ uv run poop-detector run --dog --video-review
 
 ### 判定器とモデルを選ぶ
 
-`config/config.yaml` の `review` に `provider` と `model` を設定します。Codex CLI はログインが必要で、`model` を省略すると CLI の既定を使います。Claude API と Gemini API では、画像入力と JSON Schema に対応するモデル名を `model` に指定し、`.env` にそれぞれ `ANTHROPIC_API_KEY` または `GEMINI_API_KEY` を設定してください。
+`config/config.yaml` の `review.provider` で CLI を選びます。監視を実行するユーザーの環境でコマンドを PATH に追加し、先にログインしてください。
 
-どの判定器も、同じ方法で作った切り出し画像と判定指示を、選んだ提供元へ送ります。利用条件や料金は選んだ提供元で確認してください。[Claude API の仕様](https://platform.claude.com/docs/en/api/messages/create)・[Gemini API の仕様](https://ai.google.dev/api/generate-content)
+| `provider` | 判定器 | ログイン |
+| --- | --- | --- |
+| `codex`（既定） | Codex CLI | `codex login` |
+| `claude` | [Claude Code CLI](https://code.claude.com/docs/en/cli-reference) | `claude auth login` |
+| `gemini` | [Antigravity CLI](https://antigravity.google/docs/cli/acp/)（`agy`、1.5.0 以上） | `agy acp --login` |
+
+```yaml
+review:
+  provider: claude
+  model: ""
+```
+
+`model` が空欄なら選んだ CLI の既定を使います。指定する場合は、画像入力に対応する CLI 上のモデル名を使ってください。Antigravity のモデル名は `agy models` で確認できます。以前の Claude / Gemini API 用のモデル名で選択に失敗した場合は、空欄に戻すか CLI 上のモデル名に更新してください。認証は CLI のログインを使うため、`.env` の API キーは不要です。
+
+各 CLI は同じ切り出し画像と判定指示を提供元に送ります。起動前に `uv run poop-detector diagnose` で設定した判定器の状態を確認できます。
 
 ### 保存済みの動画を判定する
 

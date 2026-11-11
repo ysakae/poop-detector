@@ -16,11 +16,11 @@ import cv2
 import numpy as np
 import yaml
 
-from ..config import load_connection_settings
+from ..config import Config, load_connection_settings
 from ..features.activity_map import LAYOUT_FILE
 from ..platform_support import has_display
 from ..records.database import schema_version
-from ..video.review import default_judge
+from ..video.providers import build_judge
 from .context import CommandContext
 
 DATABASE_FILE = "events.sqlite3"
@@ -88,17 +88,19 @@ def database_summary(root: Path) -> str:
         return "読み込めません"
 
 
-def programs_summary() -> dict[str, str]:
-    judge = default_judge()
+def programs_summary(config: Config) -> dict[str, str]:
+    judge_name = ""
     try:
+        judge = build_judge(config.review_provider, config.review_model)
+        judge_name = f"{judge.name}: "
         judge.check()
         judge_state = "使えます"
     except ValueError as error:
-        # 判定器の check が書いた、ログインなどの案内の文言。
+        # 判定器が書いた、インストールやログインの案内の文言。
         judge_state = f"使えません（{error}）"
     return {
         "ffmpeg": "見つかりました" if shutil.which("ffmpeg") else "見つかりません",
-        "video_judge": f"{judge.name}: {judge_state}",
+        "video_judge": f"{judge_name}{judge_state}",
         "display": "あり" if has_display() else "なし",
     }
 
@@ -115,7 +117,7 @@ def diagnose(_args: argparse.Namespace, context: CommandContext) -> int:
         "connection": connection_summary(),
         "registered": registered_summary(context),
         "database": database_summary(context.root),
-        "programs": programs_summary(),
+        "programs": programs_summary(config),
     }
     print("# 不具合の報告に貼れる診断情報です。URL・トピック名・保存先のパスは含みません。")
     print(yaml.safe_dump(report, allow_unicode=True, sort_keys=False), end="")

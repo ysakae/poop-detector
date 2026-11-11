@@ -72,8 +72,8 @@ dog:
 
 # 動画の自動判定器（features.video_review を有効にして使う）
 review:
-  provider: codex   # codex、claude、gemini
-  model: ""         # Claude/Gemini は画像入力と JSON Schema に対応するモデル名が必要
+  provider: codex   # codex（Codex CLI）、claude（Claude Code CLI）、gemini（Antigravity CLI）
+  model: ""         # 空欄は選んだ CLI の既定。指定する場合は画像入力対応のモデル名
 
 # GUI（gui コマンドと run --gui）の待ち受けと、外から開くときの設定
 gui:
