@@ -29,7 +29,8 @@ uv run poop-detector gui
 uv run poop-detector users invite 家族A --role admin
 ```
 
-- 家族を一般ユーザーとして登録するときは `--role` を省きます。登録用 URL は30分以内に一度だけ使えます（`--minutes` で変更）。
+- 登録用 URL は30分以内に一度だけ使えます（`--minutes` で変更）。
+- 一般ユーザー（`--role member`）の招待は、管理者と一般ユーザーの権限を分ける機能（[#85](https://github.com/ysakae/poop-detector/issues/85)）が入るまで使えません。それまでは、一般ユーザーも管理者と同じ操作ができてしまうためです。
 - 登録したパスキーは、登録したときに開いたドメインでしか使えません。`gui.public_url` を設定していれば外部の URL、していなければ `http://localhost:8765` です。`http://127.0.0.1:8765` で開いたときは、ログインの画面が `localhost` に移ります。
 - パスキーをなくしたときは `users recover 名前` で、同じユーザーにパスキーを足す URL を出します。管理者が全員ログインできなくなったときも、このコマンドで戻せます。
 - `users list` で登録した人の一覧を、`users disable 名前`・`users enable 名前` で無効・有効を切り替えます。最後の管理者は無効にできません。

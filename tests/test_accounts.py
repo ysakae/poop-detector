@@ -192,3 +192,17 @@ def test_users_list_recover_disable_and_enable(cli, capsys):
     assert "管理者" in capsys.readouterr().err
     assert cli.run("recover", "いない人") == 2
     assert cli.run("invite") == 2
+
+
+def test_members_cannot_be_invited_until_roles_are_enforced(cli, capsys):
+    """権限の確認（#85）が入るまでは、一般ユーザーも管理者と同じ操作ができてしまう。
+
+    そのため、一般ユーザーの招待は断り、管理者だけを招待できるようにしておく。
+    """
+    assert cli.run("invite", "家族A", "--role", "admin") == 0
+    capsys.readouterr()
+    assert cli.run("invite", "家族B") == 2
+    assert "#85" in capsys.readouterr().err
+    assert cli.run("invite", "家族B", "--role", "member") == 2
+    accounts = Accounts(events_database(cli.root))
+    assert accounts.users.by_name("家族B") is None

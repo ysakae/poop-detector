@@ -68,8 +68,12 @@ def users(args: argparse.Namespace, context: CommandContext) -> int:
             raise CommandError(
                 f"「{args.name}」はすでに登録されています。復旧は users recover です"
             )
-        if args.role != "admin" and accounts.users.active_admins() == 0:
-            raise CommandError("最初のユーザーは管理者にしてください（--role admin）")
+        if args.role != "admin":
+            # 権限の確認（#85）が入るまでは、一般ユーザーも管理者と同じ操作ができてしまう。
+            raise CommandError(
+                "一般ユーザーの招待は、管理者と一般ユーザーの権限を分ける機能（#85）が入るまで"
+                "使えません。いまは管理者として招待してください（--role admin）"
+            )
         code = accounts.enrollments.issue(
             args.role, name=args.name, created_by=CREATED_BY, minutes=args.minutes
         )

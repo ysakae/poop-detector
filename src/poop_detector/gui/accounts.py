@@ -135,13 +135,6 @@ class UserStore:
             rows = db.execute("SELECT * FROM users ORDER BY created_at, name").fetchall()
         return [self._user(row) for row in rows]
 
-    def active_admins(self) -> int:
-        with self.database.connect() as db:
-            count: int = db.execute(
-                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled_at IS NULL"
-            ).fetchone()[0]
-        return count
-
     def disable(self, user_id: str) -> None:
         """ユーザーを無効にする。最後の有効な管理者は無効にできない。"""
         with self.database.connect() as db:
