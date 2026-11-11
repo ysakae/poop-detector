@@ -27,12 +27,17 @@ logger = logging.getLogger(__name__)
 
 
 class FrameSource(Protocol):
-    """監視ループが読むカメラ。generation は再接続のたびに増える。
+    """監視ループが読むカメラ。
 
-    healthy 属性があれば、フレームが届かないときに接続の途切れと区別するのに使う。
+    generation は再接続のたびに増える。healthy は、新しいフレームが届かないときに、
+    単に待っているだけか（True）、接続が途切れているか（False）を区別するのに使う。
     """
 
-    generation: int
+    @property
+    def generation(self) -> int: ...
+
+    @property
+    def healthy(self) -> bool: ...
 
     def read(self) -> Frame | None: ...
 
@@ -112,7 +117,7 @@ def monitor(
             interrupted = camera.generation != generation
             generation = camera.generation
             if activity_map is not None:
-                if interrupted or (raw_frame is None and not getattr(camera, "healthy", False)):
+                if interrupted or (raw_frame is None and not camera.healthy):
                     activity_map.interrupt()
                 if raw_frame is not None and dog_observer is not None:
                     activity_map.update(raw_frame, dog_observer.detector.predict, tick)
@@ -121,7 +126,7 @@ def monitor(
                 if tray_tracker is not None:
                     frame = tray_tracker.align(frame)
                     interrupted |= frame is None
-            elif not getattr(camera, "healthy", False):
+            elif not camera.healthy:
                 interrupted = True
             if interrupted:
                 machine.interrupt()
@@ -143,7 +148,7 @@ def monitor(
             if frame is None:
                 time.sleep(1 / config.fps)
                 continue
-            valid_mask = roi.mask(frame.shape) if hasattr(roi, "mask") else None
+            valid_mask = roi.valid_mask(frame.shape)
             crop = roi.crop(frame)
             if stay is not None and stay.update(crop, valid_mask, tick):
                 if notifier.send_early_alert():

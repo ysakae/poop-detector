@@ -63,6 +63,7 @@ def test_monitor_observes_raw_frame_even_when_tray_is_unavailable(tmp_path):
 
     class Camera:
         generation = 1
+        healthy = True
 
         def read(self):
             return raw

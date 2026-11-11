@@ -64,6 +64,7 @@ def test_monitor_sends_and_records_early_alert_alongside_codex(tmp_path, monkeyp
 
     class Camera:
         generation = 1
+        healthy = True
 
         def read(self):
             return stays.copy()
