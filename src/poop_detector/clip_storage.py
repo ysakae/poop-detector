@@ -74,7 +74,7 @@ def candidate_file(store: "ClipStore", row: sqlite3.Row) -> tuple[Path, int] | N
 
 
 def cleanup_candidates(store: "ClipStore", days: int) -> list[tuple[sqlite3.Row, int]]:
-    with store.store.connect() as db:
+    with store.connect() as db:
         rows = db.execute(CANDIDATE_SQL + " ORDER BY julianday(c.requested_at)", (cutoff(days),))
         candidates: list[tuple[sqlite3.Row, int]] = []
         for row in rows:
@@ -109,14 +109,14 @@ def cleanup_selected(store: "ClipStore", clip_ids: Iterable[str], days: int) -> 
 
 def remove_video(store: "ClipStore", clip_id: str, before: str) -> bool:
     query = CANDIDATE_SQL + " AND c.id=?"
-    with store.store.connect() as db:
+    with store.connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(query, (before, clip_id)).fetchone()
         if row is None or candidate_file(store, row) is None:
             return False
         # ファイルを消す前に状態を確定し、中断後も同じ操作で再開できるようにする。
         db.execute("UPDATE clips SET status='removing' WHERE id=?", (clip_id,))
-    with store.store.connect() as db:
+    with store.connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(query, (before, clip_id)).fetchone()
         file = candidate_file(store, row) if row is not None else None

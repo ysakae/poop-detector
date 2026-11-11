@@ -29,7 +29,6 @@ from .events import (
     EXCRETION_TYPES,
     EventRow,
     Store,
-    ensure_location_column,
     utcnow,
     validate_location,
 )
@@ -119,35 +118,10 @@ class ClipStore:
         self.store = Store(root)
         self.root = Path(root)
         (self.root / "clips").mkdir(parents=True, exist_ok=True)
-        with self.store.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            db.execute("""CREATE TABLE IF NOT EXISTS clips (
-                id TEXT PRIMARY KEY, event_id TEXT, source TEXT, requested_at TEXT,
-                status TEXT, path TEXT, start_at TEXT, end_at TEXT, duration REAL,
-                fps REAL, trigger_offset REAL, pre_available REAL, post_available REAL,
-                interrupted INTEGER DEFAULT 0, error TEXT, label TEXT,
-                actual_start_offset REAL, actual_end_offset REAL, activity TEXT DEFAULT 'other',
-                note TEXT DEFAULT '', scene_signature TEXT, location TEXT)""")
-            ensure_location_column(db, "clips")
-            db.execute(
-                "CREATE INDEX IF NOT EXISTS clips_by_status_time ON clips(status, requested_at)"
-            )
-            db.execute("""CREATE TABLE IF NOT EXISTS capture_status (
-                id INTEGER PRIMARY KEY CHECK(id=1), heartbeat REAL, healthy INTEGER)""")
 
-            db.execute("""CREATE TABLE IF NOT EXISTS codex_assessments (
-                clip_id TEXT PRIMARY KEY, label TEXT, activity TEXT, start_seconds REAL,
-                end_seconds REAL, reason TEXT, observed_at TEXT, error TEXT,
-                assessed_at TEXT NOT NULL, notice_claimed INTEGER DEFAULT 0, notified_at TEXT,
-                location TEXT)""")
-            ensure_location_column(db, "codex_assessments")
-
-            db.execute("""CREATE TABLE IF NOT EXISTS clip_confirmations (
-                clip_id TEXT PRIMARY KEY, event_id TEXT NOT NULL)""")
-            db.execute("""CREATE TABLE IF NOT EXISTS clip_protections (clip_id TEXT PRIMARY KEY)""")
-            db.execute("""CREATE TABLE IF NOT EXISTS circling_reviews (
-                clip_id TEXT PRIMARY KEY, candidates TEXT NOT NULL,
-                sampled INTEGER NOT NULL, located INTEGER NOT NULL)""")
+    def connect(self) -> sqlite3.Connection:
+        """events.sqlite3 への接続（スキーマは Store を作ったときに最新になっている）。"""
+        return self.store.connect()
 
     def circling_targets(
         self, scene_signature: str, limit: int, clip_id: str | None = None
@@ -162,14 +136,14 @@ class ClipStore:
         else:
             query += " AND c.id=?"
             params.append(clip_id)
-        with self.store.connect() as db:
+        with self.connect() as db:
             rows = db.execute(
                 query + " ORDER BY c.label IS NULL, c.requested_at DESC LIMIT ?", (*params, limit)
             )
             return [cast(ClipRow, dict(row)) for row in rows]
 
     def circling_review(self, clip_id: str) -> dict[str, Any] | None:
-        with self.store.connect() as db:
+        with self.connect() as db:
             row = db.execute(
                 "SELECT * FROM circling_reviews WHERE clip_id=?", (clip_id,)
             ).fetchone()
@@ -182,7 +156,7 @@ class ClipStore:
         sampled: int,
         located: int,
     ) -> bool:
-        with self.store.connect() as db:
+        with self.connect() as db:
             return (
                 db.execute(
                     """INSERT INTO circling_reviews SELECT id, ?, ?, ? FROM clips
@@ -195,7 +169,7 @@ class ClipStore:
             )
 
     def is_pinned(self, clip_id: str) -> bool:
-        with self.store.connect() as db:
+        with self.connect() as db:
             return (
                 db.execute("SELECT 1 FROM clip_protections WHERE clip_id=?", (clip_id,)).fetchone()
                 is not None
@@ -203,7 +177,7 @@ class ClipStore:
 
     def pin(self, clip_id: str, protected: bool) -> None:
         """動画を自動整理の対象から外す（protected=False で戻す）。"""
-        with self.store.connect() as db:
+        with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT status FROM clips WHERE id=?", (clip_id,)).fetchone()
             if row is None or row["status"] != "ready":
@@ -214,7 +188,7 @@ class ClipStore:
                 db.execute("DELETE FROM clip_protections WHERE clip_id=?", (clip_id,))
 
     def queued(self) -> list[sqlite3.Row]:
-        with self.store.connect() as db:
+        with self.connect() as db:
             return db.execute(
                 "SELECT id,source FROM clips WHERE status='queued' ORDER BY requested_at DESC"
             ).fetchall()
@@ -229,14 +203,14 @@ class ClipStore:
         return None
 
     def assessment(self, clip_id: str) -> AssessmentRow | None:
-        with self.store.connect() as db:
+        with self.connect() as db:
             row = db.execute(
                 "SELECT * FROM codex_assessments WHERE clip_id=?", (clip_id,)
             ).fetchone()
         return cast(AssessmentRow, dict(row)) if row else None
 
     def latest_assessment(self) -> dict[str, Any] | None:
-        with self.store.connect() as db:
+        with self.connect() as db:
             row = db.execute(
                 """SELECT a.*, c.requested_at, c.label AS human_label, c.location AS human_location
                 FROM codex_assessments a JOIN clips c ON c.id=a.clip_id
@@ -267,7 +241,7 @@ class ClipStore:
             params.append(clip_id)
         order = "ASC" if since is not None else "DESC"
         # 条件はこの関数内の固定の文字列だけで組み立て、値はすべてプレースホルダーで渡す。
-        with self.store.connect() as db:
+        with self.connect() as db:
             return [
                 cast(ClipRow, dict(row))
                 for row in db.execute(
@@ -293,7 +267,7 @@ class ClipStore:
     ) -> bool:
         """判定を保存する。既存の判定は失敗していたときだけ上書きし、保存できたら True。"""
         validate_location(location)
-        with self.store.connect() as db:
+        with self.connect() as db:
             return (
                 db.execute(
                     """INSERT INTO codex_assessments
@@ -321,7 +295,7 @@ class ClipStore:
 
     def claim_assessment_notice(self, clip_id: str) -> bool:
         """通知の権利を取る。同じ記録や近い時刻の同じ判定を通知済みなら False。"""
-        with self.store.connect() as db:
+        with self.connect() as db:
             return (
                 db.execute(
                     """UPDATE codex_assessments AS candidate SET notice_claimed=1
@@ -348,7 +322,7 @@ class ClipStore:
 
     def finish_assessment_notice(self, clip_id: str, sent: bool) -> None:
         stamp = utcnow() if sent else None
-        with self.store.connect() as db:
+        with self.connect() as db:
             db.execute(
                 "UPDATE codex_assessments SET notice_claimed=?,notified_at=? WHERE clip_id=?",
                 (int(sent), stamp, clip_id),
@@ -364,12 +338,12 @@ class ClipStore:
 
     def live(self) -> bool:
         """監視プロセスが動画を収集できる状態か（直近のハートビートで判断）。"""
-        with self.store.connect() as db:
+        with self.connect() as db:
             row = db.execute("SELECT * FROM capture_status WHERE id=1").fetchone()
         return bool(row and row["healthy"] and time.time() - row["heartbeat"] < 10)
 
     def heartbeat(self, healthy: bool) -> None:
-        with self.store.connect() as db:
+        with self.connect() as db:
             db.execute(
                 "INSERT OR REPLACE INTO capture_status VALUES (1,?,?)", (time.time(), int(healthy))
             )
@@ -386,7 +360,7 @@ class ClipStore:
         if require_live and not self.live():
             raise ValueError("監視を動画保存有効で起動し、カメラ接続を確認してください")
         clip_id = uuid4().hex
-        with self.store.connect() as db:
+        with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             pending = db.execute(
                 "SELECT count(*) FROM clips WHERE status IN ('queued','recording','encoding')"
@@ -407,11 +381,11 @@ class ClipStore:
                 a.location AS codex_location
                 FROM clips c LEFT JOIN codex_assessments a ON a.clip_id=c.id
                 ORDER BY c.requested_at DESC"""
-        with self.store.connect() as db:
+        with self.connect() as db:
             return [dict(row) for row in db.execute(query)]
 
     def get(self, clip_id: str) -> ClipRow | None:
-        with self.store.connect() as db:
+        with self.connect() as db:
             row = db.execute("SELECT * FROM clips WHERE id=?", (clip_id,)).fetchone()
         return cast(ClipRow, dict(row)) if row else None
 
@@ -433,7 +407,7 @@ class ClipStore:
         }
         if not values or not values.keys() <= allowed:
             raise ValueError("更新項目が不正です")
-        with self.store.connect() as db:
+        with self.connect() as db:
             # 列名は上の allowed で許可したものだけ。値はプレースホルダーで渡す。
             db.execute(
                 "UPDATE clips SET " + ",".join(f"{k}=?" for k in values) + " WHERE id=?",  # noqa: S608
@@ -442,7 +416,7 @@ class ClipStore:
 
     def confirmation(self, clip_id: str) -> str | None:
         """動画から確定した記録の ID。"""
-        with self.store.connect() as db:
+        with self.connect() as db:
             row = db.execute(
                 "SELECT event_id FROM clip_confirmations WHERE clip_id=?", (clip_id,)
             ).fetchone()
@@ -472,7 +446,7 @@ class ClipStore:
     def record_videos(self) -> dict[str, builtins.list[str]]:
         """記録の ID ごとの、ひも付いた動画の ID。"""
         links: dict[str, builtins.list[str]] = {}
-        with self.store.connect() as db:
+        with self.connect() as db:
             for row in db.execute(
                 """SELECT c.id, COALESCE(k.event_id, c.event_id) AS record_id
                 FROM clips c LEFT JOIN clip_confirmations k ON k.clip_id=c.id
@@ -495,7 +469,7 @@ class ClipStore:
         location: str | None = None,
     ) -> None:
         """動画にラベルを付ける。record_id を渡すと排泄の記録としても確定する（"new" で新規）。"""
-        with self.store.connect() as db:
+        with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT * FROM clips WHERE id=?", (clip_id,)).fetchone()
             if (
@@ -701,7 +675,7 @@ class ClipCollector:
             lock.close()
             raise ValueError("別の動画監視が起動中です") from None
         self.capture_lock = lock
-        with self.store.store.connect() as db:
+        with self.store.connect() as db:
             # 前回の異常終了で残った処理中行を新しい録画と混ぜない。
             db.execute(
                 "UPDATE clips SET status='failed',error='前回の監視が終了したため保存できませんでした' WHERE status IN ('queued','recording','encoding')"
