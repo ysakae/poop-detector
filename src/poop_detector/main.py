@@ -8,7 +8,17 @@ from collections.abc import Sequence
 
 import cv2
 
-from .commands import diagnose, dog_model, notify, records, review, run, setup, show_config
+from .commands import (
+    benchmark,
+    diagnose,
+    dog_model,
+    notify,
+    records,
+    review,
+    run,
+    setup,
+    show_config,
+)
 from .commands.context import CommandContext, Handler
 from .config import Config, apply_timezone
 from .errors import UserError
@@ -27,6 +37,7 @@ HANDLERS: dict[str, Handler] = {
     "metrics": records.metrics,
     "test-notification": notify.test_notification,
     "video-review": review.video_review,
+    "video-benchmark": benchmark.video_benchmark,
     "circling-review": review.circling_review,
     "feedback": records.feedback,
     "acknowledge": records.acknowledge,
@@ -115,6 +126,18 @@ def parser() -> argparse.ArgumentParser:
     review.add_argument("--clip", help="判定する未ラベル動画のID")
     review.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
     review.add_argument("--detect-outside", action="store_true", help="登録した周辺範囲も判定")
+    compare = commands.add_parser("video-benchmark", help="ラベル付き動画で判定器・モデルを比較")
+    compare.add_argument("--dataset", required=True, help="評価する録画IDとタグを指定したJSON")
+    compare.add_argument(
+        "--judge", required=True, action="append", help="判定器:モデル名（複数指定）"
+    )
+    compare.add_argument("--output", required=True, help="結果を保存する新しいJSONファイル")
+    compare.add_argument("--scene", help="過去のROIと基準画像を入れたディレクトリ")
+    compare.add_argument("--track-tray", action="store_true", help="トレーの位置に追従")
+    compare.add_argument("--detect-outside", action="store_true", help="登録した周辺範囲も判定")
+    compare.add_argument(
+        "--send-images", action="store_true", help="選んだ判定器への評価画像の送信を許可"
+    )
     circling = commands.add_parser("circling-review", help="保存動画の旋回候補を分析（通知なし）")
     circling.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
     circling.add_argument("--clip", help="分析する動画のID。指定した動画は再分析できます")

@@ -10,7 +10,9 @@ import sqlite3
 import subprocess
 import tempfile
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import TracebackType
@@ -220,18 +222,50 @@ def write_sheet(
     return timestamps
 
 
-def inspect_clip(
+@dataclass(frozen=True)
+class PreparedClip:
+    """同じフレーム・指示を複数の判定器で共有するための一時入力。"""
+
+    folder: Path
+    prompt: str
+    images: tuple[str, ...]
+    schema: dict[str, Any]
+    timestamps: tuple[float, ...]
+    duration: float
+    include_location: bool
+    require_sample_time: bool
+    outside_stay: bool
+
+    def inspect(self, judge: "VideoJudge") -> Assessment:
+        output = judge.judge(self.folder, self.prompt, self.images, self.schema)
+        assessment = parse_assessment(output, self.duration, include_location=self.include_location)
+        if (
+            self.require_sample_time
+            and assessment.end_seconds is not None
+            and round(assessment.end_seconds, 2) not in self.timestamps
+        ):
+            return Assessment(
+                "uncertain",
+                "other",
+                None,
+                None,
+                "トレーの位置を確認できた画像に判定の根拠がありません",
+            )
+        if self.outside_stay and assessment.location == "tray":
+            return Assessment("none", "other", None, None, "トレー外での排泄は確認できません")
+        return assessment
+
+
+@contextmanager
+def prepare_clip(
     path: Path,
     row: ClipRow,
     roi: AnyROI,
-    judge: "VideoJudge | None" = None,
     *,
     tray_tracker: TrayTracker | None = None,
     outside_roi: AnyROI | None = None,
-) -> Assessment:
-    """動画をシートにして判定器に判定させ、結果を検証して返す。判定器の既定は Codex CLI。"""
-    if judge is None:
-        judge = default_judge()
+) -> Iterator[PreparedClip | Assessment]:
+    """シートと指示を作り、判定の間だけ一時ファイルを保持する。"""
     outside_stay = row.get("source") == "outside_stay"
     if outside_stay and outside_roi is None:
         raise ValueError("トレー外の動画には --detect-outside が必要です")
@@ -249,9 +283,10 @@ def inspect_clip(
                 difference_path=difference_path,
             )
         except TrayNotVisibleError:
-            return Assessment(
+            yield Assessment(
                 "uncertain", "other", None, None, "トレーの位置を確認できないため判定を保留しました"
             )
+            return
         context = TRAY_CONTEXT if outside_roi is None else OUTSIDE_CONTEXT
         prompt = context + "\n" + EVIDENCE_PROMPT
         images = ["frames.jpg"]
@@ -269,27 +304,35 @@ def inspect_clip(
         if tray_tracker is not None or outside_roi is not None:
             prompt += "\nend_seconds には画像に表示された秒数をそのまま記入してください。"
         schema = SCHEMA if outside_roi is None else OUTSIDE_SCHEMA
-        output = judge.judge(folder, prompt, images, schema)
-        assessment = parse_assessment(
-            output,
+        yield PreparedClip(
+            folder,
+            prompt,
+            tuple(images),
+            schema,
+            tuple(timestamps),
             row["duration"] or 0,
-            include_location=outside_roi is not None,
+            outside_roi is not None,
+            tray_tracker is not None or outside_roi is not None,
+            outside_stay,
         )
-        if (
-            (tray_tracker is not None or outside_roi is not None)
-            and assessment.end_seconds is not None
-            and round(assessment.end_seconds, 2) not in timestamps
-        ):
-            return Assessment(
-                "uncertain",
-                "other",
-                None,
-                None,
-                "トレーの位置を確認できた画像に判定の根拠がありません",
-            )
-        if outside_stay and assessment.location == "tray":
-            return Assessment("none", "other", None, None, "トレー外での排泄は確認できません")
-        return assessment
+
+
+def inspect_clip(
+    path: Path,
+    row: ClipRow,
+    roi: AnyROI,
+    judge: "VideoJudge | None" = None,
+    *,
+    tray_tracker: TrayTracker | None = None,
+    outside_roi: AnyROI | None = None,
+) -> Assessment:
+    """動画をシートにして判定器に判定させ、結果を検証して返す。判定器の既定は Codex CLI。"""
+    with prepare_clip(
+        path, row, roi, tray_tracker=tray_tracker, outside_roi=outside_roi
+    ) as prepared:
+        if isinstance(prepared, Assessment):
+            return prepared
+        return prepared.inspect(default_judge() if judge is None else judge)
 
 
 class VideoJudge(Protocol):
