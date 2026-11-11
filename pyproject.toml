@@ -76,17 +76,10 @@ no_implicit_reexport = true
 [[tool.mypy.overrides]]
 module = [
     "poop_detector.activity_gui",
-    "poop_detector.activity_map",
-    "poop_detector.camera",
-    "poop_detector.circling",
     "poop_detector.clip_gui",
     "poop_detector.codex_review",
-    "poop_detector.dog",
-    "poop_detector.early_alert",
     "poop_detector.label_gui",
-    "poop_detector.live_preview",
     "poop_detector.main",
-    "poop_detector.tray_tracking",
 ]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
