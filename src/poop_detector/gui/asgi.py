@@ -43,7 +43,7 @@ from .auth_api import webauthn
 from .exchange import HTML, Exchange
 from .pages import save_failed_page
 from .rate_limit import RateLimiter, RateLimits
-from .routes import ADMIN_ONLY, GET_ROUTES, POST_ROUTES, Form, required_role
+from .routes import GET_ROUTES, POST_ROUTES, Form, admin_only_page, required_role
 from .templating import VIEWER_ADMIN
 
 if TYPE_CHECKING:
@@ -286,7 +286,7 @@ async def dispatch(request: Request) -> Response:
         user is None or user.role != "admin"
     ):
         # 画面に入口を出さないだけに頼らず、ここで必ず断る。
-        return Response(ADMIN_ONLY, 403, media_type=HTML)
+        return Response(admin_only_page(gui.title), 403, media_type=HTML)
     if request.method == "GET":
         await run_in_threadpool(as_viewer, GET_ROUTES[url.path], exchange, parse_qs(url.query))
     else:

@@ -94,6 +94,18 @@ def post(*paths: str, role: Role = "member") -> Callable[[PostRoute], PostRoute]
     return register
 
 
+def admin_only_page(title: str | None) -> str:
+    """管理者でない人が管理者だけの操作を開いたときの画面。"""
+    return message_page(
+        "管理者だけの操作です",
+        f"{ADMIN_ONLY}。必要なときは、管理者に依頼してください。",
+        "/",
+        "トップへ戻る",
+        title=title,
+        wrap_link=True,
+    )
+
+
 def is_admin(handler: "Handler") -> bool:
     return handler.user is not None and handler.user.role == "admin"
 
@@ -453,7 +465,7 @@ def clip_form(handler: "Handler", form: Form) -> None:
     """
     unprotect = handler.path == "/clips/protect" and form.fields.get("protected") == "0"
     if unprotect and not is_admin(handler):
-        handler.respond(403, ADMIN_ONLY)
+        handler.respond(403, admin_only_page(handler.app.title))
         return
     _clip_post(handler, form)
     if unprotect and _succeeded(handler):

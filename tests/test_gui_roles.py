@@ -52,7 +52,8 @@ def test_members_are_refused_admin_pages(gui, path):
     member = login(server, role="member")
     status, _, body = exchange(server, "GET", path, headers=member, auth=False)
     assert status == 403
-    assert "管理者" in body.decode()
+    assert "管理者だけの操作です" in body.decode()
+    assert 'href="/"' in body.decode()
     assert exchange(server, "GET", path, headers=login(server), auth=False)[0] == 200
 
 
