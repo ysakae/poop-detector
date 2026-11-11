@@ -3,9 +3,11 @@
 すべての要求は外側から順に次を通る。
 1. SecurityHeaders：どの応答にも CSP などの安全のためのヘッダーを付ける。HTTPS で届いた
    要求には HSTS も付ける
-2. Admission：Host ヘッダーが自分の待ち受け先か外部の URL か（DNS リバインディング対策）、
+2. Throttle：接続元ごとに要求の回数を数え、上限を超えたら 429 を返す（rate_limit.py）
+3. Admission：Host ヘッダーが自分の待ち受け先か外部の URL か（DNS リバインディング対策）、
    POST の Origin が許した相手か（CSRF の多重の対策）を確かめ、起動時のトークン付き URL なら
-   トークンを Cookie に移して URL から取り除き（GET のみ）、閲覧用の Cookie を持つかを確かめる
+   サーバー側のセッションを始めて、その ID を Cookie に入れ、URL からトークンを取り除く
+   （GET のみ）。それ以外は Cookie のセッションが有効かを確かめる
 
 HTTPS かどうか（scope の scheme）は、信頼するプロキシからの X-Forwarded-Proto を uvicorn が
 反映した値を使う。
@@ -13,6 +15,7 @@ POST は加えて、本文の大きさと CSRF トークンを確かめてから
 """
 
 import hmac
+import logging
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlsplit
 
@@ -27,19 +30,22 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..web_address import Site
 from .access import (
-    has_session,
     redirect_without_token,
     session_cookie,
+    session_ids,
     token_in_query,
     token_matches,
 )
 from .exchange import HTML, Exchange
 from .pages import save_failed_page
+from .rate_limit import RateLimiter, RateLimits
 from .routes import GET_ROUTES, POST_ROUTES, Form
 
 if TYPE_CHECKING:
     from .server import GuiApp
 
+logger = logging.getLogger(__name__)
+TOO_MANY = "要求が多すぎます。しばらく待ってから開き直してください。"
 ACCESS_DENIED = (
     "アクセスできません。GUI を起動した端末に表示されたトークン付きの URL を開いてください。"
 )
@@ -91,6 +97,50 @@ class SecurityHeaders:
         await self.app(scope, receive, send_with_headers)
 
 
+def client_address(scope: Scope) -> str:
+    """接続元の IP アドレス。信頼するプロキシの背後では、uvicorn が X-Forwarded-For を反映する。"""
+    client = scope.get("client")
+    return str(client[0]) if client else "unknown"
+
+
+class Throttle:
+    """接続元ごとに、すべての要求・POST・起動トークン付きの URL の回数を制限する。"""
+
+    def __init__(self, app: ASGIApp, limits: RateLimits) -> None:
+        self.app = app
+        self.limits = limits
+        self.limiter = RateLimiter()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        wait = self.wait_seconds(scope)
+        if wait:
+            response = Response(TOO_MANY, 429, {"Retry-After": str(wait)}, media_type=HTML)
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+    def wait_seconds(self, scope: Scope) -> int:
+        client = client_address(scope)
+        kinds = [("all", self.limits.all)]
+        if scope["method"] == "POST":
+            kinds.append(("post", self.limits.post))
+        if scope["method"] == "GET" and token_in_query(
+            scope.get("query_string", b"").decode("latin-1")
+        ):
+            kinds.append(("token", self.limits.token))
+        for kind, rule in kinds:
+            wait = self.limiter.hit(client, kind, rule)
+            if wait:
+                logger.warning(
+                    "GUI への要求が多すぎるため断りました（接続元 %s、%s）", client, kind
+                )
+                return wait
+        return 0
+
+
 class Admission:
     """Host・起動時のトークン・閲覧用の Cookie を確かめ、通さない要求にはここで応答する。"""
 
@@ -103,13 +153,13 @@ class Admission:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        response = self.refusal(scope)
+        response = await self.refusal(scope)
         if response is None:
             await self.app(scope, receive, send)
         else:
             await response(scope, receive, send)
 
-    def refusal(self, scope: Scope) -> Response | None:
+    async def refusal(self, scope: Scope) -> Response | None:
         """通さないときの応答。通すなら None。"""
         headers = Headers(scope=scope)
         if (headers.get("host") or "").lower() not in self.site.hosts:
@@ -120,21 +170,33 @@ class Admission:
         url = urlsplit(request_path(scope))
         candidate = token_in_query(url.query) if scope["method"] == "GET" else None
         if candidate is not None:
-            return self.accept_token(candidate, url.path, url.query, scope.get("scheme") == "https")
-        if not has_session(headers.get("cookie"), self.gui.access_token):
+            secure = scope.get("scheme") == "https"
+            return await self.accept_token(candidate, url.path, url.query, secure, scope)
+        if not await run_in_threadpool(self.has_session, headers.get("cookie")):
             return Response(ACCESS_DENIED, 403, media_type=HTML)
         return None
 
-    def accept_token(self, candidate: str, path: str, query: str, secure: bool) -> Response:
-        """トークン付き URL を Cookie に移し、トークンを除いた URL へ移動させる。"""
+    def has_session(self, cookie_header: str | None) -> bool:
+        """Cookie のセッションのどれかが有効か（データベースを読むのでスレッドで呼ぶ）。"""
+        return any(self.gui.sessions.check(value) for value in session_ids(cookie_header))
+
+    async def accept_token(
+        self, candidate: str, path: str, query: str, secure: bool, scope: Scope
+    ) -> Response:
+        """トークン付き URL でセッションを始め、トークンを除いた URL へ移動させる。"""
         if not token_matches(candidate, self.gui.access_token):
+            logger.warning(
+                "GUI の起動トークンが一致しない要求を断りました（接続元 %s）", client_address(scope)
+            )
             return Response(ACCESS_DENIED, 403, media_type=HTML)
+        session_id = await run_in_threadpool(self.gui.sessions.create)
+        max_age = self.gui.sessions.policy.max_age_seconds
         return Response(
             b"",
             303,
             {
                 "Location": redirect_without_token(path, query),
-                "Set-Cookie": session_cookie(self.gui.access_token, secure=secure),
+                "Set-Cookie": session_cookie(session_id, secure=secure, max_age=max_age),
             },
         )
 
@@ -167,7 +229,9 @@ def not_found(method: str) -> Response:
 async def dispatch(request: Request) -> Response:
     """GET_ROUTES・POST_ROUTES の関数を、要求ごとの Exchange で呼ぶ。"""
     gui: GuiApp = request.app.state.gui
-    exchange = Exchange(gui, request_path(request.scope), request.headers)
+    exchange = Exchange(
+        gui, request_path(request.scope), request.headers, request.scope.get("scheme", "http")
+    )
     url = urlsplit(exchange.path)
     if request.method == "GET":
         get_route = GET_ROUTES.get(url.path)
@@ -194,12 +258,13 @@ async def unknown_path(request: Request, _error: Exception) -> Response:
     return not_found(request.method)
 
 
-def create_app(gui: "GuiApp", site: Site) -> Starlette:
+def create_app(gui: "GuiApp", site: Site, limits: RateLimits) -> Starlette:
     """ルートの表から ASGI アプリを作る。表に後から足したルートも dispatch が見つける。"""
     app = Starlette(
         routes=[Route("/{path:path}", dispatch, methods=["GET", "POST"])],
         middleware=[
             Middleware(SecurityHeaders),
+            Middleware(Throttle, limits=limits),
             Middleware(Admission, gui=gui, site=site),
         ],
         exception_handlers={404: unknown_path, 405: unknown_path},

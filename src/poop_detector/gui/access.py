@@ -1,7 +1,8 @@
-"""GUI の閲覧に使う、起動ごとのアクセストークンと Cookie の扱い。
+"""GUI の起動トークンと、セッションの Cookie の扱い。
 
-起動時に作るトークンを URL の `token` で一度だけ受け取り、HttpOnly・SameSite=Strict の
-Cookie に移す。以後は画面・画像・動画・スクリプトを含むすべての要求で Cookie を検査する。
+起動時に作るトークンを URL の `token` で一度だけ受け取り、サーバー側のセッション
+（sessions.SessionStore）を始めて、その ID を HttpOnly・SameSite=Strict の Cookie に入れる。
+以後は画面・画像・動画・スクリプトを含むすべての要求で、Cookie のセッションを確かめる。
 """
 
 import hmac
@@ -12,27 +13,33 @@ COOKIE_NAME = "poop_detector_session"
 TOKEN_PARAM = "token"  # noqa: S105
 
 
-def session_cookie(token: str, *, secure: bool = False) -> str:
-    """Set-Cookie に入れる値。ブラウザーを閉じると消えるセッション Cookie にする。
+def session_cookie(session_id: str, *, secure: bool = False, max_age: int | None = None) -> str:
+    """Set-Cookie に入れる値。
 
     secure は HTTPS で届いた要求のとき。HTTP では送られなくなるので、同じマシンからの
-    HTTP の接続では付けない。
+    HTTP の接続では付けない。max_age を省くと、ブラウザーを閉じると消える Cookie になる。
     """
-    cookie = f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Strict"
+    cookie = f"{COOKIE_NAME}={session_id}; Path=/; HttpOnly; SameSite=Strict"
+    if max_age is not None:
+        cookie += f"; Max-Age={max_age}"
     return f"{cookie}; Secure" if secure else cookie
 
 
-def has_session(cookie_header: str | None, token: str) -> bool:
-    """Cookie ヘッダーに有効なセッションが含まれるか。
+def expired_cookie(*, secure: bool = False) -> str:
+    """ログアウトで、ブラウザーのセッションの Cookie を消す Set-Cookie の値。"""
+    return session_cookie("", secure=secure, max_age=0)
 
-    同じホストの別ポートが残した古い値と並ぶことがあるため、同名の値をすべて比べる。
+
+def session_ids(cookie_header: str | None) -> list[str]:
+    """Cookie ヘッダーに含まれるセッションの ID。
+
+    同じホストの別ポートが残した古い値と並ぶことがあるため、同名の値をすべて返す。
     """
-    found = False
+    found = []
     for part in (cookie_header or "").split(";"):
         name, _, value = part.strip().partition("=")
-        if name == COOKIE_NAME:
-            # 短絡させず、一致の位置で処理時間が変わらないようにする
-            found |= hmac.compare_digest(value.encode(), token.encode())
+        if name == COOKIE_NAME and value:
+            found.append(value)
     return found
 
 

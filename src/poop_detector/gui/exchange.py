@@ -27,6 +27,8 @@ class Exchange:
     app: "GuiApp"
     path: str
     headers: Headers
+    # 信頼するプロキシの背後では、X-Forwarded-Proto を反映した値（http か https）。
+    scheme: str = "http"
     response: Response | None = field(default=None, init=False)
 
     def respond(

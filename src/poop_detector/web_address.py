@@ -85,6 +85,8 @@ class WebOptions:
     port: int = DEFAULT_PORT
     public_url: str = ""
     trusted_proxies: str = DEFAULT_TRUSTED_PROXIES
+    session_idle_hours: float = 168
+    session_max_days: float = 30
 
     @classmethod
     def from_config(cls, config: "Config", *, port: int | None = None) -> Self:
@@ -94,6 +96,8 @@ class WebOptions:
             port=config.gui_port if port is None else port,
             public_url=config.gui_public_url,
             trusted_proxies=config.gui_trusted_proxies,
+            session_idle_hours=config.gui_session_idle_hours,
+            session_max_days=config.gui_session_max_days,
         )
 
 

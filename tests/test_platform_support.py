@@ -5,6 +5,7 @@ import logging
 import threading
 
 import pytest
+from support import session_cookie
 
 from poop_detector.main import main
 from poop_detector.platform_support import (
@@ -74,7 +75,7 @@ def test_gui_header_does_not_assume_mac(tmp_path):
             "/",
             headers={
                 "Host": f"127.0.0.1:{server.server_port}",
-                "Cookie": f"poop_detector_session={server.access_token}",
+                **session_cookie(server),
             },
         )
         page = conn.getresponse().read().decode()

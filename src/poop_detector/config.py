@@ -335,6 +335,22 @@ SETTINGS += (
         valid_proxies,
         "転送のヘッダーを信頼するプロキシの IP アドレスかネットワーク（カンマ区切り。* は不可）",
     ),
+    Setting(
+        "gui_session_idle_hours",
+        "gui",
+        "session_idle_hours",
+        float,
+        _number(1, 720),
+        "1〜720 の数（操作がないままこの時間が過ぎるとログアウト）",
+    ),
+    Setting(
+        "gui_session_max_days",
+        "gui",
+        "session_max_days",
+        float,
+        _number(1, 365),
+        "1〜365 の数（ログインからこの日数が過ぎるとログアウト）",
+    ),
 )
 SETTINGS_BY_ATTR = {setting.attr: setting for setting in SETTINGS}
 SETTINGS_BY_NAME = {(setting.section, setting.key): setting for setting in SETTINGS}
@@ -399,6 +415,8 @@ class Config:
     gui_port: int = DEFAULT_PORT
     gui_public_url: str = ""
     gui_trusted_proxies: str = DEFAULT_TRUSTED_PROXIES
+    gui_session_idle_hours: float = 168
+    gui_session_max_days: float = 30
 
     def __post_init__(self) -> None:
         for setting in SETTINGS:

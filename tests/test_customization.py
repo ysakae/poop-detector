@@ -10,6 +10,7 @@ from datetime import date
 from types import SimpleNamespace
 
 import pytest
+from support import session_cookie
 
 from poop_detector.config import Config, apply_timezone, load_connection_settings
 from poop_detector.main import main
@@ -241,7 +242,7 @@ def gui_page(tmp_path, **kwargs):
                 path,
                 headers={
                     "Host": f"127.0.0.1:{server.server_port}",
-                    "Cookie": f"poop_detector_session={server.access_token}",
+                    **session_cookie(server),
                 },
             )
             pages[path] = conn.getresponse().read().decode()

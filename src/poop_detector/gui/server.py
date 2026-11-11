@@ -24,6 +24,7 @@ import uvicorn
 
 from ..capture.live_preview import LivePreview
 from ..errors import UserError
+from ..records.database import events_database
 from ..records.events import Store
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
@@ -31,8 +32,11 @@ from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
 from .access import launch_url
 from .asgi import create_app
 from .pages import page_title
+from .rate_limit import RateLimits
+from .sessions import SessionPolicy, SessionStore
 
 logger = logging.getLogger(__name__)
+DEFAULT_LIMITS = RateLimits()
 
 # 停止の要求から、処理中の応答（動画の配信など）を待つ上限の秒数。
 SHUTDOWN_GRACE_SECONDS = 5
@@ -48,8 +52,9 @@ class GuiApp:
     preview: LivePreview
     # 保存操作の CSRF 対策に使い、画面のフォームに埋め込む。
     csrf_token: str
-    # 閲覧を含むすべての要求の認証に使い、Cookie で受け取る。
+    # 起動時の URL で一度だけ受け取り、サーバー側のセッションを始める。
     access_token: str
+    sessions: SessionStore
     title: str
     disk_mb: float
 
@@ -60,7 +65,9 @@ class GuiServer:
     ソケットは作った時点で待ち受けを始めるので、serve_forever の前に届いた接続も待たせておける。
     """
 
-    def __init__(self, app: GuiApp, listener: socket.socket, web: WebOptions) -> None:
+    def __init__(
+        self, app: GuiApp, listener: socket.socket, web: WebOptions, limits: RateLimits
+    ) -> None:
         self.app = app
         self.socket = listener
         host, port = listener.getsockname()[:2]
@@ -69,7 +76,7 @@ class GuiServer:
         self.site = Site(port, web.public_url)
         proxies = proxy_list(web.trusted_proxies)
         config = uvicorn.Config(
-            create_app(app, self.site),
+            create_app(app, self.site, limits),
             # 信頼するプロキシからの X-Forwarded-For・X-Forwarded-Proto だけを反映する。
             proxy_headers=bool(proxies),
             forwarded_allow_ips=proxies or None,
@@ -143,10 +150,12 @@ def make_server(
     disk_mb: float = DEFAULT_DISK_MIB,
     pet_name: str = "",
     web: WebOptions = LOCAL_ONLY,
+    limits: RateLimits = DEFAULT_LIMITS,
 ) -> GuiServer:
     """GUI のサーバーを作る。待ち受けのアドレスと外部の URL は web、ポートは port を使う。
 
-    起動ごとに、保存操作の CSRF トークンと、閲覧を含むすべての要求に使うアクセストークンを作る。
+    起動ごとに、保存操作の CSRF トークンと、セッションを始めるための起動トークンを作る。
+    limits は要求の回数の上限（テストで小さくする）。
     """
     listener = listen(web.host, port)
     if not ipaddress.ip_address(web.host).is_loopback and not web.public_url:
@@ -162,10 +171,13 @@ def make_server(
         preview=LivePreview(root),
         csrf_token=secrets.token_urlsafe(32),
         access_token=secrets.token_urlsafe(32),
+        sessions=SessionStore(
+            events_database(root), SessionPolicy(web.session_idle_hours, web.session_max_days)
+        ),
         title=page_title(pet_name),
         disk_mb=disk_mb,
     )
-    return GuiServer(app, listener, web)
+    return GuiServer(app, listener, web, limits)
 
 
 def announce(
