@@ -4,7 +4,7 @@ from typing import Literal, TypeAlias
 
 from .difference import ObservationKind
 
-MachineState: TypeAlias = Literal["EMPTY", "OCCUPIED", "VERIFYING", "SUSPECTED", "ACKNOWLEDGED"]
+MachineState: TypeAlias = Literal["EMPTY", "OCCUPIED", "VERIFYING", "SUSPECTED"]
 
 
 class Machine:
@@ -23,10 +23,6 @@ class Machine:
         self.clear_started = None
         if not self.latched:
             self.state = "OCCUPIED"
-
-    def acknowledge(self) -> None:
-        if self.latched:
-            self.state = "ACKNOWLEDGED"
 
     def update(self, kind: ObservationKind, now: float) -> bool:
         """判定を1つ進め、通知すべきときだけ True を返す。"""

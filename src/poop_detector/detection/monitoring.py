@@ -368,7 +368,6 @@ class Monitor:
         self.state.machine = self._new_machine()
         self.state.started_at = None
         self.state.settled_since = None
-        self.store.set_monitor_state("SUSPECTED", event_id)
         if self.collector is not None:
             self.collector.trigger(event_id)
         if not self.review_notifications and self.notifier.send():

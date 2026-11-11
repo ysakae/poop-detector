@@ -57,8 +57,6 @@ def feedback(args: argparse.Namespace, context: CommandContext) -> int:
 def acknowledge(args: argparse.Namespace, context: CommandContext) -> int:
     store = Store(context.root)
     store.update(args.event_id, acknowledged=1)
-    if store.monitor_state()["event_id"] == args.event_id:
-        store.set_monitor_state("ACKNOWLEDGED", args.event_id)
     return 0
 
 
