@@ -77,6 +77,9 @@ def test_monitor_observes_raw_frame_even_when_tray_is_unavailable(tmp_path):
     class Observer:
         detector = Model()
 
+        def predict(self, frame):
+            return self.detector.predict(frame)
+
         def reset(self):
             pass
 
