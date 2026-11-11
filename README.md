@@ -28,19 +28,28 @@
 
 ## 機能一覧
 
-| 機能 | 起動方法 | 説明 |
-|---|---|---|
-| 差分による排泄候補の検知 | `run` | [判定の仕組み](docs/detection.md) |
-| 多角形の監視領域・トレー追従 | `setup-roi --polygon`、`--track-tray` | [初期設定](docs/setup.md) |
-| macOS 通知・ntfy 通知 | 既定、`.env` で切り替え | [通知](docs/notifications.md) |
-| 録画を待たない見守り通知 | `--early-alert` | [判定の仕組み](docs/detection.md#録画を待たずトイレの様子を知らせる) |
-| ラベル付けと排泄の記録 | `label-gui` | [記録とラベル付け](docs/records.md) |
-| 検知前後の動画の保存 | 既定で有効 | [動画](docs/video.md) |
-| Codex による動画の判定 | `--codex` | [動画](docs/video.md#codexの判定候補と通知を使う) |
-| 犬の存在・出入りの検出 | `--dog` | [犬の検出](docs/dog.md) |
-| トレー外の排泄候補 | `--detect-outside` | [犬の検出](docs/dog.md#トレー外の排泄候補を検知する) |
-| サークルの行動マップ | `--activity-map` | [犬の検出](docs/dog.md#サークルの行動マップ) |
-| 保存動画の旋回候補の分析 | `circling-review` | [犬の検出](docs/dog.md#保存動画から旋回候補を確認する) |
+機能は成熟度で3つに分けています。
+
+- **中核**：既定で動き、常に動作を確認している機能
+- **任意**：設定かフラグで有効にする機能。前提となる準備があります
+- **実験的**：分析や判定の方法を試している段階の機能。結果の精度は確かめておらず、今後変わったり外れたりすることがあります
+
+| 区分 | 機能 | 有効にする方法 | 前提と制限 | 説明 |
+|---|---|---|---|---|
+| 中核 | 差分による排泄候補の検知 | `run` | 空のトイレの基準画像と監視範囲の登録が必要。排泄物そのものは識別しない | [判定の仕組み](docs/detection.md) |
+| 中核 | macOS 通知・ntfy 通知 | 既定（`.env` で ntfy に切り替え） | macOS 以外では ntfy の設定が必要 | [通知](docs/notifications.md) |
+| 中核 | ラベル付けと排泄の記録 | `label-gui` | 同じマシンのブラウザーで使う。起動ごとのトークン付き URL で開く | [記録とラベル付け](docs/records.md) |
+| 中核 | 検知前後の動画の保存 | 既定で有効（`clips.enabled`） | FFmpeg の `libx264` が必要。常時録画はしない | [動画](docs/video.md) |
+| 任意 | 多角形の監視範囲 | `setup-roi --polygon` | 登録には画面のあるマシンが必要 | [初期設定](docs/setup.md) |
+| 任意 | トレー追従 | `features.track_tray`、`--track-tray` | トレーの縁が映っていること。縁が隠れている間は判定を保留する | [初期設定](docs/setup.md#カメラやトレーの小さなずれに追従する) |
+| 任意 | 録画を待たない見守り通知 | `features.early_alert`、`--early-alert` | 滞在を知らせるだけで、排泄の判定ではない | [判定の仕組み](docs/detection.md#録画を待たずトイレの様子を知らせる) |
+| 任意 | Codex による動画の判定 | `features.codex`、`--codex` | Codex CLI のログインが必要。動画から切り出した画像を Codex の提供元に送る | [動画](docs/video.md#codexの判定候補と通知を使う) |
+| 任意 | 犬の存在・出入りの検出 | `dog.enabled`、`--dog` | `setup-dog-model` でモデルを取得する。実映像での検出精度は確かめていない | [犬の検出](docs/dog.md) |
+| 任意 | サークルの行動マップ | `features.activity_map`、`--activity-map` | 床面の登録と犬の検出が必要 | [犬の検出](docs/dog.md#サークルの行動マップ) |
+| 実験的 | トレー外の排泄候補 | `features.detect_outside`、`--detect-outside` | Codex による判定と犬の検出が必要。精度は確かめていない | [犬の検出](docs/dog.md#トレー外の排泄候補を検知する) |
+| 実験的 | 保存動画の旋回候補の分析 | `circling-review` | 保存済みの動画の分析だけで、監視や通知にはつながっていない | [犬の検出](docs/dog.md#保存動画から旋回候補を確認する) |
+
+普段使う機能は `config/config.yaml` の `features` に書いておけば、起動は `poop-detector run` だけで済みます（[初期設定](docs/setup.md#使う機能を設定ファイルで有効にする)）。
 
 ## 必要なもの
 
