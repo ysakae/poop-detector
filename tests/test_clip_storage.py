@@ -7,8 +7,9 @@ import numpy as np
 from support import request, submit
 
 from poop_detector.clip_storage import MIB, cleanup_selected
-from poop_detector.clips import ClipCollector, ClipStore
+from poop_detector.clips import ClipStore
 from poop_detector.gui.server import make_server
+from poop_detector.recording import ClipCollector
 
 
 def test_short_visit_keeps_prebuffer_and_records_after_exit(tmp_path):
