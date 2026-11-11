@@ -65,27 +65,29 @@ def test_route_without_a_response_fails_without_details(gui):
         GET_ROUTES.pop("/silent", None)
 
 
-@pytest.mark.parametrize(
-    ("body", "headers"),
-    [
-        (b"csrf=x", {**FORM, "Content-Length": "abc"}),
-        (b"csrf=%ff\xff", FORM),
-    ],
-)
-def test_unreadable_forms_are_rejected_before_the_route(gui, body, headers):
+def test_undecodable_form_is_rejected_before_the_route(gui):
     server, _, _ = gui
-    assert exchange(server, "POST", "/save", body, headers)[0] == 400
+    assert exchange(server, "POST", "/save", b"csrf=%ff\xff", FORM)[0] == 400
 
 
-def test_read_form_stops_at_a_body_longer_than_declared():
-    chunks = [b"csrf=", b"x" * 100]
+def read(chunks, length):
+    """read_form を、HTTP の処理を通さずに直接呼ぶ。"""
 
     async def receive():
         body = chunks.pop(0)
         return {"type": "http.request", "body": body, "more_body": bool(chunks)}
 
-    scope = {"type": "http", "method": "POST", "headers": [(b"content-length", b"10")]}
-    assert asyncio.run(read_form(Request(scope, receive))) is None
+    scope = {"type": "http", "method": "POST", "headers": [(b"content-length", length)]}
+    return asyncio.run(read_form(Request(scope, receive)))
+
+
+def test_read_form_rejects_a_content_length_that_is_not_a_number():
+    # HTTP 経由では uvicorn（h11）が先に断って接続を閉じるので、直接確かめる。
+    assert read([b"csrf=x"], b"abc") is None
+
+
+def test_read_form_stops_at_a_body_longer_than_declared():
+    assert read([b"csrf=", b"x" * 100], b"10") is None
 
 
 @pytest.mark.parametrize("middleware", [SecurityHeaders, Admission])
