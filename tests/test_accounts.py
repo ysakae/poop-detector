@@ -206,3 +206,100 @@ def test_members_cannot_be_invited_until_roles_are_enforced(cli, capsys):
     assert cli.run("invite", "家族B", "--role", "member") == 2
     accounts = Accounts(events_database(cli.root))
     assert accounts.users.by_name("家族B") is None
+
+
+def test_mail_invite_reissue_cancel_and_duplicate(store):
+    accounts = store.accounts
+    invites = accounts.enrollments
+    first = invites.issue_email(
+        " Family@Example.org ", name="家族A", role="admin", created_by="cli"
+    )
+    assert invites.peek(first).email == "family@example.org"
+    with pytest.raises(InvalidInputError, match="再送"):
+        invites.issue_email("family@example.org", name="別名", role="admin", created_by="cli")
+    second = invites.issue_email("family@example.org", created_by="cli", resend=True)
+    assert invites.peek(first) is None
+    assert invites.peek(second).name == "家族A"
+    assert invites.cancel_email("FAMILY@example.org")
+    assert invites.peek(second) is None
+    accounts.users.create("登録済み", "admin", email="family@example.org")
+    with pytest.raises(InvalidInputError, match="登録"):
+        invites.issue_email("family@example.org", created_by="cli", resend=True)
+
+
+def test_verified_email_is_bound_to_signed_in_user(store):
+    accounts = store.accounts
+    owner = accounts.users.create("所有者", "admin")
+    other = accounts.users.create("別の人", "admin")
+    code = accounts.enrollments.issue_email("Owner@example.org", created_by=owner, user_id=owner)
+    assert accounts.enrollments.peek(code) is None
+    assert not accounts.enrollments.verify_email(code, other)
+    assert accounts.enrollments.verify_email(code, owner)
+    assert not accounts.enrollments.verify_email(code, owner)
+    assert accounts.users.by_email("OWNER@example.org").id == owner
+    assert accounts.users.get(other).email is None
+
+
+def test_cli_invites_by_email_without_printing_link(cli, capsys, monkeypatch):
+    from poop_detector.gui import invitation_mail
+
+    messages = []
+    monkeypatch.setattr(
+        invitation_mail,
+        "_send",
+        lambda recipient, subject, body: messages.append((recipient, subject, body)),
+    )
+    cli.config.write_text(
+        f"data_dir: {cli.root}\ngui: {{public_url: 'https://toilet.example.com'}}\n"
+    )
+    assert cli.run("invite", "Family@example.org", "--name", "家族", "--role", "admin") == 0
+    assert "code=" not in capsys.readouterr().out
+    assert messages[0][0] == "family@example.org"
+    assert "https://toilet.example.com/enroll?code=" in messages[0][2]
+    assert cli.run("cancel-invite", "family@example.org") == 0
+
+
+def test_only_one_concurrent_invitation_per_address(store):
+    from concurrent.futures import ThreadPoolExecutor
+
+    def invite(name):
+        try:
+            return store.accounts.enrollments.issue_email(
+                "family@example.org", name=name, created_by="cli"
+            )
+        except InvalidInputError:
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(invite, ["家族A", "家族B"]))
+    assert sum(code is not None for code in results) == 1
+
+
+def test_v5_database_preserves_passkeys_and_unused_enrollment(tmp_path):
+    from poop_detector.gui.accounts import _digest
+    from poop_detector.records.database import MIGRATIONS
+
+    with sqlite3.connect(tmp_path / "events.sqlite3") as db:
+        for migration in MIGRATIONS[:5]:
+            migration(db)
+        db.execute("PRAGMA user_version = 5")
+        db.execute(
+            "INSERT INTO users (id, name, role, created_at) VALUES ('old', '家族A', 'admin', '2026')"
+        )
+        db.execute(
+            "INSERT INTO passkeys (id, user_id, rp_id, public_key, sign_count, transports, label, "
+            "created_at) VALUES ('key', 'old', 'localhost', X'AB', 3, '[]', 'Mac', '2026')"
+        )
+        db.execute(
+            "INSERT INTO enrollments (id, role, name, user_id, created_by, created_at, expires_at) "
+            "VALUES (?, 'admin', '家族A', 'old', 'cli', '2026', '2999')",
+            (_digest("legacy-code"),),
+        )
+    accounts = Accounts(events_database(tmp_path))
+    assert accounts.users.get("old").email is None
+    assert accounts.passkeys.get("key").sign_count == 3
+    assert accounts.enrollments.peek("legacy-code").user_id == "old"
+    code = accounts.enrollments.issue_email("owner@example.org", created_by="old", user_id="old")
+    assert accounts.enrollments.verify_email(code, "old")
+    assert accounts.users.by_email("owner@example.org").id == "old"
+    assert accounts.passkeys.get("key").user_id == "old"

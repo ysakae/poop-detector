@@ -199,6 +199,15 @@ def migrate_to_v5(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v6(db: sqlite3.Connection) -> None:
+    """ユーザーと招待にメールアドレスを追加し、既存の ID を維持する。"""
+    db.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    db.execute("CREATE UNIQUE INDEX users_by_email ON users(email)")
+    db.execute("ALTER TABLE enrollments ADD COLUMN email TEXT")
+    db.execute("ALTER TABLE enrollments ADD COLUMN revoked_at TEXT")
+    db.execute("CREATE INDEX enrollments_by_email ON enrollments(email)")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -206,6 +215,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v3,
     migrate_to_v4,
     migrate_to_v5,
+    migrate_to_v6,
 )
 LATEST_VERSION = len(MIGRATIONS)
 
