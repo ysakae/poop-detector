@@ -77,3 +77,24 @@ def test_gui_header_does_not_assume_mac(tmp_path):
         thread.join()
     assert "Mac" not in page
     assert "このマシン内で保存" in page
+
+
+def test_any_submodule_import_silences_opencv_logs_first():
+    """RTSP の認証情報がログに出ないよう、どのモジュールから読み込んでも先に抑制する。"""
+    import os
+    import subprocess
+    import sys
+
+    code = (
+        "import os, sys\n"
+        "import poop_detector.camera\n"
+        "print(os.environ['OPENCV_LOG_LEVEL'], os.environ['OPENCV_FFMPEG_LOGLEVEL'])\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={key: value for key, value in os.environ.items() if not key.startswith("OPENCV_")},
+    )
+    assert result.stdout.split() == ["SILENT", "-8"]

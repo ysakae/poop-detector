@@ -7,7 +7,7 @@ from support import FrameSource, SilentNotifier, spot_scene
 from poop_detector.camera import Camera
 from poop_detector.config import Config
 from poop_detector.events import Store
-from poop_detector.main import monitor
+from poop_detector.monitoring import monitor
 from poop_detector.roi import ROI
 
 

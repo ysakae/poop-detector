@@ -129,7 +129,7 @@ def test_outside_notice_is_distinct_and_does_not_mark_tray_event(gui):
 
 
 def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path, monkeypatch):
-    from poop_detector import main
+    from poop_detector import monitoring
     from poop_detector.config import Config
     from poop_detector.dog import DogState
 
@@ -165,11 +165,11 @@ def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path,
         def send(self):
             raise AssertionError("犬が立ち止まっただけで通知しない")
 
-    monkeypatch.setattr(main.time, "monotonic", lambda: now)
-    monkeypatch.setattr(main.time, "sleep", lambda _: None)
+    monkeypatch.setattr(monitoring.time, "monotonic", lambda: now)
+    monkeypatch.setattr(monitoring.time, "sleep", lambda _: None)
     collector = Collector()
     assert (
-        main.monitor(
+        monitoring.monitor(
             Camera(),
             tray,
             tray.crop(frame),

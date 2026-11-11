@@ -14,8 +14,9 @@ from poop_detector import main as cli
 from poop_detector.clips import ClipStore
 from poop_detector.config import CONNECTION_KEYS
 from poop_detector.events import Store
-from poop_detector.main import main, save_baseline
+from poop_detector.main import main
 from poop_detector.roi import ROI
+from poop_detector.scene import save_baseline
 
 pytestmark = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="FFmpeg が必要です")
 

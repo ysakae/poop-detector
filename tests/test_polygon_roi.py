@@ -44,8 +44,8 @@ def test_invalid_polygon_is_rejected(points, message):
 
 
 def test_polygon_baseline_metadata_roundtrip(tmp_path):
-    from poop_detector.main import load_baseline, save_baseline
     from poop_detector.roi import PolygonROI
+    from poop_detector.scene import load_baseline, save_baseline
 
     roi = PolygonROI.from_pixels([(10, 10), (90, 20), (80, 90), (20, 80)], 101, 101)
     frame = np.full((101, 101, 3), 150, np.uint8)

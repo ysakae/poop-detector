@@ -8,8 +8,9 @@ from support import request
 
 from poop_detector.circling import CirclingDetector
 from poop_detector.clips import ClipStore
-from poop_detector.main import main, save_baseline, scene_signature
+from poop_detector.main import main
 from poop_detector.roi import ROI
+from poop_detector.scene import save_baseline, scene_signature
 
 
 def circle_points():

@@ -71,8 +71,8 @@ def test_polygon_boundary_occlusion_and_lighting():
 
 
 def test_masked_baseline_metadata_is_distinct_from_warp(tmp_path):
-    from poop_detector.main import load_baseline, save_baseline
     from poop_detector.roi import MaskedROI, PolygonROI
+    from poop_detector.scene import load_baseline, save_baseline
 
     points = [(10, 10), (90, 10), (90, 90), (10, 90)]
     roi = MaskedROI.from_pixels(points, 101, 101)
