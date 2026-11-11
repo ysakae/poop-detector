@@ -12,6 +12,21 @@
 - `activity.sqlite3` は行動マップ専用の別データベースです。
 - 排他は `fcntl.flock` のロックファイル（`.capture.lock`、`.codex.lock`、`.activity.lock`）で行います。動画収集を伴う監視は同時に1プロセスだけです。
 
+## CLI の構成
+
+`main.py` は引数の定義（`parser()`）と振り分けだけを受け持ちます。各サブコマンドは `set_defaults(handler=...)` で `commands/` の関数に結び付きます。
+
+| モジュール | サブコマンド |
+|---|---|
+| `commands/setup.py` | `check-camera`、`setup-roi`、`setup-activity-map`、`capture-baseline` |
+| `commands/run.py` | `run` |
+| `commands/records.py` | `events`、`metrics`、`feedback`、`acknowledge`、`missed`、`record`、`records`、`label-gui` |
+| `commands/notify.py` | `test-notification` |
+| `commands/review.py` | `codex-review`、`circling-review` |
+| `commands/dog_model.py` | `setup-dog-model`、`check-dog` |
+
+処理は `(args, CommandContext)` を受け取り、終了コードを返します。`CommandContext` は設定とデータの保存先の場所を持ちます。設定は書き換えず、`--dog` などを反映した新しい文脈を作ります（`with_dog_detection`）。ROI と基準画像の読み込み、通知先の選択、カメラの接続など、複数のコマンドで使う準備は `commands/context.py` にあります。サブコマンドを足すときは、`parser()` に引数を、`HANDLERS` に処理を加えてください。
+
 ## 監視ループ（`monitoring.monitor`）
 
 `LatestCamera` が取得専用スレッドで RTSP を読み続け、最新の1フレームだけを保持します。全フレームはコールバックで `ClipCollector.feed`（リングバッファ）と `LivePreview` に渡り、`monitor` は `config.fps` の間隔で最新フレームだけを処理します。1フレームの流れは次のとおりです。
@@ -61,8 +76,8 @@
 
 ## 認証情報をログに出さない仕組み
 
-RTSP URL には認証情報が含まれます。パッケージの `__init__.py` が、どのモジュールよりも先に OpenCV と FFmpeg のログを抑制します。`main()` の最上位の例外処理は、外部例外の文字列を表示せず固定の文言だけを出します。この import 順と例外処理を崩さないでください。エラーの詳細を出したい場合も、例外メッセージをそのまま表示しないでください。
+RTSP URL には認証情報が含まれます。パッケージの `__init__.py` が、どのモジュールよりも先に OpenCV と FFmpeg のログを抑制します。`main()` の最上位の例外処理は、外部例外の文字列を表示せず固定の文言だけを出します。サブコマンドが理由を伝えて終えるときは `commands.context.CommandError` を送出し、その文言だけを表示します。`CommandError` には外部の例外の文字列を入れないでください。この import 順と例外処理を崩さないでください。エラーの詳細を出したい場合も、例外メッセージをそのまま表示しないでください。
 
 ## テストの作り方
 
-`Camera` の `factory`、`MacNotifier` の `runner`、`NtfyNotifier` の `opener`、`ClipCollector` の `encoder`、`inspect_clip` の `runner`、`DogDetector` の `net` は差し替え用の引数です。`monitor` も `max_frames` と偽のカメラで実行できます。CLI 全体は `main.Camera` を偽のカメラに差し替えて動かします（`tests/test_cli.py`、検知から動画保存までを通す `tests/test_pipeline.py`）。テストは NumPy で作った人工画像と `tmp_path` を使い、実カメラ・実データ・Codex CLI には依存させません。
+`Camera` の `factory`、`MacNotifier` の `runner`、`NtfyNotifier` の `opener`、`ClipCollector` の `encoder`、`inspect_clip` の `runner`、`DogDetector` の `net` は差し替え用の引数です。`monitor` も `max_frames` と偽のカメラで実行できます。CLI 全体は `commands.context.Camera` を偽のカメラに差し替えて動かします（`tests/test_cli.py`、検知から動画保存までを通す `tests/test_pipeline.py`）。テストは NumPy で作った人工画像と `tmp_path` を使い、実カメラ・実データ・Codex CLI には依存させません。

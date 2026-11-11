@@ -17,7 +17,7 @@ def test_check_camera_reads_literal_rtsp_from_dotenv_and_honors_environment(tmp_
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("POOP_RTSP_URL", raising=False)
-    monkeypatch.setattr("poop_detector.main.Camera", camera)
+    monkeypatch.setattr("poop_detector.commands.context.Camera", camera)
     url = "rtsp://user:${literal}@camera.invalid/live#fragment"
     (tmp_path / ".env").write_text(f"POOP_RTSP_URL='{url}'\n")
     assert main(["check-camera"]) == 0
@@ -43,7 +43,7 @@ def test_notification_reads_both_topics_from_dotenv(tmp_path, monkeypatch):
     for key in ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC"):
         monkeypatch.delenv(key, raising=False)
     (tmp_path / ".env").write_text("POOP_NTFY_TOPIC=family\nPOOP_NTFY_EARLY_TOPIC='watch'\n")
-    monkeypatch.setattr("poop_detector.main.platform.system", lambda: "Linux")
+    monkeypatch.setattr("poop_detector.commands.context.platform.system", lambda: "Linux")
     monkeypatch.setattr("poop_detector.notifications.urlopen", opener)
     assert main(["test-notification"]) == 0
     assert main(["test-notification", "--early-alert"]) == 0

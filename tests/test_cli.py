@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from support import spot_scene
 
-from poop_detector import main as cli
+from poop_detector.commands import context, setup
 from poop_detector.config import CONNECTION_KEYS
 from poop_detector.events import Store
 from poop_detector.main import main
@@ -56,8 +56,8 @@ def cli_env(tmp_path, monkeypatch):
 
 def use_camera(env, frame):
     env.monkeypatch.setenv("POOP_RTSP_URL", SECRET_URL)
-    env.monkeypatch.setattr(cli, "Camera", lambda *args: StillCamera(frame))
-    env.monkeypatch.setattr(cli, "has_display", lambda: True)
+    env.monkeypatch.setattr(context, "Camera", lambda *args: StillCamera(frame))
+    env.monkeypatch.setattr(setup, "has_display", lambda: True)
 
 
 def register_scene(env, roi=None):
@@ -86,7 +86,7 @@ def test_baseline_and_roi_cli_do_not_overwrite(tmp_path, monkeypatch, capsys):
     config.write_text(f"data_dir: {tmp_path}\n")
     (tmp_path / "roi.json").write_text("{}")
     monkeypatch.setenv("POOP_RTSP_URL", SECRET_URL)
-    monkeypatch.setattr(cli, "has_display", lambda: True)
+    monkeypatch.setattr(setup, "has_display", lambda: True)
     assert main(["--config", str(config), "setup-roi"]) == 2
     assert "secret" not in capsys.readouterr().err
     assert (tmp_path / "roi.json").read_text() == "{}"
@@ -123,8 +123,8 @@ def test_check_camera_reports_frame_size(cli_env, capsys):
 def test_setup_roi_and_capture_baseline_require_replace_to_overwrite(cli_env):
     baseline, _ = spot_scene()
     use_camera(cli_env, baseline)
-    cli_env.monkeypatch.setattr(cli.cv2, "selectROI", lambda *args: (20, 20, 100, 100))
-    cli_env.monkeypatch.setattr(cli.cv2, "destroyAllWindows", lambda: None)
+    cli_env.monkeypatch.setattr(setup.cv2, "selectROI", lambda *args: (20, 20, 100, 100))
+    cli_env.monkeypatch.setattr(setup.cv2, "destroyAllWindows", lambda: None)
     cli_env.root.mkdir()
 
     assert cli_env.run("setup-roi") == 0
@@ -146,7 +146,7 @@ def test_setup_roi_polygon_options_save_to_their_files(cli_env, option, filename
     baseline, _ = spot_scene()
     use_camera(cli_env, baseline)
     polygon = PolygonROI([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]])
-    cli_env.monkeypatch.setattr(cli, "select_polygon", lambda *args: polygon)
+    cli_env.monkeypatch.setattr(setup, "select_polygon", lambda *args: polygon)
     cli_env.root.mkdir()
     assert cli_env.run("setup-roi", option) == 0
     assert ROI.load(cli_env.root / filename) == polygon
@@ -154,7 +154,7 @@ def test_setup_roi_polygon_options_save_to_their_files(cli_env, option, filename
 
 def test_setup_needs_a_display(cli_env, capsys):
     use_camera(cli_env, spot_scene()[0])
-    cli_env.monkeypatch.setattr(cli, "has_display", lambda: False)
+    cli_env.monkeypatch.setattr(setup, "has_display", lambda: False)
     assert cli_env.run("setup-roi") == 2
     assert cli_env.run("setup-activity-map") == 2
     assert "画面が必要" in capsys.readouterr().err
@@ -166,7 +166,7 @@ def test_setup_activity_map_requires_replace_to_overwrite(cli_env, capsys):
     baseline, _ = spot_scene()
     use_camera(cli_env, baseline)
     floor = PolygonROI([[0.1, 0.1], [0.9, 0.2], [0.8, 0.9], [0.2, 0.8]])
-    cli_env.monkeypatch.setattr(cli, "select_polygon", lambda *args: floor)
+    cli_env.monkeypatch.setattr(setup, "select_polygon", lambda *args: floor)
     cli_env.root.mkdir()
     assert cli_env.run("setup-activity-map") == 0
     first = ActivityLayout.load(cli_env.root).id
@@ -265,8 +265,8 @@ def test_mac_test_notification_reports_result(cli_env, monkeypatch, capsys, acce
         def send_test(self, early_alert=False):
             return accepted
 
-    monkeypatch.setattr(cli.platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(cli, "MacNotifier", Notifier)
+    monkeypatch.setattr(context.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(context, "MacNotifier", Notifier)
     assert cli_env.run("test-notification") == code
     assert created == [True]
     out, err = capsys.readouterr()

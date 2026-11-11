@@ -1,83 +1,38 @@
-"""監視・初期設定・評価のコマンドライン。"""
+"""CLI の入口。引数を解析し、サブコマンドの処理（commands/）へ振り分ける。"""
 
 import argparse
-import json
 import logging
-import platform
 import sys
-import time
 from collections.abc import Sequence
-from contextlib import ExitStack
-from pathlib import Path
-from typing import TYPE_CHECKING
-from uuid import uuid4
 
 import cv2
-import psutil
 
-from .activity_map import LAYOUT_FILE, ActivityLayout, ActivityRecorder, ActivityStore
-from .camera import Camera, LatestCamera
-from .config import Config, apply_timezone, load_connection_settings
-from .events import EXCRETION_TYPES, Store
-from .frames import Frame
-from .live_preview import LivePreview
-from .monitoring import monitor
-from .notifications import DEFAULT_NTFY_SERVER, MacNotifier, NtfyNotifier
-from .platform_support import has_display
-from .roi import ROI, select_polygon
-from .scene import load_baseline, save_baseline, scene_signature
-from .tray_tracking import TrayReferenceError, TrayTracker
+from .commands import dog_model, notify, records, review, run, setup
+from .commands.context import CommandContext, CommandError, Handler
+from .config import Config, apply_timezone
+from .events import EXCRETION_TYPES
+from .tray_tracking import TrayReferenceError
 
-if TYPE_CHECKING:
-    pass
-
-logger = logging.getLogger(__name__)
-
-
-def review_circling(root: Path, config: Config, args: argparse.Namespace) -> int:
-    from .circling import inspect_circling
-    from .clips import ClipStore
-    from .dog import DogDetector
-
-    if not 1 <= args.limit <= 50:
-        print("--limitは1〜50件で指定してください", file=sys.stderr)
-        return 2
-    roi = ROI.load(root / "roi.json")
-    baseline_dir = root / "baseline"
-    baseline = load_baseline(baseline_dir / "empty.png", roi)
-    store = ClipStore(root)
-    rows = store.circling_targets(scene_signature(baseline, roi), args.limit, args.clip)
-    if not rows:
-        print("現在の画角で分析できる保存済み動画がありません")
-        return 2 if args.clip else 0
-    tracker = (
-        TrayTracker.from_baseline(baseline_dir / "tray-reference.png", baseline, roi)
-        if args.track_tray
-        else None
-    )
-    model = DogDetector(root / "models" / "dog-yolox", config.dog_confidence)
-    failed = 0
-    for row in rows:
-        clip_id = row["id"]
-        try:
-            path = store.video_path(row)
-            if path is None:
-                raise OSError("動画がありません")
-            candidates, sampled, located = inspect_circling(
-                path, model.predict, roi, tray_tracker=tracker
-            )
-            if not store.save_circling_review(clip_id, candidates, sampled, located):
-                raise OSError("動画の状態が変わりました")
-        except (OSError, ValueError, cv2.error):
-            failed += 1
-            print(f"{clip_id} 旋回分析に失敗しました", file=sys.stderr)
-            continue
-        offsets = "、".join(f"{start:.1f}〜{end:.1f}秒" for start, end in candidates)
-        print(
-            f"{clip_id} 旋回候補 {offsets or 'なし'}（位置取得 {located}/{sampled}コマ）",
-            flush=True,
-        )
-    return 2 if failed else 0
+HANDLERS: dict[str, Handler] = {
+    "check-camera": setup.check_camera,
+    "setup-roi": setup.setup_roi,
+    "setup-activity-map": setup.setup_activity_map,
+    "capture-baseline": setup.capture_baseline,
+    "run": run.run,
+    "events": records.events,
+    "metrics": records.metrics,
+    "test-notification": notify.test_notification,
+    "codex-review": review.codex_review,
+    "circling-review": review.circling_review,
+    "feedback": records.feedback,
+    "acknowledge": records.acknowledge,
+    "missed": records.missed,
+    "records": records.records,
+    "record": records.record,
+    "label-gui": records.label_gui,
+    "setup-dog-model": dog_model.setup_dog_model,
+    "check-dog": dog_model.check_dog,
+}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -156,6 +111,8 @@ def parser() -> argparse.ArgumentParser:
     dog_check = commands.add_parser("check-dog", help="静止画で犬検出と処理負荷を確認")
     dog_check.add_argument("--image", required=True)
     dog_check.add_argument("--repeat", type=int, default=10)
+    for name, sub in commands.choices.items():
+        sub.set_defaults(handler=HANDLERS[name])
     return result
 
 
@@ -166,337 +123,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         config = Config.load(args.config)
         apply_timezone(config.timezone)
-        if args.command == "run" and (args.dog or args.activity_map):
-            config.dog_enabled = True
-        root = Path(config.data_dir)
-        if args.command == "circling-review":
-            return review_circling(root, config, args)
-        tray_path = root / "baseline" / "tray-reference.png"
-        outside_path = root / "outside-roi.json"
-        outside_roi = None
-        if getattr(args, "detect_outside", False):
-            if args.command == "run" and not args.codex:
-                print("トレー外検知には --codex が必要です", file=sys.stderr)
-                return 2
-            if not outside_path.is_file():
-                print(
-                    "先に setup-roi --outside でトレーと周囲の床を囲んでください", file=sys.stderr
-                )
-                return 2
-            outside_roi = ROI.load(outside_path)
-            config.dog_enabled = True
-        if args.command == "codex-review" or (args.command == "run" and args.codex):
-            from .clips import ClipStore
-            from .codex_review import Review, inspect_clip, require_codex
-
-            if args.command == "run" and not config.clip_enabled:
-                print("--codexには動画保存を有効にしてください", file=sys.stderr)
-                return 2
-            try:
-                require_codex()
-            except ValueError as error:
-                print(error, file=sys.stderr)
-                return 2
-            if args.command == "codex-review":
-                if not 1 <= args.limit <= 50:
-                    print("--limitは1〜50件で指定してください", file=sys.stderr)
-                    return 2
-                roi = ROI.load(root / "roi.json")
-                baseline = load_baseline(root / "baseline" / "empty.png", roi)
-                tray_tracker = (
-                    TrayTracker.from_baseline(tray_path, baseline, roi) if args.track_tray else None
-                )
-                review = Review(
-                    ClipStore(root),
-                    lambda path, row: inspect_clip(
-                        path, row, roi, tray_tracker=tray_tracker, outside_roi=outside_roi
-                    ),
-                    scene_signature=scene_signature(baseline, roi),
-                )
-                try:
-                    completed, failed = review.run(args.limit, clip_id=args.clip)
-                except ValueError as error:
-                    print(error, file=sys.stderr)
-                    return 2
-                print(f"Codex判定候補 {completed}件、失敗 {failed}件")
-                return 2 if failed else 0
-        if args.command in ("setup-dog-model", "check-dog"):
-            from .dog import DogDetector, setup_model
-
-            model_dir = root / "models" / "dog-yolox"
-            if args.command == "setup-dog-model":
-                print(f"犬検出モデルを確認しました: {setup_model(model_dir)}")
-                return 0
-            if not 1 <= args.repeat <= 100:
-                raise ValueError("繰り返し回数は1〜100です")
-            frame = cv2.imread(args.image)
-            if frame is None:
-                raise ValueError("画像を読み込めません")
-            model = DogDetector(model_dir, config.dog_confidence)
-            model.predict(frame)
-            process = psutil.Process()
-            process.cpu_percent()
-            start = time.perf_counter()
-            for _ in range(args.repeat):
-                boxes = model.predict(frame)
-            print(
-                json.dumps(
-                    {
-                        "dog_boxes": boxes,
-                        "mean_inference_ms": (time.perf_counter() - start) * 1000 / args.repeat,
-                        "cpu_percent_inference_loop": process.cpu_percent(),
-                        "rss_mib": process.memory_info().rss / 1024**2,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
-            )
-            return 0
-        if args.command == "label-gui":
-            from .label_gui import serve
-
-            serve(
-                root,
-                args.port,
-                not args.no_browser,
-                disk_mb=config.clip_disk_mb,
-                pet_name=config.pet_name,
-            )
-            return 0
-        if args.command in (
-            "events",
-            "metrics",
-            "feedback",
-            "acknowledge",
-            "missed",
-            "record",
-            "records",
-        ):
-            store = Store(root)
-            from datetime import datetime
-
-            for field in ("start", "end"):
-                value = getattr(args, field, None)
-                if value and datetime.fromisoformat(value).utcoffset() is None:
-                    raise ValueError("時刻には+09:00などのタイムゾーンが必要です")
-            if args.command == "events":
-                print(json.dumps(store.list(), ensure_ascii=False, indent=2))
-            elif args.command == "metrics":
-                print(json.dumps(store.metrics(), ensure_ascii=False, indent=2))
-            elif args.command == "feedback":
-                values = {
-                    key: value
-                    for key, value in [
-                        ("start", args.start),
-                        ("end", args.end),
-                        ("note", args.note),
-                    ]
-                    if value is not None
-                }
-                existing = next(
-                    (r["excretion_type"] for r in store.list() if r["id"] == args.event_id),
-                    "unspecified",
-                )
-                store.classify(
-                    args.event_id,
-                    (args.type or existing) if args.label == "true" else "false",
-                    **values,
-                )
-            elif args.command == "missed":
-                store.add_excretion(args.type, args.start, args.end, missed=True)
-            elif args.command == "record":
-                store.add_excretion(args.type, args.start, args.end, args.note)
-            elif args.command == "records":
-                print(json.dumps(store.records(), ensure_ascii=False, indent=2))
-            else:
-                store.update(args.event_id, acknowledged=1)
-                if store.monitor_state()["event_id"] == args.event_id:
-                    store.set_monitor_state("ACKNOWLEDGED", args.event_id)
-            return 0
-        settings = load_connection_settings()
-        topic = early_topic = ""
-        if args.command in ("run", "test-notification"):
-            topic = settings["POOP_NTFY_TOPIC"].strip()
-            early_topic = settings["POOP_NTFY_EARLY_TOPIC"].strip()
-        if early_topic and not topic:
-            print(
-                "見守り用トピックを使う場合は POOP_NTFY_TOPIC も設定してください", file=sys.stderr
-            )
-            return 2
-        notifier: NtfyNotifier | MacNotifier
-        if topic:
-            try:
-                notifier = NtfyNotifier(
-                    topic,
-                    enabled=config.notifications,
-                    early_topic=early_topic,
-                    pet_name=config.pet_name,
-                    server=settings["POOP_NTFY_SERVER"].strip() or DEFAULT_NTFY_SERVER,
-                )
-            except ValueError as error:
-                print(error, file=sys.stderr)
-                return 2
-        else:
-            on_mac = platform.system() == "Darwin"
-            if config.notifications and not on_mac and args.command in ("run", "test-notification"):
-                logger.warning(
-                    "macOS 以外では、.env に POOP_NTFY_TOPIC を設定しないと通知は届きません"
-                )
-            notifier = MacNotifier(config.notifications and on_mac, pet_name=config.pet_name)
-        if args.command == "test-notification":
-            if args.early_alert and not early_topic:
-                print("見守り用の POOP_NTFY_EARLY_TOPIC を設定してください", file=sys.stderr)
-                return 2
-            if not notifier.send_test(early_alert=args.early_alert):
-                print("通知が無効、非対応OS、または送信に失敗しました", file=sys.stderr)
-                return 2
-            if topic:
-                print("ntfyが通知を受け付けました。購読している端末で確認してください")
-            else:
-                print("通知要求を送信しました。通知センターで表示を確認してください")
-            return 0
-        if args.command in ("setup-roi", "setup-activity-map") and not has_display():
-            print(
-                "範囲の登録には画面が必要です。画面のあるマシンで登録し、"
-                "data/ をこのマシンへコピーしてください（docs/setup.md）",
-                file=sys.stderr,
-            )
-            return 2
-        source = settings["POOP_RTSP_URL"]
-        if not source:
-            print(".envのPOOP_RTSP_URLにEufyアプリのRTSP URLを設定してください", file=sys.stderr)
-            return 2
-        roi_path = (
-            outside_path if args.command == "setup-roi" and args.outside else root / "roi.json"
-        )
-        baseline_path = root / "baseline" / "empty.png"
-        if (
-            args.command == "setup-activity-map"
-            and (root / LAYOUT_FILE).exists()
-            and not args.replace
-        ):
-            print(
-                "床面は登録済みです。画角を変えた場合は --replace を指定してください",
-                file=sys.stderr,
-            )
-            return 2
-        if args.command == "setup-roi" and roi_path.exists() and not args.replace:
-            raise ValueError("ROIは登録済みです。更新する場合は--replaceを指定してください")
-        if args.command == "capture-baseline" and baseline_path.exists() and not args.replace:
-            raise ValueError("基準は登録済みです。更新する場合は--replaceを指定してください")
-        with Camera(source, config.timeout_ms, config.retry_seconds) as camera:
-            if args.command == "run":
-                roi = ROI.load(roi_path)
-                baseline = load_baseline(baseline_path, roi)
-                if baseline is None:
-                    raise ValueError("先にcapture-baselineを実行してください")
-                tray_tracker = (
-                    TrayTracker.from_baseline(tray_path, baseline, roi) if args.track_tray else None
-                )
-                activity = None
-                if args.activity_map:
-                    try:
-                        layout = ActivityLayout.load(root)
-                    except (OSError, ValueError, TypeError, KeyError):
-                        print("先に setup-activity-map で床面を登録してください", file=sys.stderr)
-                        return 2
-                    activity = ActivityRecorder(ActivityStore(root), layout)
-                with ExitStack() as stack:
-                    if activity is not None:
-                        stack.enter_context(activity.store.recording_lock())
-                    collector = None
-                    preview = LivePreview(root)
-                    preview.set_tray_state("searching" if tray_tracker is not None else "fixed")
-                    if config.clip_enabled:
-                        from .clips import ClipCollector
-
-                        collector = stack.enter_context(
-                            ClipCollector(
-                                root,
-                                config.clip_before_seconds,
-                                config.clip_after_seconds,
-                                config.clip_fps,
-                                config.clip_max_width,
-                                config.clip_memory_mb,
-                                config.clip_disk_mb,
-                            )
-                        )
-
-                    def on_frame(frame: Frame | None, generation: int) -> None:
-                        if collector is not None:
-                            collector.feed(frame, generation=generation)
-                        preview.publish(frame)
-
-                    if args.codex:
-                        if collector is None:
-                            raise ValueError("--codexには動画保存を有効にしてください")
-                        review = Review(
-                            collector.store,
-                            lambda path, row: inspect_clip(
-                                path,
-                                row,
-                                roi,
-                                tray_tracker=tray_tracker,
-                                outside_roi=outside_roi
-                                if row["source"] in ("outside_stay", "manual")
-                                else None,
-                            ),
-                            notifier.send_assessment if notifier.enabled else None,
-                        )
-                        stack.enter_context(review.watch())
-                    live = stack.enter_context(
-                        LatestCamera(
-                            Camera(source, config.timeout_ms, config.retry_seconds), on_frame
-                        )
-                    )
-                    live.wait_ready(config.timeout_ms / 1000 + 1)
-                    monitor(
-                        live,
-                        roi,
-                        baseline,
-                        config,
-                        notifier,
-                        args.max_frames,
-                        collector,
-                        codex_notifications=args.codex,
-                        early_alert=args.early_alert,
-                        tray_tracker=tray_tracker,
-                        on_tray_state=preview.set_tray_state,
-                        outside_roi=outside_roi,
-                        activity_map=activity,
-                    )
-                return 0
-            frame = camera.read()
-            if frame is None:
-                raise ValueError("映像を取得できません。EufyのRTSP設定と接続を確認してください")
-            if args.command == "check-camera":
-                print(f"フレーム取得成功: {frame.shape[1]}x{frame.shape[0]}")
-            elif args.command == "setup-roi":
-                if args.outside:
-                    roi = select_polygon(frame, "トレーと監視する周囲の床を指定")
-                elif args.polygon:
-                    roi = select_polygon(frame)
-                else:
-                    rect = cv2.selectROI("トイレ領域を選択してEnter、取消はEsc", frame)
-                    cv2.destroyAllWindows()
-                    roi = ROI.from_pixels(rect, frame.shape[1], frame.shape[0])
-                roi.save(roi_path)
-                print("ROIを保存しました")
-            elif args.command == "setup-activity-map":
-                floor = select_polygon(frame, "サークルの床面を多角形で指定")
-                ActivityLayout(uuid4().hex, floor).save(root, frame)
-                print("行動マップの床面を登録しました")
-            elif args.command == "capture-baseline":
-                roi = ROI.load(roi_path)
-                if args.track_tray:
-                    TrayTracker(frame, roi)
-                    tray_path.parent.mkdir(parents=True, exist_ok=True)
-                    if not cv2.imwrite(str(tray_path), frame):
-                        raise OSError("トレー追従用の基準画像を保存できません")
-                save_baseline(baseline_path, roi.crop(frame), roi)
-                print("基準画像を保存しました")
-        return 0
-    except TrayReferenceError as error:
+        handler: Handler = args.handler
+        return handler(args, CommandContext(config))
+    except (CommandError, TrayReferenceError) as error:
+        # どちらもこのパッケージで書いた文言で、RTSP の URL を含まない。
         print(error, file=sys.stderr)
         return 2
     except (ValueError, TypeError, OSError, cv2.error):

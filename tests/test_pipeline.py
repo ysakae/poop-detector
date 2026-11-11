@@ -10,8 +10,8 @@ import time
 import pytest
 from support import spot_scene
 
-from poop_detector import main as cli
 from poop_detector.clips import ClipStore
+from poop_detector.commands import context
 from poop_detector.config import CONNECTION_KEYS
 from poop_detector.events import Store
 from poop_detector.main import main
@@ -70,7 +70,7 @@ def test_run_records_event_and_saves_clip(tmp_path, monkeypatch):
     for key in CONNECTION_KEYS:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("POOP_RTSP_URL", "rtsp://camera.invalid/live")
-    monkeypatch.setattr(cli, "Camera", lambda *args: ScriptedCamera(empty, changed, 0.5))
+    monkeypatch.setattr(context, "Camera", lambda *args: ScriptedCamera(empty, changed, 0.5))
 
     assert main(["--config", "config.yaml", "run", "--max-frames", "40"]) == 0
 
