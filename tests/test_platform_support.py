@@ -62,7 +62,7 @@ def test_linux_without_ntfy_warns_that_no_notification_is_sent(tmp_path, monkeyp
 
 
 def test_gui_header_does_not_assume_mac(tmp_path):
-    from poop_detector.label_gui import make_server
+    from poop_detector.gui.app import make_server
 
     server = make_server(tmp_path, 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

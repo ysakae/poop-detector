@@ -76,9 +76,9 @@
 
 ## ラベル GUI
 
-`label_gui.make_server` は標準ライブラリの `http.server` だけで作ったサーバーで、HTML は Python の文字列で組み立てます（テンプレートエンジンやフロントエンドのビルドはありません）。画面ごとに `clip_gui.py`（動画）、`activity_gui.py`（行動マップ）へ分かれ、`static/` の JavaScript は補助的な操作だけを担います。
+`gui.app.make_server` は標準ライブラリの `http.server` だけで作ったサーバーで、HTML は Python の文字列で組み立てます（テンプレートエンジンやフロントエンドのビルドはありません）。画面ごとに `gui/clip_pages.py`（動画）、`gui/activity_page.py`（行動マップ）へ分かれ、`gui/static/` の JavaScript は補助的な操作だけを担います。
 
-外部公開しない前提でも、Host ヘッダーの検査、起動ごとのトークン、厳しい CSP を入れています。トークンは2つあり、POST の CSRF 対策と、閲覧を含むすべての要求の認証（`gui_access.py`、起動時の URL のトークンを HttpOnly の Cookie に移す）に使います。インラインスクリプトは CSP で動かないため、JavaScript は `static/` に置き、`/assets/` の許可リストへ追加してください。
+外部公開しない前提でも、Host ヘッダーの検査、起動ごとのトークン、厳しい CSP を入れています。トークンは2つあり、POST の CSRF 対策と、閲覧を含むすべての要求の認証（`gui/access.py`、起動時の URL のトークンを HttpOnly の Cookie に移す）に使います。インラインスクリプトは CSP で動かないため、JavaScript は `gui/static/` に置き、`/assets/` の許可リストへ追加してください。
 
 ## 時刻とタイムゾーン
 

@@ -223,7 +223,7 @@ def test_record_commands_require_timezone_in_times(cli_env, capsys):
 def test_label_gui_passes_settings_to_the_server(cli_env, monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "poop_detector.label_gui.serve", lambda *args, **kwargs: calls.append((args, kwargs))
+        "poop_detector.gui.app.serve", lambda *args, **kwargs: calls.append((args, kwargs))
     )
     (cli_env.path / "config.yaml").write_text(
         f"data_dir: {cli_env.root}\npet_name: ポチ\nclip_disk_mb: 64\n"

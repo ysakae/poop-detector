@@ -9,7 +9,7 @@ from io import BufferedIOBase
 from pathlib import Path
 from typing import Any, Protocol, cast
 
-from .clip_storage import (
+from ..clip_storage import (
     CLEANUP_LIMIT,
     DEFAULT_DISK_MIB,
     MIB,
@@ -19,8 +19,8 @@ from .clip_storage import (
     recording_usage,
     retention_days,
 )
-from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
-from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES
+from ..clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
+from ..events import EXCRETION_LOCATIONS, EXCRETION_TYPES
 
 STATES = {
     "queued": "受付済み",
@@ -67,7 +67,7 @@ def render_clips(
     title: str | None = None,
 ) -> str:
     """動画の一覧と、選んだ動画の再生・ラベル入力欄。"""
-    from .label_gui import document, local_time
+    from .app import document, local_time
 
     page = partial(document, title=title)
 
@@ -293,7 +293,7 @@ def render_storage(
     title: str | None = None,
 ) -> str:
     """録画容量と、整理してよい古い動画の選択画面。"""
-    from .label_gui import document, local_time
+    from .app import document, local_time
 
     page = partial(document, title=title)
 
@@ -504,7 +504,7 @@ def handle_clip_post(
         handler.send_header("Location", f"/clips?id={clip_id}&saved=1")
         handler.end_headers()
     except (ValueError, TypeError) as error:
-        from .label_gui import document
+        from .app import document
 
         page = partial(document, title=title)
 
