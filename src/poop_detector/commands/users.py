@@ -7,9 +7,10 @@
 import argparse
 import json
 
-from ..gui.accounts import ROLES, Accounts, User
+from ..gui.accounts import Accounts, User
+from ..gui.invitation_mail import invite_by_email
 from ..records.database import events_database
-from ..web_address import WebOptions
+from ..web_address import Site, WebOptions
 from .context import CommandContext, CommandError
 
 CREATED_BY = "cli"
@@ -25,12 +26,14 @@ def enrollment_url(context: CommandContext, code: str) -> str:
     return f"{base}/enroll?code={code}"
 
 
-def _find(accounts: Accounts, name: str | None) -> User:
-    if not name:
-        raise CommandError("ユーザーの名前を指定してください")
-    user = accounts.users.by_name(name)
-    if user is None:
-        raise CommandError(f"「{name}」というユーザーはいません。users list で確認してください")
+def _find(accounts: Accounts, identity: str | None) -> User:
+    if not identity:
+        raise CommandError("メールアドレスを指定してください")
+    user = (
+        accounts.users.by_email(identity) if "@" in identity else accounts.users.by_name(identity)
+    )
+    if user is None or ("@" not in identity and user.email is not None):
+        raise CommandError("ユーザーが見つかりません。users list で確認してください")
     return user
 
 
@@ -51,6 +54,7 @@ def users(args: argparse.Namespace, context: CommandContext) -> int:
         listed = [
             {
                 "name": user.name,
+                "email": user.email,
                 "role": user.role,
                 "active": user.active,
                 "passkeys": counts.get(user.id, 0),
@@ -61,25 +65,40 @@ def users(args: argparse.Namespace, context: CommandContext) -> int:
         ]
         print(json.dumps(listed, ensure_ascii=False, indent=2))
         return 0
-    if action == "invite":
-        if not args.name:
-            raise CommandError("登録する人の名前を指定してください（例: users invite 家族A）")
-        if accounts.users.by_name(args.name) is not None:
-            raise CommandError(
-                f"「{args.name}」はすでに登録されています。復旧は users recover です"
-            )
-        if args.role != "admin":
-            # 権限の確認（#85）が入るまでは、一般ユーザーも管理者と同じ操作ができてしまう。
-            raise CommandError(
-                "一般ユーザーの招待は、管理者と一般ユーザーの権限を分ける機能（#85）が入るまで"
-                "使えません。いまは管理者として招待してください（--role admin）"
-            )
-        code = accounts.enrollments.issue(
-            args.role, name=args.name, created_by=CREATED_BY, minutes=args.minutes
-        )
-        _show_url(context, code, args.minutes, f"{ROLES[args.role]}「{args.name}」の登録用 URL:")
+    if action == "cancel-invite":
+        if not args.identity or not accounts.enrollments.cancel_email(args.identity):
+            raise CommandError("取り消せる招待が見つかりません")
+        print("招待を取り消しました")
         return 0
-    user = _find(accounts, args.name)
+    if action in ("invite", "resend"):
+        if not args.identity:
+            raise CommandError("招待する人のメールアドレスを指定してください")
+        if action == "resend" or "@" in args.identity or args.name is not None:
+            web = WebOptions.from_config(context.config)
+            invite_by_email(
+                accounts.enrollments,
+                Site(web.port, web.public_url).public_base,
+                args.identity,
+                actor=CREATED_BY,
+                name=args.name or "",
+                role=args.role,
+                minutes=args.minutes,
+                resend=action == "resend",
+            )
+            print("招待メールを送信しました")
+            return 0
+        if args.role != "admin":
+            raise CommandError(
+                "一般ユーザーの招待は権限制御（#85）の実装後に使えます。初回は --role admin を指定してください"
+            )
+        if accounts.users.list():
+            raise CommandError("招待する人のメールアドレスを指定してください")
+        code = accounts.enrollments.issue(
+            "admin", name=args.identity, created_by=CREATED_BY, minutes=args.minutes
+        )
+        _show_url(context, code, args.minutes, "初回管理者の登録用 URL:")
+        return 0
+    user = _find(accounts, args.identity)
     if action == "recover":
         code = accounts.enrollments.issue_recovery(
             user.id, created_by=CREATED_BY, minutes=args.minutes

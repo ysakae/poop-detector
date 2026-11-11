@@ -10,6 +10,7 @@
 import json
 import logging
 import secrets
+import sqlite3
 import threading
 import time
 from collections import OrderedDict
@@ -48,7 +49,7 @@ LABEL_MAX_LENGTH = 40
 LOGIN_FAILED = "パスキーでログインできませんでした。登録したパスキーを選んでください"
 ENROLLMENT_UNUSABLE = (
     "この登録用 URL は使えません。期限が切れたか、すでに使われています。"
-    "監視するマシンで users invite か users recover を実行して、新しい URL を出してください"
+    "招待した管理者にメールの再送を依頼するか、監視するマシンで users recover を実行してください"
 )
 
 
@@ -206,26 +207,37 @@ class PasskeyAuth:
                 "パスキーを確かめられませんでした。画面ロックなどの本人確認を有効にした端末で、"
                 "もう一度お試しください"
             ) from None
-        enrollment = self.accounts.enrollments.consume(ceremony.code)
-        if enrollment is None:
-            raise PasskeyError(ENROLLMENT_UNUSABLE)
-        user_id = enrollment.user_id
-        if user_id is None:
-            try:
-                user_id = self.accounts.users.create(
-                    enrollment.name or "ユーザー", enrollment.role, user_id=ceremony.user_handle
+        try:
+            with self.accounts.enrollments.registration(ceremony.code) as (db, enrollment):
+                if enrollment is None:
+                    raise PasskeyError(ENROLLMENT_UNUSABLE)
+                user_id = enrollment.user_id
+                if user_id is None:
+                    user_id = self.accounts.users.create(
+                        enrollment.name or "ユーザー",
+                        enrollment.role,
+                        user_id=ceremony.user_handle,
+                        email=enrollment.email,
+                        connection=db,
+                    )
+                elif not db.execute(
+                    "SELECT 1 FROM users WHERE id = ? AND disabled_at IS NULL", (user_id,)
+                ).fetchone():
+                    raise PasskeyError(ENROLLMENT_UNUSABLE)
+                self.accounts.passkeys.add(
+                    user_id,
+                    ceremony.rp.id,
+                    bytes_to_base64url(verified.credential_id),
+                    verified.credential_public_key,
+                    verified.sign_count,
+                    _transports(credential),
+                    _label(label),
+                    connection=db,
                 )
-            except InvalidInputError as error:
-                raise PasskeyError(str(error)) from None
-        self.accounts.passkeys.add(
-            user_id,
-            ceremony.rp.id,
-            bytes_to_base64url(verified.credential_id),
-            verified.credential_public_key,
-            verified.sign_count,
-            _transports(credential),
-            _label(label),
-        )
+        except InvalidInputError as error:
+            raise PasskeyError(str(error)) from None
+        except sqlite3.IntegrityError:
+            raise PasskeyError("このパスキーはすでに登録されています") from None
         self.accounts.users.logged_in(user_id)
         return user_id
 

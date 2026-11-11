@@ -5,6 +5,20 @@
 <h2>アカウント</h2>
 <p>{{ person }}さん（{{ role }}）でログインしています。<a href="/">トップへ戻る</a></p>
 {% if deleted %}<p class="saved" role="status">パスキーを削除しました。</p>{% endif %}
+<h3>メールアドレス</h3>
+{% if email_error %}<p class="error" role="alert">{{ email_error }}</p>{% endif %}
+{% if email_verified %}<p class="saved" role="status">メールアドレスを確認しました。</p>{% endif %}
+{% if email %}
+<p>{{ email }}（確認済み）</p>
+{% else %}
+{% if email_sent %}<p class="saved" role="status">確認メールを送信しました。</p>{% endif %}
+<form method="post" action="/account/email">{{ csrf_field(token) }}
+<p><label>メールアドレス <input type="email" name="email" maxlength="254" autocomplete="email" required></label>
+<button>確認メールを送る</button></p></form>
+<form method="post" action="/account/email/confirm">{{ csrf_field(token) }}
+<p><label>確認コード <input name="code" maxlength="100" required></label>
+<button>確認コードを使う</button></p></form>
+{% endif %}
 <h3>パスキー</h3>
 <p class="note">パスキーは、登録したときに開いたドメインでだけ使えます。端末をなくしたときに備えて、2つ以上の端末に登録しておくと安心です。</p>
 <table><thead><tr><th>端末の名前</th><th>ドメイン</th><th>登録</th><th>最後に使った日時</th><th></th></tr></thead><tbody>
@@ -18,6 +32,6 @@
 <form method="post" action="/account/passkeys/add">{{ csrf_field(token) }}<button>この端末にパスキーを追加する</button></form>
 {% if admin %}
 <h3>家族を招待する</h3>
-<p><a href="/account/invite">招待の URL を作る</a></p>
+<p><a href="/account/invite">招待メールを送る</a> · <a href="/account/users">ユーザー管理</a></p>
 {% endif %}
 {% endblock %}

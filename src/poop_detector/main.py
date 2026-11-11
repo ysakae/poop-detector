@@ -203,8 +203,14 @@ def parser() -> argparse.ArgumentParser:
     accounts = commands.add_parser(
         "users", help="GUI のユーザーの一覧・登録用 URL・復旧・無効化（このマシンで実行）"
     )
-    accounts.add_argument("action", choices=("list", "invite", "recover", "disable", "enable"))
-    accounts.add_argument("name", nargs="?", help="ユーザーの名前")
+    accounts.add_argument(
+        "action",
+        choices=("list", "invite", "resend", "cancel-invite", "recover", "disable", "enable"),
+    )
+    accounts.add_argument(
+        "identity", nargs="?", help="メールアドレス（初回登録・メール未登録のユーザーは名前）"
+    )
+    accounts.add_argument("--name", help="メール招待で使う表示名")
     accounts.add_argument(
         "--role", choices=("admin", "member"), default="member", help="invite の役割"
     )
