@@ -5,13 +5,13 @@ from uuid import uuid4
 
 import cv2
 
-from ..activity_map import LAYOUT_FILE, ActivityLayout
 from ..config import load_connection_settings
+from ..detection.roi import ROI, AnyROI, select_polygon
+from ..detection.scene import save_baseline
+from ..features.activity_map import LAYOUT_FILE, ActivityLayout
+from ..features.tray_tracking import TrayTracker
 from ..frames import Frame
 from ..platform_support import has_display
-from ..roi import ROI, AnyROI, select_polygon
-from ..scene import save_baseline
-from ..tray_tracking import TrayTracker
 from .context import CommandContext, CommandError, camera_source, open_camera
 
 NO_DISPLAY = (

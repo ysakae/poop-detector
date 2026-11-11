@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from poop_detector.roi import ROI
+from poop_detector.detection.roi import ROI
 
 
 def test_roi_roundtrip_and_scaling(tmp_path):
@@ -16,7 +16,7 @@ def test_roi_roundtrip_and_scaling(tmp_path):
 
 
 def test_only_masked_roi_limits_monitored_pixels():
-    from poop_detector.roi import MaskedROI, PolygonROI
+    from poop_detector.detection.roi import MaskedROI, PolygonROI
 
     shape = (100, 100, 3)
     assert ROI(0, 0, 1, 1).valid_mask(shape) is None

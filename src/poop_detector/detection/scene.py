@@ -7,7 +7,7 @@ from pathlib import Path
 
 import cv2
 
-from .frames import Frame
+from ..frames import Frame
 from .roi import AnyROI
 
 

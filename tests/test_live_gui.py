@@ -8,10 +8,10 @@ import cv2
 import numpy as np
 from support import request
 
-from poop_detector.clip_labels import ClipLabel
-from poop_detector.clip_reviews import Assessment
-from poop_detector.clips import ClipStore
-from poop_detector.live_preview import LivePreview
+from poop_detector.capture.live_preview import LivePreview
+from poop_detector.video.clip_labels import ClipLabel
+from poop_detector.video.clip_reviews import Assessment
+from poop_detector.video.clips import ClipStore
 
 
 def test_live_image_requires_a_viewer_and_expires(gui):
@@ -70,9 +70,9 @@ def test_live_preview_rejects_other_hosts(gui):
 
 def test_monitoring_command_shares_frames_without_clip_recording(gui, monkeypatch):
     from poop_detector.commands import context
+    from poop_detector.detection.roi import ROI
+    from poop_detector.detection.scene import save_baseline
     from poop_detector.main import main
-    from poop_detector.roi import ROI
-    from poop_detector.scene import save_baseline
 
     server, store, _ = gui
     monkeypatch.chdir(store.root)

@@ -4,8 +4,8 @@ import cv2
 import numpy as np
 
 from poop_detector.config import Config
-from poop_detector.events import Store
-from poop_detector.roi import ROI
+from poop_detector.detection.roi import ROI
+from poop_detector.records.events import Store
 
 
 def scenes():
@@ -18,7 +18,7 @@ def scenes():
 
 
 def test_known_stain_new_stain_removal_and_growth():
-    from poop_detector.detection import IncrementalDetector
+    from poop_detector.detection.difference import IncrementalDetector
 
     clean, first, second = scenes()
     detector = IncrementalDetector(clean)
@@ -36,7 +36,7 @@ def test_known_stain_new_stain_removal_and_growth():
 
 
 def test_addition_on_existing_stain_and_occlusion():
-    from poop_detector.detection import IncrementalDetector
+    from poop_detector.detection.difference import IncrementalDetector
 
     clean, first, _ = scenes()
     first[40:66, 40:66] = 130
@@ -51,7 +51,7 @@ def test_addition_on_existing_stain_and_occlusion():
 
 
 def run_frames(root, frames):
-    from poop_detector.monitoring import monitor
+    from poop_detector.detection.monitoring import monitor
 
     clean, _, _ = scenes()
 

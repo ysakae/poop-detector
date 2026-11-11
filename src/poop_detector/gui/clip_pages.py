@@ -7,8 +7,9 @@ from io import BufferedIOBase
 from pathlib import Path
 from typing import Any, Protocol, cast
 
-from ..clip_labels import ClipLabel
-from ..clip_storage import (
+from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES
+from ..video.clip_labels import ClipLabel
+from ..video.clip_storage import (
     CLEANUP_LIMIT,
     DEFAULT_DISK_MIB,
     MIB,
@@ -20,8 +21,7 @@ from ..clip_storage import (
     recording_usage,
     retention_days,
 )
-from ..clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
-from ..events import EXCRETION_LOCATIONS, EXCRETION_TYPES
+from ..video.clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
 from .templating import render_template
 
 STATES = {

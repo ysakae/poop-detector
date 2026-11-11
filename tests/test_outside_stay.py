@@ -6,11 +6,11 @@ import cv2
 import numpy as np
 from support import ready_clip, request, submit
 
-from poop_detector.clips import ClipStore
-from poop_detector.codex_cli import CodexCliJudge
-from poop_detector.dog import OutsideWatch
-from poop_detector.roi import ROI
-from poop_detector.video_review import inspect_clip
+from poop_detector.detection.roi import ROI
+from poop_detector.experimental.outside import OutsideWatch
+from poop_detector.video.clips import ClipStore
+from poop_detector.video.codex_cli import CodexCliJudge
+from poop_detector.video.review import inspect_clip
 
 
 def test_outside_dwell_triggers_once_until_dog_moves():
@@ -89,7 +89,7 @@ def test_video_confirmation_records_outside_separately_from_tray_event(gui):
 def test_outside_notice_is_distinct_and_does_not_mark_tray_event(gui):
     from datetime import UTC, datetime, timedelta
 
-    from poop_detector.video_review import Assessment, Review
+    from poop_detector.video.review import Assessment, Review
 
     _, store, tray_event = gui
     clips = ClipStore(store.root)
@@ -130,9 +130,9 @@ def test_outside_notice_is_distinct_and_does_not_mark_tray_event(gui):
 
 
 def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path, monkeypatch):
-    from poop_detector import monitoring
     from poop_detector.config import Config
-    from poop_detector.dog import DogState
+    from poop_detector.detection import monitoring
+    from poop_detector.features.dog import DogState
 
     now = 0
     frame = np.full((100, 100, 3), 80, np.uint8)

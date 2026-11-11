@@ -9,9 +9,9 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from .dog import Predict
-from .roi import AnyROI, outline
-from .tray_tracking import TrayTracker
+from ..detection.roi import AnyROI, outline
+from ..features.dog import Predict
+from ..features.tray_tracking import TrayTracker
 
 # 旋回分析は保存済みの動画に対する実験的な分析で、通知や監視には使わない。
 # 値は人工の軌跡と少数の動画で決めたもので、設定にはしない。

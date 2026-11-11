@@ -4,7 +4,7 @@ import argparse
 import json
 from datetime import datetime
 
-from ..events import Store
+from ..records.events import Store
 from .context import CommandContext
 
 

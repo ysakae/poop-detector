@@ -4,8 +4,8 @@ import cv2
 import numpy as np
 import pytest
 
-from poop_detector.detection import Detector
-from poop_detector.state_machine import Machine
+from poop_detector.detection.difference import Detector
+from poop_detector.detection.state_machine import Machine
 
 
 @pytest.mark.parametrize(

@@ -19,10 +19,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from ..clip_storage import DEFAULT_DISK_MIB
-from ..clips import ClipStore
-from ..events import Store
-from ..live_preview import LivePreview
+from ..capture.live_preview import LivePreview
+from ..records.events import Store
+from ..video.clip_storage import DEFAULT_DISK_MIB
+from ..video.clips import ClipStore
 from .access import (
     has_session,
     launch_url,

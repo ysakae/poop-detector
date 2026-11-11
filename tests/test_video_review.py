@@ -7,12 +7,12 @@ import cv2
 import numpy as np
 import pytest
 
-from poop_detector.clip_labels import ClipLabel
-from poop_detector.clips import ClipStore
-from poop_detector.codex_cli import CodexCliJudge
+from poop_detector.detection.roi import ROI
 from poop_detector.main import parser
-from poop_detector.roi import ROI
-from poop_detector.video_review import Assessment, Review, inspect_clip, parse_assessment
+from poop_detector.video.clip_labels import ClipLabel
+from poop_detector.video.clips import ClipStore
+from poop_detector.video.codex_cli import CodexCliJudge
+from poop_detector.video.review import Assessment, Review, inspect_clip, parse_assessment
 
 FECES = Assessment("feces", "excreting", 10, 15, "離れた後に新しい便が見えます")
 FEEDING = Assessment("none", "feeding", None, None, "餌皿で食べています")

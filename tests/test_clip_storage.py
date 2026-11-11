@@ -6,12 +6,12 @@ from threading import Thread
 import numpy as np
 from support import request, submit
 
-from poop_detector.clip_labels import ClipLabel
-from poop_detector.clip_reviews import Assessment
-from poop_detector.clip_storage import MIB, cleanup_selected
-from poop_detector.clips import ClipStore
 from poop_detector.gui.server import make_server
-from poop_detector.recording import ClipCollector
+from poop_detector.video.clip_labels import ClipLabel
+from poop_detector.video.clip_reviews import Assessment
+from poop_detector.video.clip_storage import MIB, cleanup_selected
+from poop_detector.video.clips import ClipStore
+from poop_detector.video.recording import ClipCollector
 
 
 def test_short_visit_keeps_prebuffer_and_records_after_exit(tmp_path):

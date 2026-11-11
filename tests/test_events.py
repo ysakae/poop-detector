@@ -3,7 +3,7 @@
 import pytest
 from support import spot_scene
 
-from poop_detector.events import Store
+from poop_detector.records.events import Store
 
 
 def test_events_feedback_metrics_and_image(tmp_path):

@@ -4,14 +4,14 @@ import cv2
 import numpy as np
 import pytest
 
-from poop_detector.detection import Detector
-from poop_detector.roi import ROI
+from poop_detector.detection.difference import Detector
+from poop_detector.detection.roi import ROI
 
 HEXAGON = [(50, 10), (90, 30), (90, 70), (50, 90), (10, 70), (10, 30)]
 
 
 def test_hexagon_roundtrip_excludes_outside_and_scales(tmp_path):
-    from poop_detector.roi import MaskedROI
+    from poop_detector.detection.roi import MaskedROI
 
     roi = MaskedROI.from_pixels(HEXAGON, 101, 101)
     path = tmp_path / "roi.json"
@@ -32,7 +32,7 @@ def test_hexagon_roundtrip_excludes_outside_and_scales(tmp_path):
 
 
 def test_concave_polygon_is_supported():
-    from poop_detector.roi import MaskedROI
+    from poop_detector.detection.roi import MaskedROI
 
     roi = MaskedROI.from_pixels([(10, 10), (90, 10), (90, 90), (50, 50), (10, 90)], 101, 101)
     mask = roi.mask((101, 101, 3))
@@ -51,14 +51,14 @@ def test_concave_polygon_is_supported():
     ],
 )
 def test_invalid_masked_polygon_is_rejected(points, message):
-    from poop_detector.roi import MaskedROI
+    from poop_detector.detection.roi import MaskedROI
 
     with pytest.raises(ValueError, match=message):
         MaskedROI.from_pixels(points, 101, 101)
 
 
 def test_polygon_boundary_occlusion_and_lighting():
-    from poop_detector.roi import MaskedROI
+    from poop_detector.detection.roi import MaskedROI
 
     roi = MaskedROI.from_pixels(HEXAGON, 101, 101)
     baseline = np.full((101, 101, 3), 180, np.uint8)
@@ -71,8 +71,8 @@ def test_polygon_boundary_occlusion_and_lighting():
 
 
 def test_masked_baseline_metadata_is_distinct_from_warp(tmp_path):
-    from poop_detector.roi import MaskedROI, PolygonROI
-    from poop_detector.scene import load_baseline, save_baseline
+    from poop_detector.detection.roi import MaskedROI, PolygonROI
+    from poop_detector.detection.scene import load_baseline, save_baseline
 
     points = [(10, 10), (90, 10), (90, 90), (10, 90)]
     roi = MaskedROI.from_pixels(points, 101, 101)
@@ -85,7 +85,7 @@ def test_masked_baseline_metadata_is_distinct_from_warp(tmp_path):
 
 
 def test_selector_accepts_six_vertices(monkeypatch):
-    from poop_detector.roi import select_polygon
+    from poop_detector.detection.roi import select_polygon
 
     callback = None
 

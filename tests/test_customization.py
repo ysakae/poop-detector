@@ -167,7 +167,7 @@ def test_cli_uses_pet_name_and_ntfy_server(tmp_path, monkeypatch):
 
 def test_apply_timezone_changes_local_conversions():
     from poop_detector.gui.pages import local_time, parse_time
-    from poop_detector.record_stats import summarize_records
+    from poop_detector.records.record_stats import summarize_records
 
     apply_timezone("America/New_York")
     assert local_time("2026-11-08T23:30:00+09:00") == "2026/11/08 09:30:00"
@@ -182,7 +182,7 @@ def test_apply_timezone_changes_local_conversions():
 
 
 def test_day_boundary_follows_local_timezone():
-    from poop_detector.record_stats import summarize_records
+    from poop_detector.records.record_stats import summarize_records
 
     # UTC 15:30 は日本時間では翌日 00:30、ニューヨークでは同じ日の 10:30。
     rows = [

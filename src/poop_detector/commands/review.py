@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import cv2
 
-from ..scene import scene_signature
+from ..detection.scene import scene_signature
 from .context import (
     CommandContext,
     CommandError,
@@ -17,12 +17,12 @@ from .context import (
 )
 
 if TYPE_CHECKING:
-    from ..video_review import VideoJudge
+    from ..video.review import VideoJudge
 
 
 def ready_judge() -> "VideoJudge":
     """既定の判定器を用意し、使える状態か確かめる。"""
-    from ..video_review import default_judge
+    from ..video.review import default_judge
 
     judge = default_judge()
     try:
@@ -35,8 +35,8 @@ def ready_judge() -> "VideoJudge":
 
 def video_review(args: argparse.Namespace, context: CommandContext) -> int:
     """保存済みの未ラベルの動画を自動判定する（通知はしない）。"""
-    from ..clips import ClipStore
-    from ..video_review import Review, inspect_clip
+    from ..video.clips import ClipStore
+    from ..video.review import Review, inspect_clip
 
     detect_outside = args.detect_outside or context.config.detect_outside_enabled
     outside_roi = load_outside_roi(context) if detect_outside else None
@@ -63,9 +63,9 @@ def video_review(args: argparse.Namespace, context: CommandContext) -> int:
 
 def circling_review(args: argparse.Namespace, context: CommandContext) -> int:
     """保存済みの動画に犬の検出をかけ、トレー付近の旋回候補を記録する。"""
-    from ..circling import inspect_circling
-    from ..clips import ClipStore
-    from ..dog import DogDetector
+    from ..experimental.circling import inspect_circling
+    from ..features.dog import DogDetector
+    from ..video.clips import ClipStore
 
     check_limit(args.limit)
     roi, baseline = load_scene(context)

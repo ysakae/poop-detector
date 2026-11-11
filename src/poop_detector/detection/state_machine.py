@@ -2,7 +2,7 @@
 
 from typing import Literal, TypeAlias
 
-from .detection import ObservationKind
+from .difference import ObservationKind
 
 MachineState: TypeAlias = Literal["EMPTY", "OCCUPIED", "VERIFYING", "SUSPECTED", "ACKNOWLEDGED"]
 

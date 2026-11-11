@@ -9,9 +9,15 @@ import sqlite3
 import numpy as np
 import pytest
 
-from poop_detector.clips import ClipStore
-from poop_detector.database import LATEST_VERSION, TABLES_V1, Database, migrate, schema_version
-from poop_detector.events import Store
+from poop_detector.records.database import (
+    LATEST_VERSION,
+    TABLES_V1,
+    Database,
+    migrate,
+    schema_version,
+)
+from poop_detector.records.events import Store
+from poop_detector.video.clips import ClipStore
 
 # 版管理を入れる直前（0.1.0 の開発中）のスキーマ。Store と ClipStore の初期化が作っていた形。
 PRE_VERSIONING = """

@@ -7,13 +7,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..camera import Camera
+from ..capture.camera import Camera
 from ..config import Config
+from ..detection.roi import ROI, AnyROI
+from ..detection.scene import load_baseline
+from ..features.tray_tracking import TrayTracker
 from ..frames import Frame
 from ..notifications import DEFAULT_NTFY_SERVER, MacNotifier, NtfyNotifier
-from ..roi import ROI, AnyROI
-from ..scene import load_baseline
-from ..tray_tracking import TrayTracker
 
 logger = logging.getLogger(__name__)
 

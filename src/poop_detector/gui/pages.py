@@ -5,11 +5,11 @@ from datetime import date
 from typing import Any, TypeAlias
 from urllib.parse import urlencode
 
-from ..clip_storage import DEFAULT_DISK_MIB
-from ..clips import ClipStore
-from ..events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
-from ..record_stats import summarize_records
+from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
+from ..records.record_stats import summarize_records
 from ..timezones import local_today, parse_local, timezone_label, to_local
+from ..video.clip_storage import DEFAULT_DISK_MIB
+from ..video.clips import ClipStore
 from .clip_pages import capacity_info
 from .templating import render_template
 

@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from .frames import Frame, Mask
+from ..frames import Frame, Mask
 
 # empty: 基準と同じ、candidate: 小さな変化の候補、occupied: 遮蔽、unstable: 広範囲の変動
 ObservationKind: TypeAlias = Literal["empty", "candidate", "occupied", "unstable"]

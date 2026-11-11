@@ -7,7 +7,7 @@ import time
 import numpy as np
 import pytest
 
-from poop_detector.events import Store
+from poop_detector.records.events import Store
 
 
 @pytest.fixture(autouse=True)
