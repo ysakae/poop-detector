@@ -32,6 +32,7 @@ HANDLERS: dict[str, Handler] = {
     "setup-roi": setup.setup_roi,
     "setup-activity-map": setup.setup_activity_map,
     "capture-baseline": setup.capture_baseline,
+    "tray-registration": setup.tray_registration,
     "run": run.run,
     "events": records.events,
     "metrics": records.metrics,
@@ -119,6 +120,10 @@ def parser() -> argparse.ArgumentParser:
             sub.add_argument(
                 "--early-alert", action="store_true", help="見守り専用のntfyトピックをテスト"
             )
+    registration = commands.add_parser("tray-registration", help="監視を止めずにトレーを登録")
+    registration.add_argument("action", choices=("begin", "apply", "cancel", "status"))
+    registration.add_argument("--polygon", action="store_true", help="apply 時に映像から範囲を選択")
+    registration.add_argument("--roi", help="apply 時に読み込む ROI の JSON ファイル")
     review = commands.add_parser(
         "video-review", aliases=["codex-review"], help="保存済み動画を自動判定（通知なし）"
     )
