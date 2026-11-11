@@ -48,6 +48,8 @@ class CodexCliJudge:
     def judge(
         self, folder: Path, prompt: str, images: Sequence[str], schema: dict[str, Any]
     ) -> object:
+        # 同じ入力を別のモデルでも使うため、前の出力を読み間違えないようにする。
+        (folder / "result.json").unlink(missing_ok=True)
         (folder / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
         image_options = [option for image in images for option in ("--image", image)]
         self.runner(
