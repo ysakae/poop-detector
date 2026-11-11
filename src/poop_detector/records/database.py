@@ -155,12 +155,57 @@ def migrate_to_v4(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v5(db: sqlite3.Connection) -> None:
+    """GUI のユーザー、パスキー、登録用 URL。
+
+    enrollments.id は登録用 URL の値の SHA-256 で、値そのものは保存しない。
+    時刻は UTC の ISO 8601。
+    """
+    db.execute(
+        """CREATE TABLE users (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL CHECK (role IN ('admin', 'member')),
+            created_at TEXT NOT NULL,
+            last_login TEXT,
+            disabled_at TEXT
+        )"""
+    )
+    db.execute(
+        """CREATE TABLE passkeys (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id),
+            rp_id TEXT NOT NULL,
+            public_key BLOB NOT NULL,
+            sign_count INTEGER NOT NULL,
+            transports TEXT NOT NULL,
+            label TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            last_used TEXT
+        )"""
+    )
+    db.execute("CREATE INDEX passkeys_by_user ON passkeys(user_id)")
+    db.execute(
+        """CREATE TABLE enrollments (
+            id TEXT PRIMARY KEY,
+            role TEXT NOT NULL CHECK (role IN ('admin', 'member')),
+            name TEXT,
+            user_id TEXT REFERENCES users(id),
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used_at TEXT
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
     migrate_to_v2,
     migrate_to_v3,
     migrate_to_v4,
+    migrate_to_v5,
 )
 LATEST_VERSION = len(MIGRATIONS)
 
@@ -214,5 +259,6 @@ class Database:
 
 
 def events_database(root: str | Path) -> Database:
-    """データの保存先の events.sqlite3。"""
+    """データの保存先の events.sqlite3。保存先のディレクトリがなければ作る。"""
+    Path(root).mkdir(parents=True, exist_ok=True)
     return Database(Path(root) / "events.sqlite3")
