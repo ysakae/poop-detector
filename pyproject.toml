@@ -32,6 +32,7 @@ dependencies = [
     "jinja2>=3.1,<4",
     "starlette>=1.10.0",
     "uvicorn>=0.54.0",
+    "webauthn>=3.0.1",
 ]
 [project.urls]
 Homepage = "https://github.com/ysakae/poop-detector"

@@ -1,0 +1,12 @@
+{#- 登録用 URL からのパスキーの登録。操作は passkey.js が行う。 -#}
+{% extends "base.html" %}
+{% block content %}
+<h2>パスキーの登録</h2>
+<p>{{ person }}さん（{{ role }}）のパスキーを、この端末に登録します。{% if adding %}登録済みのパスキーはそのまま使えます。{% endif %}</p>
+<p><label>この端末の名前（あとで見分けるため）<br><input id="passkey-label" maxlength="40" placeholder="例: 自分のスマートフォン"></label></p>
+<p><button type="button" data-passkey="register" data-code="{{ code }}">パスキーを登録する</button></p>
+<p id="passkey-message" role="status"></p>
+<noscript><p>登録には JavaScript を有効にしてください。</p></noscript>
+<p class="note">この URL は {{ expires }} まで、一度だけ使えます。</p>
+<script defer src="/assets/passkey.js"></script>
+{% endblock %}

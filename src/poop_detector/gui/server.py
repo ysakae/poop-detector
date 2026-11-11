@@ -33,8 +33,10 @@ from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
 from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
 from .access import launch_url
+from .accounts import Accounts
 from .asgi import create_app
 from .pages import page_title
+from .passkeys import PasskeyAuth
 from .rate_limit import RateLimits
 from .sessions import SessionPolicy, SessionStore
 
@@ -58,6 +60,10 @@ class GuiApp:
     # 起動時の URL で一度だけ受け取り、サーバー側のセッションを始める。
     access_token: str
     sessions: SessionStore
+    accounts: Accounts
+    passkeys: PasskeyAuth
+    # 受け付ける Host と Origin、パスキーの RP（実際に待ち受けたポートから決まる）。
+    site: Site
     title: str
     disk_mb: float
 
@@ -81,7 +87,7 @@ class GuiServer:
         host, port = listener.getsockname()[:2]
         self.server_address: tuple[str, int] = (host, port)
         self.server_port: int = port
-        self.site = Site(port, web.public_url)
+        self.site = app.site
         proxies = proxy_list(web.trusted_proxies)
         config = uvicorn.Config(
             create_app(app, self.site, limits),
@@ -166,6 +172,8 @@ def make_server(
     limits は要求の回数の上限（テストで小さくする）。
     """
     listener = listen(web.host, port)
+    database = events_database(root)
+    accounts = Accounts(database)
     if not ipaddress.ip_address(web.host).is_loopback and not web.public_url:
         logger.warning(
             "GUI を %s で待ち受けます。外から開く場合は gui.public_url に https の URL を設定し、"
@@ -180,8 +188,11 @@ def make_server(
         csrf_secret=secrets.token_bytes(32),
         access_token=secrets.token_urlsafe(32),
         sessions=SessionStore(
-            events_database(root), SessionPolicy(web.session_idle_hours, web.session_max_days)
+            database, SessionPolicy(web.session_idle_hours, web.session_max_days)
         ),
+        accounts=accounts,
+        passkeys=PasskeyAuth(accounts),
+        site=Site(listener.getsockname()[1], web.public_url),
         title=page_title(pet_name),
         disk_mb=disk_mb,
     )

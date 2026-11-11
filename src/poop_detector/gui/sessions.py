@@ -31,6 +31,13 @@ class SessionPolicy:
         return int(self.max_days * 86400)
 
 
+@dataclass(frozen=True)
+class Session:
+    """有効なセッション。user_id はパスキーでログインしたユーザー（起動トークンなら None）。"""
+
+    user_id: str | None
+
+
 def _stamp(moment: datetime) -> str:
     """文字列のままで前後を比べられるよう、桁をそろえた UTC の ISO 8601。"""
     return moment.isoformat(timespec="microseconds")
@@ -80,25 +87,29 @@ class SessionStore:
         return session_id
 
     def check(self, session_id: str) -> bool:
-        """有効なセッションか。期限切れなら消して False。使ったときは最後に使った時刻を延ばす。"""
+        """有効なセッションか。"""
+        return self.lookup(session_id) is not None
+
+    def lookup(self, session_id: str) -> Session | None:
+        """有効なセッションの中身。期限切れなら消して None。使ったときは最後に使った時刻を延ばす。"""
         if not session_id:
-            return False
+            return None
         key = _digest(session_id)
         now = self._now()
         idle, lifetime = self._limits(now)
         with self.database.connect() as db:
             row = db.execute(
-                "SELECT created_at, last_seen FROM gui_sessions WHERE id = ?", (key,)
+                "SELECT created_at, last_seen, user_id FROM gui_sessions WHERE id = ?", (key,)
             ).fetchone()
             if row is None:
-                return False
+                return None
             if row["last_seen"] <= idle or row["created_at"] <= lifetime:
                 db.execute("DELETE FROM gui_sessions WHERE id = ?", (key,))
-                return False
+                return None
             last_seen = datetime.fromisoformat(row["last_seen"])
             if (now - last_seen).total_seconds() >= TOUCH_INTERVAL_SECONDS:
                 db.execute("UPDATE gui_sessions SET last_seen = ? WHERE id = ?", (_stamp(now), key))
-        return True
+        return Session(row["user_id"])
 
     def revoke(self, session_id: str) -> None:
         """ログアウト。セッションを消す。"""

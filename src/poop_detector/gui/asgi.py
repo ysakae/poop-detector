@@ -17,7 +17,7 @@ POST は加えて、本文の大きさと CSRF トークンを確かめてから
 import hmac
 import logging
 from typing import TYPE_CHECKING
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -36,6 +36,7 @@ from .access import (
     token_in_query,
     token_matches,
 )
+from .auth_api import webauthn
 from .exchange import HTML, Exchange
 from .pages import save_failed_page
 from .rate_limit import RateLimiter, RateLimits
@@ -97,6 +98,29 @@ class SecurityHeaders:
         await self.app(scope, receive, send_with_headers)
 
 
+# ログインしていなくても開ける場所（ログイン、パスキーの登録、その画面のスクリプト）。
+PUBLIC_PATHS = frozenset({"/login", "/enroll", "/assets/passkey.js"})
+PUBLIC_PREFIX = "/webauthn/"
+
+
+def is_public(path: str) -> bool:
+    return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIX)
+
+
+def is_auth_attempt(scope: Scope) -> bool:
+    """回数を厳しく数える、認証の試み（起動トークン、登録用 URL、パスキーの窓口）。"""
+    path: str = scope["path"]
+    query = scope.get("query_string", b"").decode("latin-1")
+    if scope["method"] == "POST":
+        return path.startswith(PUBLIC_PREFIX)
+    return path == "/enroll" or token_in_query(query) is not None
+
+
+def wants_page(headers: Headers, method: str) -> bool:
+    """ブラウザーが画面を開こうとしている要求か（ログイン画面へ移す対象）。"""
+    return method == "GET" and "text/html" in headers.get("accept", "")
+
+
 def client_address(scope: Scope) -> str:
     """接続元の IP アドレス。信頼するプロキシの背後では、uvicorn が X-Forwarded-For を反映する。"""
     client = scope.get("client")
@@ -127,10 +151,8 @@ class Throttle:
         kinds = [("all", self.limits.all)]
         if scope["method"] == "POST":
             kinds.append(("post", self.limits.post))
-        if scope["method"] == "GET" and token_in_query(
-            scope.get("query_string", b"").decode("latin-1")
-        ):
-            kinds.append(("token", self.limits.token))
+        if is_auth_attempt(scope):
+            kinds.append(("auth", self.limits.token))
         for kind, rule in kinds:
             wait = self.limiter.hit(client, kind, rule)
             if wait:
@@ -172,19 +194,35 @@ class Admission:
         if candidate is not None:
             secure = scope.get("scheme") == "https"
             return await self.accept_token(candidate, url.path, url.query, secure, scope)
-        session_id = await run_in_threadpool(self.valid_session, headers.get("cookie"))
-        if session_id is None:
-            return Response(ACCESS_DENIED, 403, media_type=HTML)
-        # ルートへは、確かめたセッションを scope の state で渡す（CSRF トークンを導く）。
-        scope.setdefault("state", {})["session_id"] = session_id
-        return None
+        found = await run_in_threadpool(self.valid_session, headers.get("cookie"))
+        if found is not None:
+            # ルートへは、確かめたセッションを scope の state で渡す（CSRF トークンを導く）。
+            state = scope.setdefault("state", {})
+            state["session_id"], state["user_id"] = found
+            return None
+        if is_public(url.path):
+            return None
+        if wants_page(headers, scope["method"]):
+            target = urlencode({"next": request_path(scope)})
+            return Response(b"", 303, {"Location": f"/login?{target}"})
+        return Response(ACCESS_DENIED, 403, media_type=HTML)
 
-    def valid_session(self, cookie_header: str | None) -> str | None:
-        """Cookie のセッションのうち有効なもの（データベースを読むのでスレッドで呼ぶ）。"""
-        return next(
-            (value for value in session_ids(cookie_header) if self.gui.sessions.check(value)),
-            None,
-        )
+    def valid_session(self, cookie_header: str | None) -> tuple[str, str | None] | None:
+        """Cookie のセッションのうち有効なものの (ID, ユーザーの ID)。
+
+        無効にしたユーザーのセッションは使えない。データベースを読むのでスレッドで呼ぶ。
+        """
+        for value in session_ids(cookie_header):
+            session = self.gui.sessions.lookup(value)
+            if session is None:
+                continue
+            if session.user_id is not None:
+                user = self.gui.accounts.users.get(session.user_id)
+                if user is None or not user.active:
+                    self.gui.sessions.revoke(value)
+                    continue
+            return value, session.user_id
+        return None
 
     async def accept_token(
         self, candidate: str, path: str, query: str, secure: bool, scope: Scope
@@ -235,13 +273,14 @@ def not_found(method: str) -> Response:
 async def dispatch(request: Request) -> Response:
     """GET_ROUTES・POST_ROUTES の関数を、要求ごとの Exchange で呼ぶ。"""
     gui: GuiApp = request.app.state.gui
-    session_id: str = request.scope["state"]["session_id"]
+    # ログイン画面など、セッションがなくても開ける場所では CSRF トークンを出さない。
+    session_id: str | None = request.scope.get("state", {}).get("session_id")
     exchange = Exchange(
         gui,
         request_path(request.scope),
         request.headers,
         request.scope.get("scheme", "http"),
-        csrf=gui.csrf_for(session_id),
+        csrf=gui.csrf_for(session_id) if session_id else "",
     )
     url = urlsplit(exchange.path)
     if request.method == "GET":
@@ -256,7 +295,7 @@ async def dispatch(request: Request) -> Response:
         form = await read_form(request)
         if form is None:
             return Response(save_failed_page(gui.title), 400, media_type=HTML)
-        if not hmac.compare_digest(form.fields.get("csrf", ""), exchange.csrf):
+        if not exchange.csrf or not hmac.compare_digest(form.fields.get("csrf", ""), exchange.csrf):
             return Response("画面を再読み込みして保存してください", 403, media_type=HTML)
         await run_in_threadpool(post_route, exchange, form)
     if exchange.response is None:
@@ -272,7 +311,10 @@ async def unknown_path(request: Request, _error: Exception) -> Response:
 def create_app(gui: "GuiApp", site: Site, limits: RateLimits) -> Starlette:
     """ルートの表から ASGI アプリを作る。表に後から足したルートも dispatch が見つける。"""
     app = Starlette(
-        routes=[Route("/{path:path}", dispatch, methods=["GET", "POST"])],
+        routes=[
+            Route("/webauthn/{step:path}", webauthn, methods=["POST"]),
+            Route("/{path:path}", dispatch, methods=["GET", "POST"]),
+        ],
         middleware=[
             Middleware(SecurityHeaders),
             Middleware(Throttle, limits=limits),
