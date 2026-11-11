@@ -17,6 +17,8 @@ PyPI に公開する sdist と wheel、およびリポジトリには、この�
 | PyYAML | MIT | |
 | psutil | BSD-3-Clause | |
 | python-dotenv | BSD-3-Clause | |
+| Jinja2 | BSD-3-Clause | ラベル GUI の HTML テンプレート |
+| MarkupSafe | BSD-3-Clause | Jinja2 の依存。HTML のエスケープ |
 
 ## 開発用の依存
 

@@ -1,0 +1,21 @@
+{#- 録画容量と、整理してよい古い動画の選択画面。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import capacity_panel %}
+{% block content %}
+<h2>録画容量と古い動画の整理</h2><p><a href="/clips">動画一覧へ戻る</a></p>{{ capacity_panel(capacity) }}
+{%- if result %}<p class="message" role="status">{{ result.removed }}本を整理しました。{{ result.skipped }}本は対象外または再試行が必要です。</p>{% endif -%}
+<form method="get" action="/clips/storage"><label>整理候補の古さ<select name="days">
+{%- for day in retention_days -%}
+<option value="{{ day }}"{% if day == days %} selected{% endif %}>{{ day }}日以上前</option>
+{%- endfor -%}
+</select></label> <button>候補を表示</button></form><p class="note">手動ラベル付き、検知や確定記録にひも付いた動画、保護指定した動画、Codexが排泄候補と判定した動画は整理対象から外れます。</p>
+{% if not candidates %}
+<p>整理できる古い動画はありません。</p>
+{% else %}
+<p>表示中の候補 {{ candidates|length }}本（古い順に最大{{ limit }}本） ／ すべて選んだ場合に空く容量の目安 {{ "{:,.2f}".format(total_mib) }} MiB</p><form id="cleanup-form" method="post" action="/clips/cleanup"><input type="hidden" name="csrf" value="{{ token }}"><input type="hidden" name="days" value="{{ days }}"><p><label><input type="checkbox" id="cleanup-all">表示中の候補をすべて選択</label></p><fieldset><legend>整理する動画を選択</legend>
+{%- for item in candidates -%}
+<p><label><input type="checkbox" name="id" value="{{ item.id }}" data-bytes="{{ item.size }}">{{ item.time }} ／ {{ item.source }} ／ {{ item.verdict }}</label> ／ {{ "{:,.2f}".format(item.size_mib) }} MiB ／ <a href="/clips?id={{ item.id }}" target="_blank" rel="noopener">確認</a></p>
+{%- endfor -%}
+</fieldset><p id="cleanup-selection" role="status">選択済み 0本 ／ 空く容量の目安 0.00 MiB</p><p><label><input type="checkbox" name="confirm" value="1" required>選んだ動画ファイルを削除することを確認しました</label></p><button>選択した動画ファイルを削除</button></form><p class="note">削除した映像は再生できなくなります。判定結果や記録は残ります。</p>
+{% endif %}
+{% endblock %}

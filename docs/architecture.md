@@ -76,16 +76,19 @@
 
 ## ラベル GUI
 
-標準ライブラリの `http.server` だけで作ったサーバーで、HTML は Python の文字列で組み立てます（テンプレートエンジンやフロントエンドのビルドはありません）。`gui/` は次のように分かれています。
+標準ライブラリの `http.server` で作ったサーバーで、HTML は Jinja2 のテンプレート（`gui/templates/`）で作ります。フロントエンドのビルドはありません。`gui/` は次のように分かれています。
 
 | モジュール | 役割 |
 |---|---|
 | `gui/server.py` | `make_server`・`serve`、要求ハンドラー（`Handler`）、安全対策 |
 | `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
-| `gui/pages.py` | 共通の文書の枠（`document`）、トップと排泄の記録の画面 |
-| `gui/clip_pages.py`・`gui/activity_page.py` | 動画と行動マップの画面 |
+| `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（トップと記録、動画、行動マップ） |
+| `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル |
+| `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`） |
 | `gui/access.py` | 閲覧のトークンと Cookie |
 | `gui/static/` | 補助的な操作だけを担う JavaScript |
+
+テンプレートはすべての値を自動でエスケープし、渡し忘れた変数はエラーになります。HTML を文字列で組み立てたり、`Markup` でエスケープを外したりしないでください。値の整形と分岐の判断は Python 側で行い、テンプレートは構造だけを受け持ちます。`tests/test_gui_escaping.py` は、特殊文字を含む値が各画面でエスケープされることを確かめます。
 
 ルートが使うストアやトークンは `GuiApp` にまとめ、`LabelServer.app` からハンドラーへ渡します。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。
 
