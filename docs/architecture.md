@@ -101,11 +101,13 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 ## GUI
 
-標準ライブラリの `http.server` で作ったサーバーで、HTML は Jinja2 のテンプレート（`gui/templates/`）で作ります。フロントエンドのビルドはありません。`gui/` は次のように分かれています。
+Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML は Jinja2 のテンプレート（`gui/templates/`）で作ります。フロントエンドのビルドはありません。`gui/` は次のように分かれています。
 
 | モジュール | 役割 |
 |---|---|
-| `gui/server.py` | `make_server`・`serve`・`background_gui`、要求ハンドラー（`Handler`）、安全対策 |
+| `gui/server.py` | `make_server`・`serve`・`background_gui`。127.0.0.1 で待ち受けるソケットを作り、uvicorn で動かす（アクセスログは出さない） |
+| `gui/asgi.py` | ASGI アプリ。安全対策のミドルウェア（`SecurityHeaders`・`Admission`）、フォームの読み込みと CSRF、ルートの表への振り分け |
+| `gui/exchange.py` | ルートに渡す要求ごとの `Exchange`。`respond`・`redirect`・`stream` で応答を決める |
 | `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
 | `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（トップと記録、動画、行動マップ） |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル |
@@ -115,9 +117,9 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 テンプレートはすべての値を自動でエスケープし、渡し忘れた変数はエラーになります。HTML を文字列で組み立てたり、`Markup` でエスケープを外したりしないでください。値の整形と分岐の判断は Python 側で行い、テンプレートは構造だけを受け持ちます。`tests/test_gui_escaping.py` は、特殊文字を含む値が各画面でエスケープされることを確かめます。
 
-ルートが使うストアやトークンは `GuiApp` にまとめ、`LabelServer.app` からハンドラーへ渡します。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。
+ルートが使うストアやトークンは `GuiApp` にまとめ、`Exchange.app` からルートへ渡します。ルートの関数は同期の関数で、Starlette がスレッドプールで呼びます。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。
 
-外部公開しない前提でも、Host ヘッダーの検査、起動ごとのトークン、厳しい CSP を入れています。これらは `Handler._admit` がすべてのルートの前に1か所で確かめます。POST は、本文の大きさと CSRF トークンも確かめてからルートに渡します。CSP などの応答ヘッダーは、`respond` と `redirect` が `SECURITY_HEADERS` から付けます。
+外部公開しない前提でも、Host ヘッダーの検査、起動ごとのトークン、厳しい CSP を入れています。これらは `asgi.Admission` がすべての要求の前に1か所で確かめます。POST は、`asgi.dispatch` が本文の大きさと CSRF トークンも確かめてからルートに渡します。CSP などの応答ヘッダーは、`asgi.SecurityHeaders` が動画やエラーを含むすべての応答に `SECURITY_HEADERS` から付けます。要求の URL にはトークンや画像の ID が入るので、uvicorn のアクセスログは無効にしています（`tests/test_gui_asgi.py` が確かめます）。
 
 トークンは2つあり、POST の CSRF 対策と、閲覧を含むすべての要求の認証（`gui/access.py`、起動時の URL のトークンを HttpOnly の Cookie に移す）に使います。`tests/test_gui_routes.py` は、ルートの表にあるすべてのルートで安全対策が効くことを確かめます。インラインスクリプトは CSP で動かないため、JavaScript は `gui/static/` に置き、`gui/routes.py` の `asset` のパスに加えてください。
 

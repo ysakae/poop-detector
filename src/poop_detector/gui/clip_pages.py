@@ -1,11 +1,9 @@
 """ローカル動画の再生と、動作学習用ラベルの入力画面。"""
 
 import re
-from collections.abc import Callable, Iterable, Mapping
-from email.message import Message
-from io import BufferedIOBase
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES
 from ..video.clip_labels import ClipLabel
@@ -24,6 +22,9 @@ from ..video.clip_storage import (
 from ..video.clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
 from .templating import render_template
 
+if TYPE_CHECKING:
+    from .exchange import Exchange
+
 STATES = {
     "queued": "受付済み",
     "recording": "録画中",
@@ -33,20 +34,6 @@ STATES = {
     "removing": "整理中",
     "removed": "整理済み",
 }
-
-
-class ClipHandler(Protocol):
-    """動画の配信とフォームの処理に使う、GUI のリクエストハンドラーの部分。"""
-
-    path: str
-    # 型スタブでは Message は総称型だが、実行時には添字を付けられないため文字列で書く。
-    headers: "Message[str, str]"
-    wfile: BufferedIOBase
-
-    def send_response(self, code: int, message: str | None = None) -> None: ...
-    def send_header(self, keyword: str, value: str) -> None: ...
-    def end_headers(self) -> None: ...
-    def respond(self, status: int, data: str | bytes) -> None: ...
 
 
 SOURCES = {
@@ -342,7 +329,7 @@ def confirmation_info(
     }
 
 
-def stream_video(handler: ClipHandler, root: str | Path, clip_id: str) -> None:
+def stream_video(handler: "Exchange", root: str | Path, clip_id: str) -> None:
     """動画を Range 要求に対応して返す。"""
     store = ClipStore(root)
     path = store.video_path(store.get(clip_id))
@@ -368,35 +355,34 @@ def stream_video(handler: ClipHandler, root: str | Path, clip_id: str) -> None:
             if not 0 <= start <= end < size:
                 raise ValueError
         except ValueError:
-            handler.send_response(416)
-            handler.send_header("Content-Range", f"bytes */{size}")
-            handler.send_header("Content-Length", "0")
-            handler.end_headers()
+            handler.respond(416, b"", "video/mp4", {"Content-Range": f"bytes */{size}"})
             return None
-    handler.send_response(206 if range_header else 200)
-    handler.send_header("Content-Type", "video/mp4")
-    handler.send_header("Accept-Ranges", "bytes")
-    handler.send_header("Content-Length", str(max(0, end - start + 1)))
-    handler.send_header("Cache-Control", "no-store")
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(max(0, end - start + 1)),
+        "Cache-Control": "no-store",
+    }
     if range_header:
-        handler.send_header("Content-Range", f"bytes {start}-{end}/{size}")
-    handler.end_headers()
-    try:
-        with path.open("rb") as video:
-            video.seek(start)
-            remaining = end - start + 1
-            while remaining > 0:
-                block = video.read(min(65536, remaining))
-                if not block:
-                    break
-                handler.wfile.write(block)
-                remaining -= len(block)
-    except (BrokenPipeError, ConnectionResetError):
-        pass
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    handler.stream(206 if range_header else 200, read_range(path, start, end), "video/mp4", headers)
+    return None
+
+
+def read_range(path: Path, start: int, end: int) -> Iterator[bytes]:
+    """ファイルの start〜end バイト目を少しずつ読む。接続が切れれば読むのをやめる。"""
+    with path.open("rb") as video:
+        video.seek(start)
+        remaining = end - start + 1
+        while remaining > 0:
+            block = video.read(min(65536, remaining))
+            if not block:
+                break
+            remaining -= len(block)
+            yield block
 
 
 def handle_clip_post(
-    handler: ClipHandler,
+    handler: "Exchange",
     root: str | Path,
     fields: Mapping[str, str],
     selected_ids: Iterable[str] = (),
@@ -411,11 +397,7 @@ def handle_clip_post(
                 raise ValueError("削除の確認欄にチェックを入れてください")
             days = retention_days(fields.get("days", ""))
             removed, skipped = cleanup_selected(store, selected_ids, days)
-            handler.send_response(303)
-            handler.send_header(
-                "Location", f"/clips/storage?days={days}&removed={removed}&skipped={skipped}"
-            )
-            handler.end_headers()
+            handler.redirect(f"/clips/storage?days={days}&removed={removed}&skipped={skipped}")
             return
         if handler.path == "/clips/request":
             clip_id = store.request(require_live=True)
@@ -438,9 +420,7 @@ def handle_clip_post(
             )
             record_id = fields.get("record_id", "") if handler.path == "/clips/confirm" else None
             store.labels.save(clip_id, clip_label, record_id=record_id)
-        handler.send_response(303)
-        handler.send_header("Location", f"/clips?id={clip_id}&saved=1")
-        handler.end_headers()
+        handler.redirect(f"/clips?id={clip_id}&saved=1")
     except (ValueError, TypeError) as error:
         from .pages import message_page
 
