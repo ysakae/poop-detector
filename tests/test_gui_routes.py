@@ -9,8 +9,8 @@ import pytest
 from support import csrf_token, exchange
 
 from poop_detector.gui import routes
+from poop_detector.gui.asgi import SECURITY_HEADERS
 from poop_detector.gui.routes import GET_ROUTES, POST_ROUTES
-from poop_detector.gui.server import SECURITY_HEADERS
 
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 

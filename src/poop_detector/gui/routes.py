@@ -1,7 +1,8 @@
 """GUI の URL ごとの処理。
 
 ルートを足すときは、関数を1つ書いて @get または @post を付ける。
-安全対策（Host 検査、閲覧トークン、POST の CSRF）は server.Handler がすべてのルートの前に行う。
+安全対策（Host 検査、閲覧トークン、POST の CSRF）は asgi.py がすべてのルートの前に行う。
+ルートは要求ごとの Exchange を受け取り、respond・redirect・stream で応答を決める。
 """
 
 import json
@@ -29,7 +30,7 @@ from .pages import Query, local_time, parse_time, render, render_records, save_f
 from .templating import render_template
 
 if TYPE_CHECKING:
-    from .server import Handler
+    from .exchange import Exchange as Handler
 
 ASSETS = Path(__file__).with_name("static")
 FILTERS = ("all", "unlabeled", "true", "false", "missed", "manual", "feces", "urine", "both")

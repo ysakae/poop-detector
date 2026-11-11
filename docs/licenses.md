@@ -19,6 +19,12 @@ PyPI に公開する sdist と wheel、およびリポジトリには、この�
 | python-dotenv | BSD-3-Clause | |
 | Jinja2 | BSD-3-Clause | GUI の HTML テンプレート |
 | MarkupSafe | BSD-3-Clause | Jinja2 の依存。HTML のエスケープ |
+| Starlette | BSD-3-Clause | GUI の ASGI フレームワーク |
+| uvicorn | BSD-3-Clause | GUI の ASGI サーバー |
+| anyio | MIT | Starlette の依存。非同期処理とスレッドプール |
+| h11 | MIT | uvicorn の依存。HTTP/1.1 の処理 |
+| click | BSD-3-Clause | uvicorn の依存 |
+| idna | BSD-3-Clause | anyio の依存 |
 
 ## 開発用の依存
 

@@ -5,7 +5,7 @@
 ## プロジェクト構成
 
 - `src/poop_detector/` に Python の実装があります。`main.py` が CLI の入口（引数の解析と振り分け）で、各サブコマンドの処理は `commands/` にあります。実装は機能の成熟度（README の機能表）に合わせたサブパッケージに分かれています。中核は `detection/`（差分検知・状態遷移・監視範囲・監視ループ）、`capture/`（カメラ）、`records/`（記録の台帳と SQLite）、`video/`（動画の保存と自動判定）です。任意の機能は `features/`、実験的な機能は `experimental/` にあります。任意・実験的な機能を監視ループの本体（`detection.monitoring.Monitor`）から直接呼ばず、`MonitorExtension` として差し込んでください。
-- `gui/` が記録・ラベル付け・管理の画面を提供します（`gui/server.py` がサーバー、`gui/routes.py` が URL ごとの処理、`gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` が画面の値、`gui/templates/` が Jinja2 のテンプレート）。HTML はテンプレートで作り、文字列で組み立てないでください。ブラウザー用 JavaScript は `src/poop_detector/gui/static/`、テストは `tests/` にあります。設定例は `config/config.example.yaml`、利用手順は `README.md`、設計の概要は `docs/architecture.md` を参照してください。
+- `gui/` が記録・ラベル付け・管理の画面を提供します（`gui/server.py` がサーバーの起動と停止、`gui/asgi.py` が安全対策と振り分け、`gui/routes.py` が URL ごとの処理、`gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` が画面の値、`gui/templates/` が Jinja2 のテンプレート）。HTML はテンプレートで作り、文字列で組み立てないでください。ブラウザー用 JavaScript は `src/poop_detector/gui/static/`、テストは `tests/` にあります。設定例は `config/config.example.yaml`、利用手順は `README.md`、設計の概要は `docs/architecture.md` を参照してください。
 
 ## 開発・実行コマンド
 
