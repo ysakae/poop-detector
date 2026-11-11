@@ -4,7 +4,7 @@ import re
 from urllib.parse import urlencode
 
 import pytest
-from support import csrf_token, exchange, request
+from support import csrf_token, exchange, request, session_cookie
 
 from poop_detector.web_address import Site
 
@@ -165,7 +165,8 @@ def test_token_url_moves_token_into_strict_http_only_cookie(gui):
     assert status == 303
     assert headers["Location"] == "/records?days=7"
     cookie = headers["Set-Cookie"]
-    assert cookie.startswith(f"poop_detector_session={server.access_token};")
+    assert cookie.startswith("poop_detector_session=")
+    assert server.access_token not in cookie
     assert "HttpOnly" in cookie
     assert "SameSite=Strict" in cookie
     assert "Path=/" in cookie
@@ -203,7 +204,8 @@ def test_redirect_without_token_never_leaves_the_gui():
 
 def test_gui_accepts_session_among_other_cookies_and_hides_referrer(gui):
     server, _, _ = gui
-    cookie = f"other=1; poop_detector_session=old; poop_detector_session={server.access_token}"
+    session = session_cookie(server)["Cookie"]
+    cookie = f"other=1; poop_detector_session=old; {session}"
     status, headers, _ = exchange(server, "GET", "/", headers={"Cookie": cookie}, auth=False)
     assert status == 200
     assert headers["Referrer-Policy"] == "no-referrer"

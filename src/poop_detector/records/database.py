@@ -140,11 +140,27 @@ def migrate_to_v3(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE video_assessments ADD COLUMN model TEXT")
 
 
+def migrate_to_v4(db: sqlite3.Connection) -> None:
+    """GUI のセッション。id は Cookie の値の SHA-256 で、値そのものは保存しない。
+
+    時刻は UTC の ISO 8601。user_id はユーザー認証を入れるまで空。
+    """
+    db.execute(
+        """CREATE TABLE gui_sessions (
+            id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            user_id TEXT
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
     migrate_to_v2,
     migrate_to_v3,
+    migrate_to_v4,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

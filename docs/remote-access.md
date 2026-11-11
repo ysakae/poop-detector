@@ -37,6 +37,8 @@ gui:
 
 `public_url` を設定すると、GUI はそのドメイン名の `Host` と、そのオリジンからのフォームの送信を受け付けます。起動時には、外から開くためのトークン付きの URL も端末に表示します。
 
+ログインした状態（セッション）は、操作がないまま `gui.session_idle_hours`（既定168時間）か、ログインから `gui.session_max_days`（既定30日）で切れます。起動トークン付きの URL、フォームの送信、すべての要求には、接続元ごとの回数の上限があります。リバースプロキシの背後では、`gui.trusted_proxies` から届いた `X-Forwarded-For` の接続元で数えます。
+
 ## Caddy の例
 
 [Caddy](https://caddyserver.com/) は、証明書を自動で取得し、`X-Forwarded-Proto` などを既定で付けます。ドメイン名の DNS をこのマシンに向け、ポート 443 に外から届くようにしてから、次の `Caddyfile` で起動します。

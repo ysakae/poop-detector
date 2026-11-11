@@ -11,6 +11,7 @@ import pytest
 
 from poop_detector.records.database import (
     LATEST_VERSION,
+    MIGRATIONS,
     TABLES_V1,
     Database,
     migrate,
@@ -214,3 +215,24 @@ def test_store_no_longer_exposes_unused_monitor_state(tmp_path):
     assert not hasattr(store, "monitor_state")
     assert not hasattr(store, "set_monitor_state")
     assert "monitor_state" in tables(tmp_path / "events.sqlite3")
+
+
+def test_version_3_database_gains_the_gui_session_table(tmp_path):
+    """版3（判定器の記録まで）のデータベースに、GUI のセッションの表を足す。データは残る。"""
+    path = tmp_path / "events.sqlite3"
+    create(path, PRE_VERSIONING, [EVENT, LABEL])
+    db = sqlite3.connect(path)
+    try:
+        for migration in MIGRATIONS[:3]:
+            migration(db)
+        db.execute("PRAGMA user_version = 3")
+        db.commit()
+    finally:
+        db.close()
+    assert "gui_sessions" not in tables(path)
+
+    store = Store(tmp_path)
+
+    assert version(path) == LATEST_VERSION
+    assert columns(path, "gui_sessions") == ["id", "created_at", "last_seen", "user_id"]
+    assert store.list()[0]["note"] == "朝の記録"

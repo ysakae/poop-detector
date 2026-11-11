@@ -86,3 +86,7 @@ gui:
   public_url: ""
   # X-Forwarded-Proto などを信頼するプロキシの IP アドレスかネットワーク（カンマ区切り）
   trusted_proxies: 127.0.0.1
+  # 操作がないままこの時間（時間）が過ぎると、ログアウトする
+  session_idle_hours: 168
+  # ログインからこの日数が過ぎると、使っていてもログアウトする
+  session_max_days: 30

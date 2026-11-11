@@ -51,9 +51,23 @@ class SilentNotifier:
         return False
 
 
+def login(server):
+    """起動時のトークン付き URL を開いてセッションを始め、その Cookie ヘッダーを返す。"""
+    conn = http.client.HTTPConnection(*server.server_address)
+    conn.request("GET", f"/?token={server.access_token}")
+    response = conn.getresponse()
+    response.read()
+    conn.close()
+    assert response.status == 303, response.status
+    return {"Cookie": response.headers["Set-Cookie"].split(";", 1)[0]}
+
+
 def session_cookie(server):
-    """起動時のトークンをブラウザーに移した後と同じ Cookie ヘッダーを返す。"""
-    return {"Cookie": f"poop_detector_session={server.access_token}"}
+    """ブラウザーがトークンをセッションに移した後と同じ Cookie ヘッダーを返す（サーバーごとに1回）。"""
+    cookie = getattr(server, "test_cookie", None)
+    if cookie is None:
+        cookie = server.test_cookie = login(server)
+    return cookie
 
 
 def exchange(server, method, path, body=None, headers=None, auth=True):

@@ -64,8 +64,13 @@ def check_gui(root):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host = {"Host": f"127.0.0.1:{server.server_port}"}
-    # 起動時のトークンをブラウザーに移した後と同じ Cookie を付ける。
-    session = {**host, "Cookie": f"poop_detector_session={server.access_token}"}
+    # 起動時のトークン付き URL を開き、ブラウザーと同じようにセッションの Cookie を受け取る。
+    conn = http.client.HTTPConnection(*server.server_address)
+    conn.request("GET", f"/?token={server.access_token}", headers=host)
+    response = conn.getresponse()
+    response.read()
+    conn.close()
+    session = {**host, "Cookie": (response.getheader("Set-Cookie") or "").split(";", 1)[0]}
     try:
         for path in ("/", "/records", "/clips", "/activity"):
             check(f"GUI の {path} が表示できる", get_status(server, path, session) == 200)

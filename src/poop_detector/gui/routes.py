@@ -18,6 +18,7 @@ from ..features.activity_map import ActivityLayout
 from ..features.tray_registration import REGISTRATION_MESSAGES, TrayRegistration
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow
 from ..video.clips import CLIP_LABELS
+from .access import expired_cookie, session_ids
 from .activity_page import render_activity
 from .clip_pages import (
     capacity_status,
@@ -26,7 +27,15 @@ from .clip_pages import (
     render_storage,
     stream_video,
 )
-from .pages import Query, local_time, parse_time, render, render_records, save_failed_page
+from .pages import (
+    Query,
+    local_time,
+    message_page,
+    parse_time,
+    render,
+    render_records,
+    save_failed_page,
+)
 from .templating import render_template
 
 if TYPE_CHECKING:
@@ -187,6 +196,32 @@ def management_tray(handler: "Handler", form: Form) -> None:
         )
         return
     handler.redirect("/manage")
+
+
+# --- ログアウト ---
+
+
+@get("/logout")
+def logout_page(handler: "Handler", _query: Query) -> None:
+    app = handler.app
+    handler.respond(200, render_template("logout.html", title=app.title, token=app.csrf_token))
+
+
+@post("/logout")
+def logout(handler: "Handler", _form: Form) -> None:
+    """この要求の Cookie のセッションを終え、ブラウザーの Cookie を消す。"""
+    for session_id in session_ids(handler.headers.get("cookie")):
+        handler.app.sessions.revoke(session_id)
+    page = message_page(
+        "ログアウトしました",
+        "もう一度使うには、GUI を起動した端末に表示されたトークン付きの URL を開いてください。",
+        "/",
+        "トップへ",
+        title=handler.app.title,
+        wrap_link=True,
+    )
+    secure = handler.scheme == "https"
+    handler.respond(200, page, headers={"Set-Cookie": expired_cookie(secure=secure)})
 
 
 # --- 画像・動画・スクリプト ---
