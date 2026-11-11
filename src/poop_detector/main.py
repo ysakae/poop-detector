@@ -8,9 +8,11 @@ import os
 import platform
 import sys
 import time
+from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 from dataclasses import asdict
 from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, cast
 from uuid import uuid4
 
 # FFmpegの診断に認証URLが含まれることを防ぐため、OpenCV読込前に抑制する。
@@ -22,21 +24,45 @@ import psutil
 
 from .activity_map import LAYOUT_FILE, ActivityLayout, ActivityRecorder, ActivityStore
 from .camera import Camera, LatestCamera
+from .clips import ClipCollector
 from .config import Config, apply_timezone, load_connection_settings
 from .detection import IncrementalDetector
 from .early_alert import EarlyAlert
 from .events import EXCRETION_TYPES, Store, utcnow
+from .frames import Frame
 from .live_preview import LivePreview
 from .notifications import DEFAULT_NTFY_SERVER, MacNotifier, NtfyNotifier
 from .platform_support import has_display
-from .roi import ROI, select_polygon
+from .roi import ROI, AnyROI, select_polygon
 from .state_machine import Machine
 from .tray_tracking import TrayReferenceError, TrayTracker
+
+if TYPE_CHECKING:
+    from .dog import DogObserver, DogState, DogTransition
 
 logger = logging.getLogger(__name__)
 
 
-def save_baseline(path, frame, roi):
+class FrameSource(Protocol):
+    """監視ループが読むカメラ。generation は再接続のたびに増える。
+
+    healthy 属性があれば、フレームが届かないときに接続の途切れと区別するのに使う。
+    """
+
+    generation: int
+
+    def read(self) -> Frame | None: ...
+
+
+class MonitorNotifier(Protocol):
+    """監視ループが使う通知。"""
+
+    def send(self) -> bool: ...
+    def send_early_alert(self) -> bool: ...
+
+
+def save_baseline(path: str | Path, frame: Frame, roi: AnyROI) -> None:
+    """空のトイレの基準画像と、そのときの ROI を並べて保存する。"""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if not cv2.imwrite(str(path), frame):
@@ -44,23 +70,26 @@ def save_baseline(path, frame, roi):
     path.with_suffix(".json").write_text(json.dumps(asdict(roi)))
 
 
-def load_baseline(path, roi):
+def load_baseline(path: str | Path, roi: AnyROI) -> Frame:
+    """基準画像を読む。保存時と ROI が違えば ValueError。"""
     path = Path(path)
     if json.loads(path.with_suffix(".json").read_text()) != asdict(roi):
         raise ValueError("ROIが変わっています。基準画像を再登録してください")
     frame = cv2.imread(str(path))
     if frame is None:
         raise ValueError("基準画像がありません")
-    return frame
+    result: Frame = frame
+    return result
 
 
-def scene_signature(baseline, roi):
+def scene_signature(baseline: Frame, roi: AnyROI) -> str:
+    """基準画像と ROI の組の識別子。どちらかが変われば通知済み状態を引き継がない。"""
     return hashlib.sha256(
         baseline.tobytes() + json.dumps(asdict(roi), sort_keys=True).encode()
     ).hexdigest()
 
 
-def review_circling(root, config, args):
+def review_circling(root: Path, config: Config, args: argparse.Namespace) -> int:
     from .circling import inspect_circling
     from .clips import ClipStore
     from .dog import DogDetector
@@ -107,21 +136,22 @@ def review_circling(root, config, args):
 
 
 def monitor(
-    camera,
-    roi,
-    baseline,
-    config,
-    notifier,
-    max_frames=0,
-    collector=None,
-    dog_observer=None,
-    codex_notifications=False,
-    early_alert=False,
-    tray_tracker=None,
-    on_tray_state=None,
-    outside_roi=None,
-    activity_map=None,
-):
+    camera: FrameSource,
+    roi: AnyROI,
+    baseline: Frame,
+    config: Config,
+    notifier: MonitorNotifier,
+    max_frames: int = 0,
+    collector: ClipCollector | None = None,
+    dog_observer: "DogObserver | None" = None,
+    codex_notifications: bool = False,
+    early_alert: bool = False,
+    tray_tracker: TrayTracker | None = None,
+    on_tray_state: Callable[[str], None] | None = None,
+    outside_roi: AnyROI | None = None,
+    activity_map: ActivityRecorder | None = None,
+) -> int:
+    """監視ループ。max_frames が 0 なら止めるまで動き、処理したフレーム数を返す。"""
     detector = IncrementalDetector(
         baseline, config.threshold, config.min_area, config.occupied_ratio, config.color_threshold
     )
@@ -144,8 +174,10 @@ def monitor(
         from .dog import OutsideWatch
 
         outside_watch = OutsideWatch(roi, outside_roi, config.dog_exit_seconds)
-    dog_state = None
-    dog_clip_times = {}
+    if activity_map is not None and dog_observer is None:
+        raise ValueError("行動マップには犬の検出が必要です")
+    dog_state: DogState | None = None
+    dog_clip_times: dict[DogTransition, float] = {}
     signature = scene_signature(baseline, roi)
     if collector is not None:
         collector.scene_signature = signature
@@ -154,13 +186,13 @@ def monitor(
         detector.accept(reference)
     seen = 0
     generation = camera.generation
-    started_at = None
-    settled_since = None
-    previous = None
+    started_at: str | None = None
+    settled_since: float | None = None
+    previous: Frame | None = None
     process = psutil.Process()
     process.cpu_percent()
     last_health = time.monotonic()
-    tray_state = None
+    tray_state: str | None = None
     try:
         while not max_frames or seen < max_frames:
             tick = time.monotonic()
@@ -173,7 +205,7 @@ def monitor(
             if activity_map is not None:
                 if interrupted or (raw_frame is None and not getattr(camera, "healthy", False)):
                     activity_map.interrupt()
-                if raw_frame is not None:
+                if raw_frame is not None and dog_observer is not None:
                     activity_map.update(raw_frame, dog_observer.detector.predict, tick)
             if frame is not None:
                 seen += 1
@@ -244,8 +276,9 @@ def monitor(
             if observation.kind != "candidate":
                 started_at = None
             if machine.update(observation.kind, time.monotonic()):
+                # ここに来るのは frame があるときだけで、frame は raw_frame から作る。
                 event_id = store.record(
-                    raw_frame,
+                    cast(Frame, raw_frame),
                     observation.score,
                     started_at,
                     (time.monotonic() - tick) * 1000,
@@ -291,7 +324,7 @@ def monitor(
     return seen
 
 
-def parser():
+def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="犬のトイレの変化検知")
     result.add_argument("--config", default="config/config.yaml", help="設定ファイル")
     commands = result.add_subparsers(dest="command", required=True)
@@ -370,7 +403,8 @@ def parser():
     return result
 
 
-def main(argv=None):
+def main(argv: Sequence[str] | None = None) -> int:
+    """CLI の入口。終了コードを返す（成功 0、入力や設定の誤り 2）。"""
     args = parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
@@ -533,6 +567,7 @@ def main(argv=None):
                 "見守り用トピックを使う場合は POOP_NTFY_TOPIC も設定してください", file=sys.stderr
             )
             return 2
+        notifier: NtfyNotifier | MacNotifier
         if topic:
             try:
                 notifier = NtfyNotifier(
@@ -631,12 +666,14 @@ def main(argv=None):
                             )
                         )
 
-                    def on_frame(frame, generation):
+                    def on_frame(frame: Frame | None, generation: int) -> None:
                         if collector is not None:
                             collector.feed(frame, generation=generation)
                         preview.publish(frame)
 
                     if args.codex:
+                        if collector is None:
+                            raise ValueError("--codexには動画保存を有効にしてください")
                         review = Review(
                             collector.store,
                             lambda path, row: inspect_clip(
