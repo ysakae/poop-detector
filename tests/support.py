@@ -51,13 +51,28 @@ class SilentNotifier:
         return False
 
 
-def request(server, method, path, body=None, headers=None):
-    """テスト用のラベル GUI に HTTP で要求し、状態コードと本文を返す。"""
+def session_cookie(server):
+    """起動時のトークンをブラウザーに移した後と同じ Cookie ヘッダーを返す。"""
+    return {"Cookie": f"poop_detector_session={server.access_token}"}
+
+
+def exchange(server, method, path, body=None, headers=None, auth=True):
+    """テスト用のラベル GUI に HTTP で要求し、状態コード、応答ヘッダー、本文を返す。
+
+    auth=False で、アクセストークンを持たない相手を再現する。
+    """
     conn = http.client.HTTPConnection(*server.server_address)
-    conn.request(method, path, body=body, headers=headers or {})
+    sent = {**(session_cookie(server) if auth else {}), **(headers or {})}
+    conn.request(method, path, body=body, headers=sent)
     response = conn.getresponse()
-    status, data = response.status, response.read()
+    result = response.status, response.headers, response.read()
     conn.close()
+    return result
+
+
+def request(server, method, path, body=None, headers=None, auth=True):
+    """exchange の状態コードと本文だけを返す。"""
+    status, _, data = exchange(server, method, path, body, headers, auth)
     return status, data
 
 

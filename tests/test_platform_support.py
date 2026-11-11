@@ -69,7 +69,14 @@ def test_gui_header_does_not_assume_mac(tmp_path):
     thread.start()
     try:
         conn = http.client.HTTPConnection(*server.server_address)
-        conn.request("GET", "/", headers={"Host": f"127.0.0.1:{server.server_port}"})
+        conn.request(
+            "GET",
+            "/",
+            headers={
+                "Host": f"127.0.0.1:{server.server_port}",
+                "Cookie": f"poop_detector_session={server.access_token}",
+            },
+        )
         page = conn.getresponse().read().decode()
     finally:
         server.shutdown()

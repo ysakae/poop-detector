@@ -3,6 +3,7 @@
 import hmac
 import json
 import secrets
+import sys
 import webbrowser
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime
@@ -10,7 +11,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, TypeAlias, cast
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import SplitResult, parse_qs, urlencode, urlsplit
 
 from .activity_gui import render_activity
 from .activity_map import ActivityLayout
@@ -26,15 +27,34 @@ from .clip_gui import (
 from .clip_storage import DEFAULT_DISK_MIB
 from .clips import CLIP_LABELS, ClipStore
 from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
+from .gui_access import (
+    has_session,
+    launch_url,
+    redirect_without_token,
+    session_cookie,
+    token_in_query,
+    token_matches,
+)
 from .live_preview import LivePreview
 from .record_stats import summarize_records
 from .timezones import local_today, parse_local, timezone_label, to_local
 
 ASSETS = Path(__file__).with_name("static")
+
+
+class LabelServer(ThreadingHTTPServer):
+    """ラベル GUI のサーバー。起動ごとのアクセストークンを持つ。"""
+
+    access_token: str = ""
+
+
 # parse_qs で読んだ問い合わせ文字列。同じ名前の値はリストになる。
 Query: TypeAlias = Mapping[str, list[str]]
 STATS_PERIODS = ("7", "30", "90")
 APP_TITLE = "トイレ記録"
+ACCESS_DENIED = (
+    "アクセスできません。label-gui を起動した端末に表示されたトークン付きの URL を開いてください。"
+)
 LIVE_PANEL = """
 <section class="live-panel" aria-labelledby="live-title">
   <h2 id="live-title">現在のカメラ映像</h2>
@@ -354,12 +374,17 @@ def make_server(
     *,
     disk_mb: float = DEFAULT_DISK_MIB,
     pet_name: str = "",
-) -> ThreadingHTTPServer:
-    """127.0.0.1 だけで待ち受けるラベル GUI のサーバーを作る。起動ごとに CSRF トークンを変える。"""
+) -> LabelServer:
+    """127.0.0.1 だけで待ち受けるラベル GUI のサーバーを作る。
+
+    起動ごとに、保存操作の CSRF トークンと、閲覧を含むすべての要求に使うアクセストークンを作る。
+    """
     store = Store(root)
     clips = ClipStore(root)
     preview = LivePreview(root)
+    # token は保存操作の CSRF 対策、access は閲覧を含むすべての要求の認証に使う
     token = secrets.token_urlsafe(32)
+    access = secrets.token_urlsafe(32)
     title = page_title(pet_name)
 
     class Handler(BaseHTTPRequestHandler):
@@ -386,6 +411,7 @@ def make_server(
                 "form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
             )
             self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+            self.send_header("Referrer-Policy", "no-referrer")
             for name, value in (headers or {}).items():
                 self.send_header(name, value)
             self.end_headers()
@@ -396,10 +422,32 @@ def make_server(
             port = cast(ThreadingHTTPServer, self.server).server_port
             return self.headers.get("Host") in (f"127.0.0.1:{port}", f"localhost:{port}")
 
+        def authorized(self) -> bool:
+            """起動時のトークンを移した Cookie を持つ要求か。"""
+            return has_session(self.headers.get("Cookie"), access)
+
+        def accept_token(self, url: SplitResult) -> None:
+            """トークン付き URL を Cookie に移し、トークンを除いた URL へ移動させる。"""
+            candidate = token_in_query(url.query)
+            if candidate is None or not token_matches(candidate, access):
+                self.respond(403, ACCESS_DENIED)
+                return
+            self.send_response(303)
+            self.send_header("Location", redirect_without_token(url.path, url.query))
+            self.send_header("Set-Cookie", session_cookie(access))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         def do_GET(self) -> None:
             if not self.host_allowed():
                 return self.respond(403, "アクセスできません")
             url = urlsplit(self.path)
+            if token_in_query(url.query) is not None:
+                return self.accept_token(url)
+            if not self.authorized():
+                return self.respond(403, ACCESS_DENIED)
             query = parse_qs(url.query)
             if url.path == "/":
                 return self.respond(200, render(store, token, query, disk_mb, title=title))
@@ -465,6 +513,8 @@ def make_server(
         def do_POST(self) -> None:
             if not self.host_allowed():
                 return self.respond(403, "アクセスできません")
+            if not self.authorized():
+                return self.respond(403, ACCESS_DENIED)
             if self.path not in (
                 "/save",
                 "/clips/request",
@@ -557,7 +607,24 @@ def make_server(
                     ),
                 )
 
-    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server = LabelServer(("127.0.0.1", port), Handler)
+    server.access_token = access
+    return server
+
+
+def announce(base: str, url: str, *, opened: bool, interactive: bool) -> None:
+    """起動の案内を出す。トークン付きの URL は端末に直接出すときだけ表示し、ログに残さない。"""
+    if interactive:
+        print(f"ラベル付け画面: {url}", flush=True)  # noqa: T201
+        print("この URL は起動中だけ有効なパスワードと同じです。他人に見せないでください。")  # noqa: T201
+    elif opened:
+        print(f"ラベル付け画面をブラウザーで開きました: {base}", flush=True)  # noqa: T201
+    else:
+        print(  # noqa: T201
+            "トークン付きの URL は端末にだけ表示します。出力をファイルなどへ送らずに起動するか、"
+            "--no-browser を外してブラウザーで開いてください。",
+            flush=True,
+        )
 
 
 def serve(
@@ -569,11 +636,10 @@ def serve(
     pet_name: str = "",
 ) -> None:
     with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name) as server:
-        url = f"http://127.0.0.1:{server.server_port}/"
-        # 画面の URL は、起動したターミナルに表示する。
-        print(f"ラベル付け画面: {url}", flush=True)  # noqa: T201
-        if open_browser:
-            webbrowser.open(url)
+        base = f"http://127.0.0.1:{server.server_port}/"
+        url = launch_url(base, server.access_token)
+        opened = open_browser and webbrowser.open(url)
+        announce(base, url, opened=opened, interactive=sys.stdout.isatty())
         try:
             server.serve_forever()
         except KeyboardInterrupt:

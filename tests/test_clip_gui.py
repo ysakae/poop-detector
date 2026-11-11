@@ -33,6 +33,11 @@ def test_video_range_and_labels(gui):
         == 400
     )
     assert request(server, "GET", "/clip-video?id=../../.env")[0] == 404
+    status, data = request(
+        server, "GET", "/clip-video?id=" + clip, headers={"Range": "bytes=2-5"}, auth=False
+    )
+    assert status == 403
+    assert b"2345" not in data
 
 
 def test_manual_request_requires_running_camera(gui):
