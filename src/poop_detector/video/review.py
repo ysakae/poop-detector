@@ -321,7 +321,9 @@ def default_judge() -> VideoJudge:
 class AssessmentNotifier(Protocol):
     """自動判定を通知する関数（NtfyNotifier.send_assessment など）。"""
 
-    def __call__(self, label: str, *, location: str | None = None) -> bool: ...
+    def __call__(
+        self, label: str, *, location: str | None = None, interrupted: bool = False
+    ) -> bool: ...
 
 
 # 動画のパスと行から判定を返す関数。inspect_clip に ROI などを束ねたもの。
@@ -394,14 +396,14 @@ class Review:
                 since is not None
                 and self.notify is not None
                 and result.label in EXCRETION_TYPES
-                and not row["interrupted"]
                 and self.store.assessments.claim_notice(row["id"])
             ):
-                sent = (
-                    self.notify(result.label, location="outside")
-                    if result.location == "outside"
-                    else self.notify(result.label)
-                )
+                if row["interrupted"]:
+                    sent = self.notify(result.label, location=result.location, interrupted=True)
+                elif result.location == "outside":
+                    sent = self.notify(result.label, location="outside")
+                else:
+                    sent = self.notify(result.label)
                 self.store.assessments.finish_notice(row["id"], sent)
         return completed, failures
 

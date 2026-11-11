@@ -43,12 +43,19 @@ class _ToiletNotifier:
             early_alert=True,
         )
 
-    def send_assessment(self, label: str, *, location: str | None = None) -> bool:
+    def send_assessment(
+        self, label: str, *, location: str | None = None, interrupted: bool = False
+    ) -> bool:
         if label not in ("feces", "urine", "both"):
             return False
         place = "トレー外での" if location == "outside" else ""
+        detail = (
+            "録画に一部欠落があります。動画を確認してください。"
+            if interrupted
+            else "動画を確認できます。"
+        )
         return self._display(
-            f"動画の自動判定で{place}{EXCRETION_TYPES[label]}の候補が見つかりました。動画を確認できます。"
+            f"動画の自動判定で{place}{EXCRETION_TYPES[label]}の候補が見つかりました。{detail}"
         )
 
     def _display(self, message: str, *, early_alert: bool = False) -> bool:
