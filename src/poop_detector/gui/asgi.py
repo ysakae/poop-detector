@@ -59,7 +59,9 @@ SECURITY_HEADERS = {
         "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
     ),
     "Cross-Origin-Resource-Policy": "same-origin",
-    "Referrer-Policy": "no-referrer",
+    # no-referrer にすると、ブラウザーは同じサイトのフォームの送信でも Origin: null を送り、
+    # Admission の Origin の検査で断られてしまう。same-origin なら、ほかのサイトには URL を渡さない。
+    "Referrer-Policy": "same-origin",
 }
 # HTTPS で届いた要求にだけ付ける。サブドメインには広げない（利用者の他のサイトに影響するため）。
 HSTS = "max-age=31536000"
