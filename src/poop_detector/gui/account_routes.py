@@ -1,4 +1,4 @@
-"""自分のアカウント（パスキーの一覧・追加・削除）と、管理者による招待の画面。
+"""自分のアカウント（パスキーの一覧・追加・削除）と、管理者による招待・ユーザー管理・監査ログの画面。
 
 ルートの表への登録はこのモジュールを読み込んだときに行う（asgi.py が読み込む）。
 """
@@ -6,10 +6,10 @@
 from typing import TYPE_CHECKING
 
 from ..errors import InvalidInputError
-from .accounts import ENROLLMENT_MINUTES, ROLES, User
+from .accounts import ENROLLMENT_MINUTES, ROLES, User, role_label
 from .invitation_mail import MailError, invite_by_email, recover_by_email, verify_address
 from .pages import Query, local_time, message_page
-from .routes import Form, first, get, post
+from .routes import Form, audit, first, get, post
 from .templating import render_template
 
 if TYPE_CHECKING:
@@ -24,15 +24,6 @@ def _signed_in(handler: "Handler") -> User:
     if handler.user is None:
         raise RuntimeError("ログインしていない要求がアカウントの画面に届きました")
     return handler.user
-
-
-def _require_admin(handler: "Handler") -> User | None:
-    """管理者でなければ 403 を返して None。役割の確認は #85 でルートの表に広げる。"""
-    user = _signed_in(handler)
-    if user.role != "admin":
-        handler.respond(403, "この操作は管理者だけができます")
-        return None
-    return user
 
 
 @get("/account")
@@ -167,17 +158,14 @@ def _invite_page(handler: "Handler", status: int = 200, **context: object) -> No
     )
 
 
-@get("/account/invite")
+@get("/account/invite", role="admin")
 def invite_page(handler: "Handler", _query: Query) -> None:
-    if _require_admin(handler) is not None:
-        _invite_page(handler)
+    _invite_page(handler)
 
 
-@post("/account/invite")
+@post("/account/invite", role="admin")
 def invite(handler: "Handler", form: Form) -> None:
-    admin = _require_admin(handler)
-    if admin is None:
-        return
+    admin = _signed_in(handler)
     app = handler.app
     email = form.fields.get("email", "")
     action = form.fields.get("action", "invite")
@@ -185,6 +173,7 @@ def invite(handler: "Handler", form: Form) -> None:
         if action == "cancel":
             if not app.accounts.enrollments.cancel_email(email):
                 raise InvalidInputError("取り消せる招待が見つかりません")
+            audit(handler, "user.cancel_invite", email.strip().lower())
             _invite_page(handler, notice="招待を取り消しました")
             return
         if action not in ("invite", "resend"):
@@ -203,7 +192,14 @@ def invite(handler: "Handler", form: Form) -> None:
     except MailError as error:
         _invite_page(handler, 502, error=str(error), retry_email=email)
     else:
+        role = form.fields.get("role", "admin")
+        detail = email.strip().lower() if action == "resend" else _invited(email, role)
+        audit(handler, f"user.{action}", detail)
         _invite_page(handler, notice="招待メールを送信しました")
+
+
+def _invited(email: str, role: str) -> str:
+    return f"{email.strip().lower()}（{role_label(role)}）"
 
 
 def _users_page(
@@ -235,17 +231,14 @@ def _users_page(
     )
 
 
-@get("/account/users")
+@get("/account/users", role="admin")
 def users_page(handler: "Handler", query: Query) -> None:
-    if _require_admin(handler) is not None:
-        _users_page(handler, first(query, "email").strip())
+    _users_page(handler, first(query, "email").strip())
 
 
-@post("/account/users")
+@post("/account/users", role="admin")
 def manage_user(handler: "Handler", form: Form) -> None:
-    admin = _require_admin(handler)
-    if admin is None:
-        return
+    admin = _signed_in(handler)
     app = handler.app
     email = form.fields.get("email", "")
     try:
@@ -262,14 +255,35 @@ def manage_user(handler: "Handler", form: Form) -> None:
         elif action == "enable":
             app.accounts.users.enable(user.id)
             notice = "ユーザーを有効にしました"
+        elif action == "role":
+            role = form.fields.get("role", "")
+            app.accounts.users.set_role(user.id, role)
+            notice = f"役割を「{role_label(role)}」にしました"
         else:
             raise InvalidInputError("ユーザー管理の操作を確認してください")
+        target = user.email or user.name
+        audit(handler, f"user.{action}", _invited(target, role) if action == "role" else target)
     except InvalidInputError as error:
         _users_page(handler, email, status=400, error=str(error))
     except MailError as error:
         _users_page(handler, email, status=502, error=str(error))
     else:
-        if action == "disable" and user.id == admin.id:
+        if action in ("disable", "role") and user.id == admin.id:
+            # 自分を無効・一般ユーザーにしたときは、もう開けないユーザー管理の画面には戻さない。
             handler.redirect("/")
             return
         _users_page(handler, email, notice=notice)
+
+
+@get("/account/audit", role="admin")
+def audit_page(handler: "Handler", _query: Query) -> None:
+    entries = [
+        {
+            "at": local_time(entry.at),
+            "actor": entry.actor,
+            "label": entry.label,
+            "detail": entry.detail,
+        }
+        for entry in handler.app.accounts.audit.recent()
+    ]
+    handler.respond(200, render_template("audit.html", title=handler.app.title, entries=entries))

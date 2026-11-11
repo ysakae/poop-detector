@@ -2,18 +2,21 @@
 
 このマシンで実行できること自体を信頼の根拠にして、最初の管理者の登録と、
 パスキーをなくしたときの復旧の URL を出す。URL は使い捨てで、短い時間だけ有効。
+ユーザーの操作は、操作者を "cli" として監査ログに残す（URL は残さない）。
 """
 
 import argparse
 import json
 
-from ..gui.accounts import Accounts, User
+from ..gui.accounts import Accounts, User, role_label
+from ..gui.audit import CLI_ACTOR
 from ..gui.invitation_mail import invite_by_email
 from ..records.database import events_database
 from ..web_address import Site, WebOptions
 from .context import CommandContext, CommandError
 
-CREATED_BY = "cli"
+CREATED_BY = CLI_ACTOR
+DEFAULT_INVITE_ROLE = "member"
 
 
 def enrollment_url(context: CommandContext, code: str) -> str:
@@ -68,9 +71,11 @@ def users(args: argparse.Namespace, context: CommandContext) -> int:
     if action == "cancel-invite":
         if not args.identity or not accounts.enrollments.cancel_email(args.identity):
             raise CommandError("取り消せる招待が見つかりません")
+        accounts.audit.record(CLI_ACTOR, "user.cancel_invite", args.identity.strip().lower())
         print("招待を取り消しました")
         return 0
     if action in ("invite", "resend"):
+        role = args.role or DEFAULT_INVITE_ROLE
         if not args.identity:
             raise CommandError("招待する人のメールアドレスを指定してください")
         if action == "resend" or "@" in args.identity or args.name is not None:
@@ -81,24 +86,34 @@ def users(args: argparse.Namespace, context: CommandContext) -> int:
                 args.identity,
                 actor=CREATED_BY,
                 name=args.name or "",
-                role=args.role,
+                role=role,
                 minutes=args.minutes,
                 resend=action == "resend",
             )
+            email = args.identity.strip().lower()
+            detail = email if action == "resend" else f"{email}（{role_label(role)}）"
+            accounts.audit.record(CLI_ACTOR, f"user.{action}", detail)
             print("招待メールを送信しました")
             return 0
-        if args.role != "admin":
-            raise CommandError(
-                "一般ユーザーの招待は権限制御（#85）の実装後に使えます。初回は --role admin を指定してください"
-            )
         if accounts.users.list():
-            raise CommandError("招待する人のメールアドレスを指定してください")
+            raise CommandError("2人目からは、招待する人のメールアドレスを指定してください")
+        if role != "admin":
+            raise CommandError("最初のユーザーは管理者として登録してください（--role admin）")
         code = accounts.enrollments.issue(
             "admin", name=args.identity, created_by=CREATED_BY, minutes=args.minutes
         )
+        accounts.audit.record(CLI_ACTOR, "user.invite", f"{args.identity}（{role_label('admin')}）")
         _show_url(context, code, args.minutes, "初回管理者の登録用 URL:")
         return 0
     user = _find(accounts, args.identity)
+    target = user.email or user.name
+    if action == "set-role":
+        if args.role is None:
+            raise CommandError("変更後の役割を --role admin か --role member で指定してください")
+        accounts.users.set_role(user.id, args.role)
+        accounts.audit.record(CLI_ACTOR, "user.role", f"{target}（{role_label(args.role)}）")
+        print(f"「{user.name}」の役割を「{role_label(args.role)}」にしました")
+        return 0
     if action == "recover":
         code = accounts.enrollments.issue_recovery(
             user.id, created_by=CREATED_BY, minutes=args.minutes
@@ -110,4 +125,5 @@ def users(args: argparse.Namespace, context: CommandContext) -> int:
     else:
         accounts.users.enable(user.id)
         print(f"「{user.name}」を有効にしました")
+    accounts.audit.record(CLI_ACTOR, f"user.{action}", target)
     return 0

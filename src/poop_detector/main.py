@@ -201,18 +201,29 @@ def parser() -> argparse.ArgumentParser:
         "diagnose", help="不具合の報告に貼る診断情報を表示（URL・トピック名・パスは含まない）"
     )
     accounts = commands.add_parser(
-        "users", help="GUI のユーザーの一覧・登録用 URL・復旧・無効化（このマシンで実行）"
+        "users", help="GUI のユーザーの一覧・招待・役割の変更・復旧・無効化（このマシンで実行）"
     )
     accounts.add_argument(
         "action",
-        choices=("list", "invite", "resend", "cancel-invite", "recover", "disable", "enable"),
+        choices=(
+            "list",
+            "invite",
+            "resend",
+            "cancel-invite",
+            "set-role",
+            "recover",
+            "disable",
+            "enable",
+        ),
     )
     accounts.add_argument(
         "identity", nargs="?", help="メールアドレス（初回登録・メール未登録のユーザーは名前）"
     )
     accounts.add_argument("--name", help="メール招待で使う表示名")
     accounts.add_argument(
-        "--role", choices=("admin", "member"), default="member", help="invite の役割"
+        "--role",
+        choices=("admin", "member"),
+        help="invite の役割（既定は member）、set-role の変更後の役割（必須）",
     )
     accounts.add_argument(
         "--minutes", type=enrollment_minutes, default=30, help="登録用 URL の有効時間（5〜1440分）"

@@ -194,18 +194,52 @@ def test_users_list_recover_disable_and_enable(cli, capsys):
     assert cli.run("invite") == 2
 
 
-def test_members_cannot_be_invited_until_roles_are_enforced(cli, capsys):
-    """権限の確認（#85）が入るまでは、一般ユーザーも管理者と同じ操作ができてしまう。
+def test_cli_invites_members_by_email_and_records_it(cli, capsys, monkeypatch):
+    from poop_detector.gui import invitation_mail
 
-    そのため、一般ユーザーの招待は断り、管理者だけを招待できるようにしておく。
-    """
-    assert cli.run("invite", "家族A", "--role", "admin") == 0
-    capsys.readouterr()
+    monkeypatch.setattr(invitation_mail, "_send", lambda *_args: None)
+    cli.config.write_text(
+        f"data_dir: {cli.root}\ngui: {{public_url: 'https://toilet.example.com'}}\n"
+    )
+    Accounts(events_database(cli.root)).users.create("家族A", "admin")
+    # 2人目からはメールアドレスで招待する。役割を省くと一般ユーザー。
     assert cli.run("invite", "家族B") == 2
-    assert "#85" in capsys.readouterr().err
-    assert cli.run("invite", "家族B", "--role", "member") == 2
+    assert "メールアドレス" in capsys.readouterr().err
+    assert cli.run("invite", "b@example.org", "--name", "家族B") == 0
     accounts = Accounts(events_database(cli.root))
-    assert accounts.users.by_name("家族B") is None
+    enrollment = accounts.enrollments
+    assert enrollment is not None
+    entry = accounts.audit.recent()[0]
+    assert (entry.action, entry.actor) == ("user.invite", "監視するマシンのコマンド")
+    assert entry.detail == "b@example.org（一般ユーザー）"
+
+
+def test_cli_changes_roles_but_keeps_an_admin(cli, capsys):
+    accounts = Accounts(events_database(cli.root))
+    accounts.users.create("家族A", "admin")
+    member = accounts.users.create("家族B", "member", email="b@example.org")
+    assert cli.run("set-role", "b@example.org") == 2
+    assert "--role" in capsys.readouterr().err
+    assert cli.run("set-role", "b@example.org", "--role", "admin") == 0
+    assert accounts.users.get(member).role == "admin"
+    assert cli.run("set-role", "家族A", "--role", "member") == 0
+    assert cli.run("set-role", "b@example.org", "--role", "member") == 2
+    assert "管理者" in capsys.readouterr().err
+    actions = [entry.action for entry in accounts.audit.recent()]
+    assert actions == ["user.role", "user.role"]
+
+
+def test_cli_user_operations_are_audited(cli):
+    accounts = Accounts(events_database(cli.root))
+    accounts.users.create("家族A", "admin")
+    accounts.users.create("家族B", "member")
+    assert cli.run("disable", "家族B") == 0
+    assert cli.run("enable", "家族B") == 0
+    assert cli.run("recover", "家族B") == 0
+    entries = accounts.audit.recent()
+    assert [entry.action for entry in entries] == ["user.recover", "user.enable", "user.disable"]
+    assert all(entry.detail == "家族B" for entry in entries)
+    assert all("code" not in entry.detail for entry in entries)
 
 
 def test_mail_invite_reissue_cancel_and_duplicate(store):
@@ -303,3 +337,21 @@ def test_v5_database_preserves_passkeys_and_unused_enrollment(tmp_path):
     assert accounts.enrollments.verify_email(code, "old")
     assert accounts.users.by_email("owner@example.org").id == "old"
     assert accounts.passkeys.get("key").user_id == "old"
+
+
+def test_v6_database_keeps_users_and_gains_an_empty_audit_log(tmp_path):
+    from poop_detector.records.database import MIGRATIONS
+
+    with sqlite3.connect(tmp_path / "events.sqlite3") as db:
+        for migration in MIGRATIONS[:6]:
+            migration(db)
+        db.execute("PRAGMA user_version = 6")
+        db.execute(
+            "INSERT INTO users (id, name, role, created_at, email) "
+            "VALUES ('old', '家族A', 'admin', '2026', 'a@example.org')"
+        )
+    accounts = Accounts(events_database(tmp_path))
+    assert accounts.users.get("old").email == "a@example.org"
+    assert accounts.audit.recent() == []
+    accounts.audit.record("old", "user.role", "a@example.org（管理者）")
+    assert accounts.audit.recent()[0].actor == "家族A"

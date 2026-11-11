@@ -3,7 +3,7 @@
 {% from "_macros.html" import csrf_field %}
 {% block content %}
 <h2>ユーザー管理</h2>
-<p><a href="/account">アカウントへ戻る</a> · <a href="/account/invite">家族を招待する</a></p>
+<p><a href="/account">アカウントへ戻る</a> · <a href="/account/invite">家族を招待する</a> · <a href="/account/audit">監査ログ</a></p>
 {% if notice %}<p class="saved" role="status">{{ notice }}</p>{% endif %}
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 <form method="get" action="/account/users">
@@ -20,6 +20,11 @@
 {% if user.active %}
 <button name="action" value="recover">復旧メールを送る</button>
 <button name="action" value="disable" class="secondary">無効にする</button>
+{% if user.role == "admin" %}
+<input type="hidden" name="role" value="member"><button name="action" value="role" class="secondary">一般ユーザーにする</button>
+{% else %}
+<input type="hidden" name="role" value="admin"><button name="action" value="role" class="secondary">管理者にする</button>
+{% endif %}
 {% else %}
 <button name="action" value="enable">有効にする</button>
 {% endif %}

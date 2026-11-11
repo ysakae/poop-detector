@@ -9,6 +9,9 @@
    パスキーでログインした有効なユーザーのものかを確かめる。ログインしていない相手は、
    ログイン・パスキーの登録の画面（PUBLIC_PATHS）だけを開ける
 
+ルートへ振り分ける dispatch は、ルートの表で管理者だけと宣言したルート（routes.required_role）
+を、管理者でない人には 403 で断る。
+
 HTTPS かどうか（scope の scheme）は、信頼するプロキシからの X-Forwarded-Proto を uvicorn が
 反映した値を使う。
 POST は加えて、本文の大きさと CSRF トークンを確かめてからルートに渡す。
@@ -16,7 +19,8 @@ POST は加えて、本文の大きさと CSRF トークンを確かめてから
 
 import hmac
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from starlette.applications import Starlette
@@ -39,7 +43,8 @@ from .auth_api import webauthn
 from .exchange import HTML, Exchange
 from .pages import save_failed_page
 from .rate_limit import RateLimiter, RateLimits
-from .routes import GET_ROUTES, POST_ROUTES, Form
+from .routes import GET_ROUTES, POST_ROUTES, Form, admin_only_page, required_role
+from .templating import VIEWER_ADMIN
 
 if TYPE_CHECKING:
     from .server import GuiApp
@@ -244,6 +249,15 @@ def not_found(method: str) -> Response:
     return Response(message, 404, media_type=HTML)
 
 
+def as_viewer(route: Callable[[Exchange, Any], None], exchange: Exchange, argument: Any) -> None:
+    """ルートを呼ぶ。テンプレートが入口を出し分けられるよう、見ている人の役割を渡す。"""
+    token = VIEWER_ADMIN.set(exchange.user is not None and exchange.user.role == "admin")
+    try:
+        route(exchange, argument)
+    finally:
+        VIEWER_ADMIN.reset(token)
+
+
 async def dispatch(request: Request) -> Response:
     """GET_ROUTES・POST_ROUTES の関数を、要求ごとの Exchange で呼ぶ。"""
     gui: GuiApp = request.app.state.gui
@@ -261,21 +275,27 @@ async def dispatch(request: Request) -> Response:
         user=user,
     )
     url = urlsplit(exchange.path)
+    if request.method not in ("GET", "POST"):
+        return not_found(request.method)
+    routes: Mapping[str, Callable[..., None]] = (
+        GET_ROUTES if request.method == "GET" else POST_ROUTES
+    )
+    if url.path not in routes:
+        return not_found(request.method)
+    if required_role(request.method, url.path) == "admin" and (
+        user is None or user.role != "admin"
+    ):
+        # 画面に入口を出さないだけに頼らず、ここで必ず断る。
+        return Response(admin_only_page(gui.title), 403, media_type=HTML)
     if request.method == "GET":
-        get_route = GET_ROUTES.get(url.path)
-        if get_route is None:
-            return not_found("GET")
-        await run_in_threadpool(get_route, exchange, parse_qs(url.query))
+        await run_in_threadpool(as_viewer, GET_ROUTES[url.path], exchange, parse_qs(url.query))
     else:
-        post_route = POST_ROUTES.get(url.path)
-        if post_route is None:
-            return not_found("POST")
         form = await read_form(request)
         if form is None:
             return Response(save_failed_page(gui.title), 400, media_type=HTML)
         if not exchange.csrf or not hmac.compare_digest(form.fields.get("csrf", ""), exchange.csrf):
             return Response("画面を再読み込みして保存してください", 403, media_type=HTML)
-        await run_in_threadpool(post_route, exchange, form)
+        await run_in_threadpool(as_viewer, POST_ROUTES[url.path], exchange, form)
     if exchange.response is None:
         # ルートが応答を決めなかったのはプログラムの誤り。中身を出さずに失敗を返す。
         return Response("処理できませんでした", 500, media_type=HTML)
