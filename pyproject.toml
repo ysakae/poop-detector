@@ -58,7 +58,7 @@ testpaths = ["tests"]
 source = ["poop_detector"]
 [tool.coverage.report]
 # 2026-11 の実測（全体 91%）から少し余裕を持たせた下限。テストを足したら引き上げる。
-fail_under = 88
+fail_under = 89
 show_missing = true
 skip_covered = true
 [tool.mypy]

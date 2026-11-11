@@ -1,7 +1,9 @@
 """動画の自動判定の保存・通知・CLI 連携と、判定器の差し替えを確認する。"""
 
 import json
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -9,6 +11,7 @@ import pytest
 
 from poop_detector.detection.roi import ROI
 from poop_detector.main import parser
+from poop_detector.notifications import NtfyNotifier
 from poop_detector.video.clip_labels import ClipLabel
 from poop_detector.video.clips import ClipStore
 from poop_detector.video.codex_cli import CodexCliJudge
@@ -73,6 +76,49 @@ def test_backfill_never_notifies_and_live_skips_feeding(tmp_path):
     review.run(limit=10)
     assert store.assessments.get(old)["label"] == "feces"
     assert store.get(old)["label"] is None
+
+
+@pytest.mark.parametrize(
+    ("label", "interrupted", "location", "expected"),
+    [
+        ("feces", True, None, "排便の候補"),
+        ("urine", True, "outside", "トレー外での排尿の候補"),
+        ("both", True, None, "排便・排尿の候補"),
+        ("urine", False, None, "排尿の候補"),
+        ("none", True, None, None),
+        ("uncertain", True, None, None),
+    ],
+)
+def test_live_review_notifies_of_excretion_with_clip_quality(
+    tmp_path, label, interrupted, location, expected
+):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    clip_id = ready(store, when, interrupted=int(interrupted))
+    sent = []
+
+    def open_request(request, *, timeout):
+        sent.append(json.loads(request.data))
+        return nullcontext(SimpleNamespace(status=200))
+
+    notifier = NtfyNotifier("family", early_topic="watch", opener=open_request)
+    result = (
+        Assessment(label, "excreting", 10, 15, "新しい排泄の跡", location)
+        if expected
+        else Assessment(label, "other", None, None, "新しい排泄の跡は確認できません")
+    )
+    review = Review(store, lambda path, row: result, notifier.send_assessment)
+    assert review.run(limit=10, since=when.isoformat()) == (1, 0)
+    assert review.run(limit=10, since=when.isoformat()) == (0, 0)
+    if expected is None:
+        assert sent == []
+        assert store.assessments.get(clip_id)["notified_at"] is None
+    else:
+        assert len(sent) == 1
+        assert sent[0]["topic"] == "family"
+        assert expected in sent[0]["message"]
+        assert ("一部欠落" in sent[0]["message"]) == interrupted
+        assert store.assessments.get(clip_id)["notified_at"] is not None
 
 
 def test_failed_review_is_visible_and_can_be_retried(tmp_path):
