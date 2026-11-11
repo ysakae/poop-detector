@@ -2,7 +2,15 @@
 
 import fcntl
 import logging
+import sqlite3
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # clips がこのモジュールを読み込むため、型の参照だけにする。
+    from .clips import ClipStore
 
 MIB = 1024**2
 DEFAULT_DISK_MIB = 4096
@@ -23,7 +31,8 @@ CANDIDATE_SQL = """
 """
 
 
-def recording_usage(root):
+def recording_usage(root: Path) -> int:
+    """保存済みの動画ファイルの合計バイト数。"""
     used = 0
     for path in (root / "clips").glob("*.mp4"):
         try:
@@ -34,18 +43,20 @@ def recording_usage(root):
     return used
 
 
-def retention_days(value):
+def retention_days(value: str | int) -> int:
+    """フォームの値などを、選べる保持日数のどれかに変換する。"""
     days = int(value)
     if days not in RETENTION_DAYS:
         raise ValueError("保持期間を選んでください")
     return days
 
 
-def cutoff(days):
+def cutoff(days: str | int) -> str:
     return (datetime.now(UTC) - timedelta(days=retention_days(days))).isoformat()
 
 
-def candidate_file(store, row):
+def candidate_file(store: "ClipStore", row: sqlite3.Row) -> tuple[Path, int] | None:
+    """整理してよい動画のパスとサイズ。clips/ の直下にある本人の動画だけを対象にする。"""
     if row["path"] != f"clips/{row['id']}.mp4":
         return None
     directory = store.root / "clips"
@@ -62,10 +73,10 @@ def candidate_file(store, row):
     return None
 
 
-def cleanup_candidates(store, days):
+def cleanup_candidates(store: "ClipStore", days: int) -> list[tuple[sqlite3.Row, int]]:
     with store.store.connect() as db:
         rows = db.execute(CANDIDATE_SQL + " ORDER BY julianday(c.requested_at)", (cutoff(days),))
-        candidates = []
+        candidates: list[tuple[sqlite3.Row, int]] = []
         for row in rows:
             file = candidate_file(store, row)
             if file is not None:
@@ -75,7 +86,8 @@ def cleanup_candidates(store, days):
     return candidates
 
 
-def cleanup_selected(store, clip_ids, days):
+def cleanup_selected(store: "ClipStore", clip_ids: Iterable[str], days: int) -> tuple[int, int]:
+    """選ばれた動画を消し、(消した件数, 消せなかった件数) を返す。"""
     ids = list(dict.fromkeys(clip_ids))
     if not 1 <= len(ids) <= CLEANUP_LIMIT:
         raise ValueError("整理する動画を選んでください")
@@ -95,7 +107,7 @@ def cleanup_selected(store, clip_ids, days):
     return removed, len(ids) - removed
 
 
-def remove_video(store, clip_id, before):
+def remove_video(store: "ClipStore", clip_id: str, before: str) -> bool:
     query = CANDIDATE_SQL + " AND c.id=?"
     with store.store.connect() as db:
         db.execute("BEGIN IMMEDIATE")
