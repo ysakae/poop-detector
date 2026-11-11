@@ -1,4 +1,4 @@
-"""動画の保存要求・状態・ラベル・Codex の判定の台帳（監視と GUI の両方から使う）。"""
+"""動画の保存要求と状態の台帳（監視と GUI の両方から使う）。"""
 
 import logging
 import sqlite3
@@ -73,7 +73,7 @@ class ClipRow(TypedDict):
 
 
 class AssessmentRow(TypedDict):
-    """codex_assessments テーブルの1行。"""
+    """video_assessments テーブルの1行。"""
 
     clip_id: str
     label: str | None
@@ -104,7 +104,7 @@ class ClipStore:
     # 動画にひも付く台帳。それぞれ1つのテーブル（とその列）だけを扱う。
     @property
     def assessments(self) -> "AssessmentStore":
-        """Codex の判定（codex_assessments）。"""
+        """動画の自動判定（video_assessments）。"""
         from .clip_reviews import AssessmentStore
 
         return AssessmentStore(self.store.database)
@@ -179,9 +179,9 @@ class ClipStore:
     def list(self, include_assessments: bool = False) -> list[dict[str, Any]]:
         query = "SELECT * FROM clips ORDER BY requested_at DESC"
         if include_assessments:
-            query = """SELECT c.*, a.label AS codex_label, a.error AS codex_error,
-                a.location AS codex_location
-                FROM clips c LEFT JOIN codex_assessments a ON a.clip_id=c.id
+            query = """SELECT c.*, a.label AS review_label, a.error AS review_error,
+                a.location AS review_location
+                FROM clips c LEFT JOIN video_assessments a ON a.clip_id=c.id
                 ORDER BY c.requested_at DESC"""
         with self.connect() as db:
             return [dict(row) for row in db.execute(query)]

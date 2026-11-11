@@ -8,7 +8,7 @@
 | [detection.md](detection.md) | 判定の仕組み。差分検知、排尿の検知、見守り通知、設定項目、制限 |
 | [records.md](records.md) | 記録とラベル付け。ラベル GUI、排泄の記録、評価指標 |
 | [notifications.md](notifications.md) | 通知。macOS の通知と ntfy |
-| [video.md](video.md) | 動画。保存、容量の管理、Codex による判定 |
+| [video.md](video.md) | 動画。保存、容量の管理、動画の自動判定 |
 | [dog.md](dog.md) | 犬の検出。犬の存在、トレー外の検知、行動マップ、旋回候補 |
 | [docker.md](docker.md) | Docker / Linux での実行 |
 | [data-collection.md](data-collection.md) | データ収集の方針と今後 |

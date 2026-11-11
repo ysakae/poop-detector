@@ -15,7 +15,7 @@ from poop_detector.commands.context import (
 )
 from poop_detector.commands.records import require_timezones
 from poop_detector.config import Config, ConfigError, check_monitor_features, with_flags
-from poop_detector.main import HANDLERS, parser
+from poop_detector.main import ALIASES, HANDLERS, parser
 from poop_detector.notifications import MacNotifier, NtfyNotifier
 from poop_detector.roi import ROI
 
@@ -31,20 +31,20 @@ def test_every_subcommand_has_a_handler():
     commands = next(
         action for action in parser()._actions if isinstance(action, argparse._SubParsersAction)
     )
-    assert set(commands.choices) == set(HANDLERS)
+    assert set(commands.choices) == set(HANDLERS) | set(ALIASES)
     for name, sub in commands.choices.items():
-        assert sub.get_default("handler") is HANDLERS[name]
+        assert sub.get_default("handler") is HANDLERS[ALIASES.get(name, name)]
 
 
 def test_flags_add_features_without_changing_the_config():
     config = Config(early_alert_enabled=True)
-    merged = with_flags(config, codex=True, dog=True)
-    assert (merged.codex_enabled, merged.dog_enabled, merged.early_alert_enabled) == (
+    merged = with_flags(config, video_review=True, dog=True)
+    assert (merged.video_review_enabled, merged.dog_enabled, merged.early_alert_enabled) == (
         True,
         True,
         True,
     )
-    assert (config.codex_enabled, config.dog_enabled) == (False, False)
+    assert (config.video_review_enabled, config.dog_enabled) == (False, False)
     # フラグを付けなくても、設定で有効な機能はそのまま。
     assert with_flags(config).early_alert_enabled is True
 
@@ -52,8 +52,11 @@ def test_flags_add_features_without_changing_the_config():
 @pytest.mark.parametrize(
     ("values", "message"),
     [
-        ({"detect_outside_enabled": True}, r"features\.detect_outside / --detect-outside.*--codex"),
-        ({"codex_enabled": True, "clip_enabled": False}, r"clips\.enabled"),
+        (
+            {"detect_outside_enabled": True},
+            r"features\.detect_outside / --detect-outside.*--video-review",
+        ),
+        ({"video_review_enabled": True, "clip_enabled": False}, r"clips\.enabled"),
     ],
 )
 def test_missing_feature_dependencies_are_explained(values, message):
@@ -63,7 +66,7 @@ def test_missing_feature_dependencies_are_explained(values, message):
 
 def test_activity_map_and_outside_detection_turn_on_dog_detection():
     assert check_monitor_features(Config(activity_map_enabled=True)).dog_enabled is True
-    config = check_monitor_features(Config(codex_enabled=True, detect_outside_enabled=True))
+    config = check_monitor_features(Config(video_review_enabled=True, detect_outside_enabled=True))
     assert config.dog_enabled is True
     assert check_monitor_features(Config()).dog_enabled is False
 

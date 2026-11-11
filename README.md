@@ -3,9 +3,9 @@
 [![CI](https://github.com/ysakae/poop-detector/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ysakae/poop-detector/actions/workflows/ci.yml)
 
 犬のトイレを RTSP カメラで見守り、排便・排尿の「可能性」をスマートフォンや Mac に通知するローカル監視ツールです。
-空のトイレの画像と今の映像を比べ、変化が一定時間残ったときに知らせます。映像は手元のマシンで処理し、クラウドへは送りません（任意の Codex 判定を除く）。
+空のトイレの画像と今の映像を比べ、変化が一定時間残ったときに知らせます。映像は手元のマシンで処理し、クラウドへは送りません（任意の動画の自動判定を除く）。
 
-![ラベル GUI のトップ画面。ライブ映像、直近の Codex 判定、記録の一覧が並ぶ（人工データ）](docs/images/label-gui-top.jpg)
+![ラベル GUI のトップ画面。ライブ映像、直近の動画の自動判定、記録の一覧が並ぶ（人工データ）](docs/images/label-gui-top.jpg)
 
 > **English summary:** poop-detector watches a dog's toilet tray through an RTSP camera and notifies you when a lasting change suggests the dog has pooped or peed. It compares frames with an empty-tray baseline on your own machine; it does not recognize feces or urine itself. The documentation is in Japanese.
 
@@ -43,10 +43,10 @@
 | 任意 | 多角形の監視範囲 | `setup-roi --polygon` | 登録には画面のあるマシンが必要 | [初期設定](docs/setup.md) |
 | 任意 | トレー追従 | `features.track_tray`、`--track-tray` | トレーの縁が映っていること。縁が隠れている間は判定を保留する | [初期設定](docs/setup.md#カメラやトレーの小さなずれに追従する) |
 | 任意 | 録画を待たない見守り通知 | `features.early_alert`、`--early-alert` | 滞在を知らせるだけで、排泄の判定ではない | [判定の仕組み](docs/detection.md#録画を待たずトイレの様子を知らせる) |
-| 任意 | Codex による動画の判定 | `features.codex`、`--codex` | Codex CLI のログインが必要。動画から切り出した画像を Codex の提供元に送る | [動画](docs/video.md#codexの判定候補と通知を使う) |
+| 任意 | 動画の自動判定 | `features.video_review`、`--video-review` | 既定の判定器は Codex CLI で、ログインが必要。動画から切り出した画像を提供元に送る | [動画](docs/video.md#動画の自動判定と通知を使う) |
 | 任意 | 犬の存在・出入りの検出 | `dog.enabled`、`--dog` | `setup-dog-model` でモデルを取得する。実映像での検出精度は確かめていない | [犬の検出](docs/dog.md) |
 | 任意 | サークルの行動マップ | `features.activity_map`、`--activity-map` | 床面の登録と犬の検出が必要 | [犬の検出](docs/dog.md#サークルの行動マップ) |
-| 実験的 | トレー外の排泄候補 | `features.detect_outside`、`--detect-outside` | Codex による判定と犬の検出が必要。精度は確かめていない | [犬の検出](docs/dog.md#トレー外の排泄候補を検知する) |
+| 実験的 | トレー外の排泄候補 | `features.detect_outside`、`--detect-outside` | 動画の自動判定と犬の検出が必要。精度は確かめていない | [犬の検出](docs/dog.md#トレー外の排泄候補を検知する) |
 | 実験的 | 保存動画の旋回候補の分析 | `circling-review` | 保存済みの動画の分析だけで、監視や通知にはつながっていない | [犬の検出](docs/dog.md#保存動画から旋回候補を確認する) |
 
 普段使う機能は `config/config.yaml` の `features` に書いておけば、起動は `poop-detector run` だけで済みます（[初期設定](docs/setup.md#使う機能を設定ファイルで有効にする)）。
@@ -123,7 +123,7 @@ uv run poop-detector label-gui
 - 基準画像、ROI、イベント画像、動画、SQLite のデータベースは、既定でリポジトリ直下の `data/` に保存します。室内の映像を含むので、取り扱いに注意してください
 - RTSP URL には認証情報が含まれます。`.env` にだけ書き、Git にコミットしないでください。ルーターの RTSP ポートを外部に公開しないでください
 - ntfy を使うと、通知の短い本文が ntfy のサーバー（既定は `ntfy.sh`）に送られます。映像やカメラの URL は送りません。無料トピックは名前を知っている人なら誰でも読めます
-- `--codex` を使うと、動画から切り出した画像が Codex CLI を通じて外部のサービスに送られます
+- `--video-review` を使うと、動画から切り出した画像が Codex CLI を通じて外部のサービスに送られます
 - `setup-dog-model` は犬検出モデルを GitHub から取得します。監視の開始時に自動で取得することはありません
 
 `data/`、`.env`、`config/config.yaml` は Git の管理対象外です。詳しくは [データの保存先と外部への送信](docs/privacy.md) を、脆弱性の報告方法は [SECURITY.md](SECURITY.md) を参照してください。
@@ -134,7 +134,7 @@ uv run poop-detector label-gui
 - [判定の仕組み](docs/detection.md) — 差分検知、排尿の検知、見守り通知、設定項目、制限
 - [記録とラベル付け](docs/records.md) — ラベル GUI、排泄の記録、評価指標
 - [通知](docs/notifications.md) — macOS の通知と ntfy
-- [動画](docs/video.md) — 動画の保存、容量の管理、Codex による判定
+- [動画](docs/video.md) — 動画の保存、容量の管理、動画の自動判定
 - [犬の検出](docs/dog.md) — 犬の存在、トレー外の検知、行動マップ、旋回候補
 - [Docker / Linux](docs/docker.md)
 - [データ収集の方針](docs/data-collection.md)

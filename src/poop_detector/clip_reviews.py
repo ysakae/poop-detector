@@ -1,4 +1,4 @@
-"""保存した動画の後処理の結果（Codex の判定と、旋回候補の分析）の台帳。"""
+"""保存した動画の後処理の結果（自動判定と、旋回候補の分析）の台帳。"""
 
 import json
 from collections.abc import Sequence
@@ -12,7 +12,7 @@ from .events import utcnow, validate_location
 
 @dataclass(frozen=True)
 class Assessment:
-    """Codex が動画を見て返した判定（排泄の種類、行動、時刻、根拠、場所）。"""
+    """判定器が動画を見て返した判定（排泄の種類、行動、時刻、根拠、場所）。"""
 
     label: str | None = None
     activity: str | None = None
@@ -23,7 +23,7 @@ class Assessment:
 
 
 class AssessmentStore:
-    """codex_assessments テーブル。判定の保存と、同じ排泄を二重に通知しないための権利の管理。"""
+    """video_assessments テーブル。判定の保存と、同じ排泄を二重に通知しないための権利の管理。"""
 
     def __init__(self, database: Database) -> None:
         self.connect = database.connect
@@ -31,7 +31,7 @@ class AssessmentStore:
     def get(self, clip_id: str) -> AssessmentRow | None:
         with self.connect() as db:
             row = db.execute(
-                "SELECT * FROM codex_assessments WHERE clip_id=?", (clip_id,)
+                "SELECT * FROM video_assessments WHERE clip_id=?", (clip_id,)
             ).fetchone()
         return cast(AssessmentRow, dict(row)) if row else None
 
@@ -39,7 +39,7 @@ class AssessmentStore:
         with self.connect() as db:
             row = db.execute(
                 """SELECT a.*, c.requested_at, c.label AS human_label, c.location AS human_location
-                FROM codex_assessments a JOIN clips c ON c.id=a.clip_id
+                FROM video_assessments a JOIN clips c ON c.id=a.clip_id
                 ORDER BY a.assessed_at DESC, c.requested_at DESC LIMIT 1"""
             ).fetchone()
         return dict(row) if row else None
@@ -51,7 +51,7 @@ class AssessmentStore:
         clip_id: str | None = None,
         scene_signature: str | None = None,
     ) -> list[ClipRow]:
-        """Codex の判定を待つ動画。since を指定すると、それ以降の未判定の動画だけを古い順に返す。"""
+        """自動判定を待つ動画。since を指定すると、それ以降の未判定の動画だけを古い順に返す。"""
         conditions = ["c.status='ready'", "c.label IS NULL"]
         params: list[object] = []
         if since is not None:
@@ -72,7 +72,7 @@ class AssessmentStore:
                 cast(ClipRow, dict(row))
                 for row in db.execute(
                     """SELECT c.* FROM clips c
-                    LEFT JOIN codex_assessments a ON a.clip_id=c.id WHERE """  # noqa: S608
+                    LEFT JOIN video_assessments a ON a.clip_id=c.id WHERE """  # noqa: S608
                     + " AND ".join(conditions)
                     + f" ORDER BY c.requested_at {order} LIMIT ?",
                     (*params, limit),
@@ -96,13 +96,13 @@ class AssessmentStore:
         with self.connect() as db:
             return (
                 db.execute(
-                    """INSERT INTO codex_assessments
+                    """INSERT INTO video_assessments
                 (clip_id,label,activity,start_seconds,end_seconds,reason,observed_at,error,assessed_at,location)
                 SELECT id,?,?,?,?,?,?,?,?,? FROM clips WHERE id=? AND label IS NULL AND status='ready'
                 ON CONFLICT(clip_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,
                 start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds,
                 reason=excluded.reason,observed_at=excluded.observed_at,error=excluded.error,
-                assessed_at=excluded.assessed_at,location=excluded.location WHERE codex_assessments.error IS NOT NULL""",
+                assessed_at=excluded.assessed_at,location=excluded.location WHERE video_assessments.error IS NOT NULL""",
                     (
                         label,
                         activity,
@@ -124,12 +124,12 @@ class AssessmentStore:
         with self.connect() as db:
             return (
                 db.execute(
-                    """UPDATE codex_assessments AS candidate SET notice_claimed=1
+                    """UPDATE video_assessments AS candidate SET notice_claimed=1
                 WHERE candidate.clip_id=? AND candidate.notice_claimed=0
                 AND EXISTS (
                     SELECT 1 FROM clips c WHERE c.id=candidate.clip_id AND c.label IS NULL
                     AND NOT EXISTS (
-                        SELECT 1 FROM codex_assessments a JOIN clips previous ON previous.id=a.clip_id
+                        SELECT 1 FROM video_assessments a JOIN clips previous ON previous.id=a.clip_id
                         WHERE a.notice_claimed=1
                         AND COALESCE(a.location,'tray')=COALESCE(candidate.location,'tray') AND (
                             (candidate.location IS NOT 'outside' AND c.event_id IS NOT NULL
@@ -150,13 +150,13 @@ class AssessmentStore:
         stamp = utcnow() if sent else None
         with self.connect() as db:
             db.execute(
-                "UPDATE codex_assessments SET notice_claimed=?,notified_at=? WHERE clip_id=?",
+                "UPDATE video_assessments SET notice_claimed=?,notified_at=? WHERE clip_id=?",
                 (int(sent), stamp, clip_id),
             )
             if sent:
                 db.execute(
                     """UPDATE events SET notified_at=? WHERE id=(
-                        SELECT c.event_id FROM clips c JOIN codex_assessments a ON a.clip_id=c.id
+                        SELECT c.event_id FROM clips c JOIN video_assessments a ON a.clip_id=c.id
                         WHERE c.id=? AND a.location IS NOT 'outside'
                     )""",
                     (stamp, clip_id),

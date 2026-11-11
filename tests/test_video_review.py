@@ -1,4 +1,4 @@
-"""Codex判定の保存・通知・CLI連携を確認する。"""
+"""動画の自動判定の保存・通知・CLI 連携と、判定器の差し替えを確認する。"""
 
 import json
 from datetime import UTC, datetime, timedelta
@@ -9,9 +9,10 @@ import pytest
 
 from poop_detector.clip_labels import ClipLabel
 from poop_detector.clips import ClipStore
-from poop_detector.codex_review import Assessment, Review, inspect_clip, parse_assessment
+from poop_detector.codex_cli import CodexCliJudge
 from poop_detector.main import parser
 from poop_detector.roi import ROI
+from poop_detector.video_review import Assessment, Review, inspect_clip, parse_assessment
 
 FECES = Assessment("feces", "excreting", 10, 15, "離れた後に新しい便が見えます")
 FEEDING = Assessment("none", "feeding", None, None, "餌皿で食べています")
@@ -106,7 +107,7 @@ def test_rejects_positive_with_invalid_time_or_missing_evidence():
             parse_assessment(output | overrides, 10)
 
 
-def test_image_and_schema_reach_codex(tmp_path, monkeypatch):
+def test_image_and_schema_reach_codex_cli(tmp_path, monkeypatch):
     store = ClipStore(tmp_path)
     clip_id = ready(store, datetime.now(UTC))
     row = store.get(clip_id)
@@ -138,7 +139,7 @@ def test_image_and_schema_reach_codex(tmp_path, monkeypatch):
             )
         )
 
-    assert inspect_clip(path, row, ROI(0.2, 0.2, 0.5, 0.5), runner=run) == FEEDING
+    assert inspect_clip(path, row, ROI(0.2, 0.2, 0.5, 0.5), judge=CodexCliJudge(run)) == FEEDING
 
 
 def test_tracked_mesh_video_supplies_difference_without_amplifying_existing_marks(tmp_path):
@@ -185,13 +186,19 @@ def test_tracked_mesh_video_supplies_difference_without_amplifying_existing_mark
         )
 
     assert (
-        inspect_clip(path, {"duration": 10}, ROI(0, 0, 1, 1), runner=run, tray_tracker=Tracker())
+        inspect_clip(
+            path,
+            {"duration": 10},
+            ROI(0, 0, 1, 1),
+            judge=CodexCliJudge(run),
+            tray_tracker=Tracker(),
+        )
         == FEEDING
     )
 
 
 def test_cli_exposes_live_and_backfill_modes():
-    assert parser().parse_args(["run", "--dog", "--codex"]).codex
+    assert parser().parse_args(["run", "--dog", "--codex"]).video_review
     assert parser().parse_args(["codex-review", "--limit", "3"]).limit == 3
 
 
@@ -235,5 +242,72 @@ def test_single_frame_does_not_reach_codex(tmp_path):
             path,
             {"duration": 0.2},
             ROI(0, 0, 1, 1),
-            runner=lambda *args, **kwargs: pytest.fail("1枚しかない動画は判定できません"),
+            judge=CodexCliJudge(
+                lambda *args, **kwargs: pytest.fail("1枚しかない動画は判定できません")
+            ),
         )
+
+
+def write_clip(store):
+    clip_id = ready(store, datetime.now(UTC))
+    row = store.get(clip_id)
+    path = store.root / row["path"]
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 5, (96, 64))
+    assert writer.isOpened()
+    for _ in range(10):
+        writer.write(np.full((64, 96, 3), 200, dtype=np.uint8))
+    writer.release()
+    row["duration"] = 2
+    return path, row
+
+
+def test_any_judge_can_replace_codex_cli(tmp_path):
+    """VideoJudge を満たす判定器なら、Codex CLI の代わりに使える。"""
+
+    class FixedJudge:
+        name = "固定の判定器"
+
+        def __init__(self):
+            self.calls = []
+
+        def check(self):
+            pass
+
+        def judge(self, folder, prompt, images, schema):
+            self.calls.append((sorted(images), "label" in schema["properties"]))
+            assert all((folder / image).is_file() for image in images)
+            assert "新たに発生した排泄" in prompt
+            return {
+                "label": "none",
+                "activity": "feeding",
+                "start_seconds": None,
+                "end_seconds": None,
+                "evidence": "none",
+                "reason": FEEDING.reason,
+            }
+
+    store = ClipStore(tmp_path)
+    path, row = write_clip(store)
+    judge = FixedJudge()
+    assert inspect_clip(path, row, ROI(0.2, 0.2, 0.5, 0.5), judge) == FEEDING
+    assert judge.calls == [(["frames.jpg"], True)]
+
+
+def test_new_and_old_names_for_video_review():
+    """製品名を外した新しい名前と、以前の名前（--codex、codex-review）の両方が使える。"""
+    assert parser().parse_args(["run", "--video-review"]).video_review
+    assert parser().parse_args(["run", "--codex"]).video_review
+    assert parser().parse_args(["video-review", "--limit", "2"]).limit == 2
+    old = parser().parse_args(["codex-review", "--limit", "2"])
+    new = parser().parse_args(["video-review", "--limit", "2"])
+    assert old.handler is new.handler
+
+
+def test_old_feature_name_in_config_still_works(tmp_path, caplog):
+    from poop_detector.config import Config
+
+    path = tmp_path / "config.yaml"
+    path.write_text("features: {codex: true}\n")
+    with caplog.at_level("WARNING", logger="poop_detector.config"):
+        assert Config.load(path).video_review_enabled is True
+    assert "features.codex → features.video_review" in caplog.text

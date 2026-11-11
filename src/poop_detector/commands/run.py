@@ -24,21 +24,21 @@ from .context import (
     load_tray_tracker,
     open_camera,
 )
-from .review import require_codex_login
+from .review import ready_judge
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ..codex_review import Review
     from ..notifications import MacNotifier, NtfyNotifier
     from ..tray_tracking import TrayTracker
+    from ..video_review import Review, VideoJudge
 
 
 def run(args: argparse.Namespace, context: CommandContext) -> int:
-    """引数の組み合わせを確かめてから、カメラ・動画収集・Codex 判定を準備して監視する。"""
+    """引数の組み合わせを確かめてから、カメラ・動画収集・自動判定を準備して監視する。"""
     config = with_flags(
         context.config,
-        codex=args.codex,
+        video_review=args.video_review,
         early_alert=args.early_alert,
         track_tray=args.track_tray,
         activity_map=args.activity_map,
@@ -48,8 +48,7 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
     context = replace(context, config=check_monitor_features(config))
     config = context.config
     outside_roi = load_outside_roi(context) if config.detect_outside_enabled else None
-    if config.codex_enabled:
-        require_codex_login()
+    judge = ready_judge() if config.video_review_enabled else None
     settings = load_connection_settings()
     notifier, _ = build_notifier(context.config, settings, sends=True)
     source = camera_source(settings)
@@ -58,7 +57,7 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
     activity = load_activity_recorder(context) if config.activity_map_enabled else None
     logger.info("有効な機能: %s", "、".join(config.enabled_features()) or "なし")
     return watch(
-        args, context, source, notifier, roi, baseline, tray_tracker, outside_roi, activity
+        args, context, source, notifier, roi, baseline, tray_tracker, outside_roi, activity, judge
     )
 
 
@@ -70,15 +69,16 @@ def load_activity_recorder(context: CommandContext) -> ActivityRecorder:
     return ActivityRecorder(ActivityStore(context.root), layout)
 
 
-def codex_watcher(
+def review_watcher(
     collector: ClipCollector,
     roi: AnyROI,
     tray_tracker: "TrayTracker | None",
     outside_roi: AnyROI | None,
     notifier: "NtfyNotifier | MacNotifier",
+    judge: "VideoJudge",
 ) -> "Review":
-    """監視中に保存した動画を Codex で判定し、根拠を確認できたときだけ通知する。"""
-    from ..codex_review import Review, inspect_clip
+    """監視中に保存した動画を自動判定し、根拠を確認できたときだけ通知する。"""
+    from ..video_review import Review, inspect_clip
 
     return Review(
         collector.store,
@@ -86,6 +86,7 @@ def codex_watcher(
             path,
             row,
             roi,
+            judge,
             tray_tracker=tray_tracker,
             # 周辺範囲はトレー外での滞在と手動保存の動画だけで判定する。
             outside_roi=outside_roi if row["source"] in ("outside_stay", "manual") else None,
@@ -104,6 +105,7 @@ def watch(
     tray_tracker: "TrayTracker | None",
     outside_roi: AnyROI | None,
     activity: ActivityRecorder | None,
+    judge: "VideoJudge | None" = None,
 ) -> int:
     """監視に必要なものを開き、終わったら逆順に閉じる。"""
     config = context.config
@@ -131,10 +133,12 @@ def watch(
                 collector.feed(frame, generation=generation)
             preview.publish(frame)
 
-        if config.codex_enabled:
+        if config.video_review_enabled and judge is not None:
             if collector is None:
-                raise CommandError("--codexには動画保存を有効にしてください")
-            review = codex_watcher(collector, roi, tray_tracker, outside_roi, notifier)
+                raise CommandError(
+                    "動画の自動判定には動画保存（clips.enabled）を有効にしてください"
+                )
+            review = review_watcher(collector, roi, tray_tracker, outside_roi, notifier, judge)
             stack.enter_context(review.watch())
         live = stack.enter_context(LatestCamera(open_camera(source, config), on_frame))
         live.wait_ready(config.timeout_ms / 1000 + 1)
@@ -146,7 +150,7 @@ def watch(
             notifier,
             args.max_frames,
             collector,
-            codex_notifications=config.codex_enabled,
+            review_notifications=config.video_review_enabled,
             early_alert=config.early_alert_enabled,
             tray_tracker=tray_tracker,
             on_tray_state=preview.set_tray_state,

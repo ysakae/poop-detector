@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 import pytest
 
+from poop_detector.codex_cli import CodexCliJudge
 from poop_detector.config import Config
 from poop_detector.early_alert import EarlyAlert
 from poop_detector.main import parser
@@ -144,7 +145,7 @@ def test_tracking_flag_is_available_for_capture_monitor_and_review():
 
 
 def test_missing_tray_in_clip_holds_codex_judgment(tmp_path):
-    from poop_detector.codex_review import inspect_clip
+    from poop_detector.video_review import inspect_clip
 
     frame, roi = tray_scene()
     tracker = TrayTracker(frame, roi)
@@ -160,7 +161,9 @@ def test_missing_tray_in_clip_holds_codex_judgment(tmp_path):
     def no_codex(*args, **kwargs):
         raise AssertionError("トレーが見えない動画はCodexに送らない")
 
-    assessment = inspect_clip(path, {"duration": 2}, roi, runner=no_codex, tray_tracker=tracker)
+    assessment = inspect_clip(
+        path, {"duration": 2}, roi, judge=CodexCliJudge(no_codex), tray_tracker=tracker
+    )
     assert assessment.label == "uncertain"
     assert "トレーの位置" in assessment.reason
 
@@ -192,7 +195,7 @@ def test_plain_white_rim_can_be_registered_without_markers():
 
 @pytest.mark.parametrize(("evidence_at", "label"), [(3, "uncertain"), (5, "feces")])
 def test_codex_evidence_must_come_from_a_tracked_frame(tmp_path, evidence_at, label):
-    from poop_detector.codex_review import inspect_clip
+    from poop_detector.video_review import inspect_clip
 
     frame, roi = tray_scene()
     path = tmp_path / "partial.mp4"
@@ -226,6 +229,8 @@ def test_codex_evidence_must_come_from_a_tracked_frame(tmp_path, evidence_at, la
         )
 
     assert (
-        inspect_clip(path, {"duration": 6}, roi, runner=runner, tray_tracker=Tracker()).label
+        inspect_clip(
+            path, {"duration": 6}, roi, judge=CodexCliJudge(runner), tray_tracker=Tracker()
+        ).label
         == label
     )

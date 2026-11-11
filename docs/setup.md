@@ -35,15 +35,15 @@ timezone: Asia/Tokyo
 
 ## 使う機能を設定ファイルで有効にする
 
-Codex 判定や見守り通知などの機能は、`run` のフラグのほかに、`config/config.yaml` の `features` セクションでも有効にできます。普段使う機能を書いておけば、起動は `uv run poop-detector run` だけで済みます。
+動画の自動判定や見守り通知などの機能は、`run` のフラグのほかに、`config/config.yaml` の `features` セクションでも有効にできます。普段使う機能を書いておけば、起動は `uv run poop-detector run` だけで済みます。
 
 ```yaml
 features:
-  codex: true          # --codex と同じ（clips.enabled が必要）
+  video_review: true   # --video-review と同じ（clips.enabled が必要。以前の名前 codex も読める）
   early_alert: true    # --early-alert と同じ
   track_tray: true     # --track-tray と同じ（capture-baseline にも効く）
   activity_map: false  # --activity-map と同じ（犬の検出を自動で有効にする）
-  detect_outside: false  # --detect-outside と同じ（codex が必要）
+  detect_outside: false  # --detect-outside と同じ（video_review が必要）
 dog:
   enabled: true        # --dog と同じ
 ```
@@ -144,11 +144,11 @@ ROI は正規化座標で保存するので、カメラの解像度が変わっ�
 
 ```bash
 uv run poop-detector capture-baseline --replace --track-tray
-uv run poop-detector run --dog --codex --early-alert --track-tray
+uv run poop-detector run --dog --video-review --early-alert --track-tray
 ```
 
 縁が隠れたり、監視範囲が画面から外れたりすると、その間は見守り通知と排泄判定を保留します。
 位置が確認できると自動で再開します。状態はラベル GUI のライブ映像の下に表示されます。
 赤外線の白黒映像では、明暗が逆転しても比較できる輪郭を使って追従します。
-夜間の Codex 判定でも、新しい便、尿の流れ、または濡れ跡が画像で確認できた場合に候補を通知します。
-保存済み動画を判定するときは、同じ基準で撮影した動画を `codex-review --track-tray` で処理できます。
+夜間の自動判定でも、新しい便、尿の流れ、または濡れ跡が画像で確認できた場合に候補を通知します。
+保存済み動画を判定するときは、同じ基準で撮影した動画を `video-review --track-tray` で処理できます。

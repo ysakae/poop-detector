@@ -27,7 +27,7 @@
 {% endif %}
 {% if assessment %}
 {% if assessment.error %}<div class="message">{{ assessment.error }}</div>{% else %}
-<div class="message"><strong>Codex判定候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %} ／ {{ assessment.activity }}</strong><br>{{ assessment.reason }}
+<div class="message"><strong>自動判定の候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %} ／ {{ assessment.activity }}</strong><br>{{ assessment.reason }}
 {%- for seek in assessment.seeks -%}
 <p><button class="secondary" type="button" data-video-seek="{{ seek.value }}">{{ seek.text }}（{{ seek.shown }}秒）</button></p>
 {%- endfor -%}

@@ -1,7 +1,8 @@
-"""保存済みの動画の後処理（Codex による判定と、旋回候補の分析）。通知はしない。"""
+"""保存済みの動画の後処理（自動判定と、旋回候補の分析）。通知はしない。"""
 
 import argparse
 import sys
+from typing import TYPE_CHECKING
 
 import cv2
 
@@ -15,24 +16,31 @@ from .context import (
     load_tray_tracker,
 )
 
+if TYPE_CHECKING:
+    from ..video_review import VideoJudge
 
-def require_codex_login() -> None:
-    from ..codex_review import require_codex
 
+def ready_judge() -> "VideoJudge":
+    """既定の判定器を用意し、使える状態か確かめる。"""
+    from ..video_review import default_judge
+
+    judge = default_judge()
     try:
-        require_codex()
+        judge.check()
     except ValueError as error:
         # インストールとログインの案内だけで、外部の出力は含まない。
         raise CommandError(str(error)) from None
+    return judge
 
 
-def codex_review(args: argparse.Namespace, context: CommandContext) -> int:
+def video_review(args: argparse.Namespace, context: CommandContext) -> int:
+    """保存済みの未ラベルの動画を自動判定する（通知はしない）。"""
     from ..clips import ClipStore
-    from ..codex_review import Review, inspect_clip
+    from ..video_review import Review, inspect_clip
 
     detect_outside = args.detect_outside or context.config.detect_outside_enabled
     outside_roi = load_outside_roi(context) if detect_outside else None
-    require_codex_login()
+    judge = ready_judge()
     check_limit(args.limit)
     roi, baseline = load_scene(context)
     track_tray = args.track_tray or context.config.track_tray_enabled
@@ -40,7 +48,7 @@ def codex_review(args: argparse.Namespace, context: CommandContext) -> int:
     review = Review(
         ClipStore(context.root),
         lambda path, row: inspect_clip(
-            path, row, roi, tray_tracker=tray_tracker, outside_roi=outside_roi
+            path, row, roi, judge, tray_tracker=tray_tracker, outside_roi=outside_roi
         ),
         scene_signature=scene_signature(baseline, roi),
     )
@@ -49,7 +57,7 @@ def codex_review(args: argparse.Namespace, context: CommandContext) -> int:
     except ValueError as error:
         # 別の判定が実行中であることなど、このモジュールの文言だけを表示する。
         raise CommandError(str(error)) from None
-    print(f"Codex判定候補 {completed}件、失敗 {failed}件")
+    print(f"自動判定の候補 {completed}件、失敗 {failed}件")
     return 2 if failed else 0
 
 

@@ -240,14 +240,14 @@ class Monitor:
         notifier: MonitorNotifier,
         *,
         collector: ClipCollector | None = None,
-        codex_notifications: bool = False,
+        review_notifications: bool = False,
         tray_tracker: TrayTracker | None = None,
         on_tray_state: Callable[[str], None] | None = None,
         extensions: Sequence[MonitorExtension] = (),
         clock: Clock | None = None,
     ) -> None:
         self.camera, self.roi, self.config, self.notifier = camera, roi, config, notifier
-        self.collector, self.codex_notifications = collector, codex_notifications
+        self.collector, self.review_notifications = collector, review_notifications
         self.tray_tracker, self.on_tray_state = tray_tracker, on_tray_state
         self.extensions = tuple(extensions)
         self.clock = clock or SystemClock()
@@ -370,7 +370,7 @@ class Monitor:
         self.store.set_monitor_state("SUSPECTED", event_id)
         if self.collector is not None:
             self.collector.trigger(event_id)
-        if not self.codex_notifications and self.notifier.send():
+        if not self.review_notifications and self.notifier.send():
             self.store.update(event_id, notified_at=utcnow())
         logger.info("排泄の疑いを記録しました: %s", event_id)
 
@@ -457,7 +457,7 @@ def monitor(
     max_frames: int = 0,
     collector: ClipCollector | None = None,
     dog_observer: "DogObserver | None" = None,
-    codex_notifications: bool = False,
+    review_notifications: bool = False,
     early_alert: bool = False,
     tray_tracker: TrayTracker | None = None,
     on_tray_state: Callable[[str], None] | None = None,
@@ -492,7 +492,7 @@ def monitor(
         config,
         notifier,
         collector=collector,
-        codex_notifications=codex_notifications,
+        review_notifications=review_notifications,
         tray_tracker=tray_tracker,
         on_tray_state=on_tray_state,
         extensions=[*built, *extensions],

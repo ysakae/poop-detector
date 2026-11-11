@@ -1,11 +1,11 @@
-"""録画のサンプル画像をCodexに渡し、判定候補を保存する。"""
+"""保存した動画の自動判定。動画から並べた画像を判定器（VideoJudge）に渡し、結果を検証して保存する。
+
+判定器は差し替えられる。既定の実装は Codex CLI（codex_cli.CodexCliJudge）。
+"""
 
 import fcntl
-import json
 import logging
 import math
-import os
-import shutil
 import sqlite3
 import subprocess
 import tempfile
@@ -20,6 +20,7 @@ import cv2
 import numpy as np
 
 from .clip_reviews import Assessment
+from .clip_storage import REVIEW_LOCK
 from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
 from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES, utcnow
 from .frames import Frame, Mask
@@ -74,9 +75,9 @@ OUTSIDE_CONTEXT = """犬とトイレ周辺の連続画像です。左上から�
 def parse_assessment(
     output: object, duration: float, *, include_location: bool = False
 ) -> Assessment:
-    """Codex の出力を検証する。根拠・時刻・位置が足りなければ ValueError。"""
+    """判定器の出力を検証する。根拠・時刻・位置が足りなければ ValueError。"""
     if not isinstance(output, dict):
-        raise ValueError("Codexの判定形式が不正です")
+        raise ValueError("自動判定の形式が不正です")
     label, activity = output.get("label"), output.get("activity")
     start, end, reason = (output.get(key) for key in ("start_seconds", "end_seconds", "reason"))
     if (
@@ -86,10 +87,10 @@ def parse_assessment(
         or not isinstance(reason, str)
         or not reason.strip()
     ):
-        raise ValueError("Codexの判定に必要な根拠がありません")
+        raise ValueError("自動判定に必要な根拠がありません")
     for offset in (start, end):
         if offset is not None and (type(offset) not in (int, float) or not 0 <= offset <= duration):
-            raise ValueError("Codexの判定時刻が動画範囲外です")
+            raise ValueError("自動判定の時刻が動画範囲外です")
     location = (
         output.get("location") if include_location else ("tray" if label in EVIDENCE else None)
     )
@@ -98,10 +99,10 @@ def parse_assessment(
         or (label in EVIDENCE and location not in EXCRETION_LOCATIONS)
         or (label not in EVIDENCE and location is not None)
     ):
-        raise ValueError("Codexの判定位置が不正です")
+        raise ValueError("自動判定の位置が不正です")
     if label in EVIDENCE:
         if end is None or end <= 0 or (start is not None and start > end):
-            raise ValueError("Codexの判定時刻が不正です")
+            raise ValueError("自動判定の時刻が不正です")
     else:
         start = end = None
     return Assessment(label, activity, start, end, reason.strip()[:1000], location)
@@ -124,7 +125,7 @@ def save_sheet(destination: Path, tiles: Sequence[Frame], timestamps: Sequence[f
         [np.hstack(labeled[index : index + columns]) for index in range(0, len(labeled), columns)]
     )
     if not cv2.imwrite(str(destination), sheet, [cv2.IMWRITE_JPEG_QUALITY, 88]):
-        raise OSError("Codex判定用画像を保存できません")
+        raise OSError("自動判定用の画像を保存できません")
 
 
 def save_difference_sheet(
@@ -218,26 +219,22 @@ def write_sheet(
     return timestamps
 
 
-def codex_environment() -> dict[str, str]:
-    """Codex CLI に渡す最小限の環境変数。RTSP の URL などは渡さない。"""
-    keys = ("HOME", "PATH", "CODEX_HOME", "TMPDIR", "LANG", "LC_ALL")
-    return {key: os.environ[key] for key in keys if key in os.environ}
-
-
 def inspect_clip(
     path: Path,
     row: ClipRow,
     roi: AnyROI,
-    runner: Callable[..., Any] = subprocess.run,
+    judge: "VideoJudge | None" = None,
     *,
     tray_tracker: TrayTracker | None = None,
     outside_roi: AnyROI | None = None,
 ) -> Assessment:
-    """動画をシートにして Codex CLI に読み取り専用で判定させ、結果を検証して返す。"""
+    """動画をシートにして判定器に判定させ、結果を検証して返す。判定器の既定は Codex CLI。"""
+    if judge is None:
+        judge = default_judge()
     outside_stay = row.get("source") == "outside_stay"
     if outside_stay and outside_roi is None:
         raise ValueError("トレー外の動画には --detect-outside が必要です")
-    with tempfile.TemporaryDirectory(prefix="poop-codex-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="poop-review-") as temporary:
         folder = Path(temporary)
         difference_path = folder / "differences.jpg"
         try:
@@ -256,9 +253,9 @@ def inspect_clip(
             )
         context = TRAY_CONTEXT if outside_roi is None else OUTSIDE_CONTEXT
         prompt = context + "\n" + EVIDENCE_PROMPT
-        images = ["--image", "frames.jpg"]
+        images = ["frames.jpg"]
         if difference_path.is_file():
-            images.extend(["--image", difference_path.name])
+            images.append(difference_path.name)
             prompt += (
                 "\n2枚目は同じ時刻・配置の比較画像です。最初の3コマの中央値と比べ、"
                 "網目や画面全体の明るさの変化を抑えて、暗くなった箇所を強調しています。"
@@ -271,41 +268,9 @@ def inspect_clip(
         if tray_tracker is not None or outside_roi is not None:
             prompt += "\nend_seconds には画像に表示された秒数をそのまま記入してください。"
         schema = SCHEMA if outside_roi is None else OUTSIDE_SCHEMA
-        (folder / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
-        result = folder / "result.json"
-        runner(
-            [
-                "codex",
-                "--ask-for-approval",
-                "never",
-                "exec",
-                "--sandbox",
-                "read-only",
-                "--ignore-user-config",
-                "--ignore-rules",
-                "--disable",
-                "shell_tool",
-                "--disable",
-                "unified_exec",
-                "--ephemeral",
-                "--skip-git-repo-check",
-                "--output-schema",
-                "schema.json",
-                "--output-last-message",
-                "result.json",
-                prompt,
-                *images,
-            ],
-            cwd=folder,
-            env=codex_environment(),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-            timeout=120,
-        )
+        output = judge.judge(folder, prompt, images, schema)
         assessment = parse_assessment(
-            json.loads(result.read_text(encoding="utf-8")),
+            output,
             row["duration"] or 0,
             include_location=outside_roi is not None,
         )
@@ -326,27 +291,34 @@ def inspect_clip(
         return assessment
 
 
-def require_codex() -> None:
-    """Codex CLI がインストール済みでログインしているか確かめる。"""
-    if not shutil.which("codex"):
-        raise ValueError("Codex CLIをインストールし、codex loginでログインしてください")
-    try:
-        # 固定の引数で、PATH 上の Codex CLI のログイン状態を確かめるだけ。
-        result = subprocess.run(
-            ["codex", "login", "status"],  # noqa: S607
-            capture_output=True,
-            check=False,
-            timeout=10,
-            env=codex_environment(),
-        )
-    except (OSError, subprocess.SubprocessError):
-        raise ValueError("Codex CLIのログイン状態を確認できません") from None
-    if result.returncode != 0:
-        raise ValueError("codex loginでCodex CLIにログインしてください")
+class VideoJudge(Protocol):
+    """動画から並べた画像を見て、JSON スキーマに沿った判定を返す判定器。
+
+    別の判定器を使うときは、このプロトコルを満たすクラスを inspect_clip に渡す。
+    """
+
+    name: str
+
+    def check(self) -> None:
+        """使える状態か確かめる。使えなければ理由を書いた ValueError。"""
+        ...
+
+    def judge(
+        self, folder: Path, prompt: str, images: Sequence[str], schema: dict[str, Any]
+    ) -> object:
+        """folder の images（ファイル名）と指示を渡し、判定の JSON を読み込んだ値を返す。"""
+        ...
+
+
+def default_judge() -> VideoJudge:
+    """既定の判定器（Codex CLI）。"""
+    from .codex_cli import CodexCliJudge
+
+    return CodexCliJudge()
 
 
 class AssessmentNotifier(Protocol):
-    """Codex の判定を通知する関数（NtfyNotifier.send_assessment など）。"""
+    """自動判定を通知する関数（NtfyNotifier.send_assessment など）。"""
 
     def __call__(self, label: str, *, location: str | None = None) -> bool: ...
 
@@ -356,7 +328,7 @@ Inspector = Callable[[Path, ClipRow], Assessment]
 
 
 class Review:
-    """変換済みの動画を Codex で判定し、結果を保存して必要なら通知する。"""
+    """変換済みの動画を自動判定し、結果を保存して必要なら通知する。"""
 
     def __init__(
         self,
@@ -377,13 +349,13 @@ class Review:
 
         since を指定した監視中の実行だけが通知し、別の判定が実行中なら何もしない。
         """
-        with (self.store.root / ".codex.lock").open("a") as lock:
+        with (self.store.root / REVIEW_LOCK).open("a") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 if since is not None:
                     return 0, 0
-                raise ValueError("別のCodex判定が実行中です。完了後に再試行してください") from None
+                raise ValueError("別の自動判定が実行中です。完了後に再試行してください") from None
             return self._run(limit, since, clip_id)
 
     def _run(self, limit: int, since: str | None, clip_id: str | None) -> tuple[int, int]:
@@ -406,9 +378,9 @@ class Review:
             except (ValueError, TypeError, OSError, subprocess.SubprocessError, cv2.error):
                 self.store.assessments.save(
                     row["id"],
-                    error="Codex判定に失敗しました。動画・ログイン・接続を確認してください",
+                    error="自動判定に失敗しました。動画・判定器のログイン・接続を確認してください",
                 )
-                logger.warning("Codex判定に失敗しました（動画 %s）", row["id"])
+                logger.warning("自動判定に失敗しました（動画 %s）", row["id"])
                 failures += 1
                 continue
             stored = self.store.assessments.save(row["id"], result, observed_at=observed_at)
@@ -452,7 +424,7 @@ class ReviewWorker:
             try:
                 completed, failed = self.review.run(limit=1, since=self.since)
             except (OSError, sqlite3.Error):
-                logger.warning("Codex判定の台帳にアクセスできません。次回再試行します")
+                logger.warning("自動判定の台帳にアクセスできません。次回再試行します")
                 completed = failed = 0
             self.stop.wait(20 if failed else (0 if completed else 3))
 

@@ -240,12 +240,12 @@ SETTINGS: tuple[Setting, ...] = (
         "0〜3600 の数（秒。次の見守り通知までの最短の間隔）",
     ),
     Setting(
-        "codex_enabled",
+        "video_review_enabled",
         "features",
-        "codex",
+        "video_review",
         bool,
         _always,
-        "true または false（run --codex と同じ）",
+        "true または false（run --video-review と同じ）",
     ),
     Setting(
         "early_alert_enabled",
@@ -283,6 +283,8 @@ SETTINGS: tuple[Setting, ...] = (
 SETTINGS_BY_ATTR = {setting.attr: setting for setting in SETTINGS}
 SETTINGS_BY_NAME = {(setting.section, setting.key): setting for setting in SETTINGS}
 SECTIONS = tuple(dict.fromkeys(setting.section for setting in SETTINGS if setting.section))
+# 以前の名前。読み込めるようにし、新しい名前を警告で案内する。
+RENAMED = {("features", "codex"): ("features", "video_review")}
 
 
 def _check(setting: Setting, value: Any) -> None:
@@ -330,7 +332,7 @@ class Config:
     timezone: str = ""
     early_alert_stay_seconds: float = 4
     early_alert_cooldown_seconds: float = 30
-    codex_enabled: bool = False
+    video_review_enabled: bool = False
     early_alert_enabled: bool = False
     track_tray_enabled: bool = False
     activity_map_enabled: bool = False
@@ -379,7 +381,7 @@ class Config:
         names = {
             "clip_enabled": "動画保存",
             "dog_enabled": "犬の検出",
-            "codex_enabled": "Codex 判定",
+            "video_review_enabled": "動画の自動判定",
             "early_alert_enabled": "見守り通知",
             "track_tray_enabled": "トレー追従",
             "activity_map_enabled": "行動マップ",
@@ -402,7 +404,10 @@ def settings_from_yaml(data: Any) -> dict[str, Any]:
     for key, value in data.items():
         if key in SECTIONS and isinstance(value, dict):
             for inner, inner_value in value.items():
-                setting = SETTINGS_BY_NAME.get((key, inner))
+                renamed = RENAMED.get((key, inner))
+                if renamed is not None:
+                    legacy.append(f"{key}.{inner} → {renamed[0]}.{renamed[1]}")
+                setting = SETTINGS_BY_NAME.get(renamed or (key, inner))
                 if setting is None:
                     raise ConfigError(f"{key}.{inner} という設定項目はありません")
                 _store(values, setting, inner_value)
@@ -429,7 +434,7 @@ def _store(values: dict[str, Any], setting: Setting, value: Any) -> None:
 def with_flags(
     config: Config,
     *,
-    codex: bool = False,
+    video_review: bool = False,
     early_alert: bool = False,
     track_tray: bool = False,
     activity_map: bool = False,
@@ -439,7 +444,7 @@ def with_flags(
     """コマンドラインのフラグで有効にした機能を、設定に重ねる（フラグは有効にするだけ）。"""
     return replace(
         config,
-        codex_enabled=config.codex_enabled or codex,
+        video_review_enabled=config.video_review_enabled or video_review,
         early_alert_enabled=config.early_alert_enabled or early_alert,
         track_tray_enabled=config.track_tray_enabled or track_tray,
         activity_map_enabled=config.activity_map_enabled or activity_map,
@@ -453,14 +458,15 @@ def check_monitor_features(config: Config) -> Config:
 
     足りない条件は、設定ファイルの項目名とフラグの両方を示して伝える。
     """
-    if config.detect_outside_enabled and not config.codex_enabled:
+    if config.detect_outside_enabled and not config.video_review_enabled:
         raise ConfigError(
             "トレー外検知（features.detect_outside / --detect-outside）には、"
-            "Codex 判定（features.codex / --codex）が必要です"
+            "動画の自動判定（features.video_review / --video-review）が必要です"
         )
-    if config.codex_enabled and not config.clip_enabled:
+    if config.video_review_enabled and not config.clip_enabled:
         raise ConfigError(
-            "Codex 判定（features.codex / --codex）には、動画保存（clips.enabled）を有効にしてください"
+            "動画の自動判定（features.video_review / --video-review）には、"
+            "動画保存（clips.enabled）を有効にしてください"
         )
     if (config.activity_map_enabled or config.detect_outside_enabled) and not config.dog_enabled:
         logger.info("行動マップ・トレー外検知のため、犬の検出を有効にします")

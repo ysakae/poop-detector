@@ -7,9 +7,10 @@ import numpy as np
 from support import ready_clip, request, submit
 
 from poop_detector.clips import ClipStore
-from poop_detector.codex_review import inspect_clip
+from poop_detector.codex_cli import CodexCliJudge
 from poop_detector.dog import OutsideWatch
 from poop_detector.roi import ROI
+from poop_detector.video_review import inspect_clip
 
 
 def test_outside_dwell_triggers_once_until_dog_moves():
@@ -63,7 +64,7 @@ def test_codex_classifies_location_with_outside_scope(tmp_path):
         path,
         {"duration": 6},
         ROI(0.4, 0.2, 0.4, 0.5),
-        runner=runner,
+        judge=CodexCliJudge(runner),
         outside_roi=ROI(0.1, 0.1, 0.8, 0.8),
     )
     assert (result.label, result.location) == ("urine", "outside")
@@ -88,7 +89,7 @@ def test_video_confirmation_records_outside_separately_from_tray_event(gui):
 def test_outside_notice_is_distinct_and_does_not_mark_tray_event(gui):
     from datetime import UTC, datetime, timedelta
 
-    from poop_detector.codex_review import Assessment, Review
+    from poop_detector.video_review import Assessment, Review
 
     _, store, tray_event = gui
     clips = ClipStore(store.root)
@@ -179,7 +180,7 @@ def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path,
             max_frames=5,
             collector=collector,
             dog_observer=Dog(),
-            codex_notifications=True,
+            review_notifications=True,
             outside_roi=scope,
         )
         == 5

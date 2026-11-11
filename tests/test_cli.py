@@ -280,8 +280,8 @@ def test_mac_test_notification_reports_result(cli_env, monkeypatch, capsys, acce
 
 def test_detect_outside_requires_codex_and_registered_area(cli_env, monkeypatch, capsys):
     assert cli_env.run("run", "--detect-outside") == 2
-    assert "--codex" in capsys.readouterr().err
-    monkeypatch.setattr("poop_detector.codex_review.require_codex", lambda: None)
+    assert "--video-review" in capsys.readouterr().err
+    monkeypatch.setattr("poop_detector.codex_cli.CodexCliJudge.check", lambda self: None)
     assert cli_env.run("run", "--codex", "--detect-outside") == 2
     assert "setup-roi --outside" in capsys.readouterr().err
 
@@ -291,21 +291,21 @@ def test_codex_requires_clips_and_login(cli_env, monkeypatch, capsys):
     assert cli_env.run("run", "--codex") == 2
     assert "動画保存" in capsys.readouterr().err
 
-    def missing():
+    def missing(self):
         raise ValueError("Codex CLIをインストールしてください")
 
-    monkeypatch.setattr("poop_detector.codex_review.require_codex", missing)
+    monkeypatch.setattr("poop_detector.codex_cli.CodexCliJudge.check", missing)
     assert cli_env.run("codex-review") == 2
     assert "Codex CLI" in capsys.readouterr().err
 
 
 def test_codex_review_checks_limit_and_reports_counts(cli_env, monkeypatch, capsys):
-    monkeypatch.setattr("poop_detector.codex_review.require_codex", lambda: None)
+    monkeypatch.setattr("poop_detector.codex_cli.CodexCliJudge.check", lambda self: None)
     assert cli_env.run("codex-review", "--limit", "0") == 2
     assert "--limit" in capsys.readouterr().err
     register_scene(cli_env)
     assert cli_env.run("codex-review") == 0
-    assert "Codex判定候補 0件、失敗 0件" in capsys.readouterr().out
+    assert "自動判定の候補 0件、失敗 0件" in capsys.readouterr().out
 
 
 def test_run_requires_registered_scene(cli_env, capsys):
@@ -365,7 +365,7 @@ def test_features_in_config_work_without_flags(cli_env, capsys):
     assert cli_env.run("run") == 2
     err = capsys.readouterr().err
     assert "features.detect_outside" in err
-    assert "features.codex / --codex" in err
+    assert "features.video_review / --video-review" in err
 
     write_config(cli_env, "features: {activity_map: true}\n")
     use_camera(cli_env, spot_scene()[0])
@@ -383,7 +383,7 @@ def test_codex_in_config_needs_clip_recording(cli_env, capsys):
 def test_flags_still_enable_features_on_top_of_the_config(cli_env, monkeypatch, capsys):
     """既存の起動コマンド（フラグ）は、設定で無効でもそのまま使える。"""
     write_config(cli_env, "features: {codex: false}\n")
-    monkeypatch.setattr("poop_detector.codex_review.require_codex", lambda: None)
+    monkeypatch.setattr("poop_detector.codex_cli.CodexCliJudge.check", lambda self: None)
     assert cli_env.run("run", "--codex", "--detect-outside") == 2
     assert "setup-roi --outside" in capsys.readouterr().err
 
@@ -418,8 +418,8 @@ def test_show_config_prints_effective_settings(cli_env, capsys):
     write_config(cli_env, "features: {codex: true}\ndog: {enabled: true}\n")
     assert cli_env.run("show-config") == 0
     out = capsys.readouterr().out
-    assert out.startswith("# 有効な機能: 動画保存、犬の検出、Codex 判定、通知")
+    assert out.startswith("# 有効な機能: 動画保存、犬の検出、動画の自動判定、通知")
     data = yaml.safe_load(out)
-    assert data["features"]["codex"] is True
+    assert data["features"]["video_review"] is True
     assert data["camera"]["fps"] == 3.0
     assert data["data_dir"] == str(cli_env.root)

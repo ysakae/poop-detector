@@ -11,13 +11,13 @@ from poop_detector.monitoring import monitor
 from poop_detector.roi import ROI
 
 
-@pytest.mark.parametrize("codex_notifications", [False, True])
-def test_offline_pipeline_records_one_event(tmp_path, codex_notifications):
+@pytest.mark.parametrize("review_notifications", [False, True])
+def test_offline_pipeline_records_one_event(tmp_path, review_notifications):
     baseline, changed = spot_scene()
 
     class Notifier:
         def send(self):
-            assert not codex_notifications
+            assert not review_notifications
             return True
 
     config = Config(data_dir=str(tmp_path), fps=100, verify_seconds=0.01)
@@ -28,11 +28,11 @@ def test_offline_pipeline_records_one_event(tmp_path, codex_notifications):
         config,
         Notifier(),
         max_frames=8,
-        codex_notifications=codex_notifications,
+        review_notifications=review_notifications,
     )
     events = Store(tmp_path).list()
     assert len(events) == 1
-    assert (events[0]["notified_at"] is None) == codex_notifications
+    assert (events[0]["notified_at"] is None) == review_notifications
 
 
 def test_real_decoder_to_event_pipeline(tmp_path):

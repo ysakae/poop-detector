@@ -73,7 +73,7 @@ def test_codex_draft_is_visible_without_overwriting_human_label(gui):
     )
     _, body = request(server, "GET", "/clips?id=" + clip)
     page = body.decode()
-    assert "Codex候補 ／ 排便" in page
+    assert "自動判定の候補 ／ 排便" in page
     assert "&lt;新しい便が見えます&gt;" in page
     assert 'name="label" value="feces" checked' in page
     assert clips.get(clip)["label"] is None
