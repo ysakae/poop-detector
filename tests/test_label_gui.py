@@ -208,7 +208,9 @@ def test_gui_accepts_session_among_other_cookies_and_hides_referrer(gui):
     cookie = f"other=1; poop_detector_session=old; {session}"
     status, headers, _ = exchange(server, "GET", "/", headers={"Cookie": cookie}, auth=False)
     assert status == 200
-    assert headers["Referrer-Policy"] == "no-referrer"
+    # no-referrer だと、ブラウザーは同じサイトのフォームの送信にも Origin: null を付け、
+    # Origin の検査で保存が断られる。ほかのサイトに URL を渡さない same-origin にする。
+    assert headers["Referrer-Policy"] == "same-origin"
 
 
 class FakeServer:
