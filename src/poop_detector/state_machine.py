@@ -1,28 +1,35 @@
 """継続確認と、一度空になるまでの重複通知抑制。"""
 
+from typing import Literal, TypeAlias
+
+from .detection import ObservationKind
+
+MachineState: TypeAlias = Literal["EMPTY", "OCCUPIED", "VERIFYING", "SUSPECTED", "ACKNOWLEDGED"]
+
 
 class Machine:
     """候補が続いた時間で通知を判断し、同じ跡での重複通知を抑える状態遷移。"""
 
-    def __init__(self, verify_seconds=3.0, clear_seconds=3.0):
+    def __init__(self, verify_seconds: float = 3.0, clear_seconds: float = 3.0) -> None:
         self.verify_seconds = verify_seconds
         self.clear_seconds = clear_seconds
-        self.state = "EMPTY"
-        self.started = None
-        self.clear_started = None
+        self.state: MachineState = "EMPTY"
+        self.started: float | None = None
+        self.clear_started: float | None = None
         self.latched = False
 
-    def interrupt(self):
+    def interrupt(self) -> None:
         self.started = None
         self.clear_started = None
         if not self.latched:
             self.state = "OCCUPIED"
 
-    def acknowledge(self):
+    def acknowledge(self) -> None:
         if self.latched:
             self.state = "ACKNOWLEDGED"
 
-    def update(self, kind, now):
+    def update(self, kind: ObservationKind, now: float) -> bool:
+        """判定を1つ進め、通知すべきときだけ True を返す。"""
         if kind in ("occupied", "unstable"):
             self.interrupt()
             return False

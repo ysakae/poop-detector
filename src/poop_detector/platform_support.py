@@ -2,6 +2,7 @@
 
 import os
 import sys
+from collections.abc import Mapping
 
 SUPPORTED_PLATFORMS = ("darwin", "linux")
 
@@ -10,7 +11,7 @@ class UnsupportedPlatformError(ImportError):
     """対応していない OS で読み込まれた。"""
 
 
-def ensure_supported(platform=sys.platform):
+def ensure_supported(platform: str = sys.platform) -> None:
     # 排他制御に fcntl、タイムゾーンの反映に time.tzset を使うため、Windows では動かない。
     if not platform.startswith(SUPPORTED_PLATFORMS):
         raise UnsupportedPlatformError(
@@ -19,7 +20,7 @@ def ensure_supported(platform=sys.platform):
         )
 
 
-def has_display(platform=sys.platform, environ=os.environ):
+def has_display(platform: str = sys.platform, environ: Mapping[str, str] = os.environ) -> bool:
     """監視領域の登録など、ウィンドウを開く操作ができる環境か。"""
     if platform == "darwin":
         return True
