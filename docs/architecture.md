@@ -27,18 +27,28 @@
 
 処理は `(args, CommandContext)` を受け取り、終了コードを返します。`CommandContext` は設定とデータの保存先の場所を持ちます。設定は書き換えず、`--dog` などを反映した新しい文脈を作ります（`with_dog_detection`）。ROI と基準画像の読み込み、通知先の選択、カメラの接続など、複数のコマンドで使う準備は `commands/context.py` にあります。サブコマンドを足すときは、`parser()` に引数を、`HANDLERS` に処理を加えてください。
 
-## 監視ループ（`monitoring.monitor`）
+## 監視ループ（`monitoring.Monitor`）
 
-`LatestCamera` が取得専用スレッドで RTSP を読み続け、最新の1フレームだけを保持します。全フレームはコールバックで `ClipCollector.feed`（リングバッファ）と `LivePreview` に渡り、`monitor` は `config.fps` の間隔で最新フレームだけを処理します。1フレームの流れは次のとおりです。
+`LatestCamera` が取得専用スレッドで RTSP を読み続け、最新の1フレームだけを保持します。全フレームはコールバックで `ClipCollector.feed`（リングバッファ）と `LivePreview` に渡ります。監視ループは `config.fps` の間隔で最新フレームだけを処理します。
 
-1. `TrayTracker.align` — トレーの縁を目印に登録時の座標へ戻す（`--track-tray`）。合わせられなければ中断扱い。
-2. `roi.crop` と `roi.mask` — ROI で切り出す。多角形 ROI は外側をマスクで除外。
-3. `EarlyAlert.update` — 録画を待たない滞在通知（`--early-alert`）。
-4. `IncrementalDetector.analyze` — `Observation.kind` を `empty` / `candidate` / `occupied` / `unstable` のいずれかで返す。
-5. `DogObserver.update` — 犬の検出枠が ROI に重なる間、または推論エラーの間は `occupied` に上書き（`--dog`）。入退場は動画保存のトリガーにもなる。
-6. `Machine.update` — `candidate` が `verify_seconds` 続いたときだけ True を返し、`Store.record` と通知、動画トリガーへ進む。
+`Monitor.step` が1回分の処理で、次の段に分かれています。
 
-カメラの再接続（`camera.generation` の変化）、追従の失敗、フレーム間の動きは、いずれも継続確認のタイマーをリセットします。
+1. `_read` — カメラから読み、`TrayTracker.align` でトレーの縁を目印に登録時の座標へ戻す（`--track-tray`）。再接続（`generation` の変化）、カメラの不調によるフレームの欠落、追従の失敗は中断として扱う。
+2. `_observe` — `roi.crop` と `roi.valid_mask` で切り出し、`IncrementalDetector.analyze` が `Observation.kind` を `empty` / `candidate` / `occupied` / `unstable` のいずれかで返す。続いて拡張が観測を受け取り、上書きできる。
+3. `_settle` — フレーム間の動きがあれば継続確認をやり直す。`Machine.update` が、`candidate` が `verify_seconds` 続いたときだけ True を返すと、`_record` が記録・通知済み状態の更新・動画トリガー・通知を行う。
+4. `_update_reference` — 空が `clear_seconds` 続き、通知済み状態と違えば（清掃・乾燥など）通知済み状態を更新する。
+
+フレームをまたぐ状態は `LoopState` にまとめてあり、中断時のリセットは `LoopState.interrupt` の1か所で行います。時刻は `Clock`（既定は `SystemClock`）から読むので、テストでは偽の時計を渡せます。
+
+任意の機能は `MonitorExtension` の派生クラスとして差し込みます。呼び出し口は、位置合わせ前の映像（`on_camera_frame`）、中断（`on_interrupt`）、観測後のフレーム（`on_frame`）、稼働ログ（`log_status`）の4つです。
+
+| 拡張 | オプション | 内容 |
+|---|---|---|
+| `EarlyAlertExtension` | `--early-alert` | 録画を待たない滞在通知 |
+| `DogExtension` | `--dog`、`--detect-outside` | 犬が ROI に重なる間や推論エラーの間は `occupied` に上書きし、入退場とトレー外の滞在で動画を保存する |
+| `ActivityExtension` | `--activity-map` | 位置合わせ前の映像で犬の位置を記録する。中断は接続の途切れだけで区切る |
+
+新しい機能は `monitor(..., extensions=[...])` に渡せば、`Monitor` を変えずに足せます。
 
 ## 検知の考え方（変更時に壊しやすい不変条件）
 

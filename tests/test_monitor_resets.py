@@ -53,15 +53,21 @@ class ScriptedCamera:
 
 
 class Clock:
+    """monitor に渡す偽の時計。sleep では進めず、カメラの読み込みで進める。"""
+
     now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        pass
 
 
 @pytest.fixture
-def run(tmp_path, monkeypatch):
+def run(tmp_path):
     """手順どおりにカメラを動かし、記録されたイベントの数を返す。"""
     clock = Clock()
-    monkeypatch.setattr(monitoring.time, "monotonic", lambda: clock.now)
-    monkeypatch.setattr(monitoring.time, "sleep", lambda _: None)
     config = Config(data_dir=str(tmp_path), fps=1, verify_seconds=2, clear_seconds=2)
 
     def run_steps(steps, *, max_frames=None, **kwargs):
@@ -73,6 +79,7 @@ def run(tmp_path, monkeypatch):
             config,
             SilentNotifier(),
             max_frames=max_frames or frames,
+            clock=clock,
             **kwargs,
         )
         return len(Store(tmp_path).list())

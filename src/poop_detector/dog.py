@@ -146,6 +146,10 @@ class DogObserver:
         self.error = False
         self.inference_ms = 0.0
 
+    def predict(self, frame: Frame) -> list[Box]:
+        """間隔や状態に関係なく、frame の犬の検出枠を求める（行動マップなど）。"""
+        return self.detector.predict(frame)
+
     def update(self, frame: Frame, roi: AnyROI, now: float | None = None) -> DogState:
         """fps の間隔で推論し、検出が exit_seconds 途切れるまでは同じ状態を保つ。"""
         now = time.monotonic() if now is None else now
