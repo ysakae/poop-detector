@@ -44,9 +44,10 @@ uv run poop-detector video-benchmark \
   --judge codex:利用するモデル名 \
   --judge claude:利用するモデル名 \
   --judge gemini:利用するモデル名 \
-  --output data/evaluation-result.json \
   --send-images
 ```
+
+結果は `data/benchmarks/` に作成時刻の名前の JSON で保存し、GUI の「管理 › 判定器とモデル」に新しいものから5件を出します。別の場所に保存するときは `--output 新しいファイル` を付けます（画面には出ません）。既存のファイルは上書きしません。
 
 `--send-images` を指定すると、同じ抽出画像と判定指示を選んだ提供元に送ります。認証方法は[判定器とモデルを選ぶ](video.md#判定器とモデルを選ぶ)を参照してください。テストの通知は送信せず、運用中の判定や正解ラベルは更新しません。
 

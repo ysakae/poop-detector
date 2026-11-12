@@ -159,7 +159,9 @@ def parser() -> argparse.ArgumentParser:
     compare.add_argument(
         "--judge", required=True, action="append", help="判定器:モデル名（複数指定）"
     )
-    compare.add_argument("--output", required=True, help="結果を保存する新しいJSONファイル")
+    compare.add_argument(
+        "--output", help="結果を保存する新しいJSONファイル（既定は data/benchmarks/ の下）"
+    )
     compare.add_argument("--scene", help="過去のROIと基準画像を入れたディレクトリ")
     compare.add_argument("--track-tray", action="store_true", help="トレーの位置に追従")
     compare.add_argument("--detect-outside", action="store_true", help="登録した周辺範囲も判定")
