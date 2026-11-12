@@ -87,6 +87,8 @@ class WebOptions:
     trusted_proxies: str = DEFAULT_TRUSTED_PROXIES
     session_idle_hours: float = 168
     session_max_days: float = 30
+    # テーマを選んでいない人とログイン前の画面に使うデザインテーマ。
+    theme: str = "professional"
 
     @classmethod
     def from_config(cls, config: "Config", *, port: int | None = None) -> Self:
@@ -98,6 +100,7 @@ class WebOptions:
             trusted_proxies=config.gui_trusted_proxies,
             session_idle_hours=config.gui_session_idle_hours,
             session_max_days=config.gui_session_max_days,
+            theme=config.gui_theme,
         )
 
 

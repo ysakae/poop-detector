@@ -35,7 +35,8 @@ def heatmap(layout: ActivityLayout, cells: Sequence[Sequence[Any]], mode: str) -
             }
         )
     return {
-        "color": "#f29527" if mode == "pass" else "#0086a0",
+        # 色はテーマのトークン（style.css の --heat-pass・--heat-stay）で決める。
+        "css": "heat-pass" if mode == "pass" else "heat-stay",
         "unit": "回" if mode == "pass" else "秒",
         "outline": " ".join(f"{round(x * GRID, 5):g},{round(y * GRID, 5):g}" for x, y in outline)
         if outline is not None

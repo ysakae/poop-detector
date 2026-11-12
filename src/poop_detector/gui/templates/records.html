@@ -15,11 +15,11 @@
 </tr>
 {%- endfor -%}
 </tbody></table></div></details></section>
-<h3>確定記録一覧（全期間）</h3><div style="overflow:auto"><table style="width:100%;background:white;border-collapse:collapse"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>場所</th><th>登録方法</th><th>メモ</th><th>映像</th><th>操作</th></tr></thead><tbody>
+<h3>確定記録一覧（全期間）</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>場所</th><th>登録方法</th><th>メモ</th><th>映像</th><th>操作</th></tr></thead><tbody>
 {%- for record in records -%}
 <tr>
 {%- for value in record.cells -%}
-<td style="padding:14px;border-bottom:1px solid #c8d8df">{{ value }}</td>
+<td>{{ value }}</td>
 {%- endfor -%}
 <td>
 {%- for clip_id in record.videos -%}

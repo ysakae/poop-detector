@@ -14,11 +14,11 @@
 <p>集計を読み込めませんでした。画面を更新してください。</p>
 {% else %}
 {% if not sampled %}<p>この期間の集計データはまだありません。</p>{% else %}<p>観測 {{ "%.1f"|format(sampled / 60) }}分 ／ 位置を確認できた時間 {{ "%.1f"|format(located / 60) }}分 ／ 通過 {{ passes }}回</p>{% endif %}
-<svg viewBox="0 0 {{ grid }} {{ grid }}" role="img" aria-label="サークルの行動ヒートマップ" style="display:block;width:min(100%,560px);height:auto;background:#263c46;border-radius:8px">
+<svg viewBox="0 0 {{ grid }} {{ grid }}" role="img" aria-label="サークルの行動ヒートマップ" class="activity-map">
 {%- if heat.outline %}<defs><clipPath id="activity-floor"><polygon points="{{ heat.outline }}"/></clipPath></defs><g clip-path="url(#activity-floor)">{% endif -%}
 <image href="/activity/background?id={{ layout_id }}" width="{{ grid }}" height="{{ grid }}" preserveAspectRatio="none" opacity=".6"/>
 {%- for cell in heat.cells -%}
-<rect x="{{ cell.x }}" y="{{ cell.y }}" width="1" height="1" fill="{{ heat.color }}" opacity="{{ "%.3f"|format(cell.opacity) }}"><title>{{ "%.0f"|format(cell.amount) }}{{ heat.unit }}（全体の{{ "%.1f"|format(cell.percent) }}％）</title></rect>
+<rect x="{{ cell.x }}" y="{{ cell.y }}" width="1" height="1" class="{{ heat.css }}" opacity="{{ "%.3f"|format(cell.opacity) }}"><title>{{ "%.0f"|format(cell.amount) }}{{ heat.unit }}（全体の{{ "%.1f"|format(cell.percent) }}％）</title></rect>
 {%- endfor -%}
 {%- if heat.outline %}</g>{% endif -%}
 </svg><p class="note">背景は床面の登録時の映像です。色が濃いほどその区画の割合が高く、10％以上で最も濃くなります。滞在時間は検出枠の中心があった時間です。通過回数は別の区画に移った回数で、途中で位置を確認できなかった区間はつなぎません。</p>

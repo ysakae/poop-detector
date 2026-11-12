@@ -52,7 +52,8 @@ from .pages import save_failed_page
 from .rate_limit import RateLimiter, RateLimits
 from .review_queue import review_items
 from .routes import GET_ROUTES, POST_ROUTES, Form, admin_only_page, required_role
-from .templating import VIEWER
+from .templating import DISPLAY, VIEWER
+from .themes import resolve
 
 if TYPE_CHECKING:
     from .server import GuiApp
@@ -111,7 +112,8 @@ class SecurityHeaders:
 
 
 # ログインしていなくても開ける場所（ログイン、パスキーの登録、その画面のスクリプト）。
-PUBLIC_PATHS = frozenset({"/login", "/enroll", "/assets/passkey.js"})
+# 肉球の模様（ワンちゃんのテーマ）は、ログインの画面の見出しにも出すので公開する。
+PUBLIC_PATHS = frozenset({"/login", "/enroll", "/assets/passkey.js", "/assets/paw.svg"})
 PUBLIC_PREFIX = "/webauthn/"
 
 
@@ -277,11 +279,16 @@ def as_viewer(route: Callable[[Exchange, Any], None], exchange: Exchange, argume
         if user is not None
         else None
     )
+    display = resolve(
+        user.theme if user else None, user.appearance if user else None, exchange.app.default_theme
+    )
     token = VIEWER.set(viewer)
+    display_token = DISPLAY.set(display)
     try:
         route(exchange, argument)
     finally:
         VIEWER.reset(token)
+        DISPLAY.reset(display_token)
 
 
 async def dispatch(request: Request) -> Response:
