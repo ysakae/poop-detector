@@ -18,12 +18,16 @@ RESULT = {"label": "none"}
 def test_claude_cli_passes_two_images_and_schema_without_credentials(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "private-key")
     monkeypatch.setenv("POOP_RTSP_URL", "private-url")
-    monkeypatch.setattr("shutil.which", lambda name: f"/bin/{name}")
+    executable = tmp_path / "claude-bin"
+    executable.touch()
+    launcher = tmp_path / "claude"
+    launcher.symlink_to(executable)
+    monkeypatch.setattr("shutil.which", lambda _: str(launcher))
     (tmp_path / "frames.jpg").write_bytes(b"frames")
     (tmp_path / "differences.jpg").write_bytes(b"differences")
 
     def run(args, **kwargs):
-        assert args[0] == "/bin/claude"
+        assert args[0] == str(executable.resolve())
         assert {"ANTHROPIC_API_KEY", "POOP_RTSP_URL", "CODEX_HOME"}.isdisjoint(kwargs["env"])
         if args[1:] == ["auth", "status"]:
             return subprocess.CompletedProcess(args, 0, b"")
