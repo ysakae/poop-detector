@@ -29,6 +29,8 @@ ACTIONS: dict[str, str] = {
     "tray.apply": "監視範囲と基準画像の登録",
     "clip.unprotect": "動画の保護の解除",
     "clip.cleanup": "動画の削除・整理",
+    "settings.save": "設定の変更",
+    "settings.restore": "設定を直前に戻す",
 }
 
 

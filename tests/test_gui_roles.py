@@ -23,8 +23,15 @@ ADMIN_GET = {
     "/manage/invite",
     "/manage/users",
     "/manage/audit",
+    "/manage/settings",
 }
-ADMIN_POST = {"/manage/tray", "/manage/storage/cleanup", "/manage/invite", "/manage/users"}
+ADMIN_POST = {
+    "/manage/tray",
+    "/manage/storage/cleanup",
+    "/manage/invite",
+    "/manage/users",
+    "/manage/settings",
+}
 MEMBER_GET = sorted(path for path in GET_ROUTES if not is_public(path) and path not in ADMIN_GET)
 MEMBER_POST = sorted(path for path in POST_ROUTES if path not in ADMIN_POST)
 
