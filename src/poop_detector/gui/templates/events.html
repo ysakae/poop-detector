@@ -1,13 +1,11 @@
-{#- トップ画面。イベントの一覧と、選んだイベントのラベル入力欄。 -#}
+{#- 検知の一覧（記録の下）。イベントの一覧と、選んだイベントのラベル入力欄、目視の記録の追加。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import capacity_panel, csrf_field, location_field %}
+{% from "_macros.html" import csrf_field, location_field %}
 {% block content %}
 {% include "_review_bar.html" %}
 {% if not review %}
-{% include "_live_panel.html" %}
-{% if pending %}<p class="review-callout"><a class="button" href="/review">確認待ち {{ pending }}件を確認する</a></p>{% endif %}
-{{ capacity_panel(capacity) }}
-<div class="toolbar"><form method="get"><label>表示する記録<select name="filter">
+<h2>検知の一覧と記録の追加</h2>
+<div class="toolbar"><form method="get" action="/records/events"><label>表示する記録<select name="filter">
 {%- for value, text in filters -%}
 <option value="{{ value }}" {% if value == mode %}selected{% endif %}>{{ text }}</option>
 {%- endfor -%}

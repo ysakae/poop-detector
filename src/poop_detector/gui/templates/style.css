@@ -34,3 +34,4 @@ fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:bold;margin-bottom:
 a.button{display:inline-block;padding:11px 18px;background:#247c90;color:white;border-radius:6px;text-decoration:none}
 @media(max-width:800px){.review-list a{grid-template-columns:1fr}.review-list small{grid-column:1}a.button{min-height:44px}}
 .workspace.reviewing{grid-template-columns:minmax(0,1fr)}
+.dashboard{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:24px}.dashboard-card{background:#fff;border-radius:12px;padding:16px 20px}.dashboard-card h2{font-size:18px;margin:0 0 10px}.dashboard-counts{display:flex;gap:6px 18px;flex-wrap:wrap;font-size:18px;font-weight:bold}.dashboard-recent{list-style:none;padding:0;margin:0}.dashboard-recent li{padding:6px 0;border-bottom:1px solid #dce6ea}

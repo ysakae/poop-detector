@@ -113,7 +113,7 @@ def test_review_urls_open_the_existing_editors():
     )
     assert [item.url for item in items] == [
         "/clips?id=c1&from=review",
-        "/?filter=unlabeled&id=e1&from=review",
+        "/records/events?filter=unlabeled&id=e1&from=review",
     ]
 
 

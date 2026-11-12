@@ -67,7 +67,7 @@ def test_redirects_carry_security_headers(gui):
     body = urlencode({"csrf": csrf_token(server), "id": event, "label": "urine"})
     status, headers, _ = exchange(server, "POST", "/save", body, FORM)
     assert status == 303
-    assert headers["Location"] == "/?filter=unlabeled&saved=1"
+    assert headers["Location"] == "/records/events?filter=unlabeled&saved=1"
     assert headers["Content-Security-Policy"] == SECURITY_HEADERS["Content-Security-Policy"]
 
 

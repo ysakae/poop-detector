@@ -39,7 +39,9 @@ class ReviewItem:
         """ラベルを付ける画面。from=review で、保存後に次の件へ進む。"""
         if self.kind == "clip":
             return "/clips?" + urlencode({"id": self.id, "from": "review"})
-        return "/?" + urlencode({"filter": "unlabeled", "id": self.id, "from": "review"})
+        return "/records/events?" + urlencode(
+            {"filter": "unlabeled", "id": self.id, "from": "review"}
+        )
 
 
 def _waiting_clip(clip: Mapping[str, Any]) -> bool:

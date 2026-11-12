@@ -1,0 +1,28 @@
+{#- ホーム（ダッシュボード）。ラベル付けは確認待ちと検知の一覧で行い、ここでは状況だけを示す。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import capacity_panel %}
+{% block content %}
+<div class="dashboard">
+<section class="dashboard-card" aria-labelledby="review-title">
+<h2 id="review-title">確認待ち</h2>
+{% if pending %}<p><a class="button" href="/review">確認待ち {{ pending }}件を確認する</a></p><p class="note">まだラベルのない検知と、排泄に関わる動画です。</p>
+{% else %}<p>確認待ちはありません。</p>{% endif %}
+</section>
+<section class="dashboard-card" aria-labelledby="today-title">
+<h2 id="today-title">今日の記録</h2>
+<p class="dashboard-counts"><span>排便 {{ daily.feces }}件</span><span>排尿 {{ daily.urine }}件</span><span>種類不明 {{ daily.unspecified }}件</span></p>
+<p class="note">{{ today }}（{{ timezone }}）の確定記録です。<a href="/records">記録と集計を見る</a></p>
+</section>
+<section class="dashboard-card" aria-labelledby="recent-title">
+<h2 id="recent-title">最近の確定記録</h2>
+{% if recent %}<ul class="dashboard-recent">
+{%- for record in recent -%}
+<li><a href="{{ record.url }}">{{ record.time }}</a> {{ record.type }} ／ {{ record.location }}</li>
+{%- endfor -%}
+</ul>{% else %}<p>確定した記録はまだありません。</p>{% endif %}
+<p class="note"><a href="/records/events">検知の一覧と記録の追加</a>から、目視で確認した排泄も記録できます。</p>
+</section>
+</div>
+{% include "_live_panel.html" %}
+{{ capacity_panel(capacity) }}
+{% endblock %}
