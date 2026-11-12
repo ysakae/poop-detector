@@ -29,6 +29,7 @@ from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, utcnow
 from .clip_reviews import Assessment
 from .clip_storage import REVIEW_LOCK
 from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
+from .judge_source import FixedJudge, JudgeChoice, JudgeSource
 
 logger = logging.getLogger(__name__)
 EVIDENCE = {"feces": "new_stool", "urine": "new_wet_patch", "both": "both_visible"}
@@ -369,8 +370,8 @@ class AssessmentNotifier(Protocol):
     ) -> bool: ...
 
 
-# 動画のパスと行から判定を返す関数。inspect_clip に ROI などを束ねたもの。
-Inspector = Callable[[Path, ClipRow], Assessment]
+# 動画のパスと行と判定器から判定を返す関数。inspect_clip に ROI などを束ねたもの。
+Inspector = Callable[[Path, ClipRow, VideoJudge], Assessment]
 
 
 class Review:
@@ -383,14 +384,14 @@ class Review:
         notify: AssessmentNotifier | None = None,
         scene_signature: str | None = None,
         *,
-        provider: str = "codex",
-        model: str | None = None,
+        judges: JudgeSource | None = None,
     ) -> None:
         self.store = store
         self.inspect = inspect
         self.notify = notify
         self.scene_signature = scene_signature
-        self.provider, self.model = provider, model
+        # 判定器は動画ごとに受け取るので、監視中に選び直した判定器も次の動画から使える。
+        self.judges = judges or FixedJudge(JudgeChoice(default_judge(), "codex", None))
 
     def run(
         self, limit: int, since: str | None = None, clip_id: str | None = None
@@ -414,11 +415,13 @@ class Review:
         completed = failures = 0
         rows = self.store.assessments.pending(limit, since, clip_id, self.scene_signature)
         for row in rows:
+            # 台帳には、この動画で実際に使った判定器を記録する。
+            choice = self.judges.current()
             try:
                 path = self.store.video_path(row)
                 if path is None:
                     raise OSError("動画ファイルがありません")
-                result = self.inspect(path, row)
+                result = self.inspect(path, row, choice.judge)
                 observed_at = (
                     (
                         datetime.fromisoformat(cast(str, row["start_at"]))
@@ -431,14 +434,18 @@ class Review:
                 self.store.assessments.save(
                     row["id"],
                     error="自動判定に失敗しました。動画・判定器の認証・接続を確認してください",
-                    provider=self.provider,
-                    model=self.model,
+                    provider=choice.provider,
+                    model=choice.model,
                 )
                 logger.warning("自動判定に失敗しました（動画 %s）", row["id"])
                 failures += 1
                 continue
             stored = self.store.assessments.save(
-                row["id"], result, observed_at=observed_at, provider=self.provider, model=self.model
+                row["id"],
+                result,
+                observed_at=observed_at,
+                provider=choice.provider,
+                model=choice.model,
             )
             if not stored:
                 continue

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from ..capture.camera import LatestCamera
 from ..capture.live_preview import LivePreview
-from ..config import check_monitor_features, load_connection_settings, with_flags
+from ..config import Config, check_monitor_features, load_connection_settings, with_flags
 from ..detection.monitoring import Monitor, dog_observer_from_config, monitor, standard_extensions
 from ..detection.roi import AnyROI
 from ..detection.scene import scene_signature
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from ..notifications import ToiletNotifier
     from ..video.clip_reviews import Assessment
     from ..video.clips import ClipRow
+    from ..video.judge_source import JudgeSource
     from ..video.review import Review, VideoJudge
 
 
@@ -79,21 +80,26 @@ def load_activity_recorder(context: CommandContext) -> ActivityRecorder:
     return ActivityRecorder(ActivityStore(context.root), layout)
 
 
+def judge_source(config_path: str, config: Config, judge: "VideoJudge") -> "JudgeSource":
+    """管理 › 判定器とモデルで選び直した判定器を、監視を止めずに次の動画から使う。"""
+    from ..video.judge_source import JudgeChoice, ReloadingJudge
+
+    initial = JudgeChoice(judge, config.review_provider, config.review_model or None)
+    return ReloadingJudge(config_path, initial)
+
+
 def review_watcher(
     collector: ClipCollector,
     initial: TrayScene,
     scenes: dict[str, TrayScene],
     outside_roi: AnyROI | None,
     notifier: "ToiletNotifier",
-    judge: "VideoJudge",
-    *,
-    provider: str,
-    model: str | None,
+    judges: "JudgeSource",
 ) -> "Review":
-    """録画時の基準で動画を自動判定する。"""
+    """録画時の基準で動画を自動判定する。判定器は動画ごとに judges から受け取る。"""
     from ..video.review import Review, inspect_clip
 
-    def inspect(path: Path, row: "ClipRow") -> "Assessment":
+    def inspect(path: Path, row: "ClipRow", judge: "VideoJudge") -> "Assessment":
         signature = row["scene_signature"]
         scene = scenes.get(signature, initial) if signature is not None else initial
         return inspect_clip(
@@ -110,8 +116,7 @@ def review_watcher(
         collector.store,
         inspect,
         notifier.send_assessment if notifier.enabled else None,
-        provider=provider,
-        model=model,
+        judges=judges,
     )
 
 
@@ -168,9 +173,7 @@ def watch(
                 scenes,
                 outside_roi,
                 notifier,
-                judge,
-                provider=config.review_provider,
-                model=config.review_model or None,
+                judge_source(args.config, config, judge),
             )
             stack.enter_context(review.watch())
         if args.gui:
