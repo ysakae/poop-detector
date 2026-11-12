@@ -51,7 +51,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
-    "mypy>=1.13,<2",
+    "mypy>=1.13,<3",
     "pytest>=8,<10",
     "pytest-cov>=6,<8",
     "ruff>=0.9,<1",
