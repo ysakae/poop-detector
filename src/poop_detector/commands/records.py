@@ -87,5 +87,6 @@ def gui(args: argparse.Namespace, context: CommandContext) -> int:
         disk_mb=context.config.clip_disk_mb,
         pet_name=context.config.pet_name,
         web=web,
+        config_path=args.config,
     )
     return 0

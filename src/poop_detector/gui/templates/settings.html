@@ -1,0 +1,50 @@
+{#- 管理 › 設定。config.SETTINGS の表から入力欄を並べ、確認してから保存する。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>設定</h2>
+{% if notice %}<p class="message" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+{% if editable %}
+<p class="note">監視するマシンの設定ファイル（{{ file }}）を書き換えます。監視（run）と GUI は起動したときに設定を読むので、保存した設定は起動し直すと反映されます。書き換えるのは変えた項目の値だけで、コメントは残ります。</p>
+{% else %}
+<p class="message">設定ファイルの場所が分からないため、表示だけです（既定値を表示しています）。</p>
+{% endif %}
+<form method="post" action="/manage/settings" class="settings-form">{{ csrf_field(token) }}<input type="hidden" name="base" value="{{ base }}">
+{% if pending %}
+<section class="settings-pending" aria-labelledby="pending-title"><h3 id="pending-title">次の変更を保存します</h3>
+<table><thead><tr><th>項目</th><th>今の値</th><th>新しい値</th></tr></thead><tbody>
+{%- for change in pending -%}
+<tr><th scope="row">{{ change.name }}</th><td>{{ change.before }}</td><td>{{ change.after }}</td></tr>
+{%- endfor -%}
+</tbody></table>
+<p><button name="action" value="save">この内容で保存</button></p></section>
+{% endif %}
+{% for section in sections %}
+<fieldset class="settings-section"><legend><h3>{{ section.title }}</h3></legend>
+{% for field in section.fields %}
+<div class="settings-field">
+{% if field.kind == "bool" %}<label><input type="checkbox" name="{{ field.attr }}" value="true"{% if field.value %} checked{% endif %}{% if not editable %} disabled{% endif %}> <code>{{ field.name }}</code></label>
+{% elif field.kind == "select" %}<label><code>{{ field.name }}</code><select name="{{ field.attr }}"{% if not editable %} disabled{% endif %}>
+{%- for option in field.options -%}<option value="{{ option }}"{% if option == field.value %} selected{% endif %}>{{ option }}</option>{%- endfor -%}
+</select></label>
+{% elif field.kind == "readonly" %}<p><code>{{ field.name }}</code>：{{ field.value or "（空）" }}<br><small>画面からは変えられません。監視するマシンで設定ファイルを編集してください。</small></p>
+{% else %}<label><code>{{ field.name }}</code><input {% if field.kind == "number" %}type="number" {% endif %}name="{{ field.attr }}" value="{{ field.value }}"{% if field.kind == "number" %} step="{{ field.step }}" inputmode="decimal"{% endif %}{% if not editable %} disabled{% endif %}></label>
+{% endif %}
+<small>{{ field.rule }}</small></div>
+{% endfor %}
+</fieldset>
+{% endfor %}
+{% if editable %}<p class="settings-actions"><button name="action" value="preview">変更を確認</button></p>{% endif %}
+</form>
+<section class="settings-section" aria-labelledby="connections-title"><h3 id="connections-title">接続情報（.env）</h3>
+<p class="note">カメラの URL と通知のトピックは、監視するマシンの .env で設定します。画面には設定の有無だけを表示します。</p>
+<table><tbody>
+{%- for label, present in connections -%}
+<tr><th scope="row">{{ label }}</th><td>{{ "設定あり" if present else "未設定" }}</td></tr>
+{%- endfor -%}
+</tbody></table></section>
+{% if editable and previous %}
+<form method="post" action="/manage/settings" class="settings-section">{{ csrf_field(token) }}<input type="hidden" name="base" value="{{ base }}"><h3>直前の設定に戻す</h3><p class="note">最後に保存する前の設定ファイルに戻します。戻したあとも、もう一度戻せます。</p><p><label><input type="checkbox" name="confirm_restore" value="1" required> 直前の設定に戻すことを確認しました</label></p><button class="secondary" name="action" value="restore">直前の設定に戻す</button></form>
+{% endif %}
+{% endblock %}

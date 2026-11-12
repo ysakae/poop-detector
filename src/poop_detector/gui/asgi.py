@@ -34,10 +34,11 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..web_address import Site
 
-# account_routes は、読み込むとアカウントの画面のルートを登録する（名前は使わない）。
+# 次のモジュールは、読み込むとそれぞれの画面のルートを登録する（名前は使わない）。
 from . import (
     account_routes,  # noqa: F401
     review_routes,  # noqa: F401
+    settings_routes,  # noqa: F401
 )
 from .access import (
     session_ids,

@@ -180,6 +180,7 @@ def watch(
                     disk_mb=config.clip_disk_mb,
                     pet_name=config.pet_name,
                     web=web,
+                    config_path=args.config,
                 )
             )
         live = stack.enter_context(LatestCamera(open_camera(source, config), on_frame))

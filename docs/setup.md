@@ -58,6 +58,8 @@ uv run poop-detector show-config
 
 設定ファイルは `camera`・`detection`・`notifications`・`clips`・`dog`・`features` のセクションに分かれています。項目と許容範囲は `config/config.example.yaml` にあります。範囲外の値や存在しない項目は、その項目名と許容範囲を表示して止まります。
 
+管理者は GUI の「管理 › 設定」でも、項目を確かめて変更できます（変更前に差分を確認し、コメントは残ります。外からの公開に関わる項目と `data_dir` は設定ファイルで変えます）。詳しくは [画面の構成](screens.md#管理--設定) を参照してください。
+
 0.1.0 の開発中の、セクションのない書き方（`clip_enabled: true` など）も読み込めます。その場合は、新しい書き方（`clips.enabled`）を警告で案内します。
 
 ## カメラの設定

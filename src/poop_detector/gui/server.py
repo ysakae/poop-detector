@@ -62,6 +62,8 @@ class GuiApp:
     site: Site
     title: str
     disk_mb: float
+    # 管理 › 設定で書き換える設定ファイル。None なら設定の画面は表示だけ（テストなど）。
+    config_path: Path | None = None
 
     def csrf_for(self, session_id: str) -> str:
         """セッションの CSRF トークン。セッションの ID と鍵の HMAC で、ID そのものは出さない。"""
@@ -157,11 +159,13 @@ def make_server(
     pet_name: str = "",
     web: WebOptions = LOCAL_ONLY,
     limits: RateLimits = DEFAULT_LIMITS,
+    config_path: str | Path | None = None,
 ) -> GuiServer:
     """GUI のサーバーを作る。待ち受けのアドレスと外部の URL は web、ポートは port を使う。
 
     起動ごとに、CSRF トークンを導く鍵と、セッションを始めるための起動トークンを作る。
-    limits は要求の回数の上限（テストで小さくする）。
+    limits は要求の回数の上限（テストで小さくする）。config_path は管理 › 設定で書き換える
+    設定ファイル（起動時の作業ディレクトリから絶対パスにする）。
     """
     listener = listen(web.host, port)
     database = events_database(root)
@@ -186,6 +190,7 @@ def make_server(
         site=Site(listener.getsockname()[1], web.public_url),
         title=page_title(pet_name),
         disk_mb=disk_mb,
+        config_path=Path(config_path).resolve() if config_path is not None else None,
     )
     return GuiServer(app, listener, web, limits)
 
@@ -225,9 +230,12 @@ def background_gui(
     disk_mb: float,
     pet_name: str,
     web: WebOptions = LOCAL_ONLY,
+    config_path: str | Path | None = None,
 ) -> Iterator[None]:
     """監視中は別スレッドで GUI を提供し、監視が終われば待ち受けを閉じる。"""
-    with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name, web=web) as server:
+    with make_server(
+        root, port, disk_mb=disk_mb, pet_name=pet_name, web=web, config_path=config_path
+    ) as server:
         thread = threading.Thread(target=server.serve_forever, name="poop-detector-gui")
         thread.start()
         try:
@@ -246,8 +254,11 @@ def serve(
     disk_mb: float = DEFAULT_DISK_MIB,
     pet_name: str = "",
     web: WebOptions = LOCAL_ONLY,
+    config_path: str | Path | None = None,
 ) -> None:
-    with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name, web=web) as server:
+    with make_server(
+        root, port, disk_mb=disk_mb, pet_name=pet_name, web=web, config_path=config_path
+    ) as server:
         open_gui_url(server, open_browser)
         try:
             server.serve_forever()
