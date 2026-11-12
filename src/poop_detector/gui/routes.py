@@ -31,11 +31,13 @@ from .clip_pages import (
     stream_video,
 )
 from .pages import (
+    EVENTS_PAGE,
     Query,
     local_time,
     message_page,
     parse_time,
-    render,
+    render_events,
+    render_home,
     render_records,
     save_failed_page,
 )
@@ -140,15 +142,26 @@ def _review_bar(handler: "Handler", query: Query, key: str) -> dict[str, Any] | 
 
 
 @get("/")
-def top_page(handler: "Handler", query: Query) -> None:
+def home_page(handler: "Handler", _query: Query) -> None:
+    """ホーム（ダッシュボード）。問い合わせ文字列付きの古いリンクは検知の一覧へ移す。"""
+    query = urlsplit(handler.path).query
+    if query:
+        # 検知の一覧がホームにあった頃の URL（/?filter=…&id=…）。
+        handler.redirect(f"{EVENTS_PAGE}?{query}", status=301)
+        return
     app = handler.app
-    page = render(
+    pending = len(review_items(app.store, app.clips))
+    handler.respond(200, render_home(app.store, app.disk_mb, title=app.title, pending=pending))
+
+
+@get(EVENTS_PAGE)
+def events_page(handler: "Handler", query: Query) -> None:
+    app = handler.app
+    page = render_events(
         app.store,
         handler.csrf,
         query,
-        app.disk_mb,
         title=app.title,
-        pending=len(review_items(app.store, app.clips)),
         review=_review_bar(handler, query, f"event:{first(query, 'id')}"),
     )
     handler.respond(200, page)
@@ -435,7 +448,7 @@ def live_assessment(handler: "Handler", _query: Query) -> None:
 
 @post("/save")
 def save_label(handler: "Handler", form: Form) -> None:
-    """イベントのラベル、または手動・見逃しの記録を保存し、トップへ戻す。"""
+    """イベントのラベル、または手動・見逃しの記録を保存し、検知の一覧へ戻す。"""
     try:
         _save_label(handler, form.fields)
     except (ValueError, UnicodeError, TypeError):
@@ -448,7 +461,7 @@ def save_label(handler: "Handler", form: Form) -> None:
     mode = form.fields.get("filter", "unlabeled")
     if mode not in FILTERS:
         mode = "unlabeled"
-    handler.redirect("/?" + urlencode({"filter": mode, "saved": "1"}))
+    handler.redirect(f"{EVENTS_PAGE}?" + urlencode({"filter": mode, "saved": "1"}))
 
 
 def _save_label(handler: "Handler", fields: Mapping[str, str]) -> None:

@@ -24,7 +24,7 @@ def post(server, fields, token=True):
 
 def test_gui_lists_image_and_saves_label(gui):
     server, store, event = gui
-    status, data = request(server, "GET", "/")
+    status, data = request(server, "GET", "/records/events")
     assert status == 200
     assert "排便だった".encode() in data
     assert event.encode() in data
@@ -67,8 +67,8 @@ def test_gui_missed_and_filter(gui):
     assert post(server, {"action": "missed", "start": "2026-11-08T19:00"})[0] == 303
     assert store.metrics()["missed"] == 1
     assert post(server, {"id": event, "label": "false"})[0] == 303
-    assert event.encode() not in request(server, "GET", "/?filter=unlabeled")[1]
-    assert event.encode() in request(server, "GET", "/?filter=false")[1]
+    assert event.encode() not in request(server, "GET", "/records/events?filter=unlabeled")[1]
+    assert event.encode() in request(server, "GET", "/records/events?filter=false")[1]
 
 
 def test_gui_urine_and_excretion_log(gui):
@@ -81,7 +81,7 @@ def test_gui_urine_and_excretion_log(gui):
     )
     assert len(store.records()) == 2
     assert store.metrics()["missed"] == 0
-    assert event.encode() in request(server, "GET", "/?filter=urine")[1]
+    assert event.encode() in request(server, "GET", "/records/events?filter=urine")[1]
     assert post(server, {"action": "missed", "type": "both", "start": "2026-11-08T23:20"})[0] == 303
     assert store.metrics()["excretion_counts"] == {"feces": 2, "urine": 2, "unknown": 0}
     assert (
@@ -151,7 +151,7 @@ def test_gui_rejects_get_without_session(gui):
 
 def test_gui_rejects_post_without_session_even_with_csrf(gui):
     server, store, event = gui
-    page = request(server, "GET", "/")[1].decode()
+    page = request(server, "GET", "/records/events")[1].decode()
     csrf = re.search(r'name="csrf" value="([^"]+)"', page)[1]
     body = urlencode({"id": event, "label": "false", "csrf": csrf})
     headers = {"Content-Type": "application/x-www-form-urlencoded"}

@@ -51,7 +51,7 @@
 <div><label>{{ text }}<input type="number" min="0" max="{{ clip.duration }}" step="0.01" name="{{ name }}" value="{{ value }}"></label><button class="secondary" type="button" data-video-offset="{{ name }}">ここを{{ button }}にする</button></div>
 {%- endfor -%}
 </div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000" style="width:100%">{{ clip.note }}</textarea></label></p><button class="secondary">動画ラベルのみ保存</button>{% include "_confirmation.html" %}</form>
-{% if clip.event_id %}<p><a href="/?filter=all&amp;id={{ clip.event_id }}">対応するイベント画像を確認</a></p>{% endif %}
+{% if clip.event_id %}<p><a href="/records/events?filter=all&amp;id={{ clip.event_id }}">対応するイベント画像を確認</a></p>{% endif %}
 {% elif clip.removed is not none %}
 <p>{{ "録画ファイルは整理済みです。" if clip.removed else "録画ファイルの整理を再開できます。" }} {% if viewer_admin %}<a href="/manage/storage">録画の整理を開く</a>{% endif %}</p>
 {% if assessment and assessment.reason %}<p>{{ assessment.label_or_default }} ／ {{ assessment.reason }}</p>{% endif %}
