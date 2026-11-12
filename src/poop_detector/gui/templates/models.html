@@ -23,7 +23,7 @@
 <div class="settings-field"><label><code>review.model</code><input name="model" value="{{ model }}"></label><small>英数字で始まるモデル名。空なら選んだ CLI の既定</small></div>
 <p><button>保存</button></p>
 </form>
-<p class="note">設定ファイルの review の値だけを書き換えます。監視（run）と GUI を起動し直すと反映されます。</p>
+<p class="note">設定ファイルの review の値だけを書き換えます。動いている監視（run）は、次の動画の判定から反映します。新しい判定器を使えない（未ログインなど）ときは、前の判定器のまま続けます。</p>
 {% else %}<p class="message">設定ファイルの場所が分からないため、表示だけです。</p>{% endif %}
 </section>
 <section class="settings-section" aria-labelledby="usage-title"><h3 id="usage-title">これまでの判定</h3>

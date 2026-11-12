@@ -39,6 +39,7 @@ def ready_judge(config: Config) -> "VideoJudge":
 def video_review(args: argparse.Namespace, context: CommandContext) -> int:
     """保存済みの未ラベルの動画を自動判定する（通知はしない）。"""
     from ..video.clips import ClipStore
+    from ..video.judge_source import FixedJudge, JudgeChoice
     from ..video.review import Review, inspect_clip
 
     detect_outside = args.detect_outside or context.config.detect_outside_enabled
@@ -50,12 +51,13 @@ def video_review(args: argparse.Namespace, context: CommandContext) -> int:
     tray_tracker = load_tray_tracker(context, baseline, roi, track_tray)
     review = Review(
         ClipStore(context.root),
-        lambda path, row: inspect_clip(
-            path, row, roi, judge, tray_tracker=tray_tracker, outside_roi=outside_roi
+        lambda path, row, chosen: inspect_clip(
+            path, row, roi, chosen, tray_tracker=tray_tracker, outside_roi=outside_roi
         ),
         scene_signature=scene_signature(baseline, roi),
-        provider=context.config.review_provider,
-        model=context.config.review_model or None,
+        judges=FixedJudge(
+            JudgeChoice(judge, context.config.review_provider, context.config.review_model or None)
+        ),
     )
     try:
         completed, failed = review.run(args.limit, clip_id=args.clip)

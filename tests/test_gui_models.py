@@ -125,7 +125,7 @@ def test_choosing_a_judge_writes_the_settings_and_the_audit_log(models_gui):
     assert "review.provider: codex → gemini" in entry.detail
     html = page(server, admin, f"{PAGE}?saved=1")
     assert "保存しました" in html
-    assert "起動し直す" in html
+    assert "次の動画の判定から新しい判定器を使います" in html
 
 
 def test_invalid_choices_and_conflicts_are_refused(models_gui):

@@ -138,7 +138,7 @@ def _render(
 def models_page(handler: "Handler", query: Query) -> None:
     notice = None
     if first(query, "saved") == "1":
-        notice = "保存しました。監視と GUI を起動し直すと反映されます。"
+        notice = "保存しました。動いている監視は、次の動画の判定から新しい判定器を使います。"
     try:
         _render(handler, handler.app.config_path, notice=notice)
     except ConfigError as error:

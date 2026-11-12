@@ -118,7 +118,7 @@ def test_outside_notice_is_distinct_and_does_not_mark_tray_event(gui):
     notices = []
     review = Review(
         clips,
-        lambda path, row: Assessment(
+        lambda path, row, judge: Assessment(
             "urine", "excreting", 4, 6, "新しい濡れ跡", locations[row["id"]]
         ),
         lambda label, location=None: notices.append((label, location)) or True,

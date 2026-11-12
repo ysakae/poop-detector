@@ -15,6 +15,7 @@ from poop_detector.notifications import NtfyNotifier
 from poop_detector.video.clip_labels import ClipLabel
 from poop_detector.video.clips import ClipStore
 from poop_detector.video.codex_cli import CodexCliJudge
+from poop_detector.video.judge_source import FixedJudge, JudgeChoice, ReloadingJudge
 from poop_detector.video.review import Assessment, Review, inspect_clip, parse_assessment
 
 FECES = Assessment("feces", "excreting", 10, 15, "離れた後に新しい便が見えます")
@@ -45,7 +46,9 @@ def test_live_review_preserves_human_labels_and_deduplicates(tmp_path):
     ids = [ready(store, when + timedelta(seconds=offset)) for offset in (0, 2, 20, 40)]
     store.labels.save(ids[0], ClipLabel("none", activity="feeding"))
     notified = []
-    review = Review(store, lambda path, row: FECES, lambda label: notified.append(label) or True)
+    review = Review(
+        store, lambda path, row, judge: FECES, lambda label: notified.append(label) or True
+    )
     review.run(limit=10, since=when.isoformat())
     review.run(limit=10, since=when.isoformat())
     assert store.get(ids[0])["label"] == "none"
@@ -67,7 +70,7 @@ def test_backfill_never_notifies_and_live_skips_feeding(tmp_path):
     live = ready(store, when)
     review = Review(
         store,
-        lambda path, row: FECES if row["id"] == old else FEEDING,
+        lambda path, row, judge: FECES if row["id"] == old else FEEDING,
         lambda label: pytest.fail("通知対象外です"),
     )
     review.run(limit=10, since=when.isoformat())
@@ -107,7 +110,7 @@ def test_live_review_notifies_of_excretion_with_clip_quality(
         if expected
         else Assessment(label, "other", None, None, "新しい排泄の跡は確認できません")
     )
-    review = Review(store, lambda path, row: result, notifier.send_assessment)
+    review = Review(store, lambda path, row, judge: result, notifier.send_assessment)
     assert review.run(limit=10, since=when.isoformat()) == (1, 0)
     assert review.run(limit=10, since=when.isoformat()) == (0, 0)
     if expected is None:
@@ -125,12 +128,12 @@ def test_failed_review_is_visible_and_can_be_retried(tmp_path):
     store = ClipStore(tmp_path)
     clip_id = ready(store, datetime.now(UTC))
 
-    def fail(path, row):
+    def fail(path, row, judge):
         raise OSError("認証情報を含むかもしれない出力")
 
     assert Review(store, fail).run(limit=1) == (0, 1)
     assert "認証情報" not in store.assessments.get(clip_id)["error"]
-    assert Review(store, lambda path, row: FECES).run(limit=1, clip_id=clip_id) == (1, 0)
+    assert Review(store, lambda path, row, judge: FECES).run(limit=1, clip_id=clip_id) == (1, 0)
     assert store.assessments.get(clip_id)["error"] is None
 
 
@@ -254,7 +257,7 @@ def test_backfill_uses_matching_camera_scene(tmp_path):
     current = ready(store, when)
     old = ready(store, when - timedelta(minutes=1))
     store.update(old, scene_signature="old")
-    review = Review(store, lambda path, row: FECES, scene_signature="scene")
+    review = Review(store, lambda path, row, judge: FECES, scene_signature="scene")
     assert review.run(limit=3) == (1, 0)
     assert store.assessments.get(current)["label"] == "feces"
     assert store.assessments.get(old) is None
@@ -269,7 +272,7 @@ def test_duplicate_both_is_not_a_second_notice(tmp_path):
     notices = []
     review = Review(
         store,
-        lambda path, row: FECES if row["id"] == first else both,
+        lambda path, row, judge: FECES if row["id"] == first else both,
         lambda label: notices.append(label) or True,
     )
     assert review.run(limit=3, since=when.isoformat()) == (2, 0)
@@ -362,7 +365,108 @@ def test_old_feature_name_in_config_still_works(tmp_path, caplog):
 def test_review_records_the_selected_provider_and_model(tmp_path):
     store = ClipStore(tmp_path)
     clip_id = ready(store, datetime.now(UTC))
-    review = Review(store, lambda path, row: FECES, provider="claude", model="configured-model")
+    choice = JudgeChoice(FakeJudge("claude"), "claude", "configured-model")
+    review = Review(store, lambda path, row, judge: FECES, judges=FixedJudge(choice))
     assert review.run(limit=1, clip_id=clip_id) == (1, 0)
     row = store.assessments.get(clip_id)
     assert (row["provider"], row["model"]) == ("claude", "configured-model")
+
+
+class FakeJudge:
+    """名前だけを持つ偽の判定器。check の失敗を指定できる。"""
+
+    def __init__(self, label, *, failure=None):
+        self.name = label
+        self.failure = failure
+
+    def check(self):
+        if self.failure is not None:
+            raise ValueError(self.failure)
+
+    def judge(self, folder, prompt, images, schema):
+        raise AssertionError("inspect で判定するので呼ばれません")
+
+
+def write_review_config(path, provider, model, stamp):
+    import os
+
+    path.write_text(f"review:\n  provider: {provider}\n  model: '{model}'\n")
+    # 同じ時刻に書いても更新を見分けられるよう、更新時刻を明示する。
+    os.utime(path, ns=(stamp, stamp))
+
+
+def test_review_uses_the_judge_rewritten_in_the_config(tmp_path):
+    config = tmp_path / "config.yaml"
+    write_review_config(config, "codex", "", 1_000_000_000)
+    first = FakeJudge("first")
+    built = []
+
+    def build(provider, model):
+        judge = FakeJudge(f"{provider}:{model}")
+        built.append(judge)
+        return judge
+
+    judges = ReloadingJudge(config, JudgeChoice(first, "codex", None), build=build)
+    store = ClipStore(tmp_path)
+    used = []
+    review = Review(store, lambda path, row, judge: used.append(judge.name) or FECES, judges=judges)
+    before = ready(store, datetime.now(UTC))
+    assert review.run(limit=1, clip_id=before) == (1, 0)
+
+    write_review_config(config, "claude", "new-model", 2_000_000_000)
+    after = ready(store, datetime.now(UTC))
+    assert review.run(limit=1, clip_id=after) == (1, 0)
+    # 更新がなければ作り直さない。
+    assert judges.current().judge is built[0]
+
+    assert used == ["first", "claude:new-model"]
+    assert len(built) == 1
+    row = store.assessments.get(before)
+    assert (row["provider"], row["model"]) == ("codex", None)
+    row = store.assessments.get(after)
+    assert (row["provider"], row["model"]) == ("claude", "new-model")
+
+
+def test_review_keeps_the_previous_judge_when_the_new_one_is_unusable(tmp_path, caplog):
+    config = tmp_path / "config.yaml"
+    write_review_config(config, "codex", "", 1_000_000_000)
+    first = FakeJudge("first")
+    attempts = []
+
+    def build(provider, model):
+        attempts.append(provider)
+        return FakeJudge(provider, failure="claude auth login でログインしてください")
+
+    judges = ReloadingJudge(config, JudgeChoice(first, "codex", None), build=build)
+    write_review_config(config, "claude", "", 2_000_000_000)
+    with caplog.at_level("WARNING", logger="poop_detector.video.judge_source"):
+        choice = judges.current()
+    assert (choice.judge, choice.provider, choice.model) == (first, "codex", None)
+    assert "前の判定器" in caplog.text
+    # 失敗した書き換えは、次に設定ファイルが変わるまで試し直さない。
+    assert judges.current().judge is first
+    assert attempts == ["claude"]
+
+
+def test_reloading_judge_keeps_the_judge_when_the_config_is_unreadable(tmp_path, caplog):
+    config = tmp_path / "config.yaml"
+    write_review_config(config, "codex", "", 1_000_000_000)
+    first = FakeJudge("first")
+    judges = ReloadingJudge(
+        config, JudgeChoice(first, "codex", None), build=lambda *_: pytest.fail("作りません")
+    )
+    config.write_text("review: [\n")
+    with caplog.at_level("WARNING", logger="poop_detector.video.judge_source"):
+        assert judges.current().judge is first
+    config.unlink()
+    assert judges.current().judge is first
+
+
+def test_monitor_starts_from_the_judge_checked_at_startup(tmp_path):
+    from poop_detector.commands.run import judge_source
+    from poop_detector.config import Config
+
+    first = FakeJudge("first")
+    config = Config(review_provider="claude", review_model="")
+    choice = judge_source(str(tmp_path / "missing.yaml"), config, first).current()
+    assert (choice.judge, choice.provider, choice.model) == (first, "claude", None)
