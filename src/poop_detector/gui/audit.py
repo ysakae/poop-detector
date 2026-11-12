@@ -33,6 +33,9 @@ ACTIONS: dict[str, str] = {
     "settings.restore": "設定を直前に戻す",
     "check.notification": "通知のテスト送信",
     "check.camera": "カメラの確認",
+    "area.roi": "監視範囲と基準画像の登録",
+    "area.outside": "トレー外の範囲の登録",
+    "area.floor": "床面の登録",
 }
 
 

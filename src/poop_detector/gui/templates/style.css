@@ -14,8 +14,8 @@ fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:bold;margin-bottom:
 
 .management-layout {display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,1fr);gap:20px;align-items:start}
 .management-preview,.management-controls {background:#fff;padding:18px;border-radius:12px}
-#tray-preview {display:block;width:100%;height:auto;background:#273639;border-radius:8px}
-#tray-preview[data-editing] {cursor:crosshair}
+#tray-preview,#area-preview {display:block;width:100%;height:auto;background:#273639;border-radius:8px}
+#tray-preview[data-editing],#area-preview[data-editing] {cursor:crosshair}
 .management-status {display:grid;grid-template-columns:auto 1fr;gap:8px 14px}
 .management-status dd {margin:0;overflow-wrap:anywhere}
 .management-cancel {margin-top:12px}

@@ -1,0 +1,33 @@
+{#- 管理 › 範囲の登録。映像の上に多角形を描き、監視範囲と基準画像・トレー外の範囲・床面を登録する。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>範囲の登録</h2>
+{% if saved %}<p class="message" role="status">{{ saved }}を登録しました。監視を起動し直すと反映されます。</p>{% endif %}
+{% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+<p class="note">{% if monitoring %}監視が動いているので、監視のライブ映像を使います。監視範囲と基準画像は、監視が動いている間は<a href="/manage">稼働状況とトレー</a>のトレー交換で登録してください（新しい基準を確かめてから切り替えます）。{% else %}監視が止まっているので、カメラから映像を1枚取得して使います。{% endif %}</p>
+<div class="management-layout" id="areas" data-existing="{{ existing | tojson | forceescape }}">
+<section class="management-preview" aria-labelledby="area-preview-heading">
+<h3 id="area-preview-heading">映像</h3>
+<canvas id="area-preview" width="640" height="360" aria-label="登録に使う映像と範囲"></canvas>
+<p class="note" id="area-message" role="status">「映像を取得」を押してください。</p>
+<p class="toolbar"><button type="button" class="secondary" id="area-capture">映像を取得</button><button type="button" class="secondary" id="area-draw" disabled>新しい範囲を描く</button><button type="button" class="secondary" id="area-undo" hidden>頂点を1つ戻す</button></p>
+</section>
+<section class="management-controls" aria-labelledby="area-form-heading">
+<h3 id="area-form-heading">登録するもの</h3>
+<form method="post" action="/manage/areas" id="area-form">{{ csrf_field(token) }}
+<input type="hidden" name="points" id="area-points"><input type="hidden" name="snapshot" id="area-snapshot">
+<fieldset><legend>登録するもの</legend>
+{%- for kind in kinds -%}
+<p><label><input type="radio" name="kind" value="{{ kind.value }}"{% if kind.value == default_kind %} checked{% endif %}{% if kind.value == "roi" and monitoring %} disabled{% endif %}> {{ kind.label }}（{{ "登録済み" if kind.registered else "未登録" }}）</label></p>
+{%- endfor -%}
+</fieldset>
+<p class="note">監視範囲はトレーの外周、トレー外の範囲はトレーと周りの床、床面はサークルの床に沿って、3点以上を順番に選びます。</p>
+<p><label><input type="checkbox" name="confirm_empty" value="yes"> 空のトレーが映っていることを確認しました（監視範囲と基準画像のとき）</label></p>
+<p><label><input type="checkbox" name="confirm_replace" value="yes"> 登録済みの範囲を置き換えます</label></p>
+<button id="area-save" disabled>登録する</button>
+</form>
+</section>
+</div>
+<script defer src="/assets/areas.js"></script>
+{% endblock %}

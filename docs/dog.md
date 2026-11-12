@@ -43,7 +43,7 @@ uv run poop-detector check-dog --image /absolute/path/to/image.jpg --repeat 10
 動画の自動判定で新しい便、尿の流れ、または新しい濡れ跡を確認した場合に、トレー外の候補として通知します。`--video-review` が必要です。
 
 ```bash
-uv run poop-detector setup-roi --outside
+uv run poop-detector setup-roi --outside   # GUI の「管理 › 範囲の登録」でも登録できる
 uv run poop-detector run --dog --video-review --detect-outside
 ```
 
@@ -57,7 +57,7 @@ uv run poop-detector run --dog --video-review --detect-outside
 カメラを固定し、監視を停止します。画面に映っている床の外周に沿って、時計回りか反時計回りに3点以上をクリックし、Enter で登録します。凹みのある範囲も指定できます。新規登録の多角形は射影補正を行わず、外側を集計から除外します。以前登録した四角形は従来の座標で利用できます。
 
 ```bash
-uv run poop-detector setup-activity-map
+uv run poop-detector setup-activity-map   # GUI の「管理 › 範囲の登録」でも登録できる
 uv run poop-detector run --dog --video-review --early-alert --track-tray --activity-map
 ```
 

@@ -19,6 +19,7 @@ MANAGEMENT = ("/manage", "管理")
 # 管理の中の画面。ここに並ぶ URL はすべて管理者だけのルートにする（test_gui_roles.py が確かめる）。
 MANAGEMENT_PAGES: tuple[tuple[str, str], ...] = (
     ("/manage", "稼働状況とトレー"),
+    ("/manage/areas", "範囲の登録"),
     ("/manage/settings", "設定"),
     ("/manage/checks", "確認と診断"),
     ("/manage/storage", "動画の保存"),
