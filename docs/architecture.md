@@ -111,12 +111,13 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/exchange.py` | ルートに渡す要求ごとの `Exchange`。`respond`・`redirect`・`stream` で応答を決める |
 | `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
 | `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（ホーム、記録と検知の一覧、動画、行動マップ） |
-| `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル |
+| `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル（先頭にデザインの変数） |
 | `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`）。見ている人（`VIEWER`）から共通の枠の値を渡す |
 | `gui/review_queue.py`・`gui/review_routes.py` | 確認待ち。未ラベルの検知と排泄に関わる動画を1つの列にまとめ（動画のある検知は1件）、保存後に次の件を開く |
 | `gui/settings_routes.py` | 管理 › 設定。`config.SETTINGS` の表から入力欄を並べ、確認してから保存する。保存とコメントの保持、直前の設定への復元は最上位の `settings_file.py` |
 | `gui/checks_routes.py` | 管理 › 確認と診断。通知のテスト送信・カメラの確認・診断情報を、CLI と同じ関数で行う |
 | `gui/areas_routes.py`・`gui/snapshots.py` | 管理 › 範囲の登録。映像の上に描いた多角形で、監視範囲と基準画像・トレー外の範囲・床面を登録する。画面に見せた映像を ID で預かり、保存に使う |
+| `gui/themes.py` | デザインテーマ（プロフェッショナル・ワンちゃん）とライト・ダークの選択肢。人の選択と既定のテーマ（`gui.theme`）から表示を決める |
 | `gui/navigation.py` | 共通の枠の値（メインメニュー、管理のメニュー、ログイン中の人、監視の状態）。画面の配置は [画面の構成](screens.md) |
 | `gui/access.py` | セッションの Cookie |
 | `gui/account_routes.py` | 自分のアカウント（パスキーの一覧・追加・削除）と、管理の中の招待・ユーザー・監査ログの画面 |
