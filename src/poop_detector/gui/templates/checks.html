@@ -1,0 +1,20 @@
+{#- 管理 › 確認と診断。通知のテスト送信、カメラの確認、診断情報。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>確認と診断</h2>
+{% if result %}<p class="message" role="status">{{ result }}</p>{% endif %}
+{% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+<section class="settings-section" aria-labelledby="notify-title"><h3 id="notify-title">通知のテスト送信</h3>
+<p class="note">設定（.env の ntfy のトピック、なければこのマシンの通知センター）で、テストの通知を1通送ります。</p>
+<form method="post" action="{{ page }}" class="toolbar">{{ csrf_field(token) }}<button name="action" value="notify">トイレの通知を試す</button><button class="secondary" name="action" value="notify_early">見守り通知を試す</button></form>
+</section>
+<section class="settings-section" aria-labelledby="camera-title"><h3 id="camera-title">カメラの確認</h3>
+<p class="note">監視が止まっているときは、カメラから映像を1枚取得して確かめます。監視が動いているときは、カメラに別の接続を開かず、監視の接続の状態を示します。</p>
+<form method="post" action="{{ page }}">{{ csrf_field(token) }}<button name="action" value="camera">カメラを確認</button></form>
+</section>
+<section class="settings-section" aria-labelledby="diagnose-title"><h3 id="diagnose-title">診断情報</h3>
+<p class="note">不具合の報告に貼れる情報です（<code>diagnose</code> と同じ内容）。URL・トピック名・保存先のパス・犬の名前は含みません。</p>
+{% if report %}<pre class="diagnose-report" tabindex="0">{{ report }}</pre>{% else %}<p><a class="button" href="{{ page }}?diagnose=1">診断情報を表示</a></p>{% endif %}
+</section>
+{% endblock %}

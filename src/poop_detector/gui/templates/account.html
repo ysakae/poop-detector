@@ -3,8 +3,48 @@
 {% from "_macros.html" import csrf_field %}
 {% block content %}
 <h2>アカウント</h2>
-<p>{{ person }}さん（{{ role }}）でログインしています。<a href="/">トップへ戻る</a></p>
+<p>{{ person }}さん（{{ role }}）でログインしています。</p>
 {% if deleted %}<p class="saved" role="status">パスキーを削除しました。</p>{% endif %}
+<h3>表示</h3>
+{% if display_saved %}<p class="saved" role="status">表示を保存しました。</p>{% endif %}
+<form method="post" action="/account/display">{{ csrf_field(token) }}
+<div class="display-options"><fieldset><legend>デザインテーマ</legend>
+{%- for value, label in themes -%}
+<p><label><input type="radio" name="theme" value="{{ value }}"{% if value == theme %} checked{% endif %}> {{ label }}</label></p>
+{%- endfor -%}
+</fieldset><fieldset><legend>明るさ</legend>
+{%- for value, label in appearances -%}
+<p><label><input type="radio" name="appearance" value="{{ value }}"{% if value == appearance %} checked{% endif %}> {{ label }}</label></p>
+{%- endfor -%}
+</fieldset></div>
+<p><button>表示を保存</button></p></form>
+<h3>通知（Web Push）</h3>
+<section id="web-push" data-public-key="{{ push_key }}" data-csrf="{{ token }}">
+<p class="note">この端末のブラウザーに、検知や自動判定の通知を直接送ります（ntfy のトピックを使わず、登録した端末にだけ届きます）。通知を開くと確認待ちの画面に移ります。iPhone・iPad は、ホーム画面に追加したアプリから登録してください。登録済みの端末：{{ push_devices }}台</p>
+<p id="push-status" role="status">通知の状態を確かめています。</p>
+<p class="toolbar"><button type="button" id="push-enable" hidden>この端末で通知を受け取る</button><button type="button" class="secondary" id="push-disable" hidden>この端末では受け取らない</button></p>
+{% if push_saved %}<p class="saved" role="status">通知の受け取り方を保存しました。</p>{% endif %}
+<form method="post" action="/account/push/preferences">{{ csrf_field(token) }}
+<p><label><input type="checkbox" name="alerts" value="1"{% if push_alerts %} checked{% endif %}> 排便・排尿の候補の通知を受け取る</label></p>
+<p><label><input type="checkbox" name="early" value="1"{% if push_early %} checked{% endif %}> 見守り通知（トイレでの滞在）も受け取る</label></p>
+<p class="toolbar"><button class="secondary">受け取り方を保存</button></p></form>
+<form method="post" action="/account/push/test">{{ csrf_field(token) }}<button class="secondary">自分の端末に通知を試す</button></form>
+</section>
+<script defer src="/assets/push.js"></script>
+<h3>メールアドレス</h3>
+{% if email_error %}<p class="error" role="alert">{{ email_error }}</p>{% endif %}
+{% if email_verified %}<p class="saved" role="status">メールアドレスを確認しました。</p>{% endif %}
+{% if email %}
+<p>{{ email }}（確認済み）</p>
+{% else %}
+{% if email_sent %}<p class="saved" role="status">確認メールを送信しました。</p>{% endif %}
+<form method="post" action="/account/email">{{ csrf_field(token) }}
+<p><label>メールアドレス <input type="email" name="email" maxlength="254" autocomplete="email" required></label>
+<button>確認メールを送る</button></p></form>
+<form method="post" action="/account/email/confirm">{{ csrf_field(token) }}
+<p><label>確認コード <input name="code" maxlength="100" required></label>
+<button>確認コードを使う</button></p></form>
+{% endif %}
 <h3>パスキー</h3>
 <p class="note">パスキーは、登録したときに開いたドメインでだけ使えます。端末をなくしたときに備えて、2つ以上の端末に登録しておくと安心です。</p>
 <table><thead><tr><th>端末の名前</th><th>ドメイン</th><th>登録</th><th>最後に使った日時</th><th></th></tr></thead><tbody>
@@ -16,8 +56,4 @@
 {% endfor %}
 </tbody></table>
 <form method="post" action="/account/passkeys/add">{{ csrf_field(token) }}<button>この端末にパスキーを追加する</button></form>
-{% if admin %}
-<h3>家族を招待する</h3>
-<p><a href="/account/invite">招待の URL を作る</a></p>
-{% endif %}
 {% endblock %}

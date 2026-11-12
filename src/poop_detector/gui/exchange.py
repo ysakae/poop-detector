@@ -46,9 +46,11 @@ class Exchange:
         body = data.encode() if isinstance(data, str) else data
         self.response = Response(body, status, dict(headers or {}), media_type=mime)
 
-    def redirect(self, location: str, headers: Mapping[str, str] | None = None) -> None:
-        """303 で同じサーバーの別の画面へ移す。"""
-        self.response = Response(b"", 303, {"Location": location, **(headers or {})})
+    def redirect(
+        self, location: str, headers: Mapping[str, str] | None = None, *, status: int = 303
+    ) -> None:
+        """同じサーバーの別の画面へ移す。既定は 303、URL を移した画面は 301。"""
+        self.response = Response(b"", status, {"Location": location, **(headers or {})})
 
     def stream(
         self, status: int, chunks: Iterator[bytes], mime: str, headers: Mapping[str, str]

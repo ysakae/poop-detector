@@ -90,7 +90,7 @@ def request(server, method, path, body=None, headers=None, auth=True):
     return status, data
 
 
-def csrf_token(server, page="/"):
+def csrf_token(server, page="/records/events"):
     """画面のフォームに埋め込まれた CSRF トークンを取り出す。"""
     _, body = request(server, "GET", page)
     return re.search(r'name="csrf" value="([^"]+)"', body.decode())[1]

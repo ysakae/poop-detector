@@ -13,6 +13,7 @@ from ..detection.roi import ROI
 from ..detection.scene import load_baseline, scene_signature
 from ..features.tray_tracking import TrayTracker
 from ..video.benchmark import evaluate, read_cases
+from ..video.benchmark_results import default_output
 from ..video.clips import ClipStore
 from ..video.review import VideoJudge
 from .context import CommandContext, CommandError, load_outside_roi, load_scene, load_tray_tracker
@@ -49,7 +50,9 @@ def print_summary(summaries: dict[str, Any]) -> None:
 def video_benchmark(args: argparse.Namespace, context: CommandContext) -> int:
     if not args.send_images:
         raise CommandError("選んだ判定器に評価画像を送る場合は --send-images を指定してください")
-    destination = Path(args.output)
+    created = datetime.now(UTC)
+    # 既定の保存先なら、管理 › 判定器とモデルの画面で結果を見られる。
+    destination = Path(args.output) if args.output else default_output(context.root, created)
     if destination.exists():
         raise CommandError("出力先のファイルが既にあります")
     dataset = Path(args.dataset)
@@ -74,11 +77,12 @@ def video_benchmark(args: argparse.Namespace, context: CommandContext) -> int:
     signature = scene_signature(baseline, roi)
     cases, excluded = read_cases(json.loads(raw_manifest), ClipStore(context.root), signature)
     judges = parse_judges(args.judge)
+    destination.parent.mkdir(parents=True, exist_ok=True)
     with os.fdopen(os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as file:
         rows, summaries = evaluate(cases, judges, roi, tracker, outside_roi)
         report = {
             "version": 1,
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": created.isoformat(),
             "dataset": dataset.name,
             "dataset_sha256": hashlib.sha256(raw_manifest).hexdigest(),
             "scene_signature": signature,

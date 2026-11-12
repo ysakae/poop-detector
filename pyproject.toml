@@ -33,6 +33,9 @@ dependencies = [
     "starlette>=1.10.0",
     "uvicorn>=0.54.0",
     "webauthn>=3.0.1",
+    "ruamel-yaml>=0.18,<0.19",
+    "http-ece>=1.2,<2",
+    "py-vapid>=1.9,<2",
 ]
 [project.urls]
 Homepage = "https://github.com/ysakae/poop-detector"
@@ -75,6 +78,11 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 strict_equality = true
 no_implicit_reexport = true
+
+[[tool.mypy.overrides]]
+# Web Push の暗号化と署名のライブラリは、型の情報を同梱していない。
+module = ["py_vapid", "http_ece"]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100

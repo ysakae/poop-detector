@@ -9,6 +9,9 @@
    パスキーでログインした有効なユーザーのものかを確かめる。ログインしていない相手は、
    ログイン・パスキーの登録の画面（PUBLIC_PATHS）だけを開ける
 
+ルートへ振り分ける dispatch は、ルートの表で管理者だけと宣言したルート（routes.required_role）
+を、管理者でない人には 403 で断る。
+
 HTTPS かどうか（scope の scheme）は、信頼するプロキシからの X-Forwarded-Proto を uvicorn が
 反映した値を使う。
 POST は加えて、本文の大きさと CSRF トークンを確かめてからルートに渡す。
@@ -16,7 +19,8 @@ POST は加えて、本文の大きさと CSRF トークンを確かめてから
 
 import hmac
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from starlette.applications import Starlette
@@ -30,16 +34,28 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..web_address import Site
 
-# account_routes は、読み込むとアカウントの画面のルートを登録する（名前は使わない）。
-from . import account_routes  # noqa: F401
+# 次のモジュールは、読み込むとそれぞれの画面のルートを登録する（名前は使わない）。
+from . import (
+    account_routes,  # noqa: F401
+    areas_routes,  # noqa: F401
+    checks_routes,  # noqa: F401
+    models_routes,  # noqa: F401
+    push_routes,  # noqa: F401
+    review_routes,  # noqa: F401
+    settings_routes,  # noqa: F401
+)
 from .access import (
     session_ids,
 )
 from .auth_api import webauthn
 from .exchange import HTML, Exchange
+from .navigation import Viewer
 from .pages import save_failed_page
 from .rate_limit import RateLimiter, RateLimits
-from .routes import GET_ROUTES, POST_ROUTES, Form
+from .review_queue import review_items
+from .routes import GET_ROUTES, POST_ROUTES, Form, admin_only_page, required_role
+from .templating import DISPLAY, VIEWER
+from .themes import resolve
 
 if TYPE_CHECKING:
     from .server import GuiApp
@@ -54,7 +70,8 @@ SECURITY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'none'; img-src 'self' blob:; media-src 'self'; "
         "script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; "
-        "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+        "form-action 'self'; frame-ancestors 'none'; base-uri 'none'; "
+        "manifest-src 'self'; worker-src 'self'"
     ),
     "Cross-Origin-Resource-Policy": "same-origin",
     # no-referrer にすると、ブラウザーは同じサイトのフォームの送信でも Origin: null を送り、
@@ -98,7 +115,20 @@ class SecurityHeaders:
 
 
 # ログインしていなくても開ける場所（ログイン、パスキーの登録、その画面のスクリプト）。
-PUBLIC_PATHS = frozenset({"/login", "/enroll", "/assets/passkey.js"})
+# 肉球の模様（ワンちゃんのテーマ）は、ログインの画面の見出しにも出すので公開する。
+# PWA のマニフェスト・アイコン・Service Worker は、ブラウザーが Cookie なしで読むことがあるので公開する。
+PUBLIC_PATHS = frozenset(
+    {
+        "/login",
+        "/enroll",
+        "/assets/passkey.js",
+        "/assets/paw.svg",
+        "/manifest.webmanifest",
+        "/sw.js",
+        "/assets/icon-192.png",
+        "/assets/icon-512.png",
+    }
+)
 PUBLIC_PREFIX = "/webauthn/"
 
 
@@ -244,6 +274,38 @@ def not_found(method: str) -> Response:
     return Response(message, 404, media_type=HTML)
 
 
+def _menu_path(path: str) -> str:
+    """メニューで印を付ける場所。確認待ちから開いた画面（from=review）は確認待ちとする。"""
+    url = urlsplit(path)
+    return "/review" if parse_qs(url.query).get("from") == ["review"] else url.path
+
+
+def as_viewer(route: Callable[[Exchange, Any], None], exchange: Exchange, argument: Any) -> None:
+    """ルートを呼ぶ。テンプレートが共通の枠と入口を出し分けられるよう、見ている人を渡す。"""
+    user = exchange.user
+    viewer = (
+        Viewer(
+            name=user.name,
+            admin=user.role == "admin",
+            path=_menu_path(exchange.path),
+            monitor=exchange.app.preview.monitor_status,
+            pending=lambda: len(review_items(exchange.app.store, exchange.app.clips)),
+        )
+        if user is not None
+        else None
+    )
+    display = resolve(
+        user.theme if user else None, user.appearance if user else None, exchange.app.default_theme
+    )
+    token = VIEWER.set(viewer)
+    display_token = DISPLAY.set(display)
+    try:
+        route(exchange, argument)
+    finally:
+        VIEWER.reset(token)
+        DISPLAY.reset(display_token)
+
+
 async def dispatch(request: Request) -> Response:
     """GET_ROUTES・POST_ROUTES の関数を、要求ごとの Exchange で呼ぶ。"""
     gui: GuiApp = request.app.state.gui
@@ -261,21 +323,27 @@ async def dispatch(request: Request) -> Response:
         user=user,
     )
     url = urlsplit(exchange.path)
+    if request.method not in ("GET", "POST"):
+        return not_found(request.method)
+    routes: Mapping[str, Callable[..., None]] = (
+        GET_ROUTES if request.method == "GET" else POST_ROUTES
+    )
+    if url.path not in routes:
+        return not_found(request.method)
+    if required_role(request.method, url.path) == "admin" and (
+        user is None or user.role != "admin"
+    ):
+        # 画面に入口を出さないだけに頼らず、ここで必ず断る。
+        return Response(admin_only_page(gui.title), 403, media_type=HTML)
     if request.method == "GET":
-        get_route = GET_ROUTES.get(url.path)
-        if get_route is None:
-            return not_found("GET")
-        await run_in_threadpool(get_route, exchange, parse_qs(url.query))
+        await run_in_threadpool(as_viewer, GET_ROUTES[url.path], exchange, parse_qs(url.query))
     else:
-        post_route = POST_ROUTES.get(url.path)
-        if post_route is None:
-            return not_found("POST")
         form = await read_form(request)
         if form is None:
             return Response(save_failed_page(gui.title), 400, media_type=HTML)
         if not exchange.csrf or not hmac.compare_digest(form.fields.get("csrf", ""), exchange.csrf):
             return Response("画面を再読み込みして保存してください", 403, media_type=HTML)
-        await run_in_threadpool(post_route, exchange, form)
+        await run_in_threadpool(as_viewer, POST_ROUTES[url.path], exchange, form)
     if exchange.response is None:
         # ルートが応答を決めなかったのはプログラムの誤り。中身を出さずに失敗を返す。
         return Response("処理できませんでした", 500, media_type=HTML)

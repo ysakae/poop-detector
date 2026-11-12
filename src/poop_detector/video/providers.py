@@ -300,6 +300,14 @@ class AntigravityJudge:
         return "".join(session.answer)
 
 
+# 設定の review.provider の値と、画面に出す判定器の名前。
+PROVIDER_NAMES = {
+    "codex": CodexCliJudge.name,
+    "claude": ClaudeCodeJudge.name,
+    "gemini": AntigravityJudge.name,
+}
+
+
 def build_judge(provider: str, model: str = "") -> "VideoJudge":
     if provider == "codex":
         return CodexCliJudge(model=model)

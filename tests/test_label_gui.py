@@ -24,7 +24,7 @@ def post(server, fields, token=True):
 
 def test_gui_lists_image_and_saves_label(gui):
     server, store, event = gui
-    status, data = request(server, "GET", "/")
+    status, data = request(server, "GET", "/records/events")
     assert status == 200
     assert "排便だった".encode() in data
     assert event.encode() in data
@@ -67,8 +67,8 @@ def test_gui_missed_and_filter(gui):
     assert post(server, {"action": "missed", "start": "2026-11-08T19:00"})[0] == 303
     assert store.metrics()["missed"] == 1
     assert post(server, {"id": event, "label": "false"})[0] == 303
-    assert event.encode() not in request(server, "GET", "/?filter=unlabeled")[1]
-    assert event.encode() in request(server, "GET", "/?filter=false")[1]
+    assert event.encode() not in request(server, "GET", "/records/events?filter=unlabeled")[1]
+    assert event.encode() in request(server, "GET", "/records/events?filter=false")[1]
 
 
 def test_gui_urine_and_excretion_log(gui):
@@ -81,7 +81,7 @@ def test_gui_urine_and_excretion_log(gui):
     )
     assert len(store.records()) == 2
     assert store.metrics()["missed"] == 0
-    assert event.encode() in request(server, "GET", "/?filter=urine")[1]
+    assert event.encode() in request(server, "GET", "/records/events?filter=urine")[1]
     assert post(server, {"action": "missed", "type": "both", "start": "2026-11-08T23:20"})[0] == 303
     assert store.metrics()["excretion_counts"] == {"feces": 2, "urine": 2, "unknown": 0}
     assert (
@@ -127,7 +127,7 @@ PROTECTED_PATHS = (
     "/",
     "/records",
     "/clips",
-    "/clips/storage",
+    "/manage/storage",
     "/clips/capacity",
     "/activity",
     "/activity/background?id=x",
@@ -151,7 +151,7 @@ def test_gui_rejects_get_without_session(gui):
 
 def test_gui_rejects_post_without_session_even_with_csrf(gui):
     server, store, event = gui
-    page = request(server, "GET", "/")[1].decode()
+    page = request(server, "GET", "/records/events")[1].decode()
     csrf = re.search(r'name="csrf" value="([^"]+)"', page)[1]
     body = urlencode({"id": event, "label": "false", "csrf": csrf})
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -172,9 +172,9 @@ def test_gui_accepts_session_among_other_cookies_and_hides_referrer(gui):
 
 class FakeServer:
     server_port = 8765
-    site = Site(8765)
 
-    def __init__(self, has_users=True):
+    def __init__(self, has_users=True, public_url=""):
+        self.site = Site(8765, public_url)
         self.app = SimpleNamespace(
             accounts=SimpleNamespace(users=SimpleNamespace(list=lambda: [1] if has_users else []))
         )
@@ -195,8 +195,10 @@ def launch(monkeypatch, capsys):
 
     opened = []
 
-    def run(open_browser, *, has_users=True, browser_ok=True):
-        monkeypatch.setattr(label_gui, "make_server", lambda *a, **k: FakeServer(has_users))
+    def run(open_browser, *, has_users=True, browser_ok=True, public_url=""):
+        monkeypatch.setattr(
+            label_gui, "make_server", lambda *a, **k: FakeServer(has_users, public_url)
+        )
         monkeypatch.setattr(
             label_gui.webbrowser, "open", lambda url: opened.append(url) or browser_ok
         )
@@ -213,6 +215,16 @@ def test_serve_opens_localhost_for_passkeys(launch):
     assert opened == ["http://localhost:8765/"]
     assert "http://localhost:8765/" in out
     assert "GUIを終了しました" in out
+
+
+def test_serve_opens_the_public_url_when_one_is_configured(launch):
+    """パスキーは登録したドメインでだけ使えるので、外部の URL があればそちらを開く。"""
+    run, opened = launch
+    out = run(True, public_url="https://toilet.example.ts.net")
+    assert opened == ["https://toilet.example.ts.net/"]
+    assert "外から開くとき: https://toilet.example.ts.net/（ブラウザーで開きました）" in out
+    # 同じマシンから開く URL も案内する（ブラウザーで開いたのは外部の URL だけ）。
+    assert "GUI: http://localhost:8765/\n" in out
 
 
 def test_serve_without_users_explains_the_first_registration(launch):

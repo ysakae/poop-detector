@@ -1,0 +1,12 @@
+{#- メールを開いただけでは消費せず、ログイン済みの本人が確定する。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>メールアドレスの確認</h2>
+<p>メールアドレスをログイン中のアカウントにひも付けます。</p>
+<form method="post" action="/account/email/confirm">{{ csrf_field(token) }}
+<input name="code" type="hidden" value="{{ code }}">
+<button>ひも付ける</button>
+</form>
+<p><a href="/account">アカウントへ戻る</a></p>
+{% endblock %}

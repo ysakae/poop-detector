@@ -234,3 +234,19 @@ def test_safe_next_keeps_paths_inside_the_gui(value):
     from poop_detector.gui.auth_api import safe_next
 
     assert safe_next(value) == value
+
+
+def test_email_invitation_registers_passkey_with_bound_address(tmp_path):
+    with running(tmp_path, public_url=PUBLIC) as (server, accounts):
+        code = accounts.enrollments.issue_email(
+            "Family@example.org", name="家族A", role="admin", created_by="cli"
+        )
+        auth = SoftAuthenticator()
+        browser = Client(server, "toilet.example.com", PUBLIC, https=True)
+        assert browser.register(auth, code)[0] == 200
+        user = accounts.users.by_email("family@example.org")
+        assert user.name == "家族A"
+        assert user.role == "admin"
+        assert "@" not in user.id
+        assert browser.post("/webauthn/register/options", {"code": code})[0] == 400
+        assert Client(server, "toilet.example.com", PUBLIC, https=True).login(auth)[0] == 200

@@ -1,0 +1,65 @@
+{#- 管理 › 判定器とモデル。判定器の状態と選び直し、比較の結果、犬検出モデルの状態。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>判定器とモデル</h2>
+{% if notice %}<p class="message" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+<section class="settings-section" aria-labelledby="judge-title"><h3 id="judge-title">動画の自動判定の判定器</h3>
+<table><tbody>
+<tr><th scope="row">判定器</th><td>{{ current_name }}</td></tr>
+<tr><th scope="row">モデル</th><td>{{ current_model }}</td></tr>
+<tr><th scope="row">状態</th><td>{% if problem %}<span class="state state-warn">{{ problem }}</span>{% else %}<span class="state state-ok">使える状態です</span>{% endif %}</td></tr>
+<tr><th scope="row">自動判定</th><td>{% if review_enabled %}有効（features.video_review）{% else %}無効（有効にするには設定の features.video_review か run --video-review）{% endif %}</td></tr>
+</tbody></table>
+<p class="note">監視するマシンで、選んだ判定器の CLI にログインしてください。</p>
+</section>
+<section class="settings-section" aria-labelledby="choose-title"><h3 id="choose-title">判定器とモデルを選び直す</h3>
+{% if editable %}
+<form method="post" action="{{ page }}" class="settings-form">{{ csrf_field(token) }}<input type="hidden" name="base" value="{{ base }}">
+<div class="settings-field"><label><code>review.provider</code><select name="provider">
+{%- for value, name in providers -%}<option value="{{ value }}"{% if value == provider %} selected{% endif %}>{{ value }}（{{ name }}）</option>{%- endfor -%}
+</select></label></div>
+<div class="settings-field"><label><code>review.model</code><input name="model" value="{{ model }}"></label><small>英数字で始まるモデル名。空なら選んだ CLI の既定</small></div>
+<p><button>保存</button></p>
+</form>
+<p class="note">設定ファイルの review の値だけを書き換えます。監視（run）と GUI を起動し直すと反映されます。</p>
+{% else %}<p class="message">設定ファイルの場所が分からないため、表示だけです。</p>{% endif %}
+</section>
+<section class="settings-section" aria-labelledby="usage-title"><h3 id="usage-title">これまでの判定</h3>
+{% if judges %}
+<table><thead><tr><th>判定器</th><th>モデル</th><th>判定</th><th>失敗</th><th>直近の判定</th></tr></thead><tbody>
+{%- for judge in judges -%}
+<tr><td>{{ judge.provider }}</td><td>{{ judge.model }}</td><td>{{ judge.total }}</td><td>{{ judge.errors }}</td><td>{{ judge.last_at }}（{% if judge.last_failed %}失敗{% else %}成功{% endif %}）</td></tr>
+{%- endfor -%}
+</tbody></table>
+{% else %}<p>まだ判定していません。</p>{% endif %}
+</section>
+<section class="settings-section" aria-labelledby="benchmark-title"><h3 id="benchmark-title">判定器・モデルの比較</h3>
+<p class="note">ラベル付きの動画での比較は時間がかかるので、監視するマシンで <code>video-benchmark</code> を実行します。<code>--output</code> を省くと、結果をこの画面に出します。数は適合率 / 再現率です。</p>
+{% for result in benchmarks %}
+<h4>{{ result.created_at }}（{{ result.dataset }}）</h4>
+<table><thead><tr><th>判定器:モデル</th><th>件数</th><th>排便</th><th>排尿</th><th>判定不能</th><th>エラー</th></tr></thead><tbody>
+{%- for score in result.scores -%}
+<tr><td>{{ score.name }}</td><td>{{ score.cases }}</td><td>{{ score.feces }}</td><td>{{ score.urine }}</td><td>{{ score.uncertain }}</td><td>{{ score.errors }}</td></tr>
+{%- endfor -%}
+</tbody></table>
+{% else %}<p>保存済みの比較の結果はありません。</p>{% endfor %}
+{% if unreadable %}<p class="message message-error">読めない結果のファイルが {{ unreadable }} 件あります。</p>{% endif %}
+</section>
+<section class="settings-section" aria-labelledby="dog-title"><h3 id="dog-title">犬検出モデル</h3>
+{% if dog.absent %}<p>犬検出モデルはまだ取得していません。監視するマシンで <code>setup-dog-model</code> を実行してください。</p>
+{% elif dog.verified %}<p><span class="state state-ok">取得済みで、ハッシュが一致しています</span></p>
+{% else %}<p><span class="state state-warn">{% if dog.mismatched %}ハッシュが一致しません（{{ dog.mismatched|join("、") }}）。{% endif %}{% if dog.missing %}足りないファイルがあります（{{ dog.missing|join("、") }}）。{% endif %}</span></p>
+<p class="note"><code>setup-dog-model</code> は既存のファイルを上書きしません。一致しないファイルを確かめてから取得し直してください。</p>{% endif %}
+{% if dog.check %}
+<table><tbody>
+<tr><th scope="row">直近の確認（check-dog）</th><td>{{ dog.check.checked_at }}（{{ dog.check.repeat }}回）</td></tr>
+<tr><th scope="row">1回の推論</th><td>{{ dog.check.inference }}</td></tr>
+<tr><th scope="row">推論中の CPU</th><td>{{ dog.check.cpu }}</td></tr>
+<tr><th scope="row">メモリー</th><td>{{ dog.check.rss }}</td></tr>
+<tr><th scope="row">検出した犬</th><td>{{ dog.check.dogs }}</td></tr>
+</tbody></table>
+{% else %}<p class="note">処理負荷は、監視するマシンで <code>check-dog --image 画像</code> を実行すると、ここに出ます。</p>{% endif %}
+</section>
+{% endblock %}

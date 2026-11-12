@@ -20,6 +20,7 @@ from ..video.clip_storage import (
     retention_days,
 )
 from ..video.clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
+from .review_queue import NEXT_PAGE
 from .templating import render_template
 
 if TYPE_CHECKING:
@@ -176,8 +177,9 @@ def render_clips(
     disk_mb: float = DEFAULT_DISK_MIB,
     *,
     title: str | None = None,
+    review: Mapping[str, Any] | None = None,
 ) -> str:
-    """動画の一覧と、選んだ動画の再生・ラベル入力欄。"""
+    """動画の一覧と、選んだ動画の再生・ラベル入力欄。review は確認待ちから開いたときの帯。"""
     from .pages import APP_TITLE, local_time
 
     store = ClipStore(root)
@@ -216,6 +218,7 @@ def render_clips(
         clip_labels=list(CLIP_LABELS.items()),
         activities=list(ACTIVITIES.items()),
         locations=list(EXCRETION_LOCATIONS.items()),
+        review=review,
         **context,
     )
 
@@ -392,12 +395,12 @@ def handle_clip_post(
     """/clips/ 以下のフォームを処理し、成功したら一覧へ戻す。"""
     store = ClipStore(root)
     try:
-        if handler.path == "/clips/cleanup":
+        if handler.path == "/manage/storage/cleanup":
             if fields.get("confirm") != "1":
                 raise ValueError("削除の確認欄にチェックを入れてください")
             days = retention_days(fields.get("days", ""))
             removed, skipped = cleanup_selected(store, selected_ids, days)
-            handler.redirect(f"/clips/storage?days={days}&removed={removed}&skipped={skipped}")
+            handler.redirect(f"/manage/storage?days={days}&removed={removed}&skipped={skipped}")
             return
         if handler.path == "/clips/request":
             clip_id = store.request(require_live=True)
@@ -420,16 +423,20 @@ def handle_clip_post(
             )
             record_id = fields.get("record_id", "") if handler.path == "/clips/confirm" else None
             store.labels.save(clip_id, clip_label, record_id=record_id)
+        if fields.get("from") == "review" and handler.path in ("/clips/label", "/clips/confirm"):
+            # 確認待ちから開いた動画は、保存したら次の件へ進む。
+            handler.redirect(f"{NEXT_PAGE}?after=clip:{clip_id}")
+            return
         handler.redirect(f"/clips?id={clip_id}&saved=1")
     except (ValueError, TypeError) as error:
         from .pages import message_page
 
         # ValueError の文言はこのパッケージで書いたもので、テンプレートがエスケープする。
-        if handler.path == "/clips/cleanup":
+        if handler.path == "/manage/storage/cleanup":
             page = message_page(
                 "動画を整理できませんでした",
                 str(error),
-                "/clips/storage",
+                "/manage/storage",
                 "録画の整理へ戻る",
                 title=title,
                 wrap_link=True,

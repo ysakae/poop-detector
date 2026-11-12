@@ -51,11 +51,11 @@ def evil_gui(tmp_path):
 def pages(server, ready, failed):
     return [
         "/",
-        "/?filter=all",
+        "/records/events?filter=all",
         "/records",
         f"/clips?id={ready}",
         f"/clips?id={failed}",
-        "/clips/storage",
+        "/manage/storage",
         "/activity",
     ]
 

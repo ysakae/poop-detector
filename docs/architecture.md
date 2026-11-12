@@ -47,7 +47,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `commands/records.py` | `events`、`metrics`、`feedback`、`acknowledge`、`missed`、`record`、`records`、`gui` |
 | `commands/notify.py` | `test-notification` |
 | `commands/show_config.py`・`commands/diagnose.py` | `show-config`、`diagnose` |
-| `commands/users.py` | `users`（GUI のユーザーの一覧、登録用 URL、復旧、無効化） |
+| `commands/users.py` | `users`（GUI のユーザーの一覧、招待、役割の変更、復旧、無効化） |
 | `commands/review.py` | `video-review`、`circling-review` |
 | `commands/dog_model.py` | `setup-dog-model`、`check-dog` |
 
@@ -98,7 +98,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 ## 通知先
 
-`notifications.py` の `_ToiletNotifier` が文面を持ち、`MacNotifier`（osascript）と `NtfyNotifier`（ntfy サーバーへの HTTP POST、既定は ntfy.sh）が送信だけを実装します。文面の犬の名前は設定の `pet_name` から受け取り、`MacNotifier` は AppleScript の文字列としてエスケープしてから埋め込みます。`POOP_NTFY_TOPIC` があれば ntfy、なければ macOS 通知を使います。通知先を増やすときは `_deliver` を実装したサブクラスを足してください。ntfy の無料トピックは公開扱いなので、本文に映像やカメラの URL を入れないでください。
+`notifications.py` の `ToiletNotifier` が文面を持ち、`web_push.py` の `WebPushNotifier`（GUI で購読した端末へ Web Push）も同じ文面で送ります（監視は `FanOutNotifier` で ntfy・macOS の通知と並べる）。`MacNotifier`（osascript）と `NtfyNotifier`（ntfy サーバーへの HTTP POST、既定は ntfy.sh）が送信だけを実装します。文面の犬の名前は設定の `pet_name` から受け取り、`MacNotifier` は AppleScript の文字列としてエスケープしてから埋め込みます。`POOP_NTFY_TOPIC` があれば ntfy、なければ macOS 通知を使います。通知先を増やすときは `_deliver` を実装したサブクラスを足してください。ntfy の無料トピックは公開扱いなので、本文に映像やカメラの URL を入れないでください。
 
 ## GUI
 
@@ -110,21 +110,30 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/asgi.py` | ASGI アプリ。安全対策のミドルウェア（`SecurityHeaders`・`Admission`）、フォームの読み込みと CSRF、ルートの表への振り分け |
 | `gui/exchange.py` | ルートに渡す要求ごとの `Exchange`。`respond`・`redirect`・`stream` で応答を決める |
 | `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
-| `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（トップと記録、動画、行動マップ） |
-| `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル |
-| `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`） |
+| `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（ホーム、記録と検知の一覧、動画、行動マップ） |
+| `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル（先頭にデザインの変数） |
+| `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`）。見ている人（`VIEWER`）から共通の枠の値を渡す |
+| `gui/review_queue.py`・`gui/review_routes.py` | 確認待ち。未ラベルの検知と排泄に関わる動画を1つの列にまとめ（動画のある検知は1件）、保存後に次の件を開く |
+| `gui/settings_routes.py` | 管理 › 設定。`config.SETTINGS` の表から入力欄を並べ、確認してから保存する。保存とコメントの保持、直前の設定への復元は最上位の `settings_file.py` |
+| `gui/checks_routes.py` | 管理 › 確認と診断。通知のテスト送信・カメラの確認・診断情報を、CLI と同じ関数で行う |
+| `gui/models_routes.py` | 管理 › 判定器とモデル。判定器の状態と選び直し（設定の書き換えは `settings_file.py`）、比較の結果（`video/benchmark_results.py`）、犬検出モデルの状態（`features/dog_status.py`） |
+| `gui/areas_routes.py`・`gui/snapshots.py` | 管理 › 範囲の登録。映像の上に描いた多角形で、監視範囲と基準画像・トレー外の範囲・床面を登録する。画面に見せた映像を ID で預かり、保存に使う |
+| `gui/themes.py` | デザインテーマ（プロフェッショナル・ワンちゃん）とライト・ダークの選択肢。人の選択と既定のテーマ（`gui.theme`）から表示を決める |
+| `gui/push_routes.py` | PWA のマニフェスト・Service Worker・アイコンと、Web Push の購読の登録・解除・受け取り方・テスト |
+| `gui/navigation.py` | 共通の枠の値（メインメニュー、管理のメニュー、ログイン中の人、監視の状態）。画面の配置は [画面の構成](screens.md) |
 | `gui/access.py` | セッションの Cookie |
-| `gui/account_routes.py` | 自分のアカウント（パスキーの一覧・追加・削除）と、管理者による招待の画面 |
+| `gui/account_routes.py` | 自分のアカウント（パスキーの一覧・追加・削除）と、管理の中の招待・ユーザー・監査ログの画面 |
 | `gui/sessions.py` | サーバー側のセッション（`gui_sessions` テーブル。ID の SHA-256 だけを保存し、無操作と通算の有効期限を持つ） |
 | `gui/rate_limit.py` | 接続元ごとの要求の回数の制限 |
 | `gui/passkeys.py` | パスキー（WebAuthn）の登録とログイン。開いたドメインから RP ID を決め、やり取り（チャレンジ）を使い捨てでメモリーに持つ。署名の検証は py_webauthn |
 | `gui/auth_api.py` | パスキーの JSON の窓口（`/webauthn/...`）。セッションがない相手なので、Origin の一致と JSON の本文を必須にする |
-| `gui/accounts.py` | ユーザー（`users`）、パスキー（`passkeys`）、登録用 URL（`enrollments`）の台帳。登録用 URL は使い捨てで、値は SHA-256 だけを保存する。最後の有効な管理者は無効にできない |
+| `gui/accounts.py` | ユーザー（`users`）、パスキー（`passkeys`）、登録用 URL（`enrollments`）の台帳。登録用 URL は使い捨てで、値は SHA-256 だけを保存する。最後の有効な管理者は無効にも一般ユーザーにもできない |
+| `gui/audit.py` | 管理者の操作の監査ログ（`audit_log`）。追記だけで、認証情報は入れない |
 | `gui/static/` | 補助的な操作だけを担う JavaScript |
 
 テンプレートはすべての値を自動でエスケープし、渡し忘れた変数はエラーになります。HTML を文字列で組み立てたり、`Markup` でエスケープを外したりしないでください。値の整形と分岐の判断は Python 側で行い、テンプレートは構造だけを受け持ちます。`tests/test_gui_escaping.py` は、特殊文字を含む値が各画面でエスケープされることを確かめます。
 
-ルートが使うストアや鍵は `GuiApp` にまとめ、`Exchange.app` からルートへ渡します。ルートの関数は同期の関数で、Starlette がスレッドプールで呼びます。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。
+ルートが使うストアや鍵は `GuiApp` にまとめ、`Exchange.app` からルートへ渡します。ルートの関数は同期の関数で、Starlette がスレッドプールで呼びます。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。管理者だけの操作には `role="admin"` を付けます（`@get("/manage", role="admin")`）。`asgi.dispatch` が、ルートの表に宣言した役割（`routes.required_role`）を持たない人を 403 で断ります。同じルートの中で役割によって分かれる操作（動画の保護の解除）は、ルートの中で `routes.is_admin` で確かめます。テンプレートは `viewer_admin` で管理者だけの入口を出し分けますが、拒否はサーバーで行います。管理者だけの画面は `/manage` の下に置き、`gui/navigation.py` の管理のメニューに加えます。`tests/test_gui_roles.py` は、ルートの表のすべてのルートで、宣言した役割が権限の表と一致し、一般ユーザーが管理者のルートを断られることを確かめます。管理者の操作は `routes.audit` で監査ログに残します。
 
 待ち受けは既定で `127.0.0.1` です。外から開くときは、設定の `gui` セクション（`web_address.WebOptions`）で外部の URL と信頼するプロキシを決め、HTTPS はリバースプロキシで終端します（[外から GUI を開く](remote-access.md)）。受け付ける Host と Origin は、実際のポートと外部の URL から `web_address.Site` が決めます。HTTPS かどうかは、信頼するプロキシからの `X-Forwarded-Proto` を uvicorn が反映した値で判断し、HTTPS のときだけ HSTS と Cookie の `Secure` 属性を付けます。
 

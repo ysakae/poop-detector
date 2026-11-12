@@ -5,7 +5,7 @@
 犬のトイレを RTSP カメラで見守り、排便・排尿の「可能性」をスマートフォンや Mac に通知するローカル監視ツールです。
 空のトイレの画像と今の映像を比べ、変化が一定時間残ったときに知らせます。映像は手元のマシンで処理し、クラウドへは送りません（任意の動画の自動判定を除く）。
 
-![GUI のトップ画面。ライブ映像、直近の動画の自動判定、記録の一覧が並ぶ（人工データ）](docs/images/label-gui-top.jpg)
+![GUI のホーム。確認待ちの件数、今日の記録、最近の確定記録、ライブ映像と直近の自動判定が並ぶ（人工データ）](docs/images/label-gui-top.jpg)
 
 > **English summary:** poop-detector watches a dog's toilet tray through an RTSP camera and notifies you when a lasting change suggests the dog has pooped or peed. It compares frames with an empty-tray baseline on your own machine; it does not recognize feces or urine itself. The documentation is in Japanese.
 
@@ -40,7 +40,7 @@
 | 中核 | macOS 通知・ntfy 通知 | 既定（`.env` で ntfy に切り替え） | macOS 以外では ntfy の設定が必要 | [通知](docs/notifications.md) |
 | 中核 | 記録・ラベル付け・管理の GUI | `gui`、`run --gui` | パスキーでログインした人だけが使える。外から開く場合は HTTPS のリバースプロキシを通す | [記録とラベル付け](docs/records.md) |
 | 中核 | 検知前後の動画の保存 | 既定で有効（`clips.enabled`） | FFmpeg の `libx264` が必要。常時録画はしない | [動画](docs/video.md) |
-| 任意 | 多角形の監視範囲 | `setup-roi --polygon` | 登録には画面のあるマシンが必要 | [初期設定](docs/setup.md) |
+| 任意 | 多角形の監視範囲 | `setup-roi --polygon`、GUI の管理 › 範囲の登録 | CLI での登録には画面のあるマシンが必要（GUI ならほかの端末のブラウザーで登録できる） | [初期設定](docs/setup.md) |
 | 任意 | トレー追従 | `features.track_tray`、`--track-tray` | トレーの縁が映っていること。縁が隠れている間は判定を保留する | [初期設定](docs/setup.md#カメラやトレーの小さなずれに追従する) |
 | 任意 | 録画を待たない見守り通知 | `features.early_alert`、`--early-alert` | 滞在を知らせるだけで、排泄の判定ではない | [判定の仕組み](docs/detection.md#録画を待たずトイレの様子を知らせる) |
 | 任意 | 動画の自動判定 | `features.video_review`、`--video-review` | 既定の判定器は Codex CLI で、ログインが必要。動画から切り出した画像を提供元に送る | [動画](docs/video.md#動画の自動判定と通知を使う) |
@@ -57,7 +57,7 @@
 - FFmpeg（動画の保存に `libx264` を使います）
 - RTSP で映像を配信できるカメラ。トイレ全体が映る位置に固定してください
 - macOS または Linux（下の表を参照）
-- 監視領域の登録には画面のあるマシンが必要です。画面のない Linux では、別のマシンで登録した `data/roi.json` をコピーして使います（[初期設定](docs/setup.md#画面のない環境で使う)）
+- CLI での監視領域の登録には画面のあるマシンが必要です。画面のない Linux では、GUI の「管理 › 範囲の登録」をほかの端末のブラウザーから使うか、別のマシンで登録した `data/roi.json` をコピーして使います（[初期設定](docs/setup.md#画面のない環境で使う)）
 - 画面と通知の文面は日本語のみです
 
 | 環境 | 状況 |
@@ -143,6 +143,7 @@ uv run poop-detector gui
 - [初期設定](docs/setup.md) — カメラ、`.env`、監視領域、基準画像、トレー追従
 - [判定の仕組み](docs/detection.md) — 差分検知、排尿の検知、見守り通知、設定項目、制限
 - [記録とラベル付け](docs/records.md) — GUI、排泄の記録、評価指標
+- [画面の構成](docs/screens.md) — GUI の画面の一覧と遷移、CLI に残す操作
 - [外から GUI を開く](docs/remote-access.md) — 外部の URL、リバースプロキシ、信頼するプロキシ
 - [通知](docs/notifications.md) — macOS の通知と ntfy
 - [動画](docs/video.md) — 動画の保存、容量の管理、動画の自動判定

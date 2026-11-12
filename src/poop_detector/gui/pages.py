@@ -1,4 +1,4 @@
-"""GUI の共通の文書の枠と、トップ（イベントのラベル付け）と排泄の記録の画面。"""
+"""GUI のホーム（ダッシュボード）、検知の一覧（イベントのラベル付け）、排泄の記録の画面。"""
 
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date
@@ -16,6 +16,8 @@ from .templating import render_template
 # parse_qs で読んだ問い合わせ文字列。同じ名前の値はリストになる。
 Query: TypeAlias = Mapping[str, list[str]]
 STATS_PERIODS = ("7", "30", "90")
+EVENTS_PAGE = "/records/events"
+RECENT_RECORDS = 5
 APP_TITLE = "トイレ記録"
 
 
@@ -63,8 +65,8 @@ def save_failed_page(title: str | None) -> str:
     return message_page(
         "保存できませんでした",
         "ラベルと時刻を確認してください。完了は開始以降を指定します。",
-        "/",
-        "記録に戻る",
+        EVENTS_PAGE,
+        "検知の一覧に戻る",
         title=title,
     )
 
@@ -85,7 +87,7 @@ SOURCES = {"MANUAL": "手動", "MISSED": "見逃し", "SUSPECTED": "検知を確
 
 
 def matches_filter(row: EventRow, mode: str) -> bool:
-    """トップの「表示する記録」の絞り込み。"""
+    """検知の一覧の「表示する記録」の絞り込み。"""
     if mode == "all":
         return True
     if mode == "missed":
@@ -147,15 +149,18 @@ def event_detail(row: EventRow) -> dict[str, Any]:
     }
 
 
-def render(
+def render_events(
     store: Store,
     token: str,
     query: Query,
-    disk_mb: float = DEFAULT_DISK_MIB,
     *,
     title: str | None = None,
+    review: Mapping[str, Any] | None = None,
 ) -> str:
-    """トップ画面。イベントの一覧と、選んだイベントのラベル入力欄。"""
+    """検知の一覧。イベントの一覧と、選んだイベントのラベル入力欄。
+
+    review は確認待ちから開いたときの帯（review_queue.review_bar）。
+    """
     mode = query.get("filter", ["unlabeled"])[0]
     if mode not in FILTERS:
         mode = "unlabeled"
@@ -166,17 +171,16 @@ def render(
     items = [
         {
             "active": row is not None and row["id"] == item["id"],
-            "url": "/?" + urlencode({"filter": mode, "id": item["id"]}),
+            "url": f"{EVENTS_PAGE}?" + urlencode({"filter": mode, "id": item["id"]}),
             "time": local_time(item["timestamp"]),
             "label": label_text(item),
         }
         for item in rows
     ]
     return render_template(
-        "top.html",
+        "events.html",
         title=title or APP_TITLE,
         token=token,
-        capacity=capacity_info(store.root, disk_mb),
         filters=list(FILTERS.items()),
         mode=mode,
         metrics=metrics,
@@ -187,7 +191,45 @@ def render(
         locations=list(EXCRETION_LOCATIONS.items()),
         excretion_types=list(EXCRETION_TYPES.items()),
         timezone=timezone_label(),
+        review=review,
     )
+
+
+def render_home(
+    store: Store,
+    disk_mb: float = DEFAULT_DISK_MIB,
+    *,
+    title: str | None = None,
+    pending: int = 0,
+) -> str:
+    """ホーム（ダッシュボード）。ライブ映像、確認待ちの件数、今日の回数、直近の確定記録。"""
+    records = store.records()
+    today = local_today()
+    daily, _, _ = summarize_records(records, today, today)
+    recent = [
+        {
+            "time": local_time(row["actual_start"] or row["timestamp"]),
+            "type": EXCRETION_TYPES[row["excretion_type"]],
+            "location": EXCRETION_LOCATIONS.get(row["location"] or "", "場所不明"),
+            "url": event_url(row["id"]),
+        }
+        for row in reversed(records[-RECENT_RECORDS:])
+    ]
+    return render_template(
+        "home.html",
+        title=title or APP_TITLE,
+        capacity=capacity_info(store.root, disk_mb),
+        pending=pending,
+        today=today,
+        daily=daily,
+        recent=recent,
+        timezone=timezone_label(),
+    )
+
+
+def event_url(event_id: str) -> str:
+    """記録を検知の一覧で開く URL（ラベル済みも含めて表示する）。"""
+    return f"{EVENTS_PAGE}?" + urlencode({"filter": "all", "id": event_id})
 
 
 def record_stats(records: Iterable[EventRow], query: Query) -> dict[str, Any]:
@@ -228,7 +270,7 @@ def record_row(row: EventRow, videos: Sequence[str]) -> dict[str, Any]:
             row["note"],
         ],
         "videos": videos,
-        "url": "/?" + urlencode({"filter": "all", "id": row["id"]}),
+        "url": event_url(row["id"]),
     }
 
 

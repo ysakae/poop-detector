@@ -239,7 +239,16 @@ def test_gui_passes_settings_to_the_server(cli_env, monkeypatch):
     )
     assert cli_env.run("gui", "--port", "0", "--no-browser") == 0
     assert calls == [
-        ((cli_env.root, 0, False), {"disk_mb": 64, "pet_name": "ポチ", "web": WebOptions(port=0)})
+        (
+            (cli_env.root, 0, False),
+            {
+                "disk_mb": 64,
+                "pet_name": "ポチ",
+                "web": WebOptions(port=0),
+                # 管理 › 設定が書き換える設定ファイル（--config の値）。
+                "config_path": "config.yaml",
+            },
+        )
     ]
 
 
@@ -457,6 +466,10 @@ def test_check_dog_validates_input_and_prints_measurements(cli_env, monkeypatch,
     result = json.loads(capsys.readouterr().out)
     assert result["dog_boxes"] == [[1, 2, 3, 4]]
     assert result["mean_inference_ms"] >= 0
+    # 管理 › 判定器とモデルに出すため、結果を保存する（画像の場所は入れない）。
+    saved = (cli_env.root / "models" / "dog-yolox" / "check-dog.json").read_text()
+    assert '"repeat": 2' in saved
+    assert "dog.png" not in saved
 
 
 # --- 設定ファイルの機能（features）とフラグ ---

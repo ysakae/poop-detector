@@ -1,0 +1,37 @@
+{#- 管理者用の利用者一覧とメールアドレスでの検索・操作。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>ユーザー管理</h2>
+{% if notice %}<p class="saved" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<form method="get" action="/manage/users">
+<p><label>メールアドレス <input name="email" type="email" maxlength="254" value="{{ email }}"></label>
+<button>検索</button> <a href="/manage/users">全員を表示</a></p>
+</form>
+<table><thead><tr><th>表示名</th><th>メールアドレス</th><th>役割</th><th>状態</th><th>操作</th></tr></thead><tbody>
+{% for user in users %}
+<tr><td>{{ user.name }}</td><td>{{ user.email or "未登録" }}</td><td>{{ roles[user.role] }}</td>
+<td>{{ "有効" if user.active else "無効" }}</td><td>
+{% if user.email %}
+<form method="post" action="/manage/users">{{ csrf_field(token) }}
+<input type="hidden" name="email" value="{{ user.email }}">
+{% if user.active %}
+<button name="action" value="recover">復旧メールを送る</button>
+<button name="action" value="disable" class="secondary">無効にする</button>
+{% if user.role == "admin" %}
+<input type="hidden" name="role" value="member"><button name="action" value="role" class="secondary">一般ユーザーにする</button>
+{% else %}
+<input type="hidden" name="role" value="admin"><button name="action" value="role" class="secondary">管理者にする</button>
+{% endif %}
+{% else %}
+<button name="action" value="enable">有効にする</button>
+{% endif %}
+</form>
+{% endif %}
+</td></tr>
+{% else %}
+<tr><td colspan="5">該当するユーザーがいません。</td></tr>
+{% endfor %}
+</tbody></table>
+{% endblock %}

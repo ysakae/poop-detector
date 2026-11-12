@@ -28,6 +28,7 @@ from .context import (
     load_scene,
     load_tray_tracker,
     open_camera,
+    with_web_push,
 )
 from .review import ready_judge
 
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..features.tray_tracking import TrayTracker
-    from ..notifications import MacNotifier, NtfyNotifier
+    from ..notifications import ToiletNotifier
     from ..video.clip_reviews import Assessment
     from ..video.clips import ClipRow
     from ..video.review import Review, VideoJudge
@@ -57,7 +58,9 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
     outside_roi = load_outside_roi(context) if config.detect_outside_enabled else None
     judge = ready_judge(config) if config.video_review_enabled else None
     settings = load_connection_settings()
-    notifier, _ = build_notifier(context.config, settings, sends=True)
+    primary, _ = build_notifier(context.config, settings, sends=True)
+    # ntfy・macOS の通知に加えて、GUI で購読した人の端末へ Web Push でも送る。
+    notifier = with_web_push(primary, context)
     source = camera_source(settings)
     roi, baseline = load_scene(context)
     tray_tracker = load_tray_tracker(context, baseline, roi, config.track_tray_enabled)
@@ -81,7 +84,7 @@ def review_watcher(
     initial: TrayScene,
     scenes: dict[str, TrayScene],
     outside_roi: AnyROI | None,
-    notifier: "NtfyNotifier | MacNotifier",
+    notifier: "ToiletNotifier",
     judge: "VideoJudge",
     *,
     provider: str,
@@ -116,7 +119,7 @@ def watch(
     args: argparse.Namespace,
     context: CommandContext,
     source: str,
-    notifier: "NtfyNotifier | MacNotifier",
+    notifier: "ToiletNotifier",
     roi: AnyROI,
     baseline: Frame,
     tray_tracker: "TrayTracker | None",
@@ -180,6 +183,7 @@ def watch(
                     disk_mb=config.clip_disk_mb,
                     pet_name=config.pet_name,
                     web=web,
+                    config_path=args.config,
                 )
             )
         live = stack.enter_context(LatestCamera(open_camera(source, config), on_frame))

@@ -1,7 +1,7 @@
 {#- 確定した排泄の記録と、日別・時間帯別の集計。 -#}
 {% extends "base.html" %}
 {% block content %}
-<h2>排便・排尿の記録</h2><p><a href="/">画像の確認・記録の追加へ戻る</a></p>
+<h2>排便・排尿の記録</h2><p><a href="/records/events">検知の一覧と記録の追加</a>（検知の画像へのラベル付け、目視で確認した排泄の記録）</p>
 <section class="record-stats" aria-labelledby="daily-stats-title"><h3 id="daily-stats-title">1日の排便・排尿回数</h3><form method="get" action="/records" class="toolbar"><label>集計日<input type="date" name="date" value="{{ stats.day }}" required></label><label>時間帯別の集計期間<select name="days">
 {%- for value in stats.periods -%}
 <option value="{{ value }}"{% if value == stats.period %} selected{% endif %}>{{ value }}日間</option>
@@ -15,11 +15,11 @@
 </tr>
 {%- endfor -%}
 </tbody></table></div></details></section>
-<h3>確定記録一覧（全期間）</h3><div style="overflow:auto"><table style="width:100%;background:white;border-collapse:collapse"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>場所</th><th>登録方法</th><th>メモ</th><th>映像</th><th>操作</th></tr></thead><tbody>
+<h3>確定記録一覧（全期間）</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>開始・記録時刻</th><th>完了</th><th>種類</th><th>場所</th><th>登録方法</th><th>メモ</th><th>映像</th><th>操作</th></tr></thead><tbody>
 {%- for record in records -%}
 <tr>
 {%- for value in record.cells -%}
-<td style="padding:14px;border-bottom:1px solid #c8d8df">{{ value }}</td>
+<td>{{ value }}</td>
 {%- endfor -%}
 <td>
 {%- for clip_id in record.videos -%}

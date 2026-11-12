@@ -2,9 +2,9 @@
 {% extends "base.html" %}
 {% from "_macros.html" import capacity_panel %}
 {% block content %}
-<h2>録画容量と古い動画の整理</h2><p><a href="/clips">動画一覧へ戻る</a></p>{{ capacity_panel(capacity) }}
+<h2>録画容量と古い動画の整理</h2>{{ capacity_panel(capacity) }}
 {%- if result %}<p class="message" role="status">{{ result.removed }}本を整理しました。{{ result.skipped }}本は対象外または再試行が必要です。</p>{% endif -%}
-<form method="get" action="/clips/storage"><label>整理候補の古さ<select name="days">
+<form method="get" action="/manage/storage"><label>整理候補の古さ<select name="days">
 {%- for day in retention_days -%}
 <option value="{{ day }}"{% if day == days %} selected{% endif %}>{{ day }}日以上前</option>
 {%- endfor -%}
@@ -12,7 +12,7 @@
 {% if not candidates %}
 <p>整理できる古い動画はありません。</p>
 {% else %}
-<p>表示中の候補 {{ candidates|length }}本（古い順に最大{{ limit }}本） ／ すべて選んだ場合に空く容量の目安 {{ "{:,.2f}".format(total_mib) }} MiB</p><form id="cleanup-form" method="post" action="/clips/cleanup"><input type="hidden" name="csrf" value="{{ token }}"><input type="hidden" name="days" value="{{ days }}"><p><label><input type="checkbox" id="cleanup-all">表示中の候補をすべて選択</label></p><fieldset><legend>整理する動画を選択</legend>
+<p>表示中の候補 {{ candidates|length }}本（古い順に最大{{ limit }}本） ／ すべて選んだ場合に空く容量の目安 {{ "{:,.2f}".format(total_mib) }} MiB</p><form id="cleanup-form" method="post" action="/manage/storage/cleanup"><input type="hidden" name="csrf" value="{{ token }}"><input type="hidden" name="days" value="{{ days }}"><p><label><input type="checkbox" id="cleanup-all">表示中の候補をすべて選択</label></p><fieldset><legend>整理する動画を選択</legend>
 {%- for item in candidates -%}
 <p><label><input type="checkbox" name="id" value="{{ item.id }}" data-bytes="{{ item.size }}">{{ item.time }} ／ {{ item.source }} ／ {{ item.verdict }}</label> ／ {{ "{:,.2f}".format(item.size_mib) }} MiB ／ <a href="/clips?id={{ item.id }}" target="_blank" rel="noopener">確認</a></p>
 {%- endfor -%}

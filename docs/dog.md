@@ -26,6 +26,8 @@ uv run poop-detector run --dog
 uv run poop-detector check-dog --image /absolute/path/to/image.jpg --repeat 10
 ```
 
+結果は `data/models/dog-yolox/check-dog.json` に保存し（画像の場所と検出枠は保存しません）、GUI の「管理 › 判定器とモデル」に、モデルのハッシュの確認結果と並べて出します。
+
 カメラの設置位置を変える前の、犬が写った保存画像で検出を確認し、人工の無地画像では検出なしでした。
 開発者の Apple Silicon の Mac で、反復推論は平均約73ms、プロセス RSS 約421MiB でした。CPU の表示値は休止なしの反復推論時の値です。
 現在の俯瞰の設置位置での Precision/Recall と、RTSP の処理を含む総負荷は未確認です。カメラを固定し、実動画で見逃しと誤検出を確認してください。
@@ -43,7 +45,7 @@ uv run poop-detector check-dog --image /absolute/path/to/image.jpg --repeat 10
 動画の自動判定で新しい便、尿の流れ、または新しい濡れ跡を確認した場合に、トレー外の候補として通知します。`--video-review` が必要です。
 
 ```bash
-uv run poop-detector setup-roi --outside
+uv run poop-detector setup-roi --outside   # GUI の「管理 › 範囲の登録」でも登録できる
 uv run poop-detector run --dog --video-review --detect-outside
 ```
 
@@ -57,7 +59,7 @@ uv run poop-detector run --dog --video-review --detect-outside
 カメラを固定し、監視を停止します。画面に映っている床の外周に沿って、時計回りか反時計回りに3点以上をクリックし、Enter で登録します。凹みのある範囲も指定できます。新規登録の多角形は射影補正を行わず、外側を集計から除外します。以前登録した四角形は従来の座標で利用できます。
 
 ```bash
-uv run poop-detector setup-activity-map
+uv run poop-detector setup-activity-map   # GUI の「管理 › 範囲の登録」でも登録できる
 uv run poop-detector run --dog --video-review --early-alert --track-tray --activity-map
 ```
 

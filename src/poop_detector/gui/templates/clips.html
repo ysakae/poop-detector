@@ -2,20 +2,23 @@
 {% extends "base.html" %}
 {% from "_macros.html" import capacity_panel, csrf_field, location_field %}
 {% block content %}
-<h2>動画を見てラベルを付ける</h2><p><a href="/">ライブ映像・排泄の記録へ戻る</a></p><p>排泄前後の動作も確認し、排泄なしの動画にもラベルを付けてください。排便や排尿を確認したら、動画ラベルと確定記録を一緒に保存できます。</p><form method="post" action="/clips/request">{{ csrf_field(token) }}<button>今の前後の動画を保存</button></form><p class="note">監視起動中に使えます。既定では操作前30秒と操作後30秒を保存します。録画後の変換が終わったら「更新」を押してください。</p><p><a href="/clips">更新</a></p>{{ capacity_panel(capacity) }}<p><a href="/clips/storage">録画容量と古い動画の整理</a></p>
+{% include "_review_bar.html" %}
+{% if not review %}
+<h2>動画を見てラベルを付ける</h2><p>排泄前後の動作も確認し、排泄なしの動画にもラベルを付けてください。排便や排尿を確認したら、動画ラベルと確定記録を一緒に保存できます。</p><form method="post" action="/clips/request">{{ csrf_field(token) }}<button>今の前後の動画を保存</button></form><p class="note">監視起動中に使えます。既定では操作前30秒と操作後30秒を保存します。録画後の変換が終わったら「更新」を押してください。</p><p><a href="/clips">更新</a></p>{{ capacity_panel(capacity) }}{% if viewer_admin %}<p><a href="/manage/storage">録画容量と古い動画の整理</a></p>{% endif %}
 {% if not live %}<div class="message">動画収集のカメラ接続を確認できません。監視を起動し、カメラ接続を確認してください。</div>{% endif %}
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
-<div class="workspace"><nav id="clip-list" aria-label="動画一覧">
+{% endif %}
+<div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav id="clip-list" aria-label="動画一覧">
 {%- for item in items -%}
 <a class="{% if item.active %}active{% endif %}" href="/clips?id={{ item.id }}">{{ item.time }}<small>{{ item.status }} ／ {{ item.label }}</small></a>
 {%- endfor -%}
-</nav><article id="clip-detail">
+</nav>{% endif %}<article id="clip-detail">
 {% if clip is none %}
 <div class="empty"><h3>動画はまだありません</h3><p>監視を起動して保存ボタンを押すか、自動検知を待ってください。</p></div>
 {% else %}
 <h3>{{ clip.time }}</h3><p>{{ clip.source }} ／ {{ clip.status }}</p>
 {% if clip.ready %}
-<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary" name="protected" value="{{ 0 if clip.pinned else 1 }}">{{ "保護指定を解除" if clip.pinned else "この動画を保護" }}</button></form><video controls preload="metadata" style="width:100%;background:#192d39" src="/clip-video?id={{ clip.id }}">動画を再生できません。</video><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
+{% if not clip.pinned %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary" name="protected" value="1">この動画を保護</button></form>{% elif viewer_admin %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary" name="protected" value="0">保護指定を解除</button></form>{% else %}<p class="note">保護中の動画です（解除は管理者が行います）。</p>{% endif %}<video controls preload="metadata" class="clip-video" src="/clip-video?id={{ clip.id }}">動画を再生できません。</video><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
 {% if clip.interrupted %}<div class="message">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>{% endif %}
 {% if circling %}
 <div class="message"><strong>行動分析 ／ 旋回候補</strong><p>トレー付近の位置を取得 {{ circling.located }}/{{ circling.sampled }}コマ</p>
@@ -35,7 +38,7 @@
 {%- if assessment.draft %}<br>動画を確認してからラベルを保存してください。{% endif %}</div>
 {% endif %}
 {% endif %}
-<form method="post" action="/clips/label">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><fieldset><legend>動画の内容</legend><div class="choices">
+<form method="post" action="/clips/label">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>動画の内容</legend><div class="choices">
 {%- for value, text in clip_labels -%}
 <label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == form.label %}checked{% endif %}>{{ text }}</label>
 {%- endfor -%}
@@ -47,10 +50,10 @@
 {%- for name, text, value, button in form.offsets -%}
 <div><label>{{ text }}<input type="number" min="0" max="{{ clip.duration }}" step="0.01" name="{{ name }}" value="{{ value }}"></label><button class="secondary" type="button" data-video-offset="{{ name }}">ここを{{ button }}にする</button></div>
 {%- endfor -%}
-</div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000" style="width:100%">{{ clip.note }}</textarea></label></p><button class="secondary">動画ラベルのみ保存</button>{% include "_confirmation.html" %}</form>
-{% if clip.event_id %}<p><a href="/?filter=all&amp;id={{ clip.event_id }}">対応するイベント画像を確認</a></p>{% endif %}
+</div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000">{{ clip.note }}</textarea></label></p><button class="secondary">動画ラベルのみ保存</button>{% include "_confirmation.html" %}</form>
+{% if clip.event_id %}<p><a href="/records/events?filter=all&amp;id={{ clip.event_id }}">対応するイベント画像を確認</a></p>{% endif %}
 {% elif clip.removed is not none %}
-<p>{{ "録画ファイルは整理済みです。" if clip.removed else "録画ファイルの整理を再開できます。" }} <a href="/clips/storage">録画の整理を開く</a></p>
+<p>{{ "録画ファイルは整理済みです。" if clip.removed else "録画ファイルの整理を再開できます。" }} {% if viewer_admin %}<a href="/manage/storage">録画の整理を開く</a>{% endif %}</p>
 {% if assessment and assessment.reason %}<p>{{ assessment.label_or_default }} ／ {{ assessment.reason }}</p>{% endif %}
 {% elif clip.failed %}
 <p>{{ clip.error }}</p>

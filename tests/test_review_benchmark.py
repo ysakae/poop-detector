@@ -112,6 +112,11 @@ def test_benchmark_cli_uses_identical_inputs_and_does_not_change_labels(
     assert "codex:model-a" in capsys.readouterr().out
     assert clips.get(clip_id)["label"] == "none"
     assert clips.assessments.get(clip_id) is None
+    # --output を省くと、管理 › 判定器とモデルが読む場所に新しいファイルで保存する。
+    shown = [part for part in command if part not in ("--output", str(report))]
+    assert main([*shown, "--send-images"]) == 0
+    (saved,) = (root / "benchmarks").glob("*.json")
+    assert json.loads(saved.read_text())["summaries"]
 
 
 def test_benchmark_cli_requires_distinct_models_and_preserves_existing_report(tmp_path):

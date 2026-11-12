@@ -199,6 +199,57 @@ def migrate_to_v5(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v6(db: sqlite3.Connection) -> None:
+    """ユーザーと招待にメールアドレスを追加し、既存の ID を維持する。"""
+    db.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    db.execute("CREATE UNIQUE INDEX users_by_email ON users(email)")
+    db.execute("ALTER TABLE enrollments ADD COLUMN email TEXT")
+    db.execute("ALTER TABLE enrollments ADD COLUMN revoked_at TEXT")
+    db.execute("CREATE INDEX enrollments_by_email ON enrollments(email)")
+
+
+def migrate_to_v7(db: sqlite3.Connection) -> None:
+    """管理者の操作の監査ログ。
+
+    actor はユーザーの ID か、監視するマシンでのコマンドの操作を表す "cli"。
+    detail は利用者に見せる説明で、登録用 URL や認証情報は入れない。
+    """
+    db.execute(
+        """CREATE TABLE audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            at TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            action TEXT NOT NULL,
+            detail TEXT NOT NULL
+        )"""
+    )
+
+
+def migrate_to_v8(db: sqlite3.Connection) -> None:
+    """GUI の表示の選択。theme が NULL の人は、管理者が決めた既定のテーマを使う。"""
+    db.execute("ALTER TABLE users ADD COLUMN theme TEXT")
+    db.execute("ALTER TABLE users ADD COLUMN appearance TEXT NOT NULL DEFAULT 'auto'")
+
+
+def migrate_to_v9(db: sqlite3.Connection) -> None:
+    """Web Push の購読と、人ごとの受け取りの選択。
+
+    endpoint はブラウザーの購読の宛先（推測できない URL）で、p256dh と auth は通知の暗号化に使う
+    ブラウザーの公開鍵と秘密の値。ログや画面には出さない。
+    """
+    db.execute(
+        """CREATE TABLE push_subscriptions (
+            endpoint TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )"""
+    )
+    db.execute("ALTER TABLE users ADD COLUMN push_alerts INTEGER NOT NULL DEFAULT 1")
+    db.execute("ALTER TABLE users ADD COLUMN push_early INTEGER NOT NULL DEFAULT 0")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -206,6 +257,10 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v3,
     migrate_to_v4,
     migrate_to_v5,
+    migrate_to_v6,
+    migrate_to_v7,
+    migrate_to_v8,
+    migrate_to_v9,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

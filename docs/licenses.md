@@ -15,6 +15,7 @@ PyPI に公開する sdist と wheel、およびリポジトリには、この�
 | opencv-python | Apache-2.0 | wheel に FFmpeg などのライブラリが同梱されています（[後述](#opencv-python-の-wheel-が同梱するライブラリ)） |
 | numpy | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | Python 3.11 では 2.4 系、3.12 以上では 2.5 系が選ばれます |
 | PyYAML | MIT | |
+| ruamel.yaml | MIT | 管理 › 設定で、コメントを残したまま設定ファイルを書き換える |
 | psutil | BSD-3-Clause | |
 | python-dotenv | BSD-3-Clause | |
 | Jinja2 | BSD-3-Clause | GUI の HTML テンプレート |
@@ -26,6 +27,8 @@ PyPI に公開する sdist と wheel、およびリポジトリには、この�
 | click | BSD-3-Clause | uvicorn の依存 |
 | idna | BSD-3-Clause | anyio の依存 |
 | webauthn | BSD-3-Clause | パスキー（WebAuthn）の検証 |
+| http-ece | MIT | Web Push の本文の暗号化（RFC 8291） |
+| py-vapid | MPL-2.0 | Web Push の送信元の署名（VAPID、RFC 8292） |
 | cbor2 | MIT | webauthn の依存。CBOR の読み書き |
 | cryptography | Apache-2.0 OR BSD-3-Clause | webauthn の依存。署名の検証 |
 | pyOpenSSL | Apache-2.0 | webauthn の依存。証明書の検証 |

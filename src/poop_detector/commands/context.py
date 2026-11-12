@@ -16,7 +16,15 @@ from ..errors import SetupRequiredError, UserError
 from ..features.tray_registration import TrayRegistration
 from ..features.tray_tracking import TrayTracker
 from ..frames import Frame
-from ..notifications import DEFAULT_NTFY_SERVER, MacNotifier, NtfyNotifier
+from ..notifications import (
+    DEFAULT_NTFY_SERVER,
+    FanOutNotifier,
+    MacNotifier,
+    NtfyNotifier,
+    ToiletNotifier,
+)
+from ..records.database import events_database
+from ..web_push import PushKeys, PushSubscriptions, WebPushNotifier, push_subject
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +114,19 @@ def camera_source(settings: Mapping[str, str]) -> str:
 def open_camera(source: str, config: Config) -> Camera:
     """カメラを開く。テストではこのモジュールの Camera を偽のカメラに差し替える。"""
     return Camera(source, config.timeout_ms, config.retry_seconds)
+
+
+def with_web_push(notifier: ToiletNotifier, context: CommandContext) -> ToiletNotifier:
+    """notifier に、GUI で購読した人の端末への Web Push を足す（購読がなければ何も送らない）。"""
+    config = context.config
+    push = WebPushNotifier(
+        PushSubscriptions(events_database(context.root)),
+        PushKeys(context.root),
+        subject=push_subject(config.gui_public_url),
+        enabled=config.notifications,
+        pet_name=config.pet_name,
+    )
+    return FanOutNotifier([notifier, push])
 
 
 def build_notifier(

@@ -17,7 +17,7 @@ import threading
 import webbrowser
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -31,12 +31,14 @@ from ..records.events import Store
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
 from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
+from ..web_push import PushKeys, PushSubscriptions
 from .accounts import Accounts
 from .asgi import create_app
 from .pages import page_title
 from .passkeys import PasskeyAuth
 from .rate_limit import RateLimits
 from .sessions import SessionPolicy, SessionStore
+from .snapshots import Snapshots
 
 logger = logging.getLogger(__name__)
 DEFAULT_LIMITS = RateLimits()
@@ -62,6 +64,15 @@ class GuiApp:
     site: Site
     title: str
     disk_mb: float
+    # Web Push の購読と VAPID の鍵（監視と同じデータの保存先を使う）。
+    push_subscriptions: PushSubscriptions
+    push_keys: PushKeys
+    # 管理 › 設定で書き換える設定ファイル。None なら設定の画面は表示だけ（テストなど）。
+    config_path: Path | None = None
+    # テーマを選んでいない人とログイン前の画面のテーマ（設定の gui.theme）。
+    default_theme: str = "professional"
+    # 範囲の登録で画面に見せた映像の一時置き場（保存にはその映像を使う）。
+    snapshots: Snapshots = field(default_factory=Snapshots)
 
     def csrf_for(self, session_id: str) -> str:
         """セッションの CSRF トークン。セッションの ID と鍵の HMAC で、ID そのものは出さない。"""
@@ -157,11 +168,13 @@ def make_server(
     pet_name: str = "",
     web: WebOptions = LOCAL_ONLY,
     limits: RateLimits = DEFAULT_LIMITS,
+    config_path: str | Path | None = None,
 ) -> GuiServer:
     """GUI のサーバーを作る。待ち受けのアドレスと外部の URL は web、ポートは port を使う。
 
     起動ごとに、CSRF トークンを導く鍵と、セッションを始めるための起動トークンを作る。
-    limits は要求の回数の上限（テストで小さくする）。
+    limits は要求の回数の上限（テストで小さくする）。config_path は管理 › 設定で書き換える
+    設定ファイル（起動時の作業ディレクトリから絶対パスにする）。
     """
     listener = listen(web.host, port)
     database = events_database(root)
@@ -186,15 +199,23 @@ def make_server(
         site=Site(listener.getsockname()[1], web.public_url),
         title=page_title(pet_name),
         disk_mb=disk_mb,
+        config_path=Path(config_path).resolve() if config_path is not None else None,
+        default_theme=web.theme,
+        push_subscriptions=PushSubscriptions(database),
+        push_keys=PushKeys(root),
     )
     return GuiServer(app, listener, web, limits)
 
 
 def announce(base: str, *, opened: bool, public_url: str | None, has_users: bool) -> None:
-    """起動の案内を出す。URL に秘密は含まないので、ログやファイルに残ってもよい。"""
-    print(f"GUI: {base}{'（ブラウザーで開きました）' if opened else ''}", flush=True)  # noqa: T201
+    """起動の案内を出す。URL に秘密は含まないので、ログやファイルに残ってもよい。
+
+    opened はブラウザーで開いたか。外部の URL があればそちらを、なければ base を開いている。
+    """
+    mark = "（ブラウザーで開きました）" if opened else ""
+    print(f"GUI: {base}{'' if public_url else mark}", flush=True)  # noqa: T201
     if public_url:
-        print(f"外から開くとき: {public_url}", flush=True)  # noqa: T201
+        print(f"外から開くとき: {public_url}{mark}", flush=True)  # noqa: T201
     if not has_users:
         print(  # noqa: T201
             "まだユーザーがいません。このマシンで `poop-detector users invite 名前 --role admin` "
@@ -204,14 +225,18 @@ def announce(base: str, *, opened: bool, public_url: str | None, has_users: bool
 
 
 def open_gui_url(server: GuiServer, open_browser: bool) -> None:
-    """GUI の URL を案内し、必要ならブラウザーで開く。パスキーは IP アドレスでは使えないので
-    localhost で開く。"""
+    """GUI の URL を案内し、必要ならブラウザーで開く。
+
+    パスキーは登録したドメインでだけ使えるので、外部の URL（gui.public_url）があればそちらを
+    開く。なければ、IP アドレスでは使えないパスキーのために localhost で開く。
+    """
     base = f"http://localhost:{server.server_port}/"
-    opened = open_browser and webbrowser.open(base)
+    public_url = server.site.public_base
+    opened = open_browser and webbrowser.open(public_url or base)
     announce(
         base,
         opened=opened,
-        public_url=server.site.public_base,
+        public_url=public_url,
         has_users=bool(server.app.accounts.users.list()),
     )
 
@@ -225,9 +250,12 @@ def background_gui(
     disk_mb: float,
     pet_name: str,
     web: WebOptions = LOCAL_ONLY,
+    config_path: str | Path | None = None,
 ) -> Iterator[None]:
     """監視中は別スレッドで GUI を提供し、監視が終われば待ち受けを閉じる。"""
-    with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name, web=web) as server:
+    with make_server(
+        root, port, disk_mb=disk_mb, pet_name=pet_name, web=web, config_path=config_path
+    ) as server:
         thread = threading.Thread(target=server.serve_forever, name="poop-detector-gui")
         thread.start()
         try:
@@ -246,8 +274,11 @@ def serve(
     disk_mb: float = DEFAULT_DISK_MIB,
     pet_name: str = "",
     web: WebOptions = LOCAL_ONLY,
+    config_path: str | Path | None = None,
 ) -> None:
-    with make_server(root, port, disk_mb=disk_mb, pet_name=pet_name, web=web) as server:
+    with make_server(
+        root, port, disk_mb=disk_mb, pet_name=pet_name, web=web, config_path=config_path
+    ) as server:
         open_gui_url(server, open_browser)
         try:
             server.serve_forever()
