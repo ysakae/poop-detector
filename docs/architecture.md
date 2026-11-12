@@ -110,11 +110,12 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/asgi.py` | ASGI アプリ。安全対策のミドルウェア（`SecurityHeaders`・`Admission`）、フォームの読み込みと CSRF、ルートの表への振り分け |
 | `gui/exchange.py` | ルートに渡す要求ごとの `Exchange`。`respond`・`redirect`・`stream` で応答を決める |
 | `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
-| `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（トップと記録、動画、行動マップ） |
+| `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（ホームと記録、動画、行動マップ） |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル |
-| `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`） |
+| `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`）。見ている人（`VIEWER`）から共通の枠の値を渡す |
+| `gui/navigation.py` | 共通の枠の値（メインメニュー、管理のメニュー、ログイン中の人、監視の状態）。画面の配置は [画面の構成](screens.md) |
 | `gui/access.py` | セッションの Cookie |
-| `gui/account_routes.py` | 自分のアカウント（パスキーの一覧・追加・削除）と、管理者による招待・ユーザー管理・監査ログの画面 |
+| `gui/account_routes.py` | 自分のアカウント（パスキーの一覧・追加・削除）と、管理の中の招待・ユーザー・監査ログの画面 |
 | `gui/sessions.py` | サーバー側のセッション（`gui_sessions` テーブル。ID の SHA-256 だけを保存し、無操作と通算の有効期限を持つ） |
 | `gui/rate_limit.py` | 接続元ごとの要求の回数の制限 |
 | `gui/passkeys.py` | パスキー（WebAuthn）の登録とログイン。開いたドメインから RP ID を決め、やり取り（チャレンジ）を使い捨てでメモリーに持つ。署名の検証は py_webauthn |
@@ -125,7 +126,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 
 テンプレートはすべての値を自動でエスケープし、渡し忘れた変数はエラーになります。HTML を文字列で組み立てたり、`Markup` でエスケープを外したりしないでください。値の整形と分岐の判断は Python 側で行い、テンプレートは構造だけを受け持ちます。`tests/test_gui_escaping.py` は、特殊文字を含む値が各画面でエスケープされることを確かめます。
 
-ルートが使うストアや鍵は `GuiApp` にまとめ、`Exchange.app` からルートへ渡します。ルートの関数は同期の関数で、Starlette がスレッドプールで呼びます。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。管理者だけの操作には `role="admin"` を付けます（`@get("/manage", role="admin")`）。`asgi.dispatch` が、ルートの表に宣言した役割（`routes.required_role`）を持たない人を 403 で断ります。同じルートの中で役割によって分かれる操作（動画の保護の解除）は、ルートの中で `routes.is_admin` で確かめます。テンプレートは `viewer_admin` で管理者だけの入口を出し分けますが、拒否はサーバーで行います。`tests/test_gui_roles.py` は、ルートの表のすべてのルートで、宣言した役割が権限の表と一致し、一般ユーザーが管理者のルートを断られることを確かめます。管理者の操作は `routes.audit` で監査ログに残します。
+ルートが使うストアや鍵は `GuiApp` にまとめ、`Exchange.app` からルートへ渡します。ルートの関数は同期の関数で、Starlette がスレッドプールで呼びます。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。管理者だけの操作には `role="admin"` を付けます（`@get("/manage", role="admin")`）。`asgi.dispatch` が、ルートの表に宣言した役割（`routes.required_role`）を持たない人を 403 で断ります。同じルートの中で役割によって分かれる操作（動画の保護の解除）は、ルートの中で `routes.is_admin` で確かめます。テンプレートは `viewer_admin` で管理者だけの入口を出し分けますが、拒否はサーバーで行います。管理者だけの画面は `/manage` の下に置き、`gui/navigation.py` の管理のメニューに加えます。`tests/test_gui_roles.py` は、ルートの表のすべてのルートで、宣言した役割が権限の表と一致し、一般ユーザーが管理者のルートを断られることを確かめます。管理者の操作は `routes.audit` で監査ログに残します。
 
 待ち受けは既定で `127.0.0.1` です。外から開くときは、設定の `gui` セクション（`web_address.WebOptions`）で外部の URL と信頼するプロキシを決め、HTTPS はリバースプロキシで終端します（[外から GUI を開く](remote-access.md)）。受け付ける Host と Origin は、実際のポートと外部の URL から `web_address.Site` が決めます。HTTPS かどうかは、信頼するプロキシからの `X-Forwarded-Proto` を uvicorn が反映した値で判断し、HTTPS のときだけ HSTS と Cookie の `Secure` 属性を付けます。
 

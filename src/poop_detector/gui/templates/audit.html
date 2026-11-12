@@ -2,7 +2,6 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>監査ログ</h2>
-<p><a href="/account">アカウントへ戻る</a> · <a href="/account/users">ユーザー管理</a></p>
 <p class="note">設定・登録・動画の削除・ユーザーの操作を、誰が・いつ行ったかを新しい順に表示します。</p>
 <table><thead><tr><th>日時</th><th>操作した人</th><th>操作</th><th>対象</th></tr></thead><tbody>
 {% for entry in entries %}

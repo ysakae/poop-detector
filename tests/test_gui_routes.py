@@ -53,7 +53,7 @@ def test_every_post_route_requires_cookie_csrf_and_host(gui, path):
     assert exchange(server, "POST", path, "x" * 20000, FORM)[0] == 400
 
 
-@pytest.mark.parametrize("path", ["/", "/records", "/clips", "/clips/storage", "/activity"])
+@pytest.mark.parametrize("path", ["/", "/records", "/clips", "/manage/storage", "/activity"])
 def test_pages_carry_security_headers(gui, path):
     server, _, _ = gui
     status, headers, _ = exchange(server, "GET", path)

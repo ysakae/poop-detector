@@ -2,7 +2,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import capacity_panel, csrf_field, location_field %}
 {% block content %}
-<h2>動画を見てラベルを付ける</h2><p><a href="/">ライブ映像・排泄の記録へ戻る</a></p><p>排泄前後の動作も確認し、排泄なしの動画にもラベルを付けてください。排便や排尿を確認したら、動画ラベルと確定記録を一緒に保存できます。</p><form method="post" action="/clips/request">{{ csrf_field(token) }}<button>今の前後の動画を保存</button></form><p class="note">監視起動中に使えます。既定では操作前30秒と操作後30秒を保存します。録画後の変換が終わったら「更新」を押してください。</p><p><a href="/clips">更新</a></p>{{ capacity_panel(capacity) }}{% if viewer_admin %}<p><a href="/clips/storage">録画容量と古い動画の整理</a></p>{% endif %}
+<h2>動画を見てラベルを付ける</h2><p>排泄前後の動作も確認し、排泄なしの動画にもラベルを付けてください。排便や排尿を確認したら、動画ラベルと確定記録を一緒に保存できます。</p><form method="post" action="/clips/request">{{ csrf_field(token) }}<button>今の前後の動画を保存</button></form><p class="note">監視起動中に使えます。既定では操作前30秒と操作後30秒を保存します。録画後の変換が終わったら「更新」を押してください。</p><p><a href="/clips">更新</a></p>{{ capacity_panel(capacity) }}{% if viewer_admin %}<p><a href="/manage/storage">録画容量と古い動画の整理</a></p>{% endif %}
 {% if not live %}<div class="message">動画収集のカメラ接続を確認できません。監視を起動し、カメラ接続を確認してください。</div>{% endif %}
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
 <div class="workspace"><nav id="clip-list" aria-label="動画一覧">
@@ -50,7 +50,7 @@
 </div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000" style="width:100%">{{ clip.note }}</textarea></label></p><button class="secondary">動画ラベルのみ保存</button>{% include "_confirmation.html" %}</form>
 {% if clip.event_id %}<p><a href="/?filter=all&amp;id={{ clip.event_id }}">対応するイベント画像を確認</a></p>{% endif %}
 {% elif clip.removed is not none %}
-<p>{{ "録画ファイルは整理済みです。" if clip.removed else "録画ファイルの整理を再開できます。" }} {% if viewer_admin %}<a href="/clips/storage">録画の整理を開く</a>{% endif %}</p>
+<p>{{ "録画ファイルは整理済みです。" if clip.removed else "録画ファイルの整理を再開できます。" }} {% if viewer_admin %}<a href="/manage/storage">録画の整理を開く</a>{% endif %}</p>
 {% if assessment and assessment.reason %}<p>{{ assessment.label_or_default }} ／ {{ assessment.reason }}</p>{% endif %}
 {% elif clip.failed %}
 <p>{{ clip.error }}</p>

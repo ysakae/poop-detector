@@ -127,7 +127,7 @@ PROTECTED_PATHS = (
     "/",
     "/records",
     "/clips",
-    "/clips/storage",
+    "/manage/storage",
     "/clips/capacity",
     "/activity",
     "/activity/background?id=x",

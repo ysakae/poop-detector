@@ -19,12 +19,12 @@ FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 ADMIN_GET = {
     "/manage",
     "/manage/status",
-    "/clips/storage",
-    "/account/invite",
-    "/account/users",
-    "/account/audit",
+    "/manage/storage",
+    "/manage/invite",
+    "/manage/users",
+    "/manage/audit",
 }
-ADMIN_POST = {"/manage/tray", "/clips/cleanup", "/account/invite", "/account/users"}
+ADMIN_POST = {"/manage/tray", "/manage/storage/cleanup", "/manage/invite", "/manage/users"}
 MEMBER_GET = sorted(path for path in GET_ROUTES if not is_public(path) and path not in ADMIN_GET)
 MEMBER_POST = sorted(path for path in POST_ROUTES if path not in ADMIN_POST)
 
@@ -93,8 +93,8 @@ def test_members_can_protect_but_not_unprotect_clips(gui):
     ("path", "admin_only"),
     [
         ("/", ['href="/manage"']),
-        ("/clips", ['href="/clips/storage"']),
-        ("/account", ['href="/account/invite"', 'href="/account/users"', 'href="/account/audit"']),
+        ("/clips", ['href="/manage/storage"']),
+        ("/account", ['href="/manage"']),
     ],
 )
 def test_admin_entry_points_are_hidden_from_members(gui, path, admin_only):
@@ -114,3 +114,9 @@ def test_role_changes_apply_to_the_next_request(gui):
     users = server.app.accounts.users
     users.set_role(users.by_name("家族A").id, "member")
     assert exchange(server, "GET", "/manage", headers=cookie, auth=False)[0] == 403
+
+
+def test_management_menu_only_lists_admin_pages():
+    from poop_detector.gui.navigation import MANAGEMENT_PAGES
+
+    assert {href for href, _ in MANAGEMENT_PAGES} <= ADMIN_GET

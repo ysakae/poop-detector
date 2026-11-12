@@ -41,10 +41,11 @@ from .access import (
 )
 from .auth_api import webauthn
 from .exchange import HTML, Exchange
+from .navigation import Viewer
 from .pages import save_failed_page
 from .rate_limit import RateLimiter, RateLimits
 from .routes import GET_ROUTES, POST_ROUTES, Form, admin_only_page, required_role
-from .templating import VIEWER_ADMIN
+from .templating import VIEWER
 
 if TYPE_CHECKING:
     from .server import GuiApp
@@ -250,12 +251,23 @@ def not_found(method: str) -> Response:
 
 
 def as_viewer(route: Callable[[Exchange, Any], None], exchange: Exchange, argument: Any) -> None:
-    """ルートを呼ぶ。テンプレートが入口を出し分けられるよう、見ている人の役割を渡す。"""
-    token = VIEWER_ADMIN.set(exchange.user is not None and exchange.user.role == "admin")
+    """ルートを呼ぶ。テンプレートが共通の枠と入口を出し分けられるよう、見ている人を渡す。"""
+    user = exchange.user
+    viewer = (
+        Viewer(
+            name=user.name,
+            admin=user.role == "admin",
+            path=urlsplit(exchange.path).path,
+            monitor=exchange.app.preview.monitor_status,
+        )
+        if user is not None
+        else None
+    )
+    token = VIEWER.set(viewer)
     try:
         route(exchange, argument)
     finally:
-        VIEWER_ADMIN.reset(token)
+        VIEWER.reset(token)
 
 
 async def dispatch(request: Request) -> Response:

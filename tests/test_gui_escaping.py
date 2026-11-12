@@ -55,7 +55,7 @@ def pages(server, ready, failed):
         "/records",
         f"/clips?id={ready}",
         f"/clips?id={failed}",
-        "/clips/storage",
+        "/manage/storage",
         "/activity",
     ]
 
