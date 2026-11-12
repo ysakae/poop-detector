@@ -37,6 +37,10 @@ ACTIONS: dict[str, str] = {
     "area.roi": "監視範囲と基準画像の登録",
     "area.outside": "トレー外の範囲の登録",
     "area.floor": "床面の登録",
+    "export.csv": "記録の CSV の書き出し",
+    "export.summary": "印刷用の集計の表示",
+    "backup.create": "バックアップの作成",
+    "backup.restore": "バックアップからの復元",
 }
 
 

@@ -1,0 +1,35 @@
+{#- 印刷用の集計。期間の回数・場所・時間帯・日ごとの件数。ブラウザーの印刷で紙や PDF にする。 -#}
+{% extends "base.html" %}
+{% block content %}
+<article class="print-summary">
+<h2>排泄の記録の集計</h2>
+<p>期間：{{ summary.period }}（{{ summary.days }}日間） ／ 作成：{{ printed_at }}（{{ timezone }}）</p>
+<p class="note no-print">ブラウザーの印刷で紙や PDF にできます。<a href="/manage/export">書き出しとバックアップへ戻る</a></p>
+<section aria-labelledby="count-title"><h3 id="count-title">回数</h3>
+<table><tbody>
+<tr><th scope="row">記録</th><td>{{ summary.total }}回（1日あたり {{ summary.per_day }}回、記録のあった日 {{ summary.recorded_days }}日）</td></tr>
+<tr><th scope="row">排便</th><td>{{ summary.feces }}回</td></tr>
+<tr><th scope="row">排尿</th><td>{{ summary.urine }}回</td></tr>
+<tr><th scope="row">種類不明</th><td>{{ summary.unspecified }}回</td></tr>
+{%- for name, count in summary.locations %}
+<tr><th scope="row">場所：{{ name }}</th><td>{{ count }}回</td></tr>
+{%- endfor %}
+</tbody></table>
+<p class="note">「排便・排尿」の記録は、排便と排尿の両方に数えます。</p>
+</section>
+<section aria-labelledby="hour-title"><h3 id="hour-title">時間帯</h3>
+<table><thead><tr><th>時刻</th><th>排便</th><th>排尿</th><th>種類不明</th></tr></thead><tbody>
+{%- for row in summary.hourly %}
+<tr><th scope="row">{{ row.hour }}</th><td>{{ row.feces }}</td><td>{{ row.urine }}</td><td>{{ row.unspecified }}</td></tr>
+{%- endfor %}
+</tbody></table>
+</section>
+<section aria-labelledby="day-title"><h3 id="day-title">日ごと</h3>
+<table><thead><tr><th>日付</th><th>記録</th><th>排便</th><th>排尿</th><th>種類不明</th></tr></thead><tbody>
+{%- for row in summary.daily %}
+<tr><th scope="row">{{ row.day }}</th><td>{{ row.total }}</td><td>{{ row.feces }}</td><td>{{ row.urine }}</td><td>{{ row.unspecified }}</td></tr>
+{%- endfor %}
+</tbody></table>
+</section>
+</article>
+{% endblock %}

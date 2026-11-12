@@ -113,3 +113,5 @@ button,a.button,select,input:not([type=checkbox]):not([type=radio]){min-height:4
 main table{display:block;overflow-x:auto;max-width:100%}main th{white-space:nowrap}
 .review-list a{grid-template-columns:1fr}.review-list small{grid-column:1}}
 @media(max-width:720px){.management-layout{grid-template-columns:1fr}}
+.print-summary table{margin-bottom:12px}.print-summary th,.print-summary td{border-bottom:1px solid var(--border)}
+@media print{:root[data-appearance]{color-scheme:light}body{background:var(--surface)}.site-header,.site-menu,.sub-menu,.no-print{display:none}main{padding:0;max-width:none}.print-summary table{display:table;font-size:11px}.print-summary th,.print-summary td{padding:2px 8px}.print-summary section{break-inside:avoid}}

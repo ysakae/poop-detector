@@ -24,6 +24,7 @@ MANAGEMENT_PAGES: tuple[tuple[str, str], ...] = (
     ("/manage/checks", "確認と診断"),
     ("/manage/models", "判定器とモデル"),
     ("/manage/storage", "動画の保存"),
+    ("/manage/export", "書き出しとバックアップ"),
     ("/manage/users", "ユーザー"),
     ("/manage/invite", "招待"),
     ("/manage/audit", "監査ログ"),

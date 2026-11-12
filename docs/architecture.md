@@ -10,7 +10,7 @@
 |---|---|---|
 | `detection/` | 中核 | 差分の判定（`difference.py`）、継続確認の状態遷移、監視範囲（ROI）、基準画像、監視ループ（`monitoring.py`） |
 | `capture/` | 中核 | カメラの映像の取得と再接続、GUI へのライブ映像 |
-| `records/` | 中核 | 検知イベントと排泄の記録の台帳、集計、SQLite の接続とスキーマの版 |
+| `records/` | 中核 | 検知イベントと排泄の記録の台帳、集計、CSV の書き出しと期間の集計（`export.py`）、バックアップと復元（`backup.py`）、SQLite の接続とスキーマの版 |
 | `video/` | 中核・任意 | 動画の台帳・録画・保持（中核）、動画の自動判定と判定器（任意） |
 | `features/` | 任意 | 犬の検出、見守り通知、トレー追従、行動マップ |
 | `experimental/` | 実験的 | トレー外検知（`outside.py`）、旋回分析（`circling.py`） |
@@ -34,7 +34,8 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 - GUI からの「今の前後の動画を保存」は `clips` テーブルへ `queued` 行を入れるだけで、監視側の `ClipCollector.poll()` が拾います。監視の生存は `capture_status` のハートビートで判定します。
 - ライブ映像は `LivePreview` が `.live-preview.jpg` を書き、GUI が `.live-preview-request` の更新時刻で要求を伝えます。
 - `activity.sqlite3` は行動マップ専用の別データベースです。
-- 排他は `fcntl.flock` のロックファイル（`.capture.lock`、`.review.lock`、`.activity.lock`）で行います。動画収集を伴う監視は同時に1プロセスだけです。
+- 排他は `fcntl.flock` のロックファイル（`.capture.lock`、`.review.lock`、`.activity.lock`）で行います。動画収集を伴う監視は同時に1プロセスだけです。`restore` はこの3つのロックを取れたときだけ、データの保存先を入れ替えます。
+- バックアップ（`records/backup.py`）は、データベースを SQLite のオンラインバックアップで一時ディレクトリに写し、セッション・登録用 URL・Web Push の購読をコピーから消して VACUUM してから ZIP に入れます。ZIP に入れてよい名前は `ALLOWED` の表で決め、復元はその表にない名前、目録とずれた中身、SHA-256 の合わないファイルを断ります。スキーマを変えたときは、`ALLOWED` と `SECRET_TABLES` に新しいファイルやテーブルを加えるかを確かめてください。
 
 ## CLI の構成
 
@@ -47,6 +48,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `commands/records.py` | `events`、`metrics`、`feedback`、`acknowledge`、`missed`、`record`、`records`、`gui` |
 | `commands/notify.py` | `test-notification` |
 | `commands/show_config.py`・`commands/diagnose.py` | `show-config`、`diagnose` |
+| `commands/backup.py` | `backup`、`restore` |
 | `commands/users.py` | `users`（GUI のユーザーの一覧、招待、役割の変更、復旧、無効化） |
 | `commands/review.py` | `video-review`、`circling-review` |
 | `commands/dog_model.py` | `setup-dog-model`、`check-dog` |
@@ -117,6 +119,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/settings_routes.py` | 管理 › 設定。`config.SETTINGS` の表から入力欄を並べ、確認してから保存する。保存とコメントの保持、直前の設定への復元は最上位の `settings_file.py` |
 | `gui/checks_routes.py` | 管理 › 確認と診断。通知のテスト送信・カメラの確認・診断情報を、CLI と同じ関数で行う |
 | `gui/models_routes.py` | 管理 › 判定器とモデル。判定器の状態と選び直し（設定の書き換えは `settings_file.py`）、比較の結果（`video/benchmark_results.py`）、犬検出モデルの状態（`features/dog_status.py`） |
+| `gui/export_routes.py` | 管理 › 書き出しとバックアップ。確定記録の CSV（`records/export.py`）、印刷用の集計、バックアップの作成（`records/backup.py`）。復元は CLI の `restore` だけで行う |
 | `gui/areas_routes.py`・`gui/snapshots.py` | 管理 › 範囲の登録。映像の上に描いた多角形で、監視範囲と基準画像・トレー外の範囲・床面を登録する。画面に見せた映像を ID で預かり、保存に使う |
 | `gui/themes.py` | デザインテーマ（プロフェッショナル・ワンちゃん）とライト・ダークの選択肢。人の選択と既定のテーマ（`gui.theme`）から表示を決める |
 | `gui/push_routes.py` | PWA のマニフェスト・Service Worker・アイコンと、Web Push の購読の登録・解除・受け取り方・テスト |
