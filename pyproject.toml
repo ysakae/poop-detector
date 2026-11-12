@@ -33,7 +33,7 @@ dependencies = [
     "starlette>=1.10.0",
     "uvicorn>=0.54.0",
     "webauthn>=3.0.1",
-    "ruamel-yaml>=0.18,<0.19",
+    "ruamel-yaml>=0.18,<0.20",
     "http-ece>=1.2,<2",
     "py-vapid>=1.9,<2",
 ]
