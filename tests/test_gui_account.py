@@ -86,15 +86,15 @@ def test_adding_a_passkey_goes_through_a_short_lived_enrollment_for_myself(gui):
 def test_invite_requires_a_public_https_url(gui):
     server, _, _ = gui
     cookie = login(server, "家族A")
-    status, _, page = exchange(server, "GET", "/account/invite", headers=cookie, auth=False)
+    status, _, page = exchange(server, "GET", "/manage/invite", headers=cookie, auth=False)
     assert status == 200
-    assert 'action="/account/invite"' in page.decode()
+    assert 'action="/manage/invite"' in page.decode()
     status, _, page = post(
         server,
         cookie,
-        "/account/invite",
+        "/manage/invite",
         {"name": "家族C", "email": "family@example.org", "role": "admin"},
-        page="/account/invite",
+        page="/manage/invite",
     )
     assert status == 400
     assert "gui.public_url" in page.decode()
@@ -110,9 +110,9 @@ def test_invite_rejects_invalid_emails(gui, email, monkeypatch):
     status, _, _ = post(
         server,
         cookie,
-        "/account/invite",
+        "/manage/invite",
         {"name": "家族C", "email": email, "role": "admin"},
-        page="/account/invite",
+        page="/manage/invite",
     )
     assert status == 400
 
@@ -120,9 +120,9 @@ def test_invite_rejects_invalid_emails(gui, email, monkeypatch):
 def test_members_cannot_invite(gui):
     server, _, _ = gui
     cookie = login(server, "家族B", role="member")
-    assert exchange(server, "GET", "/account/invite", headers=cookie, auth=False)[0] == 403
+    assert exchange(server, "GET", "/manage/invite", headers=cookie, auth=False)[0] == 403
     body = urlencode({"csrf": csrf(server, cookie), "name": "家族C"})
-    status, _, _ = exchange(server, "POST", "/account/invite", body, {**FORM, **cookie}, auth=False)
+    status, _, _ = exchange(server, "POST", "/manage/invite", body, {**FORM, **cookie}, auth=False)
     assert status == 403
 
 
@@ -148,15 +148,15 @@ def test_gui_email_invitation_failure_can_be_retried(gui, monkeypatch):
 
     monkeypatch.setattr(invitation_mail, "_send", send)
     fields = {"name": "招待される人", "email": "family@example.org", "role": "admin"}
-    assert post(server, cookie, "/account/invite", fields, page="/account/invite")[0] == 502
+    assert post(server, cookie, "/manage/invite", fields, page="/manage/invite")[0] == 502
     first = re.search(r"enroll\?code=([\w-]+)", messages[0])[1]
     assert server.app.accounts.enrollments.peek(first) is None
     status, _, response = post(
         server,
         cookie,
-        "/account/invite",
+        "/manage/invite",
         {"email": fields["email"], "action": "resend"},
-        page="/account/invite",
+        page="/manage/invite",
     )
     assert status == 200
     assert b"code=" not in response
@@ -192,7 +192,7 @@ def test_admin_searches_and_disables_by_email(gui):
     users = server.app.accounts.users
     target = users.create("対象", "member", email="target@example.org")
     users.create("表示しない", "member", email="other@example.org")
-    path = "/account/users"
+    path = "/manage/users"
     assert exchange(server, "GET", path, headers=member, auth=False)[0] == 403
     page = exchange(server, "GET", f"{path}?email=TARGET%40example.org", headers=admin, auth=False)[
         2

@@ -1,4 +1,4 @@
-"""自分のアカウント（パスキーの一覧・追加・削除）と、管理者による招待・ユーザー管理・監査ログの画面。
+"""自分のアカウント（パスキーの一覧・追加・削除）と、管理の中の招待・ユーザー・監査ログの画面。
 
 ルートの表への登録はこのモジュールを読み込んだときに行う（asgi.py が読み込む）。
 """
@@ -57,7 +57,6 @@ def _account_page(
         email_error=email_error,
         role=ROLES[user.role],
         keys=keys,
-        admin=user.role == "admin",
         deleted=first(query, "deleted") == "1",
     )
     handler.respond(status, page)
@@ -158,12 +157,12 @@ def _invite_page(handler: "Handler", status: int = 200, **context: object) -> No
     )
 
 
-@get("/account/invite", role="admin")
+@get("/manage/invite", role="admin")
 def invite_page(handler: "Handler", _query: Query) -> None:
     _invite_page(handler)
 
 
-@post("/account/invite", role="admin")
+@post("/manage/invite", role="admin")
 def invite(handler: "Handler", form: Form) -> None:
     admin = _signed_in(handler)
     app = handler.app
@@ -231,12 +230,12 @@ def _users_page(
     )
 
 
-@get("/account/users", role="admin")
+@get("/manage/users", role="admin")
 def users_page(handler: "Handler", query: Query) -> None:
     _users_page(handler, first(query, "email").strip())
 
 
-@post("/account/users", role="admin")
+@post("/manage/users", role="admin")
 def manage_user(handler: "Handler", form: Form) -> None:
     admin = _signed_in(handler)
     app = handler.app
@@ -275,7 +274,7 @@ def manage_user(handler: "Handler", form: Form) -> None:
         _users_page(handler, email, notice=notice)
 
 
-@get("/account/audit", role="admin")
+@get("/manage/audit", role="admin")
 def audit_page(handler: "Handler", _query: Query) -> None:
     entries = [
         {

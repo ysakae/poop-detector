@@ -82,7 +82,7 @@ def test_storage_cleanup_preserves_labels_links_and_newly_pinned_videos(gui):
     clips.assessments.save(positive, Assessment(label="urine"))
     clips.assessments.save(target, Assessment(label="none", reason="映像を確認しました"))
 
-    status, page = request(server, "GET", "/clips/storage")
+    status, page = request(server, "GET", "/manage/storage")
     assert status == 200
     assert "空く容量".encode() in page
     for clip_id in (target, pinned):
@@ -90,13 +90,13 @@ def test_storage_cleanup_preserves_labels_links_and_newly_pinned_videos(gui):
     for clip_id in (labeled, linked, positive, recent):
         assert f'value="{clip_id}"'.encode() not in page
     assert submit(server, "/clips/protect", {"id": pinned, "protected": "1"})[0] == 303
-    assert submit(server, "/clips/cleanup", {"id": target, "days": "7"})[0] == 400
+    assert submit(server, "/manage/storage/cleanup", {"id": target, "days": "7"})[0] == 400
     assert target_path.exists()
 
     assert (
         submit(
             server,
-            "/clips/cleanup",
+            "/manage/storage/cleanup",
             {
                 "id": [target, pinned, linked, labeled, positive, recent],
                 "days": "7",

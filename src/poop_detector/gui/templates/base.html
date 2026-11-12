@@ -1,6 +1,18 @@
-{#- すべての画面に共通の枠。値は自動でエスケープされる。 -#}
+{#- すべての画面に共通の枠。値は自動でエスケープされる。frame はログインしていない画面では None。 -#}
+{%- macro menu(items, label, css) -%}
+<nav class="{{ css }}" aria-label="{{ label }}"><ul>
+{%- for item in items -%}
+<li><a href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.text }}</a></li>
+{%- endfor -%}
+</ul></nav>
+{%- endmacro -%}
 <!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title><style>
 {% include "style.css" %}
-</style><header><div><h1>{{ title }}</h1><p>画像を確認して、検知結果にラベルを付けます。</p></div><span>このマシン内で保存 <a class="logout" href="/account">アカウント</a> <a class="logout" href="/logout">ログアウト</a></span></header><main>
+</style><header class="site-header"><h1>{{ title }}</h1>
+{%- if frame %}<p class="site-status"><span class="monitor monitor-{{ frame.monitor_state }}">監視：{{ frame.monitor }}</span> <a href="/account">{{ frame.person }}さん</a> <a href="/logout">ログアウト</a></p>{% endif -%}
+</header>
+{%- if frame %}{{ menu(frame.menu, "メインメニュー", "site-menu") }}{% endif -%}
+<main>
+{%- if frame and frame.management %}{{ menu(frame.management, "管理のメニュー", "sub-menu") }}{% endif -%}
 {%- block content %}{% endblock -%}
 </main></html>

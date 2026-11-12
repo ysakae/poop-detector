@@ -1,7 +1,7 @@
 {#- 確定した排泄の記録と、日別・時間帯別の集計。 -#}
 {% extends "base.html" %}
 {% block content %}
-<h2>排便・排尿の記録</h2><p><a href="/">画像の確認・記録の追加へ戻る</a></p>
+<h2>排便・排尿の記録</h2>
 <section class="record-stats" aria-labelledby="daily-stats-title"><h3 id="daily-stats-title">1日の排便・排尿回数</h3><form method="get" action="/records" class="toolbar"><label>集計日<input type="date" name="date" value="{{ stats.day }}" required></label><label>時間帯別の集計期間<select name="days">
 {%- for value in stats.periods -%}
 <option value="{{ value }}"{% if value == stats.period %} selected{% endif %}>{{ value }}日間</option>

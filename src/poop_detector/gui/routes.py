@@ -46,6 +46,13 @@ if TYPE_CHECKING:
     from .exchange import Exchange as Handler
 
 ASSETS = Path(__file__).with_name("static")
+# 管理の画面を /manage の下へまとめる前の URL（#86）。古いブックマークを新しい場所へ移す。
+MOVED_PAGES = {
+    "/clips/storage": "/manage/storage",
+    "/account/users": "/manage/users",
+    "/account/invite": "/manage/invite",
+    "/account/audit": "/manage/audit",
+}
 FILTERS = ("all", "unlabeled", "true", "false", "missed", "manual", "feces", "urine", "both")
 
 
@@ -148,11 +155,19 @@ def clips_page(handler: "Handler", query: Query) -> None:
     handler.respond(200, page)
 
 
-@get("/clips/storage", role="admin")
+@get("/manage/storage", role="admin")
 def storage_page(handler: "Handler", query: Query) -> None:
     app = handler.app
     page = render_storage(app.clips, handler.csrf, query, app.disk_mb, title=app.title)
     handler.respond(200, page)
+
+
+@get(*MOVED_PAGES)
+def moved_page(handler: "Handler", _query: Query) -> None:
+    """移した画面へ 301 で移す。役割は移った先のルートが確かめる。"""
+    url = urlsplit(handler.path)
+    target = MOVED_PAGES[url.path]
+    handler.redirect(f"{target}?{url.query}" if url.query else target, status=301)
 
 
 @get("/clips/capacity")
@@ -299,9 +314,9 @@ def logout(handler: "Handler", _form: Form) -> None:
         handler.app.sessions.revoke(session_id)
     page = message_page(
         "ログアウトしました",
-        "もう一度使うには、GUI を起動した端末に表示されたトークン付きの URL を開いてください。",
-        "/",
-        "トップへ",
+        "もう一度使うには、ログインの画面からパスキーでログインしてください。",
+        "/login",
+        "ログインの画面へ",
         title=handler.app.title,
         wrap_link=True,
     )
@@ -472,7 +487,7 @@ def clip_form(handler: "Handler", form: Form) -> None:
         audit(handler, "clip.unprotect", form.fields.get("id", ""))
 
 
-@post("/clips/cleanup", role="admin")
+@post("/manage/storage/cleanup", role="admin")
 def clip_cleanup(handler: "Handler", form: Form) -> None:
     """選んだ古い動画の録画ファイルを消す。"""
     _clip_post(handler, form)

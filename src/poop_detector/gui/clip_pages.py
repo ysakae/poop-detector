@@ -392,12 +392,12 @@ def handle_clip_post(
     """/clips/ 以下のフォームを処理し、成功したら一覧へ戻す。"""
     store = ClipStore(root)
     try:
-        if handler.path == "/clips/cleanup":
+        if handler.path == "/manage/storage/cleanup":
             if fields.get("confirm") != "1":
                 raise ValueError("削除の確認欄にチェックを入れてください")
             days = retention_days(fields.get("days", ""))
             removed, skipped = cleanup_selected(store, selected_ids, days)
-            handler.redirect(f"/clips/storage?days={days}&removed={removed}&skipped={skipped}")
+            handler.redirect(f"/manage/storage?days={days}&removed={removed}&skipped={skipped}")
             return
         if handler.path == "/clips/request":
             clip_id = store.request(require_live=True)
@@ -425,11 +425,11 @@ def handle_clip_post(
         from .pages import message_page
 
         # ValueError の文言はこのパッケージで書いたもので、テンプレートがエスケープする。
-        if handler.path == "/clips/cleanup":
+        if handler.path == "/manage/storage/cleanup":
             page = message_page(
                 "動画を整理できませんでした",
                 str(error),
-                "/clips/storage",
+                "/manage/storage",
                 "録画の整理へ戻る",
                 title=title,
                 wrap_link=True,

@@ -9,6 +9,8 @@ from typing import Any
 
 from jinja2 import Environment, PackageLoader, StrictUndefined
 
+from .navigation import Viewer, frame_for
+
 ENVIRONMENT = Environment(
     loader=PackageLoader("poop_detector.gui", "templates"),
     autoescape=True,
@@ -18,11 +20,15 @@ ENVIRONMENT = Environment(
 )
 
 
-# 画面を見ている人が管理者か。asgi.dispatch がルートを呼ぶスレッドで設定する。
-# テンプレートは viewer_admin で管理者だけの操作の入口を出し分ける（拒否はサーバーで行う）。
-VIEWER_ADMIN: ContextVar[bool] = ContextVar("viewer_admin", default=False)
+# 画面を見ている人。asgi.dispatch がルートを呼ぶスレッドで設定する（ログインしていなければ None）。
+# テンプレートは frame で共通の枠を、viewer_admin で管理者だけの操作の入口を出し分ける
+# （拒否はサーバーで行う）。
+VIEWER: ContextVar[Viewer | None] = ContextVar("viewer", default=None)
 
 
 def render_template(name: str, **context: Any) -> str:
     """templates/ のテンプレートを描画する。"""
-    return ENVIRONMENT.get_template(name).render(viewer_admin=VIEWER_ADMIN.get(), **context)
+    viewer = VIEWER.get()
+    return ENVIRONMENT.get_template(name).render(
+        viewer_admin=viewer is not None and viewer.admin, frame=frame_for(viewer), **context
+    )

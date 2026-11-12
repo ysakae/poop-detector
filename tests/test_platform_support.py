@@ -84,7 +84,7 @@ def test_gui_header_does_not_assume_mac(tmp_path):
         server.server_close()
         thread.join()
     assert "Mac" not in page
-    assert "このマシン内で保存" in page
+    assert "メインメニュー" in page
 
 
 def test_any_submodule_import_silences_opencv_logs_first():

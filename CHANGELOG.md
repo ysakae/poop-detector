@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### 変更
+
+- GUI のすべての画面に共通の枠（監視の状態、ログイン中の人、メインメニュー、管理のメニュー）を付け、スマートフォンの幅でも押しやすくする
+- 管理者の画面を `/manage` の下にまとめる（`/manage/storage`・`/manage/users`・`/manage/invite`・`/manage/audit`）。古い URL は新しい URL へ移す
+- 画面の配置と遷移、CLI に残す操作を [画面の構成](docs/screens.md) にまとめる
+
 ## [0.1.0] - 未リリース
 
 最初の公開バージョンです。

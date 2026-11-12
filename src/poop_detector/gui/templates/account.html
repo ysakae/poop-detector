@@ -3,7 +3,7 @@
 {% from "_macros.html" import csrf_field %}
 {% block content %}
 <h2>アカウント</h2>
-<p>{{ person }}さん（{{ role }}）でログインしています。<a href="/">トップへ戻る</a></p>
+<p>{{ person }}さん（{{ role }}）でログインしています。</p>
 {% if deleted %}<p class="saved" role="status">パスキーを削除しました。</p>{% endif %}
 <h3>メールアドレス</h3>
 {% if email_error %}<p class="error" role="alert">{{ email_error }}</p>{% endif %}
@@ -30,8 +30,4 @@
 {% endfor %}
 </tbody></table>
 <form method="post" action="/account/passkeys/add">{{ csrf_field(token) }}<button>この端末にパスキーを追加する</button></form>
-{% if admin %}
-<h3>管理者の操作</h3>
-<p><a href="/account/invite">家族を招待する</a> · <a href="/account/users">ユーザー管理</a> · <a href="/account/audit">監査ログ</a></p>
-{% endif %}
 {% endblock %}

@@ -53,7 +53,7 @@ def test_admin_changes_roles_from_the_gui(gui):
     admin = login(server, "管理者")
     users = server.app.accounts.users
     target = users.create("家族B", "member", email="b@example.org")
-    path = "/account/users"
+    path = "/manage/users"
     fields = {"email": "b@example.org", "action": "role", "role": "admin"}
     assert post(server, admin, path, fields, page=path)[0] == 200
     assert users.get(target).role == "admin"
@@ -69,7 +69,7 @@ def test_gui_refuses_to_demote_the_last_admin(gui):
     # メールアドレスでしか操作できないので、自分にアドレスをひも付ける。
     with server.app.accounts.users.database.connect() as db:
         db.execute("UPDATE users SET email = 'me@example.org' WHERE id = ?", (me.id,))
-    path = "/account/users"
+    path = "/manage/users"
     fields = {"email": "me@example.org", "action": "role", "role": "member"}
     status, _, body = post(server, admin, path, fields, page=path)
     assert status == 400
@@ -100,10 +100,10 @@ def test_admin_operations_appear_in_the_audit_page(gui):
     assert post(server, admin, "/manage/tray", {"action": "begin"}, page="/manage")[0] == 303
     users = server.app.accounts.users
     users.create("家族B", "member", email="b@example.org")
-    path = "/account/users"
+    path = "/manage/users"
     post(server, admin, path, {"email": "b@example.org", "action": "disable"}, page=path)
     post(server, admin, "/clips/protect", {"id": "x", "protected": "0"}, page="/clips")
-    status, _, body = exchange(server, "GET", "/account/audit", headers=admin, auth=False)
+    status, _, body = exchange(server, "GET", "/manage/audit", headers=admin, auth=False)
     page = body.decode()
     assert status == 200
     assert "管理者A" in page
@@ -123,7 +123,7 @@ def test_invitations_are_audited_without_the_link(gui, monkeypatch):
     monkeypatch.setattr(invitation_mail, "_send", lambda *_args: None)
     admin = login(server, "管理者")
     fields = {"name": "家族C", "email": "c@example.org", "role": "member"}
-    assert post(server, admin, "/account/invite", fields, page="/account/invite")[0] == 200
+    assert post(server, admin, "/manage/invite", fields, page="/manage/invite")[0] == 200
     enrollment = server.app.accounts.enrollments
     entry = server.app.accounts.audit.recent()[0]
     assert (entry.action, entry.actor) == ("user.invite", "管理者")
@@ -139,7 +139,7 @@ def test_admin_who_becomes_a_member_returns_to_the_top(gui):
     users = server.app.accounts.users
     with users.database.connect() as db:
         db.execute("UPDATE users SET email = 'me@example.org' WHERE name = '管理者'")
-    path = "/account/users"
+    path = "/manage/users"
     fields = {"email": "me@example.org", "action": "role", "role": "member"}
     status, headers, _ = post(server, me, path, fields, page=path)
     assert (status, headers["Location"]) == (303, "/")
