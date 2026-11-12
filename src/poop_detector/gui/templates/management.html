@@ -43,5 +43,16 @@
 {% endif %}
 </section>
 </div>
+<section aria-labelledby="outages-heading">
+<h3 id="outages-heading">直近の停止</h3>
+<p class="note">監視の停止とカメラの不調が、設定の watchdog.minutes 以上続いたときの記録です（新しい順）。停止を知らせる通知は同じ停止で1回だけ送り、復旧したら長さと合わせて知らせます。</p>
+<div class="table-scroll"><table class="data-table"><thead><tr><th>種類</th><th>始まり</th><th>終わり</th><th>長さ</th><th>通知</th></tr></thead><tbody>
+{% for outage in outages %}
+<tr><td>{{ outage.kind }}</td><td>{{ outage.started }}</td><td>{{ outage.ended }}</td><td>{{ outage.duration }}</td><td>{{ outage.notified }}</td></tr>
+{% else %}
+<tr><td colspan="5">記録された停止はありません。</td></tr>
+{% endfor %}
+</tbody></table></div>
+</section>
 <script defer src="/assets/management.js"></script>
 {% endblock %}

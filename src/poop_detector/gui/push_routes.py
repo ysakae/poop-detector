@@ -86,10 +86,13 @@ def unsubscribe(handler: "Handler", form: Form) -> None:
 
 @post("/account/push/preferences")
 def preferences(handler: "Handler", form: Form) -> None:
+    user = _user(handler)
     handler.app.accounts.users.set_push(
-        _user(handler).id,
+        user.id,
         alerts=form.fields.get("alerts") == "1",
         early=form.fields.get("early") == "1",
+        # 監視の異常の通知は管理者だけに届くので、管理者だけが選べる。
+        watchdog=form.fields.get("watchdog") == "1" if user.role == "admin" else None,
     )
     handler.redirect("/account?push_saved=1")
 

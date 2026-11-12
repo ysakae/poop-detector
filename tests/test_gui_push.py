@@ -141,3 +141,21 @@ def test_test_push_goes_only_to_my_devices(gui, monkeypatch):
     assert status == 400
     assert "この端末で通知を受け取る" in body.decode()
     assert other
+
+
+def test_only_admins_choose_watchdog_alerts(gui):
+    """監視の異常の通知は管理者だけが選べる。一般ユーザーの保存では変わらない（#91）。"""
+    server, _, _ = gui
+    member = login(server, "家族B", role="member")
+    assert 'name="watchdog"' not in page(server, member)
+    post(server, member, "/account/push/preferences", {"alerts": "1", "watchdog": "1"})
+    users = server.app.accounts.users
+    assert users.by_name("家族B").push_watchdog is True
+
+    admin = login(server, "管理者B", role="admin")
+    assert 'name="watchdog" value="1" checked' in page(server, admin)
+    post(server, admin, "/account/push/preferences", {"alerts": "1"})
+    assert users.by_name("管理者B").push_watchdog is False
+    post(server, admin, "/account/push/preferences", {"watchdog": "1"})
+    user = users.by_name("管理者B")
+    assert (user.push_alerts, user.push_watchdog) == (False, True)

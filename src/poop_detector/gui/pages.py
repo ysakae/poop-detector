@@ -5,6 +5,7 @@ from datetime import date
 from typing import Any, TypeAlias
 from urllib.parse import urlencode
 
+from ..features.outages import OUTAGE_KINDS, Outage, format_duration
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
 from ..records.record_stats import summarize_records
 from ..timezones import local_today, parse_local, timezone_label, to_local
@@ -27,6 +28,20 @@ def local_time(value: str | None, form: bool = False) -> str:
         return ""
     stamp = to_local(value)
     return stamp.strftime("%Y-%m-%dT%H:%M:%S" if form else "%Y/%m/%d %H:%M:%S")
+
+
+def outage_rows(outages: Iterable[Outage]) -> list[dict[str, str]]:
+    """管理 › 稼働状況の「直近の停止」の行。続いている停止はいままでの長さを出す。"""
+    return [
+        {
+            "kind": OUTAGE_KINDS.get(outage.kind, outage.kind),
+            "started": local_time(outage.started_at),
+            "ended": local_time(outage.ended_at) if outage.ended_at else "継続中",
+            "duration": format_duration(outage.seconds()),
+            "notified": "送信済み" if outage.notified_at else "未送信",
+        }
+        for outage in outages
+    ]
 
 
 def parse_time(value: str | None) -> str | None:

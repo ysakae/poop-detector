@@ -66,6 +66,8 @@ def _account_page(
         push_key=app.push_keys.public_key(),
         push_alerts=user.push_alerts,
         push_early=user.push_early,
+        push_watchdog=user.push_watchdog,
+        admin=user.role == "admin",
         push_devices=len(app.push_subscriptions.for_user(user.id)),
         push_saved=first(query, "push_saved") == "1",
         deleted=first(query, "deleted") == "1",

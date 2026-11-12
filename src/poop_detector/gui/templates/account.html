@@ -27,6 +27,7 @@
 <form method="post" action="/account/push/preferences">{{ csrf_field(token) }}
 <p><label><input type="checkbox" name="alerts" value="1"{% if push_alerts %} checked{% endif %}> 排便・排尿の候補の通知を受け取る</label></p>
 <p><label><input type="checkbox" name="early" value="1"{% if push_early %} checked{% endif %}> 見守り通知（トイレでの滞在）も受け取る</label></p>
+{% if admin %}<p><label><input type="checkbox" name="watchdog" value="1"{% if push_watchdog %} checked{% endif %}> 監視の停止とカメラの不調の通知を受け取る（管理者だけ）</label></p>{% endif %}
 <p class="toolbar"><button class="secondary">受け取り方を保存</button></p></form>
 <form method="post" action="/account/push/test">{{ csrf_field(token) }}<button class="secondary">自分の端末に通知を試す</button></form>
 </section>
