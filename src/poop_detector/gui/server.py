@@ -17,7 +17,7 @@ import threading
 import webbrowser
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -37,6 +37,7 @@ from .pages import page_title
 from .passkeys import PasskeyAuth
 from .rate_limit import RateLimits
 from .sessions import SessionPolicy, SessionStore
+from .snapshots import Snapshots
 
 logger = logging.getLogger(__name__)
 DEFAULT_LIMITS = RateLimits()
@@ -64,6 +65,8 @@ class GuiApp:
     disk_mb: float
     # 管理 › 設定で書き換える設定ファイル。None なら設定の画面は表示だけ（テストなど）。
     config_path: Path | None = None
+    # 範囲の登録で画面に見せた映像の一時置き場（保存にはその映像を使う）。
+    snapshots: Snapshots = field(default_factory=Snapshots)
 
     def csrf_for(self, session_id: str) -> str:
         """セッションの CSRF トークン。セッションの ID と鍵の HMAC で、ID そのものは出さない。"""

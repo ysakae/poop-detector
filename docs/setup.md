@@ -130,7 +130,7 @@ ROI を変更した場合も基準を再登録してください。異なる ROI
 
 範囲を指定する `setup-roi`（`--polygon`、`--outside` を含む）と `setup-activity-map` はウィンドウを開くため、画面が必要です。画面のない Linux（サーバーや Docker）で実行すると、案内を表示して終了します。`capture-baseline` はウィンドウを開かないので、画面がなくても実行できます。
 
-画面のない環境では、次の手順で準備してください。
+画面のない環境では、GUI の「管理 › 範囲の登録」を使うのが簡単です。ほかの端末のブラウザーで GUI を開き、映像の上に範囲を描いて登録できます（[画面の構成](screens.md#管理--範囲の登録)）。CLI で準備する場合は、次の手順です。
 
 1. 画面のあるマシン（Mac など）に同じリポジトリを用意し、同じカメラにつないで `setup-roi` を実行します。行動マップを使うなら `setup-activity-map` も実行します。
 2. できた `data/roi.json`（トレー外の検知を使うなら `data/outside-roi.json`、行動マップを使うなら `data/activity-layout.json` と `data/activity-*.jpg` も）を、監視するマシンの `data/` へコピーします。
