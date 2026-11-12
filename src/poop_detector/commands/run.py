@@ -10,7 +10,13 @@ from typing import TYPE_CHECKING
 from ..capture.camera import LatestCamera
 from ..capture.live_preview import LivePreview
 from ..config import Config, check_monitor_features, load_connection_settings, with_flags
-from ..detection.monitoring import Monitor, dog_observer_from_config, monitor, standard_extensions
+from ..detection.monitoring import (
+    Monitor,
+    MonitorExtension,
+    dog_observer_from_config,
+    monitor,
+    standard_extensions,
+)
 from ..detection.roi import AnyROI
 from ..detection.scene import scene_signature
 from ..features.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
@@ -27,7 +33,9 @@ from .context import (
     load_outside_roi,
     load_scene,
     load_tray_tracker,
+    monitor_watchdog,
     open_camera,
+    outage_tracker,
     with_web_push,
 )
 from .review import ready_judge
@@ -177,6 +185,8 @@ def watch(
             )
             stack.enter_context(review.watch())
         if args.gui:
+            # 同じプロセスの GUI からも、監視ループが止まっていないかを見張る。
+            stack.enter_context(monitor_watchdog(context, notifier))
             web = WebOptions.from_config(config, port=args.gui_port)
             stack.enter_context(
                 background_gui(
@@ -189,6 +199,7 @@ def watch(
                     config_path=args.config,
                 )
             )
+        watchdog = camera_watchdog(context, notifier)
         live = stack.enter_context(LatestCamera(open_camera(source, config), on_frame))
         live.wait_ready(config.timeout_ms / 1000 + 1)
 
@@ -214,7 +225,9 @@ def watch(
                     activity_map=activity,
                 )
                 scenes[scene_signature(scene.baseline, scene.roi)] = scene
-                engine.replace_scene(scene.roi, scene.baseline, scene.tracker, extensions)
+                engine.replace_scene(
+                    scene.roi, scene.baseline, scene.tracker, [*extensions, *watchdog]
+                )
             paused = registration.status()["phase"] in (
                 "begin",
                 "paused",
@@ -242,5 +255,17 @@ def watch(
             on_tray_state=preview.set_tray_state,
             outside_roi=outside_roi,
             activity_map=activity,
+            extensions=watchdog,
         )
+        # 自分で終了したことを残し、GUI の見張りが停止として知らせないようにする。
+        preview.mark_stopped()
     return 0
+
+
+def camera_watchdog(context: CommandContext, notifier: "ToiletNotifier") -> list[MonitorExtension]:
+    """カメラの映像が watchdog.minutes 届かなければ知らせる拡張（無効なら空）。"""
+    if not context.config.watchdog_enabled:
+        return []
+    from ..features.watchdog import CameraWatchdogExtension
+
+    return [CameraWatchdogExtension(outage_tracker(context, "camera", notifier))]

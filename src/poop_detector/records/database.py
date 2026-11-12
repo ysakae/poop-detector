@@ -250,6 +250,26 @@ def migrate_to_v9(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE users ADD COLUMN push_early INTEGER NOT NULL DEFAULT 0")
 
 
+def migrate_to_v10(db: sqlite3.Connection) -> None:
+    """監視の停止とカメラの不調の履歴（outages）と、管理者の見張りの通知の受け取りの選択。
+
+    kind は monitor（監視の停止）か camera（カメラの不調）。ended_at が NULL の行は続いている停止で、
+    種類ごとに1行までにする。時刻は UTC の ISO 8601。
+    """
+    db.execute(
+        """CREATE TABLE outages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL CHECK (kind IN ('monitor', 'camera')),
+            started_at TEXT NOT NULL,
+            notified_at TEXT,
+            ended_at TEXT
+        )"""
+    )
+    db.execute("CREATE INDEX outages_by_start ON outages(started_at)")
+    db.execute("CREATE UNIQUE INDEX outages_open ON outages(kind) WHERE ended_at IS NULL")
+    db.execute("ALTER TABLE users ADD COLUMN push_watchdog INTEGER NOT NULL DEFAULT 1")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -261,6 +281,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v7,
     migrate_to_v8,
     migrate_to_v9,
+    migrate_to_v10,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

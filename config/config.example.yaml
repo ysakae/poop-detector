@@ -45,6 +45,13 @@ detection:
 notifications:
   enabled: true
 
+# 監視の停止とカメラの不調を、通知先と管理者の Web Push に知らせる見張り
+# （カメラは監視が、監視の停止は GUI のサーバーが見張る）
+watchdog:
+  enabled: true
+  # 停止や不調がこの分数続いたら知らせる（同じ停止では1回だけ。復旧したら長さと合わせて知らせる）
+  minutes: 5
+
 # 見守り通知（features.early_alert）の調整
 early_alert:
   # 同じ場所にこの秒数とどまったら通知する

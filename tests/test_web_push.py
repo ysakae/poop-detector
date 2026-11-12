@@ -256,3 +256,25 @@ def test_monitoring_sends_through_web_push_too(tmp_path):
     assert push.subject == "mailto:poop-detector@localhost"
     assert combined.send()
     assert primary.messages
+
+
+def test_watchdog_alerts_go_only_to_admins_who_want_them(push):
+    """監視の停止とカメラの不調は、管理者だけに届け、開くと管理の画面に移る（#91）。"""
+    from datetime import UTC, datetime
+
+    member, admin, quiet, gone = (Receiver(f"{ENDPOINT}-{n}") for n in range(4))
+    subscribe(push, "家族", member)
+    for name, receiver in (("管理者", admin), ("受け取らない管理者", quiet), ("無効", gone)):
+        user_id = push.users.create(name, "admin")
+        push.subscriptions.add(user_id, receiver.endpoint, receiver.p256dh, receiver.auth_b64)
+    push.users.set_push(
+        push.users.by_name("受け取らない管理者").id, alerts=True, early=False, watchdog=False
+    )
+    push.users.disable(push.users.by_name("無効").id)
+    send = opener()
+    assert notifier(push, send).send_outage("camera", datetime(2026, 11, 12, tzinfo=UTC))
+    ((request, _),) = send.requests
+    assert request.full_url == admin.endpoint
+    payload = admin.decrypt(request.data)
+    assert payload["url"] == "/manage"
+    assert "カメラの映像が届いていません" in payload["body"]

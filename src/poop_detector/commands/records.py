@@ -7,7 +7,7 @@ from datetime import datetime
 from ..errors import InvalidInputError
 from ..records.events import Store
 from ..web_address import WebOptions
-from .context import CommandContext
+from .context import CommandContext, build_notifier, monitor_watchdog, with_web_push
 
 
 def require_timezones(args: argparse.Namespace) -> None:
@@ -77,16 +77,20 @@ def record(args: argparse.Namespace, context: CommandContext) -> int:
 
 
 def gui(args: argparse.Namespace, context: CommandContext) -> int:
+    from ..config import load_connection_settings
     from ..gui.server import serve
 
     web = WebOptions.from_config(context.config, port=args.port)
-    serve(
-        context.root,
-        web.port,
-        not args.no_browser,
-        disk_mb=context.config.clip_disk_mb,
-        pet_name=context.config.pet_name,
-        web=web,
-        config_path=args.config,
-    )
+    # 監視の停止は、止まった監視の代わりに GUI のサーバーが知らせる。
+    primary, _ = build_notifier(context.config, load_connection_settings(), sends=True)
+    with monitor_watchdog(context, with_web_push(primary, context)):
+        serve(
+            context.root,
+            web.port,
+            not args.no_browser,
+            disk_mb=context.config.clip_disk_mb,
+            pet_name=context.config.pet_name,
+            web=web,
+            config_path=args.config,
+        )
     return 0
