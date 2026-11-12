@@ -48,3 +48,26 @@ def test_management_changes_require_a_session_and_csrf_token(gui):
     for auth in (False, True):
         assert request(server, "POST", "/manage/tray", "action=begin", auth=auth)[0] == 403
     assert TrayRegistration(server.app.root).status()["phase"] == "idle"
+
+
+def test_management_lists_recent_outages(gui):
+    """稼働状況に、直近の監視の停止とカメラの不調を新しい順に出す（#91）。"""
+    from poop_detector.features.outages import OutageLog
+    from poop_detector.records.database import events_database
+
+    server, _, _ = gui
+    body = request(server, "GET", "/manage")[1].decode()
+    assert "記録された停止はありません" in body
+    log = OutageLog(events_database(server.app.root))
+    camera, _ = log.begin("camera", "2026-11-12T00:00:00+00:00")
+    log.mark_notified(camera.id, "2026-11-12T00:05:00+00:00")
+    log.end(camera.id, "2026-11-12T01:05:00+00:00")
+    log.begin("monitor", "2026-11-12T02:00:00+00:00")
+    body = request(server, "GET", "/manage")[1].decode()
+    history = body[body.index("直近の停止") :]
+    assert history.index("監視") < history.index("カメラ")
+    assert "2026/11/12 09:00:00" in history
+    assert "約1時間5分" in history
+    assert "継続中" in history
+    assert "送信済み" in history
+    assert "未送信" in history

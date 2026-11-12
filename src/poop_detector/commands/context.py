@@ -3,16 +3,19 @@
 import argparse
 import logging
 import platform
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 
 from ..capture.camera import Camera
+from ..capture.live_preview import LivePreview
 from ..config import Config
 from ..detection.roi import ROI, AnyROI
 from ..detection.scene import load_baseline
 from ..errors import SetupRequiredError, UserError
+from ..features.outages import OutageKind, OutageLog, OutageTracker
 from ..features.tray_registration import TrayRegistration
 from ..features.tray_tracking import TrayTracker
 from ..frames import Frame
@@ -127,6 +130,27 @@ def with_web_push(notifier: ToiletNotifier, context: CommandContext) -> ToiletNo
         pet_name=config.pet_name,
     )
     return FanOutNotifier([notifier, push])
+
+
+def outage_tracker(
+    context: CommandContext, kind: OutageKind, notifier: ToiletNotifier
+) -> OutageTracker:
+    """設定の watchdog.minutes 続いた停止を、notifier で知らせる見張りの状態。"""
+    log = OutageLog(events_database(context.root))
+    return OutageTracker(log, kind, context.config.watchdog_minutes * 60, notifier)
+
+
+@contextmanager
+def monitor_watchdog(context: CommandContext, notifier: ToiletNotifier) -> Iterator[None]:
+    """GUI のサーバーの間、監視のハートビートを見張る（watchdog.enabled が false なら何もしない）。"""
+    if not context.config.watchdog_enabled:
+        yield
+        return
+    from ..features.watchdog import MonitorWatchdog, watching
+
+    tracker = outage_tracker(context, "monitor", notifier)
+    with watching(MonitorWatchdog(LivePreview(context.root), tracker).check):
+        yield
 
 
 def build_notifier(

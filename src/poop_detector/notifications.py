@@ -5,10 +5,12 @@ import logging
 import re
 import subprocess
 from collections.abc import Callable, Sequence
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+from .features.outages import format_duration
 from .records.events import EXCRETION_TYPES
 
 DEFAULT_NTFY_SERVER = "https://ntfy.sh"
@@ -58,8 +60,36 @@ class ToiletNotifier:
             f"動画の自動判定で{place}{EXCRETION_TYPES[label]}の候補が見つかりました。{detail}"
         )
 
+    def send_outage(self, kind: str, since: datetime) -> bool:
+        """監視の停止（monitor）かカメラの不調（camera）を知らせる。since は始まった時刻。"""
+        start = since.astimezone().strftime("%m/%d %H:%M")
+        if kind == "monitor":
+            message = (
+                f"{self.owner}トイレの監視が{start}から止まっています。"
+                "監視するマシンを確認してください。"
+            )
+        else:
+            message = (
+                f"{start}からカメラの映像が届いていません。"
+                "カメラの電源とネットワークを確認してください。"
+            )
+        return self.enabled and self._deliver_watchdog(message)
+
+    def send_recovery(self, kind: str, seconds: float) -> bool:
+        """停止からの復旧を、止まっていた長さと合わせて知らせる。"""
+        duration = format_duration(seconds)
+        if kind == "monitor":
+            message = f"{self.owner}トイレの監視が再開しました。{duration}止まっていました。"
+        else:
+            message = f"カメラの映像が戻りました。{duration}届いていませんでした。"
+        return self.enabled and self._deliver_watchdog(message)
+
     def _display(self, message: str, *, early_alert: bool = False) -> bool:
         return self.enabled and self._deliver(message, early_alert=early_alert)
+
+    def _deliver_watchdog(self, message: str) -> bool:
+        """監視の見張りの通知を送る。既定ではトイレの通知と同じ送り先へ送る。"""
+        return self._deliver(message, early_alert=False)
 
     def _deliver(self, message: str, *, early_alert: bool) -> bool:
         """通知を1件送り、受け付けられたら True を返す。"""
@@ -79,6 +109,12 @@ class FanOutNotifier(ToiletNotifier):
     def _deliver(self, message: str, *, early_alert: bool) -> bool:
         results = [
             notifier._display(message, early_alert=early_alert) for notifier in self.notifiers
+        ]
+        return any(results)
+
+    def _deliver_watchdog(self, message: str) -> bool:
+        results = [
+            notifier.enabled and notifier._deliver_watchdog(message) for notifier in self.notifiers
         ]
         return any(results)
 

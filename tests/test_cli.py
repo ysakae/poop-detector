@@ -578,8 +578,21 @@ def test_run_switches_tray_in_the_same_camera_session(cli_env, monkeypatch, caps
             self.on_frame(frame, self.generation)
             return frame
 
+    from poop_detector.detection.monitoring import Monitor
+    from poop_detector.features.watchdog import CameraWatchdogExtension
+
+    replaced = []
+    original = Monitor.replace_scene
+
+    def replace_scene(self, roi, baseline, tracker, extensions):
+        replaced.append([type(extension) for extension in extensions])
+        original(self, roi, baseline, tracker, extensions)
+
+    monkeypatch.setattr(Monitor, "replace_scene", replace_scene)
     monkeypatch.setattr(run, "LatestCamera", CameraSession)
     assert cli_env.run("run", "--max-frames", "8") == 0
+    # トレーを交換しても、カメラの見張りは続ける。
+    assert replaced == [[CameraWatchdogExtension]]
     assert cli_env.run("tray-registration", "status") == 0
     assert "反映しました" in capsys.readouterr().out
     context_after = context.CommandContext(Config(data_dir=str(cli_env.root)))
@@ -587,3 +600,38 @@ def test_run_switches_tray_in_the_same_camera_session(cli_env, monkeypatch, caps
     assert roi == new_roi
     assert (image == new_roi.crop(new_baseline)).all()
     assert Store(cli_env.root).list() == []
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_run_watches_the_camera_and_marks_a_clean_stop(cli_env, monkeypatch, enabled):
+    """監視は、カメラの見張り（#91）を拡張として差し込み、終了したことを GUI の見張りへ残す。"""
+    from poop_detector.capture.live_preview import LivePreview
+    from poop_detector.commands import run
+    from poop_detector.features.watchdog import CameraWatchdogExtension
+
+    write_config(
+        cli_env, f"clips: {{enabled: false}}\nwatchdog: {{enabled: {str(enabled).lower()}}}\n"
+    )
+    use_camera(cli_env, register_scene(cli_env))
+    seen = []
+
+    def monitor(*args, **kwargs):
+        seen.append([type(extension) for extension in kwargs["extensions"]])
+        LivePreview(cli_env.root).pulse(True)
+
+    monkeypatch.setattr(run, "monitor", monitor)
+    assert cli_env.run("run", "--max-frames", "1") == 0
+    assert seen == [[CameraWatchdogExtension] if enabled else []]
+    assert LivePreview(cli_env.root).monitor_heartbeat()[0] == "stopped"
+
+
+def test_gui_command_watches_the_monitor(cli_env, monkeypatch):
+    from poop_detector.gui import server
+
+    checks = []
+    monkeypatch.setattr(
+        "poop_detector.features.watchdog.MonitorWatchdog.check", lambda self: checks.append(1)
+    )
+    monkeypatch.setattr(server, "serve", lambda *args, **kwargs: None)
+    assert cli_env.run("gui", "--no-browser") == 0
+    assert checks

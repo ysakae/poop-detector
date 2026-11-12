@@ -28,11 +28,13 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
   - `video.clip_reviews.CirclingReviews`：旋回候補
   - `video.clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
+  - `features.outages.OutageLog`：監視の停止とカメラの不調の履歴（`outages`）
   - `video.clip_storage`：保持期間・保護・整理
 
   接続とスキーマは `records/database.py` が管理します。スキーマの版を `PRAGMA user_version` に記録し、開くときに未適用の移行処理を順に適用します（版管理を入れる前のデータベースは版0として扱い、版1への移行でいまの形にそろえます）。
 - GUI からの「今の前後の動画を保存」は `clips` テーブルへ `queued` 行を入れるだけで、監視側の `ClipCollector.poll()` が拾います。監視の生存は `capture_status` のハートビートで判定します。
 - ライブ映像は `LivePreview` が `.live-preview.jpg` を書き、GUI が `.live-preview-request` の更新時刻で要求を伝えます。
+- 監視は `LivePreview.pulse` で `.live-preview-monitor` に稼働状態を書き、自分で終了したときは `mark_stopped` で `stopped` を残します。GUI のサーバーはこのファイルの更新時刻を見張り、途絶えたら監視の停止として知らせます（下の「監視の停止とカメラの不調の見張り」）。
 - `activity.sqlite3` は行動マップ専用の別データベースです。
 - 排他は `fcntl.flock` のロックファイル（`.capture.lock`、`.review.lock`、`.activity.lock`）で行います。動画収集を伴う監視は同時に1プロセスだけです。`restore` はこの3つのロックを取れたときだけ、データの保存先を入れ替えます。
 - バックアップ（`records/backup.py`）は、データベースを SQLite のオンラインバックアップで一時ディレクトリに写し、セッション・登録用 URL・Web Push の購読をコピーから消して VACUUM してから ZIP に入れます。ZIP に入れてよい名前は `ALLOWED` の表で決め、復元はその表にない名前、目録とずれた中身、SHA-256 の合わないファイルを断ります。スキーマを変えたときは、`ALLOWED` と `SECRET_TABLES` に新しいファイルやテーブルを加えるかを確かめてください。
@@ -75,6 +77,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `EarlyAlertExtension` | `--early-alert` | 録画を待たない滞在通知 |
 | `DogExtension` | `--dog`、`--detect-outside` | 犬が ROI に重なる間や推論エラーの間は `occupied` に上書きし、入退場とトレー外の滞在で動画を保存する |
 | `ActivityExtension` | `--activity-map` | 位置合わせ前の映像で犬の位置を記録する。中断は接続の途切れだけで区切る |
+| `CameraWatchdogExtension` | `watchdog.enabled`（既定で有効） | 位置合わせ前の映像が届かない時間を数え、カメラの不調として知らせる（`features/watchdog.py`） |
 
 新しい機能は `monitor(..., extensions=[...])` に渡せば、`Monitor` を変えずに足せます。
 
@@ -97,6 +100,15 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 `--video-review` では `video.review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を判定器（`video.review.VideoJudge`）に渡して JSON スキーマに沿った判定を受け取ります。判定器は差し替えられる作りで、既定の実装は Codex CLI（`video.codex_cli.CodexCliJudge`）です。このモードでは差分だけの通知を抑え、判定器が根拠を確認した場合にだけ通知します。`video-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
 
 `circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`experimental/circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。
+
+## 監視の停止とカメラの不調の見張り
+
+止まった監視は自分で知らせられないので、見張り役を2つに分けています（`features/watchdog.py`）。
+
+- カメラの不調は、監視ループの拡張 `CameraWatchdogExtension` が、映像の届かない時間で判断します。拡張の呼び出しが `PAUSE_SECONDS` より空いたとき（トレー交換の保留）は数え直します。`run` はトレーを交換して拡張を作り直すときも、この拡張を残します。
+- 監視の停止は、GUI のサーバーの別スレッド（`watching`）で `MonitorWatchdog.check` が、ハートビートの更新時刻で判断します。`gui` と `run --gui` のどちらでも動き、`commands/context.monitor_watchdog` が準備します。
+
+どちらも `features/outages.OutageTracker` が、停止が `watchdog.minutes` 続いたら一度だけ知らせ、戻ったら長さと合わせて知らせます。続いている停止は `outages` テーブルに種類ごとに1行まで（部分一意インデックス）で、行を作った見張りだけが停止を、行を閉じた見張りだけが復旧を知らせます。GUI を開き直したり、2つの GUI が同じデータを見ていたりしても、同じ停止で通知を繰り返しません。通知の文面は `ToiletNotifier.send_outage`・`send_recovery` にあり、`_deliver_watchdog` で送ります。既定はトイレの通知と同じ送り先で、`WebPushNotifier` は受け取りを選んだ管理者（`users.push_watchdog`）だけに送ります。
 
 ## 通知先
 

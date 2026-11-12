@@ -44,6 +44,8 @@ ENDPOINT_MAX_LENGTH = 2048
 TTL_SECONDS = 3600
 SEND_TIMEOUT_SECONDS = 5
 GONE = (404, 410)
+# 監視の異常の通知を開いたときの画面（管理 › 稼働状況とトレー）。
+WATCHDOG_URL = "/manage"
 
 
 def _b64decode(value: str) -> bytes:
@@ -161,14 +163,22 @@ class PushSubscriptions:
             ).fetchall()
         return [self._subscription(row) for row in rows]
 
-    def recipients(self, *, early_alert: bool) -> list[Subscription]:
-        """通知を受け取る有効な人の購読。見守り通知は、見守りも選んだ人だけ。"""
-        column = "push_early" if early_alert else "push_alerts"
+    def recipients(
+        self, *, early_alert: bool = False, watchdog: bool = False
+    ) -> list[Subscription]:
+        """通知を受け取る有効な人の購読。見守り通知は、見守りも選んだ人だけ。
+
+        watchdog（監視の停止とカメラの不調）は、受け取りを選んだ管理者だけ。
+        """
+        if watchdog:
+            condition = "u.role = 'admin' AND u.push_watchdog = 1"
+        else:
+            condition = "u.push_early = 1" if early_alert else "u.push_alerts = 1"
         with self.database.connect() as db:
             rows = db.execute(
-                # 列名は上の2つのどちらかで、利用者の入力ではない。
+                # 条件は上の固定の文字列のどれかで、利用者の入力ではない。
                 "SELECT s.* FROM push_subscriptions s JOIN users u ON u.id = s.user_id "  # noqa: S608
-                f"WHERE u.disabled_at IS NULL AND u.{column} = 1 ORDER BY s.created_at"
+                f"WHERE u.disabled_at IS NULL AND {condition} ORDER BY s.created_at"
             ).fetchall()
         return [self._subscription(row) for row in rows]
 
@@ -229,11 +239,18 @@ class WebPushNotifier(ToiletNotifier):
 
     def _deliver(self, message: str, *, early_alert: bool) -> bool:
         recipients = self.subscriptions.recipients(early_alert=early_alert)
+        return self._push(recipients, self.title(early_alert=early_alert), message, self.url)
+
+    def _deliver_watchdog(self, message: str) -> bool:
+        """監視の異常は管理者だけに送り、開くと管理の稼働状況に移る。"""
+        recipients = self.subscriptions.recipients(watchdog=True)
+        return self._push(recipients, self.title(), message, WATCHDOG_URL)
+
+    def _push(self, recipients: list[Subscription], title: str, message: str, url: str) -> bool:
         if not recipients:
             return False
         payload = json.dumps(
-            {"title": self.title(early_alert=early_alert), "body": message, "url": self.url},
-            ensure_ascii=False,
+            {"title": title, "body": message, "url": url}, ensure_ascii=False
         ).encode("utf-8")
         vapid = self.keys.vapid()
         results = [self.send_to(subscription, payload, vapid) for subscription in recipients]

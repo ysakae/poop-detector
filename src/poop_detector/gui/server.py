@@ -26,6 +26,7 @@ import uvicorn
 
 from ..capture.live_preview import LivePreview
 from ..errors import UserError
+from ..features.outages import OutageLog
 from ..records.database import events_database
 from ..records.events import Store
 from ..video.clip_storage import DEFAULT_DISK_MIB
@@ -67,6 +68,8 @@ class GuiApp:
     # Web Push の購読と VAPID の鍵（監視と同じデータの保存先を使う）。
     push_subscriptions: PushSubscriptions
     push_keys: PushKeys
+    # 監視の停止とカメラの不調の履歴（管理 › 稼働状況に出す）。
+    outages: OutageLog
     # 管理 › 設定で書き換える設定ファイル。None なら設定の画面は表示だけ（テストなど）。
     config_path: Path | None = None
     # テーマを選んでいない人とログイン前の画面のテーマ（設定の gui.theme）。
@@ -203,6 +206,7 @@ def make_server(
         default_theme=web.theme,
         push_subscriptions=PushSubscriptions(database),
         push_keys=PushKeys(root),
+        outages=OutageLog(database),
     )
     return GuiServer(app, listener, web, limits)
 

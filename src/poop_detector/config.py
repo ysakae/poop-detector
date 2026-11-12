@@ -194,6 +194,22 @@ SETTINGS: tuple[Setting, ...] = (
         "0 より大きく 1 以下の数",
     ),
     Setting("notifications", "notifications", "enabled", bool, _always, "true または false"),
+    Setting(
+        "watchdog_enabled",
+        "watchdog",
+        "enabled",
+        bool,
+        _always,
+        "true または false（監視の停止とカメラの不調を管理者に知らせる）",
+    ),
+    Setting(
+        "watchdog_minutes",
+        "watchdog",
+        "minutes",
+        float,
+        _number(1, 1440),
+        "1〜1440 の数（分。停止や不調がこの時間続いたら知らせる）",
+    ),
     Setting("clip_enabled", "clips", "enabled", bool, _always, "true または false"),
     Setting(
         "clip_before_seconds",
@@ -397,6 +413,8 @@ class Config:
     min_area: int = 40
     occupied_ratio: float = 0.18
     notifications: bool = True
+    watchdog_enabled: bool = True
+    watchdog_minutes: float = 5
     data_dir: str = "data"
     clip_enabled: bool = True
     clip_before_seconds: float = 30

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 FRAME_INTERVAL = 0.25  # 書き出しの最短の間隔（秒）
 FRAME_MAX_AGE = 3  # これより古い画像は GUI に返さない（秒）
 REQUEST_MAX_AGE = 5  # GUI からの要求がこれより古ければ書き出しをやめる（秒）
+HEARTBEAT_MAX_AGE = 5  # 監視の稼働状態がこれより古ければ、監視が止まったとみなす（秒）
 
 
 class LivePreview:
@@ -89,14 +90,26 @@ class LivePreview:
         except OSError:
             logger.warning("監視の稼働状態を保存できません")
 
-    def monitor_status(self) -> str:
+    def mark_stopped(self) -> None:
+        """監視が自分で終了したことを残す。GUI の見張り（features/watchdog.py）は知らせない。"""
+        try:
+            self._write(self.monitor_path, b"stopped")
+        except OSError:
+            logger.warning("監視の稼働状態を保存できません")
+
+    def monitor_heartbeat(self) -> tuple[str, float] | None:
+        """監視が最後に書いた (状態, UNIX 時刻)。監視を一度も動かしていなければ None。"""
         try:
             with self.monitor_path.open("r", encoding="ascii") as status:
-                if time.time() - os.fstat(status.fileno()).st_mtime <= 5:
-                    return status.read()
+                return status.read(), os.fstat(status.fileno()).st_mtime
         except (OSError, UnicodeError):
-            pass
-        return "offline"
+            return None
+
+    def monitor_status(self) -> str:
+        beat = self.monitor_heartbeat()
+        if beat is None or beat[0] == "stopped" or time.time() - beat[1] > HEARTBEAT_MAX_AGE:
+            return "offline"
+        return beat[0]
 
     def read(self) -> tuple[bytes, str] | None:
         """GUI 側から呼び、最新の JPEG と撮影時刻を返す。呼ぶたびに監視側へ書き出しを要求する。"""

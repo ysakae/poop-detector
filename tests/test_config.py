@@ -117,3 +117,13 @@ def test_sections_round_trip(tmp_path):
 def test_enabled_features_lists_what_is_on():
     config = Config(dog_enabled=True, early_alert_enabled=True, notifications=False)
     assert config.enabled_features() == ["動画保存", "犬の検出", "見守り通知"]
+
+
+def test_watchdog_settings(tmp_path):
+    """監視の見張り（#91）は既定で有効。知らせるまでの時間を分で変えられる。"""
+    assert (Config().watchdog_enabled, Config().watchdog_minutes) == (True, 5)
+    path = write(tmp_path, "watchdog: {enabled: false, minutes: 15}\n")
+    config = Config.load(path)
+    assert (config.watchdog_enabled, config.watchdog_minutes) == (False, 15)
+    with pytest.raises(ConfigError, match=r"watchdog\.minutes"):
+        Config.load(write(tmp_path, "watchdog: {minutes: 0}\n"))

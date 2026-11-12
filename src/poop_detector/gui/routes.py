@@ -35,6 +35,7 @@ from .pages import (
     Query,
     local_time,
     message_page,
+    outage_rows,
     parse_time,
     render_events,
     render_home,
@@ -240,6 +241,7 @@ def render_management(handler: "Handler", error: str | None = None) -> str:
         token=handler.csrf,
         points=points,
         error=error,
+        outages=outage_rows(app.outages.recent()),
         **management_status(handler),
     )
 
