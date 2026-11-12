@@ -116,6 +116,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/review_queue.py`・`gui/review_routes.py` | 確認待ち。未ラベルの検知と排泄に関わる動画を1つの列にまとめ（動画のある検知は1件）、保存後に次の件を開く |
 | `gui/settings_routes.py` | 管理 › 設定。`config.SETTINGS` の表から入力欄を並べ、確認してから保存する。保存とコメントの保持、直前の設定への復元は最上位の `settings_file.py` |
 | `gui/checks_routes.py` | 管理 › 確認と診断。通知のテスト送信・カメラの確認・診断情報を、CLI と同じ関数で行う |
+| `gui/models_routes.py` | 管理 › 判定器とモデル。判定器の状態と選び直し（設定の書き換えは `settings_file.py`）、比較の結果（`video/benchmark_results.py`）、犬検出モデルの状態（`features/dog_status.py`） |
 | `gui/areas_routes.py`・`gui/snapshots.py` | 管理 › 範囲の登録。映像の上に描いた多角形で、監視範囲と基準画像・トレー外の範囲・床面を登録する。画面に見せた映像を ID で預かり、保存に使う |
 | `gui/themes.py` | デザインテーマ（プロフェッショナル・ワンちゃん）とライト・ダークの選択肢。人の選択と既定のテーマ（`gui.theme`）から表示を決める |
 | `gui/push_routes.py` | PWA のマニフェスト・Service Worker・アイコンと、Web Push の購読の登録・解除・受け取り方・テスト |

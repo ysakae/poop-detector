@@ -25,6 +25,7 @@ ADMIN_GET = {
     "/manage/audit",
     "/manage/settings",
     "/manage/checks",
+    "/manage/models",
     "/manage/areas",
     "/manage/areas/frame",
 }
@@ -35,6 +36,7 @@ ADMIN_POST = {
     "/manage/users",
     "/manage/settings",
     "/manage/checks",
+    "/manage/models",
     "/manage/areas",
 }
 MEMBER_GET = sorted(path for path in GET_ROUTES if not is_public(path) and path not in ADMIN_GET)

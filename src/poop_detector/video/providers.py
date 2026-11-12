@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from .review import VideoJudge
 
 KEY_NAMES = {"claude": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY"}
+# 設定の review.provider の値と、画面に出す判定器の名前。
+PROVIDER_NAMES = {"codex": "Codex CLI", "claude": "Claude API", "gemini": "Gemini API"}
 RESPONSE_LIMIT = 1024 * 1024
 
 
