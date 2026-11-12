@@ -1,7 +1,8 @@
 """登録したトレーの縁を照合し、基準画像と同じ座標へ映像を戻す。"""
 
+import logging
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import cv2
 import numpy as np
@@ -17,6 +18,22 @@ Transform = NDArray[Any]
 # 追従に使う特徴点の最小の数。縁の形の照合の内部の値で、設定にはしない。
 MIN_MATCHES = 6
 FLOW_CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.02)
+# 補正後の ROI の頂点が画面の外へ出てよい幅（縮小映像上のピクセル）。ROI が画面端に接していると、
+# 縁を照合できても丸め誤差や数ピクセルの揺れではみ出すため、この幅までは追従を続ける。
+# 画面の外にあたる画素は実映像がないので、登録時の画像で埋めて差分の根拠にしない。
+EDGE_TOLERANCE = 3.0
+
+# 追従を保留した理由。aspect は画面比の違い、unmatched は縁の照合の不足、
+# deformed は異常な変形、outside は許容幅を超えた画角外へのはみ出し。
+Failure = Literal["aspect", "unmatched", "deformed", "outside"]
+FAILURE_MESSAGES: dict[str, str] = {
+    "aspect": "映像の縦横比が登録時と異なります",
+    "unmatched": "トレーの縁を照合できません",
+    "deformed": "トレーの位置合わせの変形が大きすぎます",
+    "outside": "トレーが画面の外へ出ています",
+}
+
+logger = logging.getLogger(__name__)
 
 
 def _optical_flow(previous: Frame, following: Frame, points: NDArray[Any]) -> tuple[Any, Any, Any]:
@@ -54,6 +71,9 @@ class TrayTracker:
     def __init__(self, reference: Frame, roi: AnyROI) -> None:
         height, width = reference.shape[:2]
         self.output_size = (width, height)
+        # 補正後に画面の外にあたる画素を埋める、登録時の映像。
+        self.reference_frame = reference.copy()
+        self.last_failure: Failure | None = None
         scale = min(1, 640 / max(width, height))
         self.size = (max(1, round(width * scale)), max(1, round(height * scale)))
         self.reference = self._gray(reference)
@@ -128,10 +148,23 @@ class TrayTracker:
         return bool(cv2.absdiff(blue, green).mean() < 1 and cv2.absdiff(red, green).mean() < 1)
 
     def align(self, frame: Frame, *, source_mask: Mask | None = None) -> Frame | None:
-        """映像を基準画像の位置へ戻す。トレーの縁を確かめられなければ None。"""
+        """映像を基準画像の位置へ戻す。トレーの縁を確かめられなければ None。
+
+        保留した理由は last_failure に残す（追従できたときは None）。
+        """
+        aligned = self._align(frame, source_mask)
+        if aligned is None:
+            if self.last_failure is None:
+                self.last_failure = "unmatched"
+            logger.debug("トレーの追従を保留しました: %s", FAILURE_MESSAGES[self.last_failure])
+        return aligned
+
+    def _align(self, frame: Frame, source_mask: Mask | None) -> Frame | None:
+        self.last_failure = None
         height, width = frame.shape[:2]
         ref_width, ref_height = self.output_size
         if abs((width / height) / (ref_width / ref_height) - 1) > 0.01:
+            self.last_failure = "aspect"
             return None
         gray = self._gray(frame)
         transform = None
@@ -185,15 +218,19 @@ class TrayTracker:
     def _warp(self, frame: Frame, transform: Transform) -> Frame | None:
         scales = np.linalg.svd(transform[:, :2], compute_uv=False)
         if scales.min() < 0.85 or scales.max() > 1.15 or np.linalg.det(transform[:, :2]) <= 0:
+            self.last_failure = "deformed"
             return None
         boundary = cv2.transform(self.boundary[None, :, :], transform)[0]
         w, h = self.size
         displacement = np.linalg.norm(boundary - self.boundary, axis=1).max()
-        if (
-            (boundary < -1).any()
-            or (boundary > [w, h]).any()
-            or displacement > 0.12 * max(self.size)
-        ):
+        if displacement > 0.12 * max(self.size):
+            self.last_failure = "deformed"
+            return None
+        # 画素の中心は 0〜w-1 にある。許容幅まではみ出した分は、実映像のない画素として埋める。
+        if (boundary < -EDGE_TOLERANCE).any() or (
+            boundary > [w - 1 + EDGE_TOLERANCE, h - 1 + EDGE_TOLERANCE]
+        ).any():
+            self.last_failure = "outside"
             return None
         height, width = frame.shape[:2]
         if displacement < 0.35 and (width, height) == self.output_size:
@@ -205,10 +242,21 @@ class TrayTracker:
             @ np.vstack((transform, [0, 0, 1]))
             @ np.diag([w / ref_width, h / ref_height, 1])
         )
-        return cv2.warpAffine(
-            frame,
+        flags = cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP
+        aligned = cv2.warpAffine(
+            frame, inverse_map[:2], self.output_size, flags=flags, borderMode=cv2.BORDER_REPLICATE
+        )
+        # 画面の外の画素を一部でも混ぜた画素は、実映像の代わりに登録時の映像で埋める。
+        # 基準と同じ画素になるので、差分検知でも自動判定の画像でも新しい跡として現れない。
+        footage = cv2.warpAffine(
+            np.full((height, width), 255, np.uint8),
             inverse_map[:2],
             self.output_size,
-            flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
-            borderMode=cv2.BORDER_REPLICATE,
+            flags=flags,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=0,
         )
+        filler = footage < 255
+        if filler.any():
+            aligned[filler] = self.reference_frame[filler]
+        return aligned
