@@ -39,6 +39,7 @@ from . import (
     account_routes,  # noqa: F401
     areas_routes,  # noqa: F401
     checks_routes,  # noqa: F401
+    push_routes,  # noqa: F401
     review_routes,  # noqa: F401
     settings_routes,  # noqa: F401
 )
@@ -68,7 +69,8 @@ SECURITY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'none'; img-src 'self' blob:; media-src 'self'; "
         "script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; "
-        "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+        "form-action 'self'; frame-ancestors 'none'; base-uri 'none'; "
+        "manifest-src 'self'; worker-src 'self'"
     ),
     "Cross-Origin-Resource-Policy": "same-origin",
     # no-referrer にすると、ブラウザーは同じサイトのフォームの送信でも Origin: null を送り、
@@ -113,7 +115,19 @@ class SecurityHeaders:
 
 # ログインしていなくても開ける場所（ログイン、パスキーの登録、その画面のスクリプト）。
 # 肉球の模様（ワンちゃんのテーマ）は、ログインの画面の見出しにも出すので公開する。
-PUBLIC_PATHS = frozenset({"/login", "/enroll", "/assets/passkey.js", "/assets/paw.svg"})
+# PWA のマニフェスト・アイコン・Service Worker は、ブラウザーが Cookie なしで読むことがあるので公開する。
+PUBLIC_PATHS = frozenset(
+    {
+        "/login",
+        "/enroll",
+        "/assets/passkey.js",
+        "/assets/paw.svg",
+        "/manifest.webmanifest",
+        "/sw.js",
+        "/assets/icon-192.png",
+        "/assets/icon-512.png",
+    }
+)
 PUBLIC_PREFIX = "/webauthn/"
 
 

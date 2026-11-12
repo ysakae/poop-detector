@@ -31,6 +31,7 @@ from ..records.events import Store
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
 from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
+from ..web_push import PushKeys, PushSubscriptions
 from .accounts import Accounts
 from .asgi import create_app
 from .pages import page_title
@@ -63,6 +64,9 @@ class GuiApp:
     site: Site
     title: str
     disk_mb: float
+    # Web Push の購読と VAPID の鍵（監視と同じデータの保存先を使う）。
+    push_subscriptions: PushSubscriptions
+    push_keys: PushKeys
     # 管理 › 設定で書き換える設定ファイル。None なら設定の画面は表示だけ（テストなど）。
     config_path: Path | None = None
     # テーマを選んでいない人とログイン前の画面のテーマ（設定の gui.theme）。
@@ -197,6 +201,8 @@ def make_server(
         disk_mb=disk_mb,
         config_path=Path(config_path).resolve() if config_path is not None else None,
         default_theme=web.theme,
+        push_subscriptions=PushSubscriptions(database),
+        push_keys=PushKeys(root),
     )
     return GuiServer(app, listener, web, limits)
 

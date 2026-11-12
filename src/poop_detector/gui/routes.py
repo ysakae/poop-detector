@@ -364,6 +364,7 @@ def logout(handler: "Handler", _form: Form) -> None:
     "/assets/clip_storage.js",
     "/assets/management.js",
     "/assets/areas.js",
+    "/assets/push.js",
     "/assets/passkey.js",
 )
 def asset(handler: "Handler", _query: Query) -> None:

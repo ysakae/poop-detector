@@ -18,6 +18,19 @@
 {%- endfor -%}
 </fieldset></div>
 <p><button>表示を保存</button></p></form>
+<h3>通知（Web Push）</h3>
+<section id="web-push" data-public-key="{{ push_key }}" data-csrf="{{ token }}">
+<p class="note">この端末のブラウザーに、検知や自動判定の通知を直接送ります（ntfy のトピックを使わず、登録した端末にだけ届きます）。通知を開くと確認待ちの画面に移ります。iPhone・iPad は、ホーム画面に追加したアプリから登録してください。登録済みの端末：{{ push_devices }}台</p>
+<p id="push-status" role="status">通知の状態を確かめています。</p>
+<p class="toolbar"><button type="button" id="push-enable" hidden>この端末で通知を受け取る</button><button type="button" class="secondary" id="push-disable" hidden>この端末では受け取らない</button></p>
+{% if push_saved %}<p class="saved" role="status">通知の受け取り方を保存しました。</p>{% endif %}
+<form method="post" action="/account/push/preferences">{{ csrf_field(token) }}
+<p><label><input type="checkbox" name="alerts" value="1"{% if push_alerts %} checked{% endif %}> 排便・排尿の候補の通知を受け取る</label></p>
+<p><label><input type="checkbox" name="early" value="1"{% if push_early %} checked{% endif %}> 見守り通知（トイレでの滞在）も受け取る</label></p>
+<p class="toolbar"><button class="secondary">受け取り方を保存</button></p></form>
+<form method="post" action="/account/push/test">{{ csrf_field(token) }}<button class="secondary">自分の端末に通知を試す</button></form>
+</section>
+<script defer src="/assets/push.js"></script>
 <h3>メールアドレス</h3>
 {% if email_error %}<p class="error" role="alert">{{ email_error }}</p>{% endif %}
 {% if email_verified %}<p class="saved" role="status">メールアドレスを確認しました。</p>{% endif %}

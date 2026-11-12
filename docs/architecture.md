@@ -98,7 +98,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 ## 通知先
 
-`notifications.py` の `_ToiletNotifier` が文面を持ち、`MacNotifier`（osascript）と `NtfyNotifier`（ntfy サーバーへの HTTP POST、既定は ntfy.sh）が送信だけを実装します。文面の犬の名前は設定の `pet_name` から受け取り、`MacNotifier` は AppleScript の文字列としてエスケープしてから埋め込みます。`POOP_NTFY_TOPIC` があれば ntfy、なければ macOS 通知を使います。通知先を増やすときは `_deliver` を実装したサブクラスを足してください。ntfy の無料トピックは公開扱いなので、本文に映像やカメラの URL を入れないでください。
+`notifications.py` の `ToiletNotifier` が文面を持ち、`web_push.py` の `WebPushNotifier`（GUI で購読した端末へ Web Push）も同じ文面で送ります（監視は `FanOutNotifier` で ntfy・macOS の通知と並べる）。`MacNotifier`（osascript）と `NtfyNotifier`（ntfy サーバーへの HTTP POST、既定は ntfy.sh）が送信だけを実装します。文面の犬の名前は設定の `pet_name` から受け取り、`MacNotifier` は AppleScript の文字列としてエスケープしてから埋め込みます。`POOP_NTFY_TOPIC` があれば ntfy、なければ macOS 通知を使います。通知先を増やすときは `_deliver` を実装したサブクラスを足してください。ntfy の無料トピックは公開扱いなので、本文に映像やカメラの URL を入れないでください。
 
 ## GUI
 
@@ -118,6 +118,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/checks_routes.py` | 管理 › 確認と診断。通知のテスト送信・カメラの確認・診断情報を、CLI と同じ関数で行う |
 | `gui/areas_routes.py`・`gui/snapshots.py` | 管理 › 範囲の登録。映像の上に描いた多角形で、監視範囲と基準画像・トレー外の範囲・床面を登録する。画面に見せた映像を ID で預かり、保存に使う |
 | `gui/themes.py` | デザインテーマ（プロフェッショナル・ワンちゃん）とライト・ダークの選択肢。人の選択と既定のテーマ（`gui.theme`）から表示を決める |
+| `gui/push_routes.py` | PWA のマニフェスト・Service Worker・アイコンと、Web Push の購読の登録・解除・受け取り方・テスト |
 | `gui/navigation.py` | 共通の枠の値（メインメニュー、管理のメニュー、ログイン中の人、監視の状態）。画面の配置は [画面の構成](screens.md) |
 | `gui/access.py` | セッションの Cookie |
 | `gui/account_routes.py` | 自分のアカウント（パスキーの一覧・追加・削除）と、管理の中の招待・ユーザー・監査ログの画面 |
