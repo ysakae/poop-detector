@@ -143,6 +143,7 @@ uv run poop-detector gui
 - [初期設定](docs/setup.md) — カメラ、`.env`、監視領域、基準画像、トレー追従
 - [判定の仕組み](docs/detection.md) — 差分検知、排尿の検知、見守り通知、設定項目、制限
 - [記録とラベル付け](docs/records.md) — GUI、排泄の記録、評価指標
+- [画面の構成](docs/screens.md) — GUI の画面の一覧と遷移、CLI に残す操作
 - [外から GUI を開く](docs/remote-access.md) — 外部の URL、リバースプロキシ、信頼するプロキシ
 - [通知](docs/notifications.md) — macOS の通知と ntfy
 - [動画](docs/video.md) — 動画の保存、容量の管理、動画の自動判定
