@@ -103,8 +103,17 @@ def programs_summary() -> dict[str, str]:
     }
 
 
+REPORT_HEADING = "# 不具合の報告に貼れる診断情報です。URL・トピック名・保存先のパスは含みません。"
+
+
 def diagnose(_args: argparse.Namespace, context: CommandContext) -> int:
     """バージョン・環境・有効な機能・登録の有無を、Issue に貼れる YAML で表示する。"""
+    print(diagnose_report(context), end="")
+    return 0
+
+
+def diagnose_report(context: CommandContext) -> str:
+    """診断情報の YAML（見出しのコメント付き）。GUI の管理 › 確認と診断も同じものを出す。"""
     config = context.config
     report: dict[str, Any] = {
         "poop_detector": package_version("poop-detector"),
@@ -117,6 +126,4 @@ def diagnose(_args: argparse.Namespace, context: CommandContext) -> int:
         "database": database_summary(context.root),
         "programs": programs_summary(),
     }
-    print("# 不具合の報告に貼れる診断情報です。URL・トピック名・保存先のパスは含みません。")
-    print(yaml.safe_dump(report, allow_unicode=True, sort_keys=False), end="")
-    return 0
+    return REPORT_HEADING + "\n" + yaml.safe_dump(report, allow_unicode=True, sort_keys=False)

@@ -20,6 +20,7 @@ MANAGEMENT = ("/manage", "管理")
 MANAGEMENT_PAGES: tuple[tuple[str, str], ...] = (
     ("/manage", "稼働状況とトレー"),
     ("/manage/settings", "設定"),
+    ("/manage/checks", "確認と診断"),
     ("/manage/storage", "動画の保存"),
     ("/manage/users", "ユーザー"),
     ("/manage/invite", "招待"),

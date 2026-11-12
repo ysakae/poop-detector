@@ -31,6 +31,8 @@ ACTIONS: dict[str, str] = {
     "clip.cleanup": "動画の削除・整理",
     "settings.save": "設定の変更",
     "settings.restore": "設定を直前に戻す",
+    "check.notification": "通知のテスト送信",
+    "check.camera": "カメラの確認",
 }
 
 
