@@ -24,6 +24,7 @@ ADMIN_GET = {
     "/manage/users",
     "/manage/audit",
     "/manage/settings",
+    "/manage/checks",
 }
 ADMIN_POST = {
     "/manage/tray",
@@ -31,6 +32,7 @@ ADMIN_POST = {
     "/manage/invite",
     "/manage/users",
     "/manage/settings",
+    "/manage/checks",
 }
 MEMBER_GET = sorted(path for path in GET_ROUTES if not is_public(path) and path not in ADMIN_GET)
 MEMBER_POST = sorted(path for path in POST_ROUTES if path not in ADMIN_POST)

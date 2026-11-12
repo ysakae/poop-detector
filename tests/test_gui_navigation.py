@@ -17,6 +17,7 @@ MEMBER_SECTIONS = {
 ADMIN_PAGES = {
     "/manage": "稼働状況とトレー",
     "/manage/settings": "設定",
+    "/manage/checks": "確認と診断",
     "/manage/storage": "動画の保存",
     "/manage/users": "ユーザー",
     "/manage/invite": "招待",

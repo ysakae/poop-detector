@@ -41,6 +41,8 @@ uv run poop-detector test-notification
 uv run poop-detector test-notification --early-alert
 ```
 
+テストの通知は、GUI の「管理 › 確認と診断」からも送れます（管理者だけ）。
+
 両方のトピックを設定したら、`--early-alert` 付きの監視を再起動します。排便・排尿候補は通常のトピックに、見守り通知だけは別のトピックに届きます。`POOP_NTFY_EARLY_TOPIC` が未設定の場合、見守り通知も通常のトピックに届きます。
 
 ## 動画の自動判定の通知
