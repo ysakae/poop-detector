@@ -32,6 +32,12 @@ def models_gui(tmp_path, monkeypatch):
         raise ValueError("codex loginでCodex CLIにログインしてください")
 
     monkeypatch.setattr("poop_detector.video.codex_cli.CodexCliJudge.check", check)
+
+    def check_cli(self):
+        checked.append(self.name)
+
+    monkeypatch.setattr("poop_detector.video.providers.ClaudeCodeJudge.check", check_cli)
+    monkeypatch.setattr("poop_detector.video.providers.AntigravityJudge.check", check_cli)
     server = make_server(tmp_path / "data", 0, config_path=config_path)
     server.checked = checked
     thread = threading.Thread(target=server.serve_forever, args=(0.02,), daemon=True)
@@ -83,11 +89,13 @@ def test_page_shows_the_current_judge_and_its_readiness(models_gui):
     assert "setup-dog-model" in html
 
 
-def test_api_judge_shows_only_whether_the_key_is_set(models_gui):
+def test_cli_judge_shows_readiness_without_secrets(models_gui):
     server, path = models_gui
     path.write_text(path.read_text() + "review:\n  provider: claude\n  model: model-b\n")
     html = page(server, login(server))
-    assert "Claude API" in html
+    assert "Claude Code CLI" in html
+    assert "Antigravity CLI" in html
+    assert server.checked == ["Claude Code CLI"]
     assert "使える状態です" in html
     assert SECRET_KEY not in html
     assert 'name="model" value="model-b"' in html

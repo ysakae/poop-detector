@@ -30,7 +30,7 @@ class Judge:
 
 def run(tmp_path, monkeypatch, capsys, config="", judge=None):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(diagnose_command, "default_judge", lambda: judge or Judge())
+    monkeypatch.setattr(diagnose_command, "build_judge", lambda provider, model: judge or Judge())
     root = tmp_path / "data"
     (tmp_path / "config.yaml").write_text(f"data_dir: {root}\n{config}")
     assert main(["--config", "config.yaml", "diagnose"]) == 0
@@ -107,3 +107,13 @@ def test_diagnose_reports_external_programs(tmp_path, monkeypatch, capsys):
 
     _, report = run(tmp_path, monkeypatch, capsys)
     assert report["programs"]["video_judge"] == "偽の判定器: 使えます"
+
+
+def test_diagnose_checks_configured_judge_without_disclosing_model(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(diagnose_command.shutil, "which", lambda name: None)
+    (tmp_path / "config.yaml").write_text("review: {provider: gemini, model: private-model}\n")
+    assert main(["--config", "config.yaml", "diagnose"]) == 0
+    out = capsys.readouterr().out
+    assert "private-model" not in out
+    assert yaml.safe_load(out)["programs"]["video_judge"].startswith("Antigravity CLI: 使えません")

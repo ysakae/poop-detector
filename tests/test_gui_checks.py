@@ -156,7 +156,8 @@ def test_camera_check_uses_the_running_monitor_instead_of_a_second_connection(
 
 def test_diagnostics_are_shown_without_secrets(checks_gui, monkeypatch):
     monkeypatch.setattr(
-        "poop_detector.commands.diagnose.programs_summary", lambda: {"ffmpeg": "見つかりました"}
+        "poop_detector.commands.diagnose.programs_summary",
+        lambda config: {"ffmpeg": "見つかりました"},
     )
     html = page(checks_gui, login(checks_gui), f"{PAGE}?diagnose=1")
     report = re.search(r"<pre[^>]*>(.*?)</pre>", html, re.S)[1]

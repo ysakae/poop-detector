@@ -12,7 +12,7 @@
 <tr><th scope="row">状態</th><td>{% if problem %}<span class="state state-warn">{{ problem }}</span>{% else %}<span class="state state-ok">使える状態です</span>{% endif %}</td></tr>
 <tr><th scope="row">自動判定</th><td>{% if review_enabled %}有効（features.video_review）{% else %}無効（有効にするには設定の features.video_review か run --video-review）{% endif %}</td></tr>
 </tbody></table>
-<p class="note">Claude API・Gemini API のキーは、監視するマシンの .env に置きます。この画面には、キーの有無だけを出します。</p>
+<p class="note">監視するマシンで、選んだ判定器の CLI にログインしてください。</p>
 </section>
 <section class="settings-section" aria-labelledby="choose-title"><h3 id="choose-title">判定器とモデルを選び直す</h3>
 {% if editable %}
@@ -20,7 +20,7 @@
 <div class="settings-field"><label><code>review.provider</code><select name="provider">
 {%- for value, name in providers -%}<option value="{{ value }}"{% if value == provider %} selected{% endif %}>{{ value }}（{{ name }}）</option>{%- endfor -%}
 </select></label></div>
-<div class="settings-field"><label><code>review.model</code><input name="model" value="{{ model }}"></label><small>英数字で始まるモデル名。空なら Codex CLI の既定（Claude API・Gemini API では必須）</small></div>
+<div class="settings-field"><label><code>review.model</code><input name="model" value="{{ model }}"></label><small>英数字で始まるモデル名。空なら選んだ CLI の既定</small></div>
 <p><button>保存</button></p>
 </form>
 <p class="note">設定ファイルの review の値だけを書き換えます。監視（run）と GUI を起動し直すと反映されます。</p>
