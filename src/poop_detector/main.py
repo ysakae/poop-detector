@@ -9,6 +9,7 @@ from collections.abc import Sequence
 import cv2
 
 from .commands import (
+    backup,
     benchmark,
     diagnose,
     dog_model,
@@ -52,6 +53,8 @@ HANDLERS: dict[str, Handler] = {
     "show-config": show_config.show_config,
     "users": users.users,
     "diagnose": diagnose.diagnose,
+    "backup": backup.backup,
+    "restore": backup.restore,
 }
 
 
@@ -230,6 +233,16 @@ def parser() -> argparse.ArgumentParser:
     accounts.add_argument(
         "--minutes", type=enrollment_minutes, default=30, help="登録用 URL の有効時間（5〜1440分）"
     )
+    archive = commands.add_parser(
+        "backup", help="記録と登録情報のバックアップ（ZIP）を作る（秘密の値は含めない）"
+    )
+    archive.add_argument("output", help="書き出す ZIP ファイル（既にあれば断る）")
+    archive.add_argument("--clips", action="store_true", help="動画も含める")
+    recover = commands.add_parser(
+        "restore", help="バックアップから戻す（元のデータは名前を変えて残す。監視を止めて実行）"
+    )
+    recover.add_argument("archive", help="backup や GUI で作った ZIP ファイル")
+    recover.add_argument("--yes", action="store_true", help="確認を求めずに復元する")
     for name, sub in commands.choices.items():
         sub.set_defaults(handler=HANDLERS[ALIASES.get(name, name)])
     return result
