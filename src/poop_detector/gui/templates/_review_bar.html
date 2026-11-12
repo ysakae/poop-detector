@@ -1,0 +1,2 @@
+{#- 確認待ちから開いた画面の上に出す帯。review が None なら出さない。 -#}
+{% if review %}<div class="review-bar" role="status"><strong>確認待ち 残り{{ review.remaining }}件</strong><a href="{{ review.skip_url }}">この件を飛ばす</a><a href="/review">一覧へ</a></div>{% endif %}

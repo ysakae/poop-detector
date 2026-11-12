@@ -10,6 +10,7 @@ from dataclasses import dataclass
 # 全員が使う場所。(URL, 名前)。URL の下の画面（/clips?id=… など）も同じ場所として扱う。
 MEMBER_SECTIONS: tuple[tuple[str, str], ...] = (
     ("/", "ホーム"),
+    ("/review", "確認待ち"),
     ("/records", "記録"),
     ("/clips", "動画"),
     ("/activity", "行動マップ"),
@@ -35,22 +36,25 @@ MONITOR_UNKNOWN = ("停止中または未確認", "off")
 class Viewer:
     """画面を見ている人。asgi.dispatch がログインした要求ごとに作る。
 
-    monitor は監視の状態を読む関数で、画面を描くときだけ呼ぶ（画像などの要求では読まない）。
+    monitor（監視の状態）と pending（確認待ちの件数）は、画面を描くときだけ呼ぶ関数
+    （画像などの要求では読まない）。
     """
 
     name: str
     admin: bool
     path: str
     monitor: Callable[[], str]
+    pending: Callable[[], int]
 
 
 @dataclass(frozen=True)
 class MenuItem:
-    """メニューの1項目。current はいま開いている場所。"""
+    """メニューの1項目。current はいま開いている場所、badge は名前の横に出す件数。"""
 
     href: str
     text: str
     current: bool
+    badge: int | None = None
 
 
 @dataclass(frozen=True)
@@ -70,9 +74,15 @@ def _within(path: str, section: str) -> bool:
     return path == section or path.startswith(section + "/")
 
 
-def main_menu(path: str, admin: bool) -> tuple[MenuItem, ...]:
+def main_menu(path: str, admin: bool, pending: int = 0) -> tuple[MenuItem, ...]:
+    """pending が1件以上なら、確認待ちに件数を出す。"""
     sections = MEMBER_SECTIONS + ((MANAGEMENT,) if admin else ())
-    return tuple(MenuItem(href, text, _within(path, href)) for href, text in sections)
+    return tuple(
+        MenuItem(
+            href, text, _within(path, href), pending if href == "/review" and pending else None
+        )
+        for href, text in sections
+    )
 
 
 def management_menu(path: str, admin: bool) -> tuple[MenuItem, ...]:
@@ -91,6 +101,6 @@ def frame_for(viewer: Viewer | None) -> Frame | None:
         person=viewer.name,
         monitor=monitor,
         monitor_state=state,
-        menu=main_menu(viewer.path, viewer.admin),
+        menu=main_menu(viewer.path, viewer.admin, viewer.pending()),
         management=management_menu(viewer.path, viewer.admin),
     )

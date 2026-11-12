@@ -7,7 +7,13 @@ from support import exchange, login
 
 from poop_detector.capture.live_preview import LivePreview
 
-MEMBER_SECTIONS = {"/": "ホーム", "/records": "記録", "/clips": "動画", "/activity": "行動マップ"}
+MEMBER_SECTIONS = {
+    "/": "ホーム",
+    "/review": "確認待ち",
+    "/records": "記録",
+    "/clips": "動画",
+    "/activity": "行動マップ",
+}
 ADMIN_PAGES = {
     "/manage": "稼働状況とトレー",
     "/manage/storage": "動画の保存",
@@ -46,7 +52,8 @@ def test_every_page_shows_the_main_navigation(gui, path):
     assert 'href="/manage"' not in nav
     # いまいる場所だけに印を付ける。
     assert nav.count('aria-current="page"') == 1
-    current = re.search(r'<a [^>]*aria-current="page"[^>]*>([^<]+)</a>', nav)[1]
+    # 確認待ちには件数が付く（<span class="badge">）。
+    current = re.search(r'<a [^>]*aria-current="page"[^>]*>([^<]+)', nav)[1]
     assert current == MEMBER_SECTIONS[path]
 
 

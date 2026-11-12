@@ -2,7 +2,10 @@
 {% extends "base.html" %}
 {% from "_macros.html" import capacity_panel, csrf_field, location_field %}
 {% block content %}
+{% include "_review_bar.html" %}
+{% if not review %}
 {% include "_live_panel.html" %}
+{% if pending %}<p class="review-callout"><a class="button" href="/review">確認待ち {{ pending }}件を確認する</a></p>{% endif %}
 {{ capacity_panel(capacity) }}
 <div class="toolbar"><form method="get"><label>表示する記録<select name="filter">
 {%- for value, text in filters -%}
@@ -12,16 +15,17 @@
 <p>未ラベル {{ metrics.unlabeled }}件 ／ 排便 {{ counts.feces }}件 ／ 排尿 {{ counts.urine }}件 ／ 種類不明 {{ counts.unknown }}件</p></div>
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
 <p class="note">自動検知は排泄の疑いです。便・尿の種類は確認して記録してください。尿跡が残っていても追加の変化を監視します。同じ跡は再通知せず、判断できない排泄は手動で記録できます。</p>
-<div class="workspace"><nav aria-label="イベント一覧">
+{% endif %}
+<div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav aria-label="イベント一覧">
 {%- for item in items -%}
 <a class="{% if item.active %}active{% endif %}" href="{{ item.url }}">{{ item.time }}<small>{{ item.label }}</small></a>
 {%- endfor -%}
-</nav><article>
+</nav>{% endif %}<article>
 {% if row %}
 <h2>{{ row.time }}</h2>
 {% if row.image %}<figure><img src="/image?id={{ row.id }}" alt="検知時のカメラ画像"><figcaption>検知時の画像。静止画だけで判断できない場合は保留してください。</figcaption></figure>{% else %}<p>この記録には画像がありません。</p>{% endif %}
 {% if row.editable %}
-<form method="post" action="/save">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="filter" value="{{ mode }}"><fieldset><legend>実際にはどうでしたか？</legend><div class="choices">
+<form method="post" action="/save">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="filter" value="{{ mode }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>実際にはどうでしたか？</legend><div class="choices">
 {%- for value, text in row.choices -%}
 <label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == row.selected_label %}checked{% endif %} required>{{ text }}</label>
 {%- endfor -%}
@@ -34,9 +38,9 @@
 {% else %}
 <div class="empty"><h2>該当する記録はありません</h2><p>「すべて」に切り替えるか、監視で記録が増えたら再表示してください。</p></div>
 {% endif %}
-</article></div><details><summary>目視で確認した排便・排尿を記録する</summary><p class="note">既に通知の画像がある場合は、その記録にラベルを付けてください。同じ排泄の重複登録を避けてください。</p><form method="post" action="/save">{{ csrf_field(token) }}<label>記録の種類<select name="action"><option value="manual">通常の手動記録</option><option value="missed">通知されなかった排泄（見逃し）</option></select></label><label>排泄の種類<select name="type">
+</article></div>{% if not review %}<details><summary>目視で確認した排便・排尿を記録する</summary><p class="note">既に通知の画像がある場合は、その記録にラベルを付けてください。同じ排泄の重複登録を避けてください。</p><form method="post" action="/save">{{ csrf_field(token) }}<label>記録の種類<select name="action"><option value="manual">通常の手動記録</option><option value="missed">通知されなかった排泄（見逃し）</option></select></label><label>排泄の種類<select name="type">
 {%- for value, text in excretion_types -%}
 <option value="{{ value }}">{{ text }}</option>
 {%- endfor -%}
-</select></label>{{ location_field(locations, None) }}<div class="times"><label>開始（{{ timezone }}・必須）<input type="datetime-local" step="1" name="start" required></label><label>完了（任意）<input type="datetime-local" step="1" name="end"></label></div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000" style="width:100%"></textarea></label></p><p style="margin-top:16px"><button>排泄を記録</button></p></form></details><footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>
+</select></label>{{ location_field(locations, None) }}<div class="times"><label>開始（{{ timezone }}・必須）<input type="datetime-local" step="1" name="start" required></label><label>完了（任意）<input type="datetime-local" step="1" name="end"></label></div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000" style="width:100%"></textarea></label></p><p style="margin-top:16px"><button>排泄を記録</button></p></form></details><footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>{% endif %}
 {% endblock %}

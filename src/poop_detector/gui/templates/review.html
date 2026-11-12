@@ -1,0 +1,19 @@
+{#- 確認待ち。未ラベルの検知イベントと、排泄に関わる動画の一覧。 -#}
+{% extends "base.html" %}
+{% block content %}
+<h2>確認待ち {{ entries|length }}件</h2>
+{% if done %}<p class="message" role="status">すべて確認しました。</p>{% endif %}
+{% if end and entries %}<p class="message" role="status">最後まで進みました。飛ばした件が残っています。</p>{% endif %}
+{% if entries %}
+<p>新しい順に並んでいます。ラベルを保存すると、次の件が開きます。</p>
+<p><a class="button" href="{{ next_url }}">確認を始める</a></p>
+<ul class="review-list">
+{%- for entry in entries -%}
+<li><a href="{{ entry.url }}"><span>{{ entry.time }}</span><strong>{{ entry.what }}</strong>{% if entry.hint %}<small>{{ entry.hint }}</small>{% endif %}</a></li>
+{%- endfor -%}
+</ul>
+<p class="note">動画のある検知は、動画で確かめる1件にまとめています。動画で「排泄なし」とすると、検知も誤検知として記録します。犬の出入りの動画は、自動判定が排泄の候補としたものだけを並べます。</p>
+{% elif not done %}
+<div class="empty"><h3>確認待ちはありません</h3><p>新しい検知や動画が保存されると、ここに並びます。</p></div>
+{% endif %}
+{% endblock %}

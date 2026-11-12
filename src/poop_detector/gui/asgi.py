@@ -35,7 +35,10 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from ..web_address import Site
 
 # account_routes は、読み込むとアカウントの画面のルートを登録する（名前は使わない）。
-from . import account_routes  # noqa: F401
+from . import (
+    account_routes,  # noqa: F401
+    review_routes,  # noqa: F401
+)
 from .access import (
     session_ids,
 )
@@ -44,6 +47,7 @@ from .exchange import HTML, Exchange
 from .navigation import Viewer
 from .pages import save_failed_page
 from .rate_limit import RateLimiter, RateLimits
+from .review_queue import review_items
 from .routes import GET_ROUTES, POST_ROUTES, Form, admin_only_page, required_role
 from .templating import VIEWER
 
@@ -250,6 +254,12 @@ def not_found(method: str) -> Response:
     return Response(message, 404, media_type=HTML)
 
 
+def _menu_path(path: str) -> str:
+    """メニューで印を付ける場所。確認待ちから開いた画面（from=review）は確認待ちとする。"""
+    url = urlsplit(path)
+    return "/review" if parse_qs(url.query).get("from") == ["review"] else url.path
+
+
 def as_viewer(route: Callable[[Exchange, Any], None], exchange: Exchange, argument: Any) -> None:
     """ルートを呼ぶ。テンプレートが共通の枠と入口を出し分けられるよう、見ている人を渡す。"""
     user = exchange.user
@@ -257,8 +267,9 @@ def as_viewer(route: Callable[[Exchange, Any], None], exchange: Exchange, argume
         Viewer(
             name=user.name,
             admin=user.role == "admin",
-            path=urlsplit(exchange.path).path,
+            path=_menu_path(exchange.path),
             monitor=exchange.app.preview.monitor_status,
+            pending=lambda: len(review_items(exchange.app.store, exchange.app.clips)),
         )
         if user is not None
         else None
