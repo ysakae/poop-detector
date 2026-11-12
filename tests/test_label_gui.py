@@ -172,9 +172,9 @@ def test_gui_accepts_session_among_other_cookies_and_hides_referrer(gui):
 
 class FakeServer:
     server_port = 8765
-    site = Site(8765)
 
-    def __init__(self, has_users=True):
+    def __init__(self, has_users=True, public_url=""):
+        self.site = Site(8765, public_url)
         self.app = SimpleNamespace(
             accounts=SimpleNamespace(users=SimpleNamespace(list=lambda: [1] if has_users else []))
         )
@@ -195,8 +195,10 @@ def launch(monkeypatch, capsys):
 
     opened = []
 
-    def run(open_browser, *, has_users=True, browser_ok=True):
-        monkeypatch.setattr(label_gui, "make_server", lambda *a, **k: FakeServer(has_users))
+    def run(open_browser, *, has_users=True, browser_ok=True, public_url=""):
+        monkeypatch.setattr(
+            label_gui, "make_server", lambda *a, **k: FakeServer(has_users, public_url)
+        )
         monkeypatch.setattr(
             label_gui.webbrowser, "open", lambda url: opened.append(url) or browser_ok
         )
@@ -213,6 +215,16 @@ def test_serve_opens_localhost_for_passkeys(launch):
     assert opened == ["http://localhost:8765/"]
     assert "http://localhost:8765/" in out
     assert "GUIを終了しました" in out
+
+
+def test_serve_opens_the_public_url_when_one_is_configured(launch):
+    """パスキーは登録したドメインでだけ使えるので、外部の URL があればそちらを開く。"""
+    run, opened = launch
+    out = run(True, public_url="https://toilet.example.ts.net")
+    assert opened == ["https://toilet.example.ts.net/"]
+    assert "外から開くとき: https://toilet.example.ts.net/（ブラウザーで開きました）" in out
+    # 同じマシンから開く URL も案内する（ブラウザーで開いたのは外部の URL だけ）。
+    assert "GUI: http://localhost:8765/\n" in out
 
 
 def test_serve_without_users_explains_the_first_registration(launch):

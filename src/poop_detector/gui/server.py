@@ -199,10 +199,14 @@ def make_server(
 
 
 def announce(base: str, *, opened: bool, public_url: str | None, has_users: bool) -> None:
-    """起動の案内を出す。URL に秘密は含まないので、ログやファイルに残ってもよい。"""
-    print(f"GUI: {base}{'（ブラウザーで開きました）' if opened else ''}", flush=True)  # noqa: T201
+    """起動の案内を出す。URL に秘密は含まないので、ログやファイルに残ってもよい。
+
+    opened はブラウザーで開いたか。外部の URL があればそちらを、なければ base を開いている。
+    """
+    mark = "（ブラウザーで開きました）" if opened else ""
+    print(f"GUI: {base}{'' if public_url else mark}", flush=True)  # noqa: T201
     if public_url:
-        print(f"外から開くとき: {public_url}", flush=True)  # noqa: T201
+        print(f"外から開くとき: {public_url}{mark}", flush=True)  # noqa: T201
     if not has_users:
         print(  # noqa: T201
             "まだユーザーがいません。このマシンで `poop-detector users invite 名前 --role admin` "
@@ -212,14 +216,18 @@ def announce(base: str, *, opened: bool, public_url: str | None, has_users: bool
 
 
 def open_gui_url(server: GuiServer, open_browser: bool) -> None:
-    """GUI の URL を案内し、必要ならブラウザーで開く。パスキーは IP アドレスでは使えないので
-    localhost で開く。"""
+    """GUI の URL を案内し、必要ならブラウザーで開く。
+
+    パスキーは登録したドメインでだけ使えるので、外部の URL（gui.public_url）があればそちらを
+    開く。なければ、IP アドレスでは使えないパスキーのために localhost で開く。
+    """
     base = f"http://localhost:{server.server_port}/"
-    opened = open_browser and webbrowser.open(base)
+    public_url = server.site.public_base
+    opened = open_browser and webbrowser.open(public_url or base)
     announce(
         base,
         opened=opened,
-        public_url=server.site.public_base,
+        public_url=public_url,
         has_users=bool(server.app.accounts.users.list()),
     )
 
