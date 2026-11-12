@@ -26,8 +26,11 @@ AGY_LOGIN = "agy acp --login で Antigravity CLI にログインしてくださ�
 
 def _cli_environment() -> dict[str, str]:
     # CLI のログイン情報は各 CLI が管理する。監視設定や API キーは渡さない。
+    # USER・LOGNAME は、macOS のキーチェーンにあるログイン情報を CLI が読むのに要る。
     keys = (
         "HOME",
+        "USER",
+        "LOGNAME",
         "PATH",
         "TMPDIR",
         "LANG",
