@@ -4,9 +4,8 @@ import json
 from datetime import date
 from typing import ClassVar
 
-import cv2
 import pytest
-from support import spot_scene
+from support import add_clip, spot_scene
 
 from poop_detector.detection.roi import ROI
 from poop_detector.detection.scene import save_baseline, scene_signature
@@ -19,49 +18,6 @@ from poop_detector.video.clip_storage import is_protected
 from poop_detector.video.clips import ClipStore
 
 CREATED = "2026-11-12T00:00:00+00:00"
-
-
-def write_video(path, frame, count=10):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    height, width = frame.shape[:2]
-    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 5, (width, height))
-    assert writer.isOpened()
-    for _ in range(count):
-        writer.write(frame)
-    writer.release()
-
-
-def add_clip(
-    clips,
-    start,
-    label,
-    *,
-    signature="scene-a",
-    event_id=None,
-    duration=2,
-    activity="other",
-    frame=None,
-    location=None,
-    **values,
-):
-    """保存済みの動画を1本登録し、人のラベルを付ける。"""
-    clip_id = clips.request(event_id=event_id)
-    clips.update(
-        clip_id,
-        status="ready",
-        path=f"clips/{clip_id}.mp4",
-        duration=duration,
-        start_at=start,
-        scene_signature=signature,
-        **values,
-    )
-    if frame is None:
-        (clips.root / "clips" / f"{clip_id}.mp4").write_bytes(b"x")
-    else:
-        write_video(clips.root / "clips" / f"{clip_id}.mp4", frame)
-    if label is not None:
-        clips.labels.save(clip_id, ClipLabel(label, activity=activity, location=location))
-    return clip_id
 
 
 def test_build_merges_clips_of_one_visit_and_splits_by_date(tmp_path):

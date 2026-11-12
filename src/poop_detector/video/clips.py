@@ -13,6 +13,7 @@ from ..records.events import (
 )
 
 if TYPE_CHECKING:
+    from .benchmark_candidates import BenchmarkCandidates
     from .clip_labels import ClipLabels
     from .clip_reviews import AssessmentStore, CirclingReviews
 
@@ -124,6 +125,13 @@ class ClipStore:
         from .clip_labels import ClipLabels
 
         return ClipLabels(self)
+
+    @property
+    def benchmark(self) -> "BenchmarkCandidates":
+        """判定器の比較に使う評価の候補と条件のタグ（benchmark_candidates）。"""
+        from .benchmark_candidates import BenchmarkCandidates
+
+        return BenchmarkCandidates(self)
 
     def queued(self) -> list[sqlite3.Row]:
         with self.connect() as db:

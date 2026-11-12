@@ -153,6 +153,7 @@ def _create(args: argparse.Namespace, context: CommandContext) -> int:
         since=_day(args.since, "--since"),
         until=_day(args.until, "--until"),
         base=_read_base(args.base),
+        selected_only=args.selected_only,
     )
     output = (
         Path(args.output)
