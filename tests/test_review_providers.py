@@ -161,3 +161,18 @@ def test_antigravity_cli_exchanges_acp_messages(tmp_path, monkeypatch, scenario,
             judge.judge(tmp_path, "指示", ["frames.jpg"], SCHEMA)
     else:
         assert judge.judge(tmp_path, "指示", ["frames.jpg"], SCHEMA) == RESULT
+
+
+def test_cli_environment_keeps_the_login_name_for_the_keychain(monkeypatch):
+    """macOS の Claude Code はログイン情報をキーチェーンに置き、USER がないと未ログインと答える。"""
+    from poop_detector.video.providers import _cli_environment
+
+    monkeypatch.setenv("USER", "dog-owner")
+    monkeypatch.setenv("LOGNAME", "dog-owner")
+    monkeypatch.setenv("POOP_RTSP_URL", "rtsp://user:secret@192.0.2.10/stream")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
+    environment = _cli_environment()
+    assert (environment["USER"], environment["LOGNAME"]) == ("dog-owner", "dog-owner")
+    # 監視の接続情報と API キーは渡さない。
+    assert "POOP_RTSP_URL" not in environment
+    assert "ANTHROPIC_API_KEY" not in environment
