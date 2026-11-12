@@ -23,6 +23,7 @@ from uuid import uuid4
 from ..errors import InvalidInputError
 from ..records.database import Database
 from .audit import AuditLog
+from .themes import APPEARANCES, THEMES
 
 Role: TypeAlias = Literal["admin", "member"]
 ROLES: dict[Role, str] = {"admin": "管理者", "member": "一般ユーザー"}
@@ -88,6 +89,9 @@ class User:
     last_login: str | None
     disabled_at: str | None
     email: str | None = None
+    # 表示の選択。theme が None なら既定のテーマ（gui.theme）に従う。
+    theme: str | None = None
+    appearance: str = "auto"
 
     @property
     def active(self) -> bool:
@@ -138,6 +142,8 @@ class UserStore:
             row["last_login"],
             row["disabled_at"],
             row["email"],
+            row["theme"],
+            row["appearance"],
         )
 
     def create(
@@ -179,6 +185,18 @@ class UserStore:
         with self.database.connect() as db:
             row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return self._user(row) if row else None
+
+    def set_display(self, user_id: str, theme: str | None, appearance: str) -> None:
+        """表示の選択を保存する。theme が None なら既定のテーマに従う。"""
+        if (theme is not None and theme not in THEMES) or appearance not in APPEARANCES:
+            raise InvalidInputError("表示の選択を確認してください")
+        with self.database.connect() as db:
+            changed = db.execute(
+                "UPDATE users SET theme = ?, appearance = ? WHERE id = ?",
+                (theme, appearance, user_id),
+            ).rowcount
+        if not changed:
+            raise InvalidInputError("ユーザーが見つかりません")
 
     def by_name(self, name: str) -> User | None:
         with self.database.connect() as db:

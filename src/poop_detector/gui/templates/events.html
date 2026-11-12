@@ -31,7 +31,7 @@
 {%- for name, text, value in row.times -%}
 <label>{{ text }}<input type="datetime-local" step="1" name="{{ name }}" value="{{ value }}"></label>
 {%- endfor -%}
-</div><p><label>メモ（任意）<br><textarea name="note" rows="3" maxlength="2000" style="width:100%">{{ row.note }}</textarea></label></p><p style="margin-top:20px"><button>ラベルを保存</button></p></form>
+</div><p><label>メモ（任意）<br><textarea name="note" rows="3" maxlength="2000">{{ row.note }}</textarea></label></p><p style="margin-top:20px"><button>ラベルを保存</button></p></form>
 {% else %}<p>通知されなかった排便として登録されています。</p>{% endif %}
 {% else %}
 <div class="empty"><h2>該当する記録はありません</h2><p>「すべて」に切り替えるか、監視で記録が増えたら再表示してください。</p></div>
@@ -40,5 +40,5 @@
 {%- for value, text in excretion_types -%}
 <option value="{{ value }}">{{ text }}</option>
 {%- endfor -%}
-</select></label>{{ location_field(locations, None) }}<div class="times"><label>開始（{{ timezone }}・必須）<input type="datetime-local" step="1" name="start" required></label><label>完了（任意）<input type="datetime-local" step="1" name="end"></label></div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000" style="width:100%"></textarea></label></p><p style="margin-top:16px"><button>排泄を記録</button></p></form></details><footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>{% endif %}
+</select></label>{{ location_field(locations, None) }}<div class="times"><label>開始（{{ timezone }}・必須）<input type="datetime-local" step="1" name="start" required></label><label>完了（任意）<input type="datetime-local" step="1" name="end"></label></div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000"></textarea></label></p><p style="margin-top:16px"><button>排泄を記録</button></p></form></details><footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>{% endif %}
 {% endblock %}

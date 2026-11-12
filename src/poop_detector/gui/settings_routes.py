@@ -10,7 +10,14 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ..config import SETTINGS, Config, ConfigError, Setting, load_connection_settings
+from ..config import (
+    SETTINGS,
+    THEME_NAMES,
+    Config,
+    ConfigError,
+    Setting,
+    load_connection_settings,
+)
 from ..settings_file import (
     READ_ONLY,
     SettingsConflictError,
@@ -41,7 +48,7 @@ SECTION_TITLES = {
     "review": "動画の自動判定",
     "gui": "GUI",
 }
-CHOICES = {"review_provider": ("codex", "claude", "gemini")}
+CHOICES = {"review_provider": ("codex", "claude", "gemini"), "gui_theme": THEME_NAMES}
 CONNECTION_LABELS = {
     "POOP_RTSP_URL": "カメラの RTSP URL",
     "POOP_NTFY_TOPIC": "ntfy の通知トピック",

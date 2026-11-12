@@ -225,6 +225,12 @@ def migrate_to_v7(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v8(db: sqlite3.Connection) -> None:
+    """GUI の表示の選択。theme が NULL の人は、管理者が決めた既定のテーマを使う。"""
+    db.execute("ALTER TABLE users ADD COLUMN theme TEXT")
+    db.execute("ALTER TABLE users ADD COLUMN appearance TEXT NOT NULL DEFAULT 'auto'")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -234,6 +240,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v5,
     migrate_to_v6,
     migrate_to_v7,
+    migrate_to_v8,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

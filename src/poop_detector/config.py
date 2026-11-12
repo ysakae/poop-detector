@@ -28,6 +28,8 @@ from .web_address import (
 
 CONNECTION_KEYS = ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC", "POOP_NTFY_SERVER")
 PET_NAME_MAX_LENGTH = 32
+# GUI のデザインテーマ（gui/themes.py の THEMES と同じ並び）。
+THEME_NAMES = ("professional", "dog")
 logger = logging.getLogger(__name__)
 
 
@@ -351,6 +353,14 @@ SETTINGS += (
         _number(1, 365),
         "1〜365 の数（ログインからこの日数が過ぎるとログアウト）",
     ),
+    Setting(
+        "gui_theme",
+        "gui",
+        "theme",
+        str,
+        lambda value: value in THEME_NAMES,
+        "professional（プロフェッショナル）か dog（ワンちゃん）。テーマを選んでいない人の既定",
+    ),
 )
 SETTINGS_BY_ATTR = {setting.attr: setting for setting in SETTINGS}
 SETTINGS_BY_NAME = {(setting.section, setting.key): setting for setting in SETTINGS}
@@ -417,6 +427,7 @@ class Config:
     gui_trusted_proxies: str = DEFAULT_TRUSTED_PROXIES
     gui_session_idle_hours: float = 168
     gui_session_max_days: float = 30
+    gui_theme: str = "professional"
 
     def __post_init__(self) -> None:
         for setting in SETTINGS:

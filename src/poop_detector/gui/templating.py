@@ -10,6 +10,7 @@ from typing import Any
 from jinja2 import Environment, PackageLoader, StrictUndefined
 
 from .navigation import Viewer, frame_for
+from .themes import Display
 
 ENVIRONMENT = Environment(
     loader=PackageLoader("poop_detector.gui", "templates"),
@@ -24,11 +25,16 @@ ENVIRONMENT = Environment(
 # テンプレートは frame で共通の枠を、viewer_admin で管理者だけの操作の入口を出し分ける
 # （拒否はサーバーで行う）。
 VIEWER: ContextVar[Viewer | None] = ContextVar("viewer", default=None)
+# 画面の表示（テーマとライト・ダーク）。ログイン前の画面でも、管理者が決めた既定のテーマを使う。
+DISPLAY: ContextVar[Display | None] = ContextVar("display", default=None)
 
 
 def render_template(name: str, **context: Any) -> str:
     """templates/ のテンプレートを描画する。"""
     viewer = VIEWER.get()
     return ENVIRONMENT.get_template(name).render(
-        viewer_admin=viewer is not None and viewer.admin, frame=frame_for(viewer), **context
+        viewer_admin=viewer is not None and viewer.admin,
+        frame=frame_for(viewer),
+        display=DISPLAY.get() or Display(),
+        **context,
     )

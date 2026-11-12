@@ -372,6 +372,12 @@ def asset(handler: "Handler", _query: Query) -> None:
     handler.respond(200, script.read_bytes(), "text/javascript; charset=utf-8")
 
 
+@get("/assets/paw.svg")
+def paw_icon(handler: "Handler", _query: Query) -> None:
+    """ワンちゃんのテーマの肉球の模様（CSP の img-src 'self' で読めるように同梱する）。"""
+    handler.respond(200, (ASSETS / "paw.svg").read_bytes(), "image/svg+xml")
+
+
 @get("/image")
 def event_image(handler: "Handler", query: Query) -> None:
     """イベントの画像。events/ の外を指す記録は返さない。"""
