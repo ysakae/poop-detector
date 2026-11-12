@@ -101,3 +101,10 @@ def test_server_listens_on_the_configured_address(tmp_path, host):
         assert server.server_address[0] == host
     finally:
         server.server_close()
+
+
+def test_launch_message_marks_the_public_url_as_opened(capsys):
+    announce("http://localhost:8765/", opened=True, public_url=PUBLIC + "/", has_users=True)
+    out = capsys.readouterr().out
+    assert "GUI: http://localhost:8765/\n" in out
+    assert f"外から開くとき: {PUBLIC}/（ブラウザーで開きました）" in out
