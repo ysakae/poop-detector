@@ -40,6 +40,7 @@ from .pages import (
     save_failed_page,
 )
 from .passkeys import PasskeyError
+from .review_queue import NEXT_PAGE, review_bar, review_items
 from .templating import render_template
 
 if TYPE_CHECKING:
@@ -131,10 +132,26 @@ def first(query: Query, name: str, default: str = "") -> str:
 # --- 画面 ---
 
 
+def _review_bar(handler: "Handler", query: Query, key: str) -> dict[str, Any] | None:
+    """確認待ちから開いた画面（from=review）なら、残りの件数と「飛ばす」の帯の値。"""
+    if first(query, "from") != "review":
+        return None
+    return review_bar(review_items(handler.app.store, handler.app.clips), key)
+
+
 @get("/")
 def top_page(handler: "Handler", query: Query) -> None:
     app = handler.app
-    handler.respond(200, render(app.store, handler.csrf, query, app.disk_mb, title=app.title))
+    page = render(
+        app.store,
+        handler.csrf,
+        query,
+        app.disk_mb,
+        title=app.title,
+        pending=len(review_items(app.store, app.clips)),
+        review=_review_bar(handler, query, f"event:{first(query, 'id')}"),
+    )
+    handler.respond(200, page)
 
 
 @get("/records")
@@ -151,7 +168,8 @@ def activity_page(handler: "Handler", query: Query) -> None:
 @get("/clips")
 def clips_page(handler: "Handler", query: Query) -> None:
     app = handler.app
-    page = render_clips(app.root, handler.csrf, query, app.disk_mb, title=app.title)
+    review = _review_bar(handler, query, f"clip:{first(query, 'id')}")
+    page = render_clips(app.root, handler.csrf, query, app.disk_mb, title=app.title, review=review)
     handler.respond(200, page)
 
 
@@ -422,6 +440,10 @@ def save_label(handler: "Handler", form: Form) -> None:
         _save_label(handler, form.fields)
     except (ValueError, UnicodeError, TypeError):
         handler.respond(400, save_failed_page(handler.app.title))
+        return
+    if form.fields.get("from") == "review":
+        # 確認待ちから開いたイベントは、保存したら次の件へ進む（保留でも同じ件に戻らない）。
+        handler.redirect(f"{NEXT_PAGE}?after=event:{form.fields.get('id', '')}")
         return
     mode = form.fields.get("filter", "unlabeled")
     if mode not in FILTERS:

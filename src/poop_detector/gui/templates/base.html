@@ -2,7 +2,7 @@
 {%- macro menu(items, label, css) -%}
 <nav class="{{ css }}" aria-label="{{ label }}"><ul>
 {%- for item in items -%}
-<li><a href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.text }}</a></li>
+<li><a href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.text }}{% if item.badge %}<span class="badge">{{ item.badge }}</span>{% endif %}</a></li>
 {%- endfor -%}
 </ul></nav>
 {%- endmacro -%}

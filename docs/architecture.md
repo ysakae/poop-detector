@@ -113,6 +113,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（ホームと記録、動画、行動マップ） |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル |
 | `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`）。見ている人（`VIEWER`）から共通の枠の値を渡す |
+| `gui/review_queue.py`・`gui/review_routes.py` | 確認待ち。未ラベルの検知と排泄に関わる動画を1つの列にまとめ（動画のある検知は1件）、保存後に次の件を開く |
 | `gui/navigation.py` | 共通の枠の値（メインメニュー、管理のメニュー、ログイン中の人、監視の状態）。画面の配置は [画面の構成](screens.md) |
 | `gui/access.py` | セッションの Cookie |
 | `gui/account_routes.py` | 自分のアカウント（パスキーの一覧・追加・削除）と、管理の中の招待・ユーザー・監査ログの画面 |

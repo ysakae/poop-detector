@@ -102,11 +102,19 @@ class ClipLabels:
             if record_id is not None:
                 resolved = replace(clip_label, start=start, end=end, location=location)
                 location = self._confirm(db, row, record_id, resolved)
+            if label == "none" and row["event_id"]:
+                self._dismiss_detection(db, row["event_id"])
             db.execute(
                 """UPDATE clips SET label=?,actual_start_offset=?,actual_end_offset=?,
                 activity=?,note=?,location=? WHERE id=?""",
                 (label, start, end, activity, note, location, clip_id),
             )
+
+    def _dismiss_detection(self, db: sqlite3.Connection, event_id: str) -> None:
+        """動画で排泄なしと確かめた検知を、誤検知にする。ラベル済みの検知は変えない。"""
+        event = db.execute("SELECT kind, feedback FROM events WHERE id=?", (event_id,)).fetchone()
+        if event is not None and event["kind"] == "SUSPECTED" and event["feedback"] is None:
+            self.store._classify(db, event_id, "false")
 
     def _confirm(
         self, db: sqlite3.Connection, clip: sqlite3.Row, record_id: str, clip_label: ClipLabel

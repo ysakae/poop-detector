@@ -2,14 +2,17 @@
 {% extends "base.html" %}
 {% from "_macros.html" import capacity_panel, csrf_field, location_field %}
 {% block content %}
+{% include "_review_bar.html" %}
+{% if not review %}
 <h2>動画を見てラベルを付ける</h2><p>排泄前後の動作も確認し、排泄なしの動画にもラベルを付けてください。排便や排尿を確認したら、動画ラベルと確定記録を一緒に保存できます。</p><form method="post" action="/clips/request">{{ csrf_field(token) }}<button>今の前後の動画を保存</button></form><p class="note">監視起動中に使えます。既定では操作前30秒と操作後30秒を保存します。録画後の変換が終わったら「更新」を押してください。</p><p><a href="/clips">更新</a></p>{{ capacity_panel(capacity) }}{% if viewer_admin %}<p><a href="/manage/storage">録画容量と古い動画の整理</a></p>{% endif %}
 {% if not live %}<div class="message">動画収集のカメラ接続を確認できません。監視を起動し、カメラ接続を確認してください。</div>{% endif %}
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
-<div class="workspace"><nav id="clip-list" aria-label="動画一覧">
+{% endif %}
+<div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav id="clip-list" aria-label="動画一覧">
 {%- for item in items -%}
 <a class="{% if item.active %}active{% endif %}" href="/clips?id={{ item.id }}">{{ item.time }}<small>{{ item.status }} ／ {{ item.label }}</small></a>
 {%- endfor -%}
-</nav><article id="clip-detail">
+</nav>{% endif %}<article id="clip-detail">
 {% if clip is none %}
 <div class="empty"><h3>動画はまだありません</h3><p>監視を起動して保存ボタンを押すか、自動検知を待ってください。</p></div>
 {% else %}
@@ -35,7 +38,7 @@
 {%- if assessment.draft %}<br>動画を確認してからラベルを保存してください。{% endif %}</div>
 {% endif %}
 {% endif %}
-<form method="post" action="/clips/label">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><fieldset><legend>動画の内容</legend><div class="choices">
+<form method="post" action="/clips/label">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>動画の内容</legend><div class="choices">
 {%- for value, text in clip_labels -%}
 <label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == form.label %}checked{% endif %}>{{ text }}</label>
 {%- endfor -%}

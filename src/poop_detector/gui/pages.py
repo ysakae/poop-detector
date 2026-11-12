@@ -154,8 +154,13 @@ def render(
     disk_mb: float = DEFAULT_DISK_MIB,
     *,
     title: str | None = None,
+    pending: int = 0,
+    review: Mapping[str, Any] | None = None,
 ) -> str:
-    """トップ画面。イベントの一覧と、選んだイベントのラベル入力欄。"""
+    """ホーム画面。イベントの一覧と、選んだイベントのラベル入力欄。
+
+    pending は確認待ちの件数、review は確認待ちから開いたときの帯（review_queue.review_bar）。
+    """
     mode = query.get("filter", ["unlabeled"])[0]
     if mode not in FILTERS:
         mode = "unlabeled"
@@ -187,6 +192,8 @@ def render(
         locations=list(EXCRETION_LOCATIONS.items()),
         excretion_types=list(EXCRETION_TYPES.items()),
         timezone=timezone_label(),
+        pending=pending,
+        review=review,
     )
 
 
