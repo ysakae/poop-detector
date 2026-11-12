@@ -15,6 +15,7 @@ PyPI に公開する sdist と wheel、およびリポジトリには、この�
 | opencv-python | Apache-2.0 | wheel に FFmpeg などのライブラリが同梱されています（[後述](#opencv-python-の-wheel-が同梱するライブラリ)） |
 | numpy | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | Python 3.11 では 2.4 系、3.12 以上では 2.5 系が選ばれます |
 | PyYAML | MIT | |
+| ruamel.yaml | MIT | 管理 › 設定で、コメントを残したまま設定ファイルを書き換える |
 | psutil | BSD-3-Clause | |
 | python-dotenv | BSD-3-Clause | |
 | Jinja2 | BSD-3-Clause | GUI の HTML テンプレート |

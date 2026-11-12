@@ -33,6 +33,7 @@ dependencies = [
     "starlette>=1.10.0",
     "uvicorn>=0.54.0",
     "webauthn>=3.0.1",
+    "ruamel-yaml>=0.18,<0.19",
 ]
 [project.urls]
 Homepage = "https://github.com/ysakae/poop-detector"
