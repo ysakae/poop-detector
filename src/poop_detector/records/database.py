@@ -231,6 +231,25 @@ def migrate_to_v8(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE users ADD COLUMN appearance TEXT NOT NULL DEFAULT 'auto'")
 
 
+def migrate_to_v9(db: sqlite3.Connection) -> None:
+    """Web Push の購読と、人ごとの受け取りの選択。
+
+    endpoint はブラウザーの購読の宛先（推測できない URL）で、p256dh と auth は通知の暗号化に使う
+    ブラウザーの公開鍵と秘密の値。ログや画面には出さない。
+    """
+    db.execute(
+        """CREATE TABLE push_subscriptions (
+            endpoint TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )"""
+    )
+    db.execute("ALTER TABLE users ADD COLUMN push_alerts INTEGER NOT NULL DEFAULT 1")
+    db.execute("ALTER TABLE users ADD COLUMN push_early INTEGER NOT NULL DEFAULT 0")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -241,6 +260,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v6,
     migrate_to_v7,
     migrate_to_v8,
+    migrate_to_v9,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

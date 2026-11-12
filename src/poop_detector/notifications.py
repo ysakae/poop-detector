@@ -4,7 +4,7 @@ import json
 import logging
 import re
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -15,7 +15,7 @@ DEFAULT_NTFY_SERVER = "https://ntfy.sh"
 logger = logging.getLogger(__name__)
 
 
-class _ToiletNotifier:
+class ToiletNotifier:
     """通知の文面を組み立てる。送信方法はサブクラスの _deliver が担う。"""
 
     def __init__(self, enabled: bool, pet_name: str = "") -> None:
@@ -66,12 +66,29 @@ class _ToiletNotifier:
         raise NotImplementedError
 
 
+class FanOutNotifier(ToiletNotifier):
+    """同じ通知を複数の送信先（ntfy・macOS と Web Push など）へ送る。
+
+    文面と有効・無効は送信先ごとに持つ。どれか1つでも受け付けられれば成功とする。
+    """
+
+    def __init__(self, notifiers: Sequence[ToiletNotifier]) -> None:
+        super().__init__(any(notifier.enabled for notifier in notifiers))
+        self.notifiers = tuple(notifiers)
+
+    def _deliver(self, message: str, *, early_alert: bool) -> bool:
+        results = [
+            notifier._display(message, early_alert=early_alert) for notifier in self.notifiers
+        ]
+        return any(results)
+
+
 def applescript_string(value: str) -> str:
     """AppleScript の二重引用符の文字列として安全に埋め込めるようにする。"""
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
-class MacNotifier(_ToiletNotifier):
+class MacNotifier(ToiletNotifier):
     """osascript で macOS の通知センターに通知する。"""
 
     def __init__(
@@ -119,7 +136,7 @@ def validated_ntfy_server(server: str) -> str:
     return f"{parts.scheme}://{parts.netloc}{parts.path.rstrip('/')}"
 
 
-class NtfyNotifier(_ToiletNotifier):
+class NtfyNotifier(ToiletNotifier):
     """ntfy サーバーへ HTTP POST で通知する。"""
 
     def __init__(

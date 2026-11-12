@@ -30,7 +30,7 @@ GUI の画面の配置と遷移、CLI に残す操作をまとめます（Issue 
 | 管理 › ユーザー | `/manage/users` | 管理者 | 検索、役割の変更、無効化・有効化、パスキー復旧メール |
 | 管理 › 招待 | `/manage/invite` | 管理者 | 招待メールの送信・再送・取り消し |
 | 管理 › 監査ログ | `/manage/audit` | 管理者 | 管理者の操作の記録（新しい順に200件） |
-| 自分の設定 | `/account` | 全員 | 表示（デザインテーマ、ライト・ダーク）、メールアドレス、パスキーの一覧・追加・削除 |
+| 自分の設定 | `/account` | 全員 | 表示（デザインテーマ、ライト・ダーク）、通知（Web Push の購読と受け取り方）、メールアドレス、パスキーの一覧・追加・削除 |
 | ログイン・登録 | `/login`・`/enroll` | ログイン前 | パスキーでのログイン、登録用 URL からのパスキーの登録 |
 
 管理のメニューに並ぶ画面は、すべて管理者だけのルートにします（`tests/test_gui_roles.py` が、メニューとルートの表の役割を突き合わせます）。
@@ -113,6 +113,15 @@ CLI の `test-notification`・`check-camera`・`diagnose` と同じ処理を、�
 - 状態は色だけで伝えず、文字でも示す（監視の状態、確認待ちの件数など）
 - フォントとアイコンは外部から読まない。文字は OS のフォント、肉球の模様は同梱の SVG（`static/paw.svg`。CSP の `img-src 'self'` のため data: URI は使わない）
 - 監視範囲を描く画面の線と塗り（`static/management.js`・`areas.js`）は、カメラの映像の上に重ねるので、テーマに関わらず同じ色にしている
+
+## PWA と Web Push
+
+GUI はホーム画面に追加できる Web アプリ（PWA）です（`gui/push_routes.py`）。
+
+- マニフェスト（`/manifest.webmanifest`）とアイコン、Service Worker（`/sw.js`、`static/sw.js`）を返す。ブラウザーが Cookie なしで読むことがあるので、ログインしていなくても開ける。CSP には `manifest-src 'self'` と `worker-src 'self'` を加えた
+- Service Worker は通知を出し、開くとその画面へ移る。オフラインのときは短い案内だけを出し、画面や記録は保存しない
+- 「自分の設定 › 通知（Web Push）」（`static/push.js`）で、この端末のブラウザーの購読を登録・解除し、受け取る通知を選ぶ。購読の宛先は既知のプッシュサービスに限る（`web_push.valid_endpoint`）
+- 送信は監視が行う（`web_push.WebPushNotifier`。ntfy・macOS の通知と `FanOutNotifier` で並べる）。詳しくは [通知](notifications.md#ブラウザーで通知を受け取るweb-push) を参照
 
 ## 古い URL
 

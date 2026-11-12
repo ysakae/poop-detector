@@ -92,6 +92,9 @@ class User:
     # 表示の選択。theme が None なら既定のテーマ（gui.theme）に従う。
     theme: str | None = None
     appearance: str = "auto"
+    # Web Push で受け取る通知（トイレの通知と見守り通知）。
+    push_alerts: bool = True
+    push_early: bool = False
 
     @property
     def active(self) -> bool:
@@ -144,6 +147,8 @@ class UserStore:
             row["email"],
             row["theme"],
             row["appearance"],
+            bool(row["push_alerts"]),
+            bool(row["push_early"]),
         )
 
     def create(
@@ -194,6 +199,16 @@ class UserStore:
             changed = db.execute(
                 "UPDATE users SET theme = ?, appearance = ? WHERE id = ?",
                 (theme, appearance, user_id),
+            ).rowcount
+        if not changed:
+            raise InvalidInputError("ユーザーが見つかりません")
+
+    def set_push(self, user_id: str, *, alerts: bool, early: bool) -> None:
+        """Web Push で受け取る通知を保存する（その人のすべての端末に効く）。"""
+        with self.database.connect() as db:
+            changed = db.execute(
+                "UPDATE users SET push_alerts = ?, push_early = ? WHERE id = ?",
+                (int(alerts), int(early), user_id),
             ).rowcount
         if not changed:
             raise InvalidInputError("ユーザーが見つかりません")

@@ -27,6 +27,8 @@ PyPI に公開する sdist と wheel、およびリポジトリには、この�
 | click | BSD-3-Clause | uvicorn の依存 |
 | idna | BSD-3-Clause | anyio の依存 |
 | webauthn | BSD-3-Clause | パスキー（WebAuthn）の検証 |
+| http-ece | MIT | Web Push の本文の暗号化（RFC 8291） |
+| py-vapid | MPL-2.0 | Web Push の送信元の署名（VAPID、RFC 8292） |
 | cbor2 | MIT | webauthn の依存。CBOR の読み書き |
 | cryptography | Apache-2.0 OR BSD-3-Clause | webauthn の依存。署名の検証 |
 | pyOpenSSL | Apache-2.0 | webauthn の依存。証明書の検証 |
