@@ -1,0 +1,29 @@
+{#- 管理 › 書き出しとバックアップ。確定記録の CSV、印刷用の集計、バックアップの作成と復元の案内。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>書き出しとバックアップ</h2>
+{% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+<section class="settings-section" aria-labelledby="records-title"><h3 id="records-title">記録の書き出し</h3>
+<p class="note">確定した排泄の記録（日時・種類・場所・メモ）を、開始の日付で期間を選んで書き出します。時刻はこのマシンのタイムゾーン（{{ timezone }}）で、時差を付けて書きます。</p>
+<form method="post" action="{{ page }}/records.csv" class="settings-form">{{ csrf_field(token) }}
+<div class="settings-field"><label>始まり<input type="date" name="from" value="{{ start }}" required></label></div>
+<div class="settings-field"><label>終わり<input type="date" name="to" value="{{ end }}" required></label></div>
+<p class="toolbar"><button>CSV を書き出す</button><button class="secondary" formmethod="get" formaction="{{ page }}/summary">印刷用の集計を開く</button></p>
+</form>
+<p class="note">CSV は Excel などでそのまま開ける UTF-8（BOM 付き）です。印刷用の集計は、期間の回数と時間帯の分布を1ページにまとめます。ブラウザーの印刷で紙や PDF にしてください。</p>
+</section>
+<section class="settings-section" aria-labelledby="backup-title"><h3 id="backup-title">バックアップ</h3>
+<p class="note">記録のデータベース、監視範囲・基準画像などの登録情報、検知の画像を1つの ZIP にまとめます。監視の動作中でも作れます。</p>
+<form method="post" action="{{ page }}/backup">{{ csrf_field(token) }}
+<p><label><input type="checkbox" name="clips" value="1">動画も含める（大きくなります）</label></p>
+<p><button>バックアップを作る</button></p>
+</form>
+<p class="note">ログインのセッション、登録用 URL、Web Push の購読と秘密鍵、<code>.env</code>、設定ファイル、犬検出モデルは含めません。ユーザーとパスキーは含めるので、復元した後も同じパスキーでログインできます（通知の購読はやり直してください）。家の中の画像を含むので、ファイルの置き場所に気を付けてください。</p>
+</section>
+<section class="settings-section" aria-labelledby="restore-title"><h3 id="restore-title">復元</h3>
+<p>復元はデータの保存先を入れ替えるので、画面からは行いません。監視と GUI を止めてから、監視するマシンで次を実行してください。</p>
+<pre class="diagnose-report" tabindex="0">uv run poop-detector restore バックアップのファイル.zip</pre>
+<p class="note">中身を確かめて確認を求めてから入れ替えます。元のデータは消さず、<code>data.before-restore-日時</code> のように名前を変えて残します。</p>
+</section>
+{% endblock %}
