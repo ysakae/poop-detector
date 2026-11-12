@@ -53,6 +53,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `commands/backup.py` | `backup`、`restore` |
 | `commands/users.py` | `users`（GUI のユーザーの一覧、招待、役割の変更、復旧、無効化） |
 | `commands/review.py` | `video-review`、`circling-review` |
+| `commands/benchmark.py`・`commands/datasets.py` | `video-benchmark`、`benchmark-dataset` |
 | `commands/dog_model.py` | `setup-dog-model`、`check-dog` |
 
 処理は `(args, CommandContext)` を受け取り、終了コードを返します。`CommandContext` は設定とデータの保存先の場所を持ちます。設定（`config.Config`）は不変で、`run` は `--video-review` などのフラグを `config.with_flags` で設定に重ね、機能の依存関係を `config.check_monitor_features` の1か所で確かめます。設定ファイルの各項目（セクション・名前・型・許容範囲）は `config.SETTINGS` の表で定義し、検証のエラーはその表から項目名と範囲を示します。ROI と基準画像の読み込み、通知先の選択、カメラの接続など、複数のコマンドで使う準備は `commands/context.py` にあります。サブコマンドを足すときは、`parser()` に引数を、`HANDLERS` に処理を加えてください。
@@ -98,6 +99,8 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 `ClipCollector` が JPEG 圧縮したフレームをメモリー上限付きで保持し、トリガー前後を切り出して作業スレッドで MP4 に変換します。クリップの `source`（`detected`、`manual`、`dog_enter`、`dog_exit`、`early_alert`、`outside_stay`）で後段の扱いが変わります。
 
 `--video-review` では `video.review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を判定器（`video.review.VideoJudge`）に渡して JSON スキーマに沿った判定を受け取ります。判定器は差し替えられる作りで、既定の実装は Codex CLI（`video.codex_cli.CodexCliJudge`）です。このモードでは差分だけの通知を抑え、判定器が根拠を確認した場合にだけ通知します。`video-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
+
+判定器の比較（`video-benchmark`）は、人が確認した録画の評価セット（`video/benchmark_sets.py`）を使います。`benchmark-dataset create` が台帳から下書きを作り（同じイベント・確定記録・30秒以内に重なる録画は1本にまとめる）、`freeze` が版の番号と内容の SHA-256 を付け、録画を保護します。評価セットは録画ごとに撮影時の画角の署名を持ち、署名ごとの ROI・基準画像の場所（データの保存先と `tray-scenes/` の下の過去の登録、`--scene`）を記録します。比較は録画ごとに画像を一度だけ切り出し、同じ画像と指示をすべての判定器に渡します。結果には評価セットの版、指定したモデル、CLI の版（`video/cli_versions.py`）、画像と指示のハッシュ、抽出時刻を残し、運用の記録・ラベル・自動判定は書き換えません。
 
 `circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`experimental/circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。
 

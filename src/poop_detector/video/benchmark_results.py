@@ -2,7 +2,7 @@
 
 比較の実行は時間がかかるので CLI に残し、GUI は既定の保存先（data/benchmarks）の JSON だけを
 読む。結果は人が作ったファイルとして扱い、形が違うものは数えるだけで表示しない。
-動画の ID などの個々の行は返さず、判定器ごとの集計だけを返す。
+録画ごとの回答（cases）は、画面で台帳にある録画と突き合わせてから出す。
 """
 
 import json
@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import Any
 
 RESULTS_DIR = "benchmarks"
-REPORT_VERSION = 1
+# 版2で、評価セットの版・判定器の CLI の版・分割を足した。版1の結果も読む。
+REPORT_VERSION = 2
+READABLE_VERSIONS = (1, 2)
+# 録画ごとの回答として読む件数の上限。
+CASE_LIMIT = 500
+ANSWERS = ("feces", "urine", "both", "none", "uncertain", "error")
 # 読むファイルの数と大きさの上限。古いものや大きすぎるものは読まない。
 SCAN_LIMIT = 20
 FILE_LIMIT_BYTES = 20 * 1024 * 1024
@@ -34,12 +39,35 @@ class JudgeScore:
 
 
 @dataclass(frozen=True)
+class JudgeDetail:
+    """結果に残した、判定器:モデルの指定と CLI の版。版1の結果では空。"""
+
+    name: str
+    model: str
+    cli_version: str | None
+
+
+@dataclass(frozen=True)
+class CaseAnswer:
+    """録画1本の正解と、判定器ごとの回答（scores と同じ並び）。"""
+
+    clip_id: str
+    label: str
+    split: str
+    tags: tuple[str, ...]
+    answers: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class BenchmarkResult:
-    """1回の比較の結果。"""
+    """1回の比較の結果。dataset_version は固定した評価セットの版（手書きなら None）。"""
 
     created_at: str
     dataset: str
     scores: tuple[JudgeScore, ...]
+    dataset_version: int | None = None
+    judges: tuple[JudgeDetail, ...] = ()
+    cases: tuple[CaseAnswer, ...] = ()
 
 
 def results_dir(root: str | Path) -> Path:
@@ -83,8 +111,62 @@ def _score(name: object, summary: object) -> JudgeScore:
     )
 
 
+def _text(value: object, limit: int = 200) -> str:
+    if not isinstance(value, str) or len(value) > limit:
+        raise ValueError
+    return value
+
+
+def _details(report: dict[str, Any]) -> tuple[int | None, tuple[JudgeDetail, ...]]:
+    info = report.get("dataset_info")
+    version = None
+    if isinstance(info, dict):
+        version = info.get("version")
+        if isinstance(version, bool) or not isinstance(version, int):
+            raise ValueError
+    judges = report.get("judges", {})
+    if not isinstance(judges, dict):
+        raise ValueError
+    details = tuple(
+        JudgeDetail(
+            _text(name),
+            _text(detail["model"]),
+            None if detail.get("cli_version") is None else _text(detail["cli_version"]),
+        )
+        for name, detail in judges.items()
+    )
+    return version, details
+
+
+def _cases(report: dict[str, Any], names: tuple[str, ...]) -> tuple[CaseAnswer, ...]:
+    cases = report.get("cases", [])
+    if not isinstance(cases, list):
+        raise ValueError
+    answers = []
+    for case in cases[:CASE_LIMIT]:
+        results = case["results"]
+        labels = tuple(results[name]["label"] for name in names)
+        tags = case.get("tags", [])
+        if (
+            case["label"] not in ANSWERS[:4]
+            or any(label not in ANSWERS for label in labels)
+            or not isinstance(tags, list)
+        ):
+            raise ValueError
+        answers.append(
+            CaseAnswer(
+                _text(case["id"]),
+                case["label"],
+                _text(case.get("split", "")),
+                tuple(_text(tag) for tag in tags),
+                labels,
+            )
+        )
+    return tuple(answers)
+
+
 def _parse(report: Any) -> BenchmarkResult:
-    if not isinstance(report, dict) or report.get("version") != REPORT_VERSION:
+    if not isinstance(report, dict) or report.get("version") not in READABLE_VERSIONS:
         raise ValueError
     created_at, dataset = report["created_at"], report.get("dataset", "")
     summaries = report["summaries"]
@@ -96,7 +178,13 @@ def _parse(report: Any) -> BenchmarkResult:
     if not isinstance(summaries, dict) or not summaries:
         raise ValueError
     scores = tuple(_score(name, summary) for name, summary in summaries.items())
-    return BenchmarkResult(created_at, dataset, scores)
+    version, details = _details(report)
+    try:
+        cases = _cases(report, tuple(score.name for score in scores))
+    except (KeyError, TypeError, ValueError):
+        # 録画ごとの回答が読めなくても、集計は出す。
+        cases = ()
+    return BenchmarkResult(created_at, dataset, scores, version, details, cases)
 
 
 def _read(path: Path) -> BenchmarkResult:
