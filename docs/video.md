@@ -72,6 +72,8 @@ uv run poop-detector run --dog --video-review
 
 `config/config.yaml` の `review` に `provider` と `model` を設定します。Codex CLI はログインが必要で、`model` を省略すると CLI の既定を使います。Claude API と Gemini API では、画像入力と JSON Schema に対応するモデル名を `model` に指定し、`.env` にそれぞれ `ANTHROPIC_API_KEY` または `GEMINI_API_KEY` を設定してください。
 
+GUI の「管理 › 判定器とモデル」（管理者だけ）でも、いまの判定器が使える状態かを確かめ、`provider` と `model` を選び直せます。保存した設定は、監視と GUI を起動し直すと反映されます。
+
 どの判定器も、同じ方法で作った切り出し画像と判定指示を、選んだ提供元へ送ります。利用条件や料金は選んだ提供元で確認してください。[Claude API の仕様](https://platform.claude.com/docs/en/api/messages/create)・[Gemini API の仕様](https://ai.google.dev/api/generate-content)
 
 ### 保存済みの動画を判定する

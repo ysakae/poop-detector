@@ -31,6 +31,7 @@ ACTIONS: dict[str, str] = {
     "clip.cleanup": "動画の削除・整理",
     "settings.save": "設定の変更",
     "settings.restore": "設定を直前に戻す",
+    "judge.select": "判定器とモデルの選択",
     "check.notification": "通知のテスト送信",
     "check.camera": "カメラの確認",
     "area.roi": "監視範囲と基準画像の登録",

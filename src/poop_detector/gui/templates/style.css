@@ -97,6 +97,8 @@ table{border-collapse:collapse}th,td{text-align:left;padding:6px 10px}
 /* 設定・確認と診断・アカウント */
 .settings-section{background:var(--surface);border:0;border-radius:var(--radius);padding:16px 20px;margin:0 0 16px;box-shadow:var(--shadow)}.settings-section legend{float:left;width:100%;padding:0}.settings-section legend h3,.settings-section>h3{margin:0 0 8px}
 .settings-field{clear:both;padding:10px 0;border-top:1px solid var(--border)}.settings-field label{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}.settings-field input,.settings-field select{margin-top:0;min-width:12em}.settings-field input[type=checkbox]{min-width:0}.settings-field small{color:var(--muted)}
+/* 判定器とモデルなどの状態。文字の色は変えず、前に色の点だけを付ける。 */
+.state::before{content:"● "}.state-ok::before{color:var(--ok)}.state-warn::before{color:var(--warn-border)}
 .settings-pending{background:var(--warn-bg);color:var(--warn-text);border-left:4px solid var(--warn-border);border-radius:var(--radius-small);padding:12px 16px;margin-bottom:16px}.settings-pending table{display:table;width:100%}.settings-pending th,.settings-pending td{white-space:normal;overflow-wrap:anywhere}
 .settings-pending th,.settings-pending td,.settings-section th,.settings-section td{padding:6px 12px;border-bottom:1px solid var(--border)}
 .settings-actions{position:sticky;bottom:0;background:var(--bg);padding:12px 0;margin:0}

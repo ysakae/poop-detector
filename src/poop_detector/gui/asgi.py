@@ -39,6 +39,7 @@ from . import (
     account_routes,  # noqa: F401
     areas_routes,  # noqa: F401
     checks_routes,  # noqa: F401
+    models_routes,  # noqa: F401
     push_routes,  # noqa: F401
     review_routes,  # noqa: F401
     settings_routes,  # noqa: F401

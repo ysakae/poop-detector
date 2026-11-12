@@ -26,6 +26,8 @@ uv run poop-detector run --dog
 uv run poop-detector check-dog --image /absolute/path/to/image.jpg --repeat 10
 ```
 
+結果は `data/models/dog-yolox/check-dog.json` に保存し（画像の場所と検出枠は保存しません）、GUI の「管理 › 判定器とモデル」に、モデルのハッシュの確認結果と並べて出します。
+
 カメラの設置位置を変える前の、犬が写った保存画像で検出を確認し、人工の無地画像では検出なしでした。
 開発者の Apple Silicon の Mac で、反復推論は平均約73ms、プロセス RSS 約421MiB でした。CPU の表示値は休止なしの反復推論時の値です。
 現在の俯瞰の設置位置での Precision/Recall と、RTSP の処理を含む総負荷は未確認です。カメラを固定し、実動画で見逃しと誤検出を確認してください。
