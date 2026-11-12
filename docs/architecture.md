@@ -63,7 +63,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 `Monitor.step` が1回分の処理で、次の段に分かれています。
 
-1. `_read` — カメラから読み、`TrayTracker.align` でトレーの縁を目印に登録時の座標へ戻す（`--track-tray`）。再接続（`generation` の変化）、カメラの不調によるフレームの欠落、追従の失敗は中断として扱う。
+1. `_read` — カメラから読み、`TrayTracker.align` でトレーの縁を目印に登録時の座標へ戻す（`--track-tray`）。再接続（`generation` の変化）、カメラの不調によるフレームの欠落、追従の失敗は中断として扱う。補正後の ROI が画面端から `EDGE_TOLERANCE`（縮小映像上の3ピクセル）まではみ出すのは許し、画面の外にあたる画素は登録時の映像で埋めて差分の根拠にしない。保存済み動画の自動判定も同じ `align` を使う。
 2. `_observe` — `roi.crop` と `roi.valid_mask` で切り出し、`IncrementalDetector.analyze` が `Observation.kind` を `empty` / `candidate` / `occupied` / `unstable` のいずれかで返す。続いて拡張が観測を受け取り、上書きできる。
 3. `_settle` — フレーム間の動きがあれば継続確認をやり直す。`Machine.update` が、`candidate` が `verify_seconds` 続いたときだけ True を返すと、`_record` が記録・通知済み状態の更新・動画トリガー・通知を行う。
 4. `_update_reference` — 空が `clear_seconds` 続き、通知済み状態と違えば（清掃・乾燥など）通知済み状態を更新する。

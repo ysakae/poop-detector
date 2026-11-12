@@ -234,3 +234,135 @@ def test_codex_evidence_must_come_from_a_tracked_frame(tmp_path, evidence_at, la
         ).label
         == label
     )
+
+
+def edge_scene():
+    """ROI の下端が追従用の縮小画像（高さ360px）の最下段 359px に接する場面。"""
+    frame, _ = tray_scene()
+    return frame, ROI.from_pixels((170, 75, 320, 285), 640, 360)
+
+
+def shift_down(frame, pixels):
+    return cv2.warpAffine(
+        frame,
+        np.float32([[1, 0, 0], [0, 1, pixels]]),
+        (640, 360),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+
+
+@pytest.mark.parametrize("pixels", [0.6, 1.3, 2.5])
+def test_tracks_when_roi_overhangs_the_frame_edge_slightly(pixels):
+    frame, roi = edge_scene()
+    tracker = TrayTracker(frame, roi)
+
+    aligned = tracker.align(shift_down(frame, pixels))
+
+    assert aligned is not None
+    assert np.abs(roi.crop(aligned).astype(float) - roi.crop(frame)).mean() < 2
+
+
+def test_filler_beyond_the_frame_edge_comes_from_the_reference():
+    frame, roi = edge_scene()
+    tracker = TrayTracker(frame, roi)
+    shifted = shift_down(frame, 1.3)
+    # 実映像の最下段だけが変わった。補正後に画面外へ出る行は、この画素で埋めない。
+    shifted[359] = 250
+    cv2.circle(shifted, (330, 200), 8, (35, 47, 63), -1)
+
+    aligned = tracker.align(shifted)
+
+    assert aligned is not None
+    assert aligned[358:].tolist() == frame[358:].tolist()
+    # 画面内に残っている新しい跡は使える。
+    assert aligned[199, 330].tolist() == [35, 47, 63]
+
+
+def test_pauses_when_the_overhang_exceeds_the_tolerance():
+    frame, roi = edge_scene()
+    tracker = TrayTracker(frame, roi)
+
+    assert tracker.align(shift_down(frame, 6)) is None
+    assert tracker.last_failure == "outside"
+
+
+def test_reports_why_tracking_paused():
+    frame, roi = edge_scene()
+    tracker = TrayTracker(frame, roi)
+
+    assert tracker.align(np.full_like(frame, 70)) is None
+    assert tracker.last_failure == "unmatched"
+    assert tracker.align(shift_down(frame, 1.3)) is not None
+    assert tracker.last_failure is None
+
+
+@pytest.mark.parametrize(("pixels", "state"), [(1.3, "tracking"), (18, "searching")])
+def test_monitor_tracks_slight_overhang_and_pauses_outside(tmp_path, pixels, state):
+    frame, roi = edge_scene()
+    shifted = shift_down(frame, pixels)
+    states = []
+
+    class Camera:
+        generation = 1
+        healthy = True
+
+        def read(self):
+            return shifted
+
+    class Notifier:
+        def send(self, *args, **kwargs):
+            return True
+
+    monitor(
+        Camera(),
+        roi,
+        roi.crop(frame),
+        Config(data_dir=str(tmp_path), fps=100),
+        Notifier(),
+        max_frames=3,
+        tray_tracker=TrayTracker(frame, roi),
+        on_tray_state=states.append,
+    )
+    assert states == [state]
+
+
+@pytest.mark.parametrize(("pixels", "judged"), [(1.3, True), (18, False)])
+def test_saved_clip_tracks_slight_overhang_and_holds_outside(tmp_path, pixels, judged):
+    from poop_detector.video.review import inspect_clip
+
+    frame, roi = edge_scene()
+    path = tmp_path / "edge.mp4"
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 2, (640, 360))
+    assert writer.isOpened()
+    try:
+        for _ in range(6):
+            writer.write(shift_down(frame, pixels))
+    finally:
+        writer.release()
+    calls = []
+
+    def runner(*args, cwd, **kwargs):
+        calls.append(cwd)
+        (Path(cwd) / "result.json").write_text(
+            json.dumps(
+                {
+                    "label": "none",
+                    "activity": "other",
+                    "start_seconds": None,
+                    "end_seconds": None,
+                    "reason": "変化はありません",
+                    "evidence": "none",
+                }
+            )
+        )
+
+    assessment = inspect_clip(
+        path,
+        {"duration": 3},
+        roi,
+        judge=CodexCliJudge(runner),
+        tray_tracker=TrayTracker(frame, roi),
+    )
+    assert bool(calls) is judged
+    assert assessment.label == ("none" if judged else "uncertain")
