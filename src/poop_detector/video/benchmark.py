@@ -6,6 +6,7 @@ import subprocess
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ import cv2
 from ..detection.roi import AnyROI
 from ..errors import InvalidInputError
 from ..features.tray_tracking import TrayTracker
+from .benchmark_sets import Dataset
 from .clip_reviews import Assessment
 from .clips import ClipRow, ClipStore
 from .review import PreparedClip, VideoJudge, prepare_clip
@@ -25,12 +27,27 @@ REVIEW_ERRORS = (OSError, ValueError, TypeError, subprocess.SubprocessError, cv2
 
 @dataclass(frozen=True)
 class Case:
-    """人が確認した評価対象の動画1本と、その分類用のタグ。"""
+    """人が確認した評価対象の動画1本と、その分類用のタグ。
+
+    scene は撮影時の画角の署名で、evaluate に渡す scenes の鍵。split は評価セットの
+    調整用（tuning）か最終評価用（final）で、手書きの評価セットでは空。
+    """
 
     row: ClipRow
     path: Path
     label: str
     tags: tuple[str, ...]
+    scene: str = ""
+    split: str = ""
+
+
+@dataclass(frozen=True)
+class Scene:
+    """1つの画角の登録情報。録画はそれぞれ撮影時の登録情報で切り出す。"""
+
+    roi: AnyROI
+    tray_tracker: TrayTracker | None = None
+    outside_roi: AnyROI | None = None
 
 
 def read_cases(manifest: object, store: ClipStore, signature: str) -> tuple[list[Case], list[str]]:
@@ -78,10 +95,39 @@ def read_cases(manifest: object, store: ClipStore, signature: str) -> tuple[list
         if row["interrupted"]:
             case_tags.add("一部欠落")
         if label is not None:
-            cases.append(Case(row, path, label, tuple(sorted(case_tags))))
+            cases.append(Case(row, path, label, tuple(sorted(case_tags)), scene=signature))
     if not cases:
         raise InvalidInputError("評価できる確定ラベル付き動画がありません")
     return cases, excluded
+
+
+def dataset_cases(dataset: Dataset, store: ClipStore) -> list[Case]:
+    """固定した評価セットの録画を、撮影時の画角と分割を付けて読む。
+
+    録画・ラベル・画角は benchmark_sets.inspect で先に確かめておく。
+    """
+    cases = []
+    for entry in dataset.included:
+        row = store.get(entry.id)
+        path = store.video_path(row)
+        if row is None or path is None or entry.scene_signature is None:
+            raise InvalidInputError("評価セットの録画を確認してください")
+        tags = set(entry.tags)
+        if row["interrupted"]:
+            tags.add("一部欠落")
+        cases.append(
+            Case(
+                row,
+                path,
+                entry.label,
+                tuple(sorted(tags)),
+                scene=entry.scene_signature,
+                split=entry.split,
+            )
+        )
+    if not cases:
+        raise InvalidInputError("評価できる確定ラベル付き動画がありません")
+    return cases
 
 
 def summarize(pairs: Sequence[tuple[str, str]]) -> dict[str, Any]:
@@ -115,9 +161,10 @@ def summarize(pairs: Sequence[tuple[str, str]]) -> dict[str, Any]:
     }
 
 
-def input_metadata(prepared: PreparedClip) -> dict[str, Any]:
+def input_metadata(prepared: PreparedClip, extracted_at: str) -> dict[str, Any]:
     prompt = json.dumps([prepared.prompt, prepared.schema], sort_keys=True, ensure_ascii=False)
     return {
+        "extracted_at": extracted_at,
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
         "sample_times_seconds": prepared.timestamps,
         "images": {
@@ -127,27 +174,19 @@ def input_metadata(prepared: PreparedClip) -> dict[str, Any]:
     }
 
 
-def evaluate_case(
-    case: Case,
-    judges: Mapping[str, VideoJudge],
-    roi: AnyROI,
-    tray_tracker: TrayTracker | None,
-    outside_roi: AnyROI | None,
-) -> dict[str, Any]:
+def evaluate_case(case: Case, judges: Mapping[str, VideoJudge], scene: Scene) -> dict[str, Any]:
+    """1本の録画から画像を一度だけ切り出し、同じ画像と指示をすべての判定器に渡す。"""
     results: dict[str, dict[str, Any]] = {}
     metadata = None
+    outside = scene.outside_roi if case.row["source"] in ("outside_stay", "manual") else None
     try:
         with prepare_clip(
-            case.path,
-            case.row,
-            roi,
-            tray_tracker=tray_tracker,
-            outside_roi=outside_roi if case.row["source"] in ("outside_stay", "manual") else None,
+            case.path, case.row, scene.roi, tray_tracker=scene.tray_tracker, outside_roi=outside
         ) as prepared:
             if isinstance(prepared, Assessment):
                 results = {name: asdict(prepared) for name in judges}
             else:
-                metadata = input_metadata(prepared)
+                metadata = input_metadata(prepared, datetime.now(UTC).isoformat())
                 for name, judge in judges.items():
                     try:
                         results[name] = asdict(prepared.inspect(judge))
@@ -160,31 +199,33 @@ def evaluate_case(
     return {
         "id": case.row["id"],
         "label": case.label,
+        "split": case.split,
         "tags": case.tags,
+        "scene_signature": case.scene,
         "inputs": metadata,
         "results": results,
     }
 
 
 def evaluate(
-    cases: Sequence[Case],
-    judges: Mapping[str, VideoJudge],
-    roi: AnyROI,
-    tray_tracker: TrayTracker | None,
-    outside_roi: AnyROI | None,
+    cases: Sequence[Case], judges: Mapping[str, VideoJudge], scenes: Mapping[str, Scene]
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    rows = [evaluate_case(case, judges, roi, tray_tracker, outside_roi) for case in cases]
+    """録画ごとに判定し、判定器ごとに全体・条件別・分割別の集計を返す。"""
+    rows = [evaluate_case(case, judges, scenes[case.scene]) for case in cases]
     tags = sorted({tag for case in cases for tag in case.tags})
+    splits = sorted({case.split for case in cases if case.split})
     summaries = {}
     for name in judges:
         pairs = [(row["label"], row["results"][name]["label"]) for row in rows]
+        paired = list(zip(cases, pairs, strict=True))
         summaries[name] = {
             **summarize(pairs),
             "by_tag": {
-                tag: summarize(
-                    [pair for case, pair in zip(cases, pairs, strict=True) if tag in case.tags]
-                )
-                for tag in tags
+                tag: summarize([pair for case, pair in paired if tag in case.tags]) for tag in tags
+            },
+            "by_split": {
+                split: summarize([pair for case, pair in paired if case.split == split])
+                for split in splits
             },
         }
     return rows, summaries

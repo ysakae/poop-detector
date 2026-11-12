@@ -38,14 +38,38 @@
 <section class="settings-section" aria-labelledby="benchmark-title"><h3 id="benchmark-title">判定器・モデルの比較</h3>
 <p class="note">ラベル付きの動画での比較は時間がかかるので、監視するマシンで <code>video-benchmark</code> を実行します。<code>--output</code> を省くと、結果をこの画面に出します。数は適合率 / 再現率です。</p>
 {% for result in benchmarks %}
-<h4>{{ result.created_at }}（{{ result.dataset }}）</h4>
+<h4>{{ result.created_at }}（{{ result.dataset }}{% if result.dataset_version %}・版{{ result.dataset_version }}{% endif %}）</h4>
 <table><thead><tr><th>判定器:モデル</th><th>件数</th><th>排便</th><th>排尿</th><th>判定不能</th><th>エラー</th></tr></thead><tbody>
 {%- for score in result.scores -%}
 <tr><td>{{ score.name }}</td><td>{{ score.cases }}</td><td>{{ score.feces }}</td><td>{{ score.urine }}</td><td>{{ score.uncertain }}</td><td>{{ score.errors }}</td></tr>
 {%- endfor -%}
 </tbody></table>
+{% if result.judges %}<p class="note">指定したモデルと CLI の版：{% for judge in result.judges %}{% if not loop.first %}、{% endif %}{{ judge.name }}（{{ judge.cli_version }}）{% endfor %}</p>{% endif %}
+{% if result.answers %}
+<details><summary>録画ごとの正解と回答（{{ result.answers|length }}件）</summary>
+<div class="table-scroll"><table><thead><tr><th>録画</th><th>正解</th><th>分割</th><th>条件</th>{% for score in result.scores %}<th>{{ score.name }}</th>{% endfor %}</tr></thead><tbody>
+{%- for case in result.answers -%}
+<tr><td><a href="/clips?id={{ case.id }}">映像を見る</a></td><td>{{ case.label }}</td><td>{{ case.split }}</td><td>{{ case.tags }}</td>{% for answer in case.answers %}<td{% if answer.miss %} class="answer-miss"{% endif %}>{{ answer.name }}</td>{% endfor %}</tr>
+{%- endfor -%}
+</tbody></table></div>
+<p class="note">正解と違う回答に印を付けています。「両方」の正解に排便だけを答えた場合も違う回答です。</p>
+</details>
+{% endif %}
 {% else %}<p>保存済みの比較の結果はありません。</p>{% endfor %}
 {% if unreadable %}<p class="message message-error">読めない結果のファイルが {{ unreadable }} 件あります。</p>{% endif %}
+</section>
+<section class="settings-section" aria-labelledby="dataset-title"><h3 id="dataset-title">評価セット</h3>
+<p class="note">比較に使う録画の一覧です。監視するマシンで <code>benchmark-dataset create</code> で下書きを作り、条件のタグを確かめてから <code>benchmark-dataset freeze</code> で版を固定します。固定した録画は自動整理から保護します。</p>
+{% for dataset in datasets %}
+<h4>{{ dataset.name }}（{{ dataset.version }}・{{ dataset.created_at }}・{{ dataset.file }}）</h4>
+<div class="table-scroll"><table><thead><tr><th>区分</th>{% for label in dataset.labels %}<th>{{ label }}</th>{% endfor %}</tr></thead><tbody>
+{%- for row in dataset.splits -%}<tr><td>{{ row.name }}</td>{% for count in row.counts %}<td>{{ count }}</td>{% endfor %}</tr>{%- endfor -%}
+{%- for row in dataset.tags -%}<tr><td>条件：{{ row.name }}</td>{% for count in row.counts %}<td>{{ count }}</td>{% endfor %}</tr>{%- endfor -%}
+</tbody></table></div>
+<p>評価する録画 {{ dataset.summary.cases }}件（除外 {{ dataset.summary.excluded }}件・重複 {{ dataset.summary.duplicates }}件・判定不能 {{ dataset.summary.uncertain }}件・未ラベル {{ dataset.summary.unlabeled }}件）。見逃しの記録 {{ dataset.summary.missed.total }}件（録画あり {{ dataset.summary.missed.with_recording }}件・録画なし {{ dataset.summary.missed.without_recording }}件）。</p>
+{% if dataset.problems %}<ul class="message message-error">{% for line in dataset.problems %}<li>{{ line }}</li>{% endfor %}</ul>{% else %}<p><span class="state state-ok">録画と画角の登録情報はそろっています</span></p>{% endif %}
+{% else %}<p>保存済みの評価セットはありません。</p>{% endfor %}
+{% if unreadable_sets %}<p class="message message-error">読めない評価セットのファイルが {{ unreadable_sets }} 件あります。</p>{% endif %}
 </section>
 <section class="settings-section" aria-labelledby="dog-title"><h3 id="dog-title">犬検出モデル</h3>
 {% if dog.absent %}<p>犬検出モデルはまだ取得していません。監視するマシンで <code>setup-dog-model</code> を実行してください。</p>

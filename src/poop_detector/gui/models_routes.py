@@ -2,8 +2,9 @@
 
 判定器の選び直しは、管理 › 設定と同じ設定ファイルの書き換え（settings_file.write）と検証を使う。
 判定器が使える状態かは、監視と同じ check（選択した CLI の起動とログイン）で確かめ、
-キーやトークンの値は出さない。比較（video-benchmark）、モデルの取得（setup-dog-model）、
-処理負荷の確認（check-dog）は時間がかかるので CLI に残し、ここでは保存済みの結果を読むだけ。
+キーやトークンの値は出さない。比較（video-benchmark）、評価セットの作成と固定（benchmark-dataset）、
+モデルの取得（setup-dog-model）、処理負荷の確認（check-dog）は時間がかかるか送信を伴うので CLI に
+残し、ここでは保存済みの結果と評価セットを読むだけ。録画ごとの回答は、台帳にある録画だけを出す。
 ルートの表への登録はこのモジュールを読み込んだときに行う（asgi.py が読み込む）。
 """
 
@@ -11,10 +12,14 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..commands.datasets import actual_signatures, resolve
 from ..config import Config, ConfigError
 from ..features.dog_status import load_check, model_status
 from ..settings_file import SettingsConflictError, changes, digest, write
+from ..video import benchmark_sets
 from ..video.benchmark_results import BenchmarkResult, load_results
+from ..video.benchmark_sets import LABELS, SPLIT_NAMES
+from ..video.clips import CLIP_LABELS, ClipStore
 from ..video.providers import PROVIDER_NAMES, build_judge
 from .pages import Query, local_time, message_page
 from .routes import Form, audit, first, get, post
@@ -54,11 +59,46 @@ def _judges(handler: "Handler") -> list[dict[str, Any]]:
     ]
 
 
-def _benchmarks(results: list[BenchmarkResult]) -> list[dict[str, Any]]:
+ANSWER_NAMES = {**CLIP_LABELS, "uncertain": "判定不能", "error": "エラー"}
+
+
+def _answers(result: BenchmarkResult, clips: ClipStore) -> list[dict[str, Any]]:
+    """録画ごとの正解と回答。結果のファイルは人が作ったものなので、台帳にある録画だけを出す。"""
+    rows = []
+    for case in result.cases:
+        if clips.get(case.clip_id) is None:
+            continue
+        rows.append(
+            {
+                "id": case.clip_id,
+                "label": ANSWER_NAMES[case.label],
+                "split": SPLIT_NAMES.get(case.split, "―"),
+                "tags": "、".join(case.tags) or "―",
+                "answers": [
+                    {"name": ANSWER_NAMES[answer], "miss": answer != case.label}
+                    for answer in case.answers
+                ],
+            }
+        )
+    return rows
+
+
+def _benchmarks(results: list[BenchmarkResult], clips: ClipStore) -> list[dict[str, Any]]:
     return [
         {
             "created_at": local_time(result.created_at),
             "dataset": result.dataset,
+            "dataset_version": result.dataset_version,
+            "judges": [
+                {
+                    "name": judge.name,
+                    "model": judge.model,
+                    "cli_version": judge.cli_version or "不明",
+                }
+                for judge in result.judges
+            ],
+            # 録画ごとの見比べは、新しい結果だけに出す。
+            "answers": _answers(result, clips) if index == 0 else [],
             "scores": [
                 {
                     "name": score.name,
@@ -71,8 +111,37 @@ def _benchmarks(results: list[BenchmarkResult]) -> list[dict[str, Any]]:
                 for score in result.scores
             ],
         }
-        for result in results
+        for index, result in enumerate(results)
     ]
+
+
+def _datasets(root: Path, clips: ClipStore) -> tuple[list[dict[str, Any]], int]:
+    """保存先の評価セットの件数と、評価の前に直すべきこと。"""
+    found, unreadable = benchmark_sets.load_datasets(root)
+    shown = []
+    for file_name, dataset in found:
+        summary = benchmark_sets.coverage(dataset)
+        problems = benchmark_sets.inspect(dataset, clips, actual_signatures(resolve(dataset, root)))
+        shown.append(
+            {
+                "file": file_name,
+                "name": dataset.name,
+                "version": "下書き" if dataset.version is None else f"版{dataset.version}",
+                "created_at": local_time(dataset.created_at),
+                "labels": [CLIP_LABELS[label] for label in LABELS],
+                "splits": [
+                    {"name": SPLIT_NAMES[split], "counts": list(counts.values())}
+                    for split, counts in summary["by_split"].items()
+                ],
+                "tags": [
+                    {"name": tag, "counts": list(counts.values())}
+                    for tag, counts in summary["by_tag"].items()
+                ],
+                "summary": summary,
+                "problems": problems.lines(),
+            }
+        )
+    return shown, unreadable
 
 
 def _dog(root: Path) -> dict[str, Any]:
@@ -110,6 +179,7 @@ def _render(
     app = handler.app
     current = Config.load(path) if path is not None else Config()
     results, unreadable = load_results(app.root)
+    datasets, unreadable_sets = _datasets(app.root, app.clips)
     page = render_template(
         "models.html",
         title=app.title,
@@ -125,8 +195,10 @@ def _render(
         provider=current.review_provider if provider is None else provider,
         model=current.review_model if model is None else model,
         judges=_judges(handler),
-        benchmarks=_benchmarks(results),
+        benchmarks=_benchmarks(results, app.clips),
         unreadable=unreadable,
+        datasets=datasets,
+        unreadable_sets=unreadable_sets,
         dog=_dog(app.root),
         error=error,
         notice=notice,

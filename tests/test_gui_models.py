@@ -3,6 +3,7 @@
 import json
 import re
 import threading
+from datetime import date
 from urllib.parse import urlencode
 
 import pytest
@@ -211,3 +212,92 @@ def test_dog_model_state_and_last_check_are_shown(models_gui, monkeypatch):
     assert "21.0 ms" in html
     assert "95.5%" in html
     assert "2026/11/11 09:00:00" in html
+
+
+def test_datasets_show_counts_by_split_condition_and_problems(models_gui):
+    from poop_detector.video import benchmark_sets
+    from poop_detector.video.clip_labels import ClipLabel
+
+    server, _ = models_gui
+    clips = server.app.clips
+    feces, none = ready_clip(clips), ready_clip(clips)
+    clips.update(none, start_at="2026-11-10T06:10:00+00:00")
+    for clip_id in (feces, none):
+        (clips.root / "clips" / f"{clip_id}.mp4").write_bytes(b"x")
+        clips.update(clip_id, scene_signature="scene-a")
+    clips.labels.save(feces, ClipLabel("feces"))
+    clips.labels.save(none, ClipLabel("none", activity="sniffing"))
+    clips.store.add_excretion("urine", "2026-11-01T01:00:00+00:00", missed=True)
+    dataset = benchmark_sets.build(
+        clips,
+        name="night<set>",
+        created_at="2026-11-12T00:00:00+00:00",
+        scenes={},
+        final_since=date(2026, 11, 10),
+    )
+    folder = benchmark_sets.datasets_dir(server.app.root)
+    benchmark_sets.write_new(folder / "a.json", dataset)
+    (folder / "broken.json").write_text("{")
+    html = page(server, login(server))
+    assert "night&lt;set&gt;" in html
+    assert "下書き" in html
+    assert re.search(r"<td>調整用</td><td>1</td><td>0</td><td>0</td><td>0</td>", html)
+    assert re.search(r"<td>最終評価用</td><td>0</td><td>0</td><td>0</td><td>1</td>", html)
+    assert "録画なし 1件" in html
+    assert "当時の ROI・基準画像が見つからない画角: 1件" in html
+    assert "読めない評価セットのファイルが 1 件" in html
+
+
+def test_benchmark_shows_each_clip_answer_and_judge_versions(models_gui):
+    server, _ = models_gui
+    clips = server.app.clips
+    clip_id = ready_clip(clips)
+    folder = server.app.root / "benchmarks"
+    folder.mkdir(parents=True)
+    scores = {
+        "true_positive": 1,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+    }
+    summary = {"cases": 2, "uncertain": 0, "errors": 1, "types": {"feces": scores, "urine": scores}}
+    report = {
+        "version": 2,
+        "created_at": "2026-11-10T01:00:00+00:00",
+        "dataset": "eval-v1.json",
+        "dataset_info": {"name": "eval", "version": 1, "content_sha256": "0" * 64},
+        "judges": {
+            "codex:model-a": {"provider": "codex", "model": "model-a", "cli_version": "codex 1.2"},
+            "claude:model-b": {"provider": "claude", "model": "model-b", "cli_version": None},
+        },
+        "cases": [
+            {
+                "id": clip_id,
+                "label": "feces",
+                "split": "final",
+                "tags": ["夜間"],
+                "results": {
+                    "codex:model-a": {"label": "feces"},
+                    "claude:model-b": {"label": "error"},
+                },
+            },
+            {
+                "id": "not-in-ledger",
+                "label": "none",
+                "results": {
+                    "codex:model-a": {"label": "none"},
+                    "claude:model-b": {"label": "none"},
+                },
+            },
+        ],
+        "summaries": {"codex:model-a": summary, "claude:model-b": summary},
+    }
+    (folder / "r.json").write_text(json.dumps(report))
+    html = page(server, login(server))
+    assert "版1" in html
+    assert "codex 1.2" in html
+    assert f'href="/clips?id={clip_id}"' in html
+    assert "not-in-ledger" not in html
+    assert "最終評価用" in html
+    assert re.search(r'<td class="answer-miss">エラー</td>', html)

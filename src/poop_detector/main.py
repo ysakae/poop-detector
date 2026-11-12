@@ -11,6 +11,7 @@ import cv2
 from .commands import (
     backup,
     benchmark,
+    datasets,
     diagnose,
     dog_model,
     notify,
@@ -41,6 +42,7 @@ HANDLERS: dict[str, Handler] = {
     "test-notification": notify.test_notification,
     "video-review": review.video_review,
     "video-benchmark": benchmark.video_benchmark,
+    "benchmark-dataset": datasets.benchmark_dataset,
     "circling-review": review.circling_review,
     "feedback": records.feedback,
     "acknowledge": records.acknowledge,
@@ -170,6 +172,25 @@ def parser() -> argparse.ArgumentParser:
     compare.add_argument("--detect-outside", action="store_true", help="登録した周辺範囲も判定")
     compare.add_argument(
         "--send-images", action="store_true", help="選んだ判定器への評価画像の送信を許可"
+    )
+    sets = commands.add_parser(
+        "benchmark-dataset", help="判定器の比較に使う評価セットを作成・確認・固定（送信なし）"
+    )
+    sets.add_argument("action", choices=("create", "check", "freeze"))
+    sets.add_argument("dataset", nargs="?", help="check・freeze する評価セットのJSON")
+    sets.add_argument("--name", help="create: 評価セットの名前（英数字・ハイフン・下線）")
+    sets.add_argument(
+        "--final-since", help="create: この日（YYYY-MM-DD、ローカル時刻）以降を最終評価用にする"
+    )
+    sets.add_argument("--since", help="create: この日以降の録画だけを使う")
+    sets.add_argument("--until", help="create: この日までの録画だけを使う")
+    sets.add_argument("--base", help="create: tags・event・exclude を引き継ぐ既存の評価セット")
+    sets.add_argument(
+        "--scene", action="append", help="create: 過去のROIと基準画像の場所（複数指定可）"
+    )
+    sets.add_argument("--version", type=int, help="freeze: 固定する版の番号（1以上）")
+    sets.add_argument(
+        "--output", help="書き出す新しいJSONファイル（既定は data/benchmarks/datasets/）"
     )
     circling = commands.add_parser("circling-review", help="保存動画の旋回候補を分析（通知なし）")
     circling.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
