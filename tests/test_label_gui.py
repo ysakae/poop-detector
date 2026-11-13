@@ -132,6 +132,8 @@ PROTECTED_PATHS = (
     "/activity",
     "/activity/background?id=x",
     "/live/frame",
+    "/live/stream",
+    "/live/status",
     "/live/assessment",
     "/clip-video?id=x",
     "/assets/live.js",

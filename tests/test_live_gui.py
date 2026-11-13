@@ -3,10 +3,12 @@
 import json
 import os
 import time
+from contextlib import closing
+from http.client import HTTPConnection
 
 import cv2
 import numpy as np
-from support import request
+from support import request, session_cookie
 
 from poop_detector.capture.live_preview import LivePreview
 from poop_detector.video.clip_labels import ClipLabel
@@ -105,3 +107,82 @@ def test_monitoring_command_shares_frames_without_clip_recording(gui, monkeypatc
     assert request(server, "GET", "/live/frame")[0] == 503
     assert main(["--config", str(config), "run", "--max-frames", "2"]) == 0
     assert request(server, "GET", "/live/frame")[0] == 200
+
+
+def test_preview_keeps_consecutive_camera_frames(tmp_path):
+    preview = LivePreview(tmp_path)
+    frame = np.zeros((60, 100, 3), dtype=np.uint8)
+    assert preview.read() is None
+
+    for tick in range(5):
+        frame.fill(tick * 20)
+        preview.publish(frame, now=tick / 20)
+        snapshot = preview.read()
+        assert snapshot is not None
+        jpg, _ = snapshot
+        decoded = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+        assert decoded[0, 0, 0] == tick * 20
+
+
+def test_live_stream_requires_session_and_same_site(gui):
+    server, _, _ = gui
+    for headers, auth in (
+        ({}, False),
+        ({"Host": "example.com"}, True),
+        ({"Sec-Fetch-Site": "cross-site"}, True),
+    ):
+        assert request(server, "GET", "/live/stream", headers=headers, auth=auth)[0] == 403
+
+
+def test_live_stream_sends_new_frames_on_one_request(gui):
+    server, store, _ = gui
+    preview = LivePreview(store.root)
+    frame = np.zeros((60, 100, 3), dtype=np.uint8)
+
+    with closing(HTTPConnection(*server.server_address, timeout=2)) as conn:
+        conn.request("GET", "/live/stream", headers=session_cookie(server))
+        response = conn.getresponse()
+        assert response.status == 200
+        assert response.getheader("Content-Type") == "multipart/x-mixed-replace; boundary=frame"
+        assert response.getheader("Cache-Control") == "no-store"
+        for tick in range(2):
+            frame.fill(tick * 120)
+            preview.publish(frame, now=tick / 20)
+            assert response.readline() == b"--frame\r\n"
+            assert response.readline() == b"Content-Type: image/jpeg\r\n"
+            length = int(response.readline().split(b":", 1)[1])
+            assert response.readline() == b"\r\n"
+            jpg = response.read(length)
+            decoded = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+            assert decoded[0, 0, 0] == tick * 120
+            assert response.read(2) == b"\r\n"
+
+
+def test_live_status_does_not_start_preview(gui):
+    server, store, _ = gui
+    preview = LivePreview(store.root)
+    status, body = request(server, "GET", "/live/status")
+    assert status == 200
+    assert json.loads(body) == {"frame_time": None, "tray_state": "fixed"}
+    assert not preview.request_path.exists()
+    assert (
+        request(server, "GET", "/live/status", headers={"Sec-Fetch-Site": "cross-site"})[0] == 403
+    )
+
+
+def test_live_stream_rechecks_session(gui, monkeypatch):
+    from poop_detector.gui import live_stream
+
+    monkeypatch.setattr(live_stream, "SESSION_CHECK_INTERVAL", 0.15)
+    server, store, _ = gui
+    preview = LivePreview(store.root)
+    cookie = session_cookie(server)
+    frame = np.zeros((60, 100, 3), dtype=np.uint8)
+    with closing(HTTPConnection(*server.server_address, timeout=2)) as conn:
+        conn.request("GET", "/live/stream", headers=cookie)
+        response = conn.getresponse()
+        assert response.status == 200
+        preview.publish(frame)
+        assert response.readline() == b"--frame\r\n"
+        server.app.sessions.revoke(cookie["Cookie"].split("=", 1)[1])
+        assert response.read().endswith(b"\r\n--frame--\r\n")
