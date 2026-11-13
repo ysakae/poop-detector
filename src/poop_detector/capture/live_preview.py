@@ -4,6 +4,7 @@ import logging
 import os
 import tempfile
 import time
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,8 +13,7 @@ import cv2
 from ..frames import Frame
 
 logger = logging.getLogger(__name__)
-# GUI のライブ映像の内部の値。画面の更新間隔（gui/static/live.js）と合わせてある。
-FRAME_INTERVAL = 0.25  # 書き出しの最短の間隔（秒）
+FRAME_INTERVAL = 0.03  # 書き出しの最短の間隔（秒）。約30fpsの入力も受け取る。
 FRAME_MAX_AGE = 3  # これより古い画像は GUI に返さない（秒）
 REQUEST_MAX_AGE = 5  # GUI からの要求がこれより古ければ書き出しをやめる（秒）
 HEARTBEAT_MAX_AGE = 5  # 監視の稼働状態がこれより古ければ、監視が止まったとみなす（秒）
@@ -113,12 +113,31 @@ class LivePreview:
 
     def read(self) -> tuple[bytes, str] | None:
         """GUI 側から呼び、最新の JPEG と撮影時刻を返す。呼ぶたびに監視側へ書き出しを要求する。"""
-        try:
+        self.request_frame()
+        return self.latest()
+
+    def request_frame(self) -> None:
+        with suppress(OSError):
             self.request_path.touch(mode=0o600)
+
+    def latest(self, after: str | None = None) -> tuple[bytes, str] | None:
+        """有効で、前回と異なる JPEG を返す。"""
+        try:
             with self.frame_path.open("rb") as frame:
                 stamp = os.fstat(frame.fileno()).st_mtime
                 if time.time() - stamp <= FRAME_MAX_AGE:
-                    return frame.read(), datetime.fromtimestamp(stamp, UTC).isoformat()
+                    timestamp = datetime.fromtimestamp(stamp, UTC).isoformat()
+                    if timestamp != after:
+                        return frame.read(), timestamp
         except OSError:
             pass
+        return None
+
+    def frame_time(self) -> str | None:
+        try:
+            stamp = self.frame_path.stat().st_mtime
+        except OSError:
+            return None
+        if time.time() - stamp <= FRAME_MAX_AGE:
+            return datetime.fromtimestamp(stamp, UTC).isoformat()
         return None

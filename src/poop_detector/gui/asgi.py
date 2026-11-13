@@ -50,6 +50,7 @@ from .access import (
 )
 from .auth_api import webauthn
 from .exchange import HTML, Exchange
+from .live_stream import live_stream
 from .navigation import Viewer
 from .pages import save_failed_page
 from .rate_limit import RateLimiter, RateLimits
@@ -360,6 +361,7 @@ def create_app(gui: "GuiApp", site: Site, limits: RateLimits) -> Starlette:
     app = Starlette(
         routes=[
             Route("/webauthn/{step:path}", webauthn, methods=["POST"]),
+            Route("/live/stream", live_stream, methods=["GET"]),
             Route("/{path:path}", dispatch, methods=["GET", "POST"]),
         ],
         middleware=[

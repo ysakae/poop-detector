@@ -11,24 +11,51 @@ const jst = new Intl.DateTimeFormat("ja-JP", {
     timeStyle: "medium",
     timeZone: "Asia/Tokyo",
 });
-let imageUrl;
-let frameTime;
+const waiting = "監視からの映像を待っています。";
+let retryAt = 0;
+let startedAt = 0;
 
-async function updateFrame() {
+function stopStream() {
+    image.removeAttribute("src");
+    image.hidden = true;
+}
+
+function startStream() {
+    if (document.hidden || image.hasAttribute("src") || Date.now() < retryAt) return;
+    startedAt = Date.now();
+    image.src = "/live/stream";
+}
+
+image.addEventListener("error", () => {
+    if (!image.hasAttribute("src")) return;
+    stopStream();
+    retryAt = Date.now() + 2000;
+    frameStatus.textContent = waiting;
+});
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+        stopStream();
+    } else {
+        startStream();
+    }
+});
+window.addEventListener("pagehide", stopStream);
+window.addEventListener("pageshow", startStream);
+
+async function updateStreamStatus() {
     try {
         if (document.hidden) return;
-        const response = await fetch("/live/frame");
+        const response = await fetch("/live/status", { cache: "no-store" });
         if (!response.ok) throw new Error();
-        const stamp = response.headers.get("X-Frame-Time");
-        if (stamp !== frameTime) {
-            const url = URL.createObjectURL(await response.blob());
-            image.src = url;
-            if (imageUrl) URL.revokeObjectURL(imageUrl);
-            imageUrl = url;
-            frameTime = stamp;
+        const { frame_time: stamp, tray_state: trayState } = await response.json();
+        if (document.hidden) return;
+        if (!stamp) {
+            if (!image.hidden || Date.now() - startedAt >= 4000) stopStream();
+            frameStatus.textContent = waiting;
         }
+        startStream();
+        if (!stamp || !image.hasAttribute("src")) return;
         image.hidden = false;
-        const trayState = response.headers.get("X-Tray-State");
         const status = "映像更新 " + jst.format(new Date(stamp));
         if (trayState === "searching") {
             frameStatus.textContent = status + " ／ トレーの位置を確認中・判定保留";
@@ -38,10 +65,10 @@ async function updateFrame() {
             frameStatus.textContent = status;
         }
     } catch {
-        image.hidden = true;
+        stopStream();
         frameStatus.textContent = "現在の映像を取得できません。監視の起動とカメラ接続を確認してください。";
     } finally {
-        window.setTimeout(updateFrame, document.hidden ? 1000 : 300);
+        window.setTimeout(updateStreamStatus, 1000);
     }
 }
 
@@ -73,5 +100,6 @@ async function updateJudgment() {
     }
 }
 
-updateFrame();
+startStream();
+updateStreamStatus();
 updateJudgment();

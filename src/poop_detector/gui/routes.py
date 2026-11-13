@@ -434,6 +434,16 @@ def live_frame(handler: "Handler", _query: Query) -> None:
     handler.respond(200, data, "image/jpeg", headers)
 
 
+@get("/live/status")
+def live_status(handler: "Handler", _query: Query) -> None:
+    if handler.headers.get("Sec-Fetch-Site") == "cross-site":
+        handler.respond(403, "アクセスできません")
+        return
+    preview = handler.app.preview
+    payload = {"frame_time": preview.frame_time(), "tray_state": preview.tray_state()}
+    handler.respond(200, json.dumps(payload), "application/json; charset=utf-8")
+
+
 @get("/live/assessment")
 def live_assessment(handler: "Handler", _query: Query) -> None:
     """直近の自動判定を、ライブ映像の横に出す JSON で返す。"""
