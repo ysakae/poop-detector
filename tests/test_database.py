@@ -285,3 +285,18 @@ def test_version_10_database_gains_the_benchmark_candidates_table(tmp_path):
             db.execute("INSERT INTO benchmark_candidates VALUES ('c1','maybe','[]','2026-11-13')")
     finally:
         db.close()
+
+
+def test_feeding_details_migration_keeps_old_care_entries(tmp_path):
+    path = tmp_path / "events.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:13]:
+            migration(db)
+        db.execute("PRAGMA user_version = 13")
+        db.execute(
+            "INSERT INTO care_entries VALUES (?, ?, ?, ?, ?)",
+            ("old", "2024-03-01T08:00:00+00:00", "feeding", "家族", "旧記録"),
+        )
+    with Database(path).connect() as db:
+        row = db.execute("SELECT note, food, amount_dg FROM care_entries WHERE id='old'").fetchone()
+        assert tuple(row) == ("旧記録", "", None)

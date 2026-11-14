@@ -3,25 +3,42 @@
 {% block content %}
 <h2>お世話の記録</h2>
 {% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+{% for kind in form_kinds %}
+{% set retry = submitted.get("kind") == kind %}
 <section class="settings-section">
-<h3>{{ "お世話の記録を訂正" if edit else "お世話を追加" }}</h3>
+<h3>{{ kinds[kind] }}{{ "の記録を訂正" if edit else "を記録" }}</h3>
 <form method="post" action="/care" class="settings-form">{{ csrf_field(token) }}
+<input type="hidden" name="view_day" value="{{ day }}">
 {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
-<div class="settings-field"><label>実施した日時<input type="datetime-local" name="at" step="1" value="{{ at }}" required></label></div>
-<div class="settings-field"><label>メモ（任意）<input name="note" maxlength="500" value="{{ edit.note if edit else '' }}"></label></div>
+<div class="settings-field"><label>実施した日時<input type="datetime-local" name="at" step="1" value="{{ submitted.get('at', at) if retry else at }}" required></label></div>
+{% if kind == "feeding" %}
+{% if food_history %}<div class="settings-field" id="feeding-history" hidden>
+<label>銘柄の履歴<select id="feeding-history-select">
+<option value="">履歴から選ぶ</option>
+{% for name in food_history %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+</select></label>
+</div>{% endif %}
+<div class="settings-field"><label>フードの銘柄（任意）<input id="feeding-food" name="food" value="{{ submitted.get('food', '') if retry else food }}" maxlength="120"></label></div>
+<div class="settings-field"><label>給餌量（g・任意）<input name="grams" value="{{ submitted.get('grams', '') if retry else grams }}" inputmode="decimal" maxlength="12"></label></div>
+{% if not edit and (food or grams) %}<p class="note">直近の給餌記録から銘柄・量を入力済みです。変更して保存できます。</p>{% endif %}
+{% endif %}
+<div class="settings-field"><label>メモ（任意）<input name="note" maxlength="500" value="{{ submitted.get('note', '') if retry else (edit.note if edit else '') }}"></label></div>
 <p class="toolbar">
-{% for value, name in kinds.items() %}<button name="kind" value="{{ value }}">{{ name }}を保存</button>{% endfor %}
+<button name="kind" value="{{ kind }}">{{ kinds[kind] }}を保存</button>
 {% if edit %}<a href="/care?day={{ day }}">訂正を取り消す</a>{% endif %}
 </p>
 </form>
 </section>
+{% endfor %}
+<script src="/assets/care.js" defer></script>
 <h3>日ごとの記録</h3>
 <form method="get" action="/care" class="toolbar">
 <label>日付<input type="date" name="day" value="{{ day }}" max="{{ today }}" required></label><button class="secondary">表示</button>
 </form>
+{% if recorded_grams %}<p>この日の給餌量の合計（入力分） <strong>{{ recorded_grams }} g</strong></p>{% endif %}
 {% if rows %}
 <table><thead><tr><th>時刻</th><th>お世話</th><th>担当者</th><th>メモ</th><th>操作</th></tr></thead>
-<tbody>{% for row in rows %}<tr><td>{{ row.at.strftime("%H:%M") }}</td><td>{{ kinds[row.kind] }}</td><td>{{ row.actor }}</td><td>{{ row.note }}</td><td><a href="/care?day={{ day }}&amp;id={{ row.id }}">訂正</a></td></tr>{% endfor %}</tbody></table>
+<tbody>{% for row in rows %}<tr><td>{{ row.at.strftime("%H:%M") }}</td><td>{{ kinds[row.kind] }}{% if row.food or row.grams %}<br>{{ row.food }}{% if row.food and row.grams %} ／ {% endif %}{% if row.grams %}{{ row.grams }} g{% endif %}{% endif %}</td><td>{{ row.actor }}</td><td>{{ row.note }}</td><td><a href="/care?day={{ day }}&amp;id={{ row.id }}">訂正</a></td></tr>{% endfor %}</tbody></table>
 {% else %}<p>この日のお世話の記録はありません。</p>{% endif %}
 {% if measurements %}<h4>体重</h4><ul>{% for row in measurements %}<li>{{ "{:,}".format(row.grams) }} g{% if row.note %} ／ {{ row.note }}{% endif %}</li>{% endfor %}</ul>{% endif %}
 {% if excretion %}<h4>確定した排泄</h4><ul>{% for stamp, label in excretion %}<li>{{ stamp }} ／ {{ label }}</li>{% endfor %}</ul>{% endif %}
