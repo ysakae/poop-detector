@@ -7,15 +7,23 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-# 全員が使う場所。(URL, 名前)。URL の下の画面（/clips?id=… など）も同じ場所として扱う。
-MEMBER_SECTIONS: tuple[tuple[str, str], ...] = (
-    ("/", "ホーム"),
-    ("/review", "確認待ち"),
-    ("/records", "記録"),
-    ("/clips", "動画"),
-    ("/activity", "行動マップ"),
+# 全員が使う場所。(URL, 名前, アイコン)。URL の下の画面（/clips?id=… など）も同じ場所として扱う。
+MEMBER_SECTIONS: tuple[tuple[str, str, str], ...] = (
+    ("/", "ホーム", "home"),
+    ("/review", "確認待ち", "review"),
+    ("/records", "記録", "records"),
+    ("/care", "お世話", "food"),
+    ("/weight", "体重", "weight"),
+    ("/clips", "動画", "video"),
+    ("/activity", "行動マップ", "map"),
 )
-MANAGEMENT = ("/manage", "管理")
+MANAGEMENT = ("/manage", "管理", "manage")
+# スマートフォンの幅で画面の下に並べる場所。ほかの場所と PERSONAL は「その他」にまとめる。
+TAB_SECTIONS = frozenset({"/", "/review", "/records", "/clips"})
+PERSONAL: tuple[tuple[str, str, str], ...] = (
+    ("/account", "自分の設定", "user"),
+    ("/logout", "ログアウト", "logout"),
+)
 # 管理の中の画面。ここに並ぶ URL はすべて管理者だけのルートにする（test_gui_roles.py が確かめる）。
 MANAGEMENT_PAGES: tuple[tuple[str, str], ...] = (
     ("/manage", "稼働状況とトレー"),
@@ -56,12 +64,16 @@ class Viewer:
 
 @dataclass(frozen=True)
 class MenuItem:
-    """メニューの1項目。current はいま開いている場所、badge は名前の横に出す件数。"""
+    """メニューの1項目。current はいま開いている場所、badge は名前の横に出す件数。
+
+    icon は gui/icons.py の名前で、下のタブに出す（上のメニューは文字だけ）。
+    """
 
     href: str
     text: str
     current: bool
     badge: int | None = None
+    icon: str = ""
 
 
 @dataclass(frozen=True)
@@ -73,6 +85,10 @@ class Frame:
     monitor_state: str
     menu: tuple[MenuItem, ...]
     management: tuple[MenuItem, ...]
+    # スマートフォンの幅の下のタブと、「その他」の中身。more_current は、いまの場所がその中にあるか。
+    tabs: tuple[MenuItem, ...]
+    more: tuple[MenuItem, ...]
+    more_current: bool
 
 
 def _within(path: str, section: str) -> bool:
@@ -86,9 +102,13 @@ def main_menu(path: str, admin: bool, pending: int = 0) -> tuple[MenuItem, ...]:
     sections = MEMBER_SECTIONS + ((MANAGEMENT,) if admin else ())
     return tuple(
         MenuItem(
-            href, text, _within(path, href), pending if href == "/review" and pending else None
+            href,
+            text,
+            _within(path, href),
+            pending if href == "/review" and pending else None,
+            icon,
         )
-        for href, text in sections
+        for href, text, icon in sections
     )
 
 
@@ -104,10 +124,18 @@ def frame_for(viewer: Viewer | None) -> Frame | None:
     if viewer is None:
         return None
     monitor, state = MONITOR_STATES.get(viewer.monitor(), MONITOR_UNKNOWN)
+    menu = main_menu(viewer.path, viewer.admin, viewer.pending())
+    more = tuple(item for item in menu if item.href not in TAB_SECTIONS) + tuple(
+        MenuItem(href, text, _within(viewer.path, href), None, icon)
+        for href, text, icon in PERSONAL
+    )
     return Frame(
         person=viewer.name,
         monitor=monitor,
         monitor_state=state,
-        menu=main_menu(viewer.path, viewer.admin, viewer.pending()),
+        menu=menu,
         management=management_menu(viewer.path, viewer.admin),
+        tabs=tuple(item for item in menu if item.href in TAB_SECTIONS),
+        more=more,
+        more_current=any(item.current for item in more),
     )
