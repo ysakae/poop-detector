@@ -23,6 +23,21 @@ if TYPE_CHECKING:
 PAGE = "/manage/checks"
 
 
+@get("/manage/setup", role="admin")
+def first_setup(handler: "Handler", _query: Query) -> None:
+    app = handler.app
+    context = CommandContext(_config(handler))
+    page = render_template(
+        "first_setup.html",
+        title=app.title,
+        camera_configured=bool(load_connection_settings()["POOP_RTSP_URL"].strip()),
+        roi_registered=context.roi_path.is_file(),
+        baseline_registered=context.baseline_path.is_file(),
+        monitor=app.preview.monitor_status(),
+    )
+    handler.respond(200, page)
+
+
 class NotificationFailedError(UserError):
     """通知の送信先が受け付けなかった（設定ではなく、送信の失敗）。"""
 

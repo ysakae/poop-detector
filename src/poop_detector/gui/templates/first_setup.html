@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>初回セットアップ</h2>
+<p>途中で閉じても、登録済みの監視範囲と基準画像は残ります。</p>
+<section class="settings-section">
+  <h3>カメラ接続</h3>
+  <p>接続情報は{{ "設定済み" if camera_configured else "未設定" }}です。</p>
+  <p>映像が取得できないときは、カメラのRTSP設定と監視端末からの接続を確認してください。</p>
+  <p class="toolbar"><a class="button" href="/manage/settings#connections-title">接続情報を設定</a><a class="button" href="/manage/checks">カメラ接続を確認</a></p>
+</section>
+<section class="settings-section">
+  <h3>トレーの範囲と基準画像</h3>
+  <p>監視範囲は{{ "登録済み" if roi_registered else "未登録" }}、基準画像は{{ "登録済み" if baseline_registered else "未登録" }}です。</p>
+  <p>きれいな空のトレーを映し、映像上でトレーの外周を囲んで保存します。</p>
+  <p><a class="button" href="/manage/areas">映像を開いて範囲と基準画像を登録</a></p>
+</section>
+<section class="settings-section">
+  <h3>監視を開始</h3>
+  {% if monitor == "connected" %}
+  <p>監視がカメラに接続中です。</p>
+  {% elif monitor == "searching" %}
+  <p>監視がカメラに再接続中です。映像が戻らないときは、接続情報とカメラの電源を確認してください。</p>
+  {% else %}
+  <p>監視端末で <code>uv run poop-detector run</code> を実行します。</p>
+  {% endif %}
+  <p><a class="button" href="/manage">稼働状況を見る</a></p>
+</section>
+<section class="settings-section">
+  <h3>家族のスマホと通知</h3>
+  <p>招待後、家族のスマホでログインして通知を登録し、自分の設定からテストしてください。ntfyを使う場合は、スマホで購読したあとに「確認と診断」からテストを送れます。</p>
+  <p>届かないときは、スマホの通知許可と購読状態を確認してください。</p>
+  <p class="toolbar"><a class="button" href="/manage/invite">家族を招待</a><a class="button" href="/account#web-push">この端末の通知を確認</a></p>
+</section>
+{% endblock %}
