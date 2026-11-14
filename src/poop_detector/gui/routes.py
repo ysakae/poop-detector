@@ -383,9 +383,12 @@ def asset(handler: "Handler", _query: Query) -> None:
 
 
 @get("/assets/paw.svg")
-def paw_icon(handler: "Handler", _query: Query) -> None:
-    """ワンちゃんのテーマの肉球の模様（CSP の img-src 'self' で読めるように同梱する）。"""
-    handler.respond(200, (ASSETS / "paw.svg").read_bytes(), "image/svg+xml")
+@get("/assets/dog.svg")
+def illustration(handler: "Handler", _query: Query) -> None:
+    """肉球の模様と犬のイラスト（CSP の img-src 'self' で読めるように同梱する）。"""
+    # 許可したパスだけが登録されているので、ファイル名はこの中のどれか。
+    name = urlsplit(handler.path).path.rsplit("/", 1)[1]
+    handler.respond(200, (ASSETS / name).read_bytes(), "image/svg+xml")
 
 
 @get("/image")

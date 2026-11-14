@@ -28,7 +28,7 @@ from .web_address import (
 
 CONNECTION_KEYS = ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC", "POOP_NTFY_SERVER")
 PET_NAME_MAX_LENGTH = 32
-# GUI のデザインテーマ（gui/themes.py の THEMES と同じ並び）。
+# 以前の GUI のデザインテーマ。デザインを1つにしたので使わないが、書いてある設定ファイルは受け付ける。
 THEME_NAMES = ("professional", "dog")
 logger = logging.getLogger(__name__)
 
@@ -375,7 +375,7 @@ SETTINGS += (
         "theme",
         str,
         lambda value: value in THEME_NAMES,
-        "professional（プロフェッショナル）か dog（ワンちゃん）。テーマを選んでいない人の既定",
+        "professional か dog（以前のデザインテーマ。いまは使いません）",
     ),
 )
 SETTINGS_BY_ATTR = {setting.attr: setting for setting in SETTINGS}

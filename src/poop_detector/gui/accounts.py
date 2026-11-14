@@ -23,7 +23,7 @@ from uuid import uuid4
 from ..errors import InvalidInputError
 from ..records.database import Database
 from .audit import AuditLog
-from .themes import APPEARANCES, THEMES
+from .themes import APPEARANCES
 
 Role: TypeAlias = Literal["admin", "member"]
 ROLES: dict[Role, str] = {"admin": "管理者", "member": "一般ユーザー"}
@@ -89,8 +89,7 @@ class User:
     last_login: str | None
     disabled_at: str | None
     email: str | None = None
-    # 表示の選択。theme が None なら既定のテーマ（gui.theme）に従う。
-    theme: str | None = None
+    # 明るさの選択（themes.APPEARANCES）。
     appearance: str = "auto"
     # Web Push で受け取る通知（トイレの通知と見守り通知）。
     push_alerts: bool = True
@@ -147,7 +146,6 @@ class UserStore:
             row["last_login"],
             row["disabled_at"],
             row["email"],
-            row["theme"],
             row["appearance"],
             bool(row["push_alerts"]),
             bool(row["push_early"]),
@@ -194,14 +192,13 @@ class UserStore:
             row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return self._user(row) if row else None
 
-    def set_display(self, user_id: str, theme: str | None, appearance: str) -> None:
-        """表示の選択を保存する。theme が None なら既定のテーマに従う。"""
-        if (theme is not None and theme not in THEMES) or appearance not in APPEARANCES:
+    def set_appearance(self, user_id: str, appearance: str) -> None:
+        """明るさの選択を保存する。以前のテーマの選択（theme 列）には触れない。"""
+        if appearance not in APPEARANCES:
             raise InvalidInputError("表示の選択を確認してください")
         with self.database.connect() as db:
             changed = db.execute(
-                "UPDATE users SET theme = ?, appearance = ? WHERE id = ?",
-                (theme, appearance, user_id),
+                "UPDATE users SET appearance = ? WHERE id = ?", (appearance, user_id)
             ).rowcount
         if not changed:
             raise InvalidInputError("ユーザーが見つかりません")

@@ -11,7 +11,7 @@ from .invitation_mail import MailError, invite_by_email, recover_by_email, verif
 from .pages import Query, local_time, message_page
 from .routes import Form, audit, first, get, post
 from .templating import render_template
-from .themes import APPEARANCES, THEMES
+from .themes import APPEARANCES
 
 if TYPE_CHECKING:
     from .exchange import Exchange as Handler
@@ -58,9 +58,7 @@ def _account_page(
         email_error=email_error,
         role=ROLES[user.role],
         keys=keys,
-        themes=[("", f"既定に従う（{THEMES[app.default_theme]}）"), *THEMES.items()],
         appearances=list(APPEARANCES.items()),
-        theme=user.theme or "",
         appearance=user.appearance,
         display_saved=first(query, "display_saved") == "1",
         push_key=app.push_keys.public_key(),
@@ -108,11 +106,10 @@ def delete_passkey(handler: "Handler", form: Form) -> None:
 
 @post("/account/display")
 def save_display(handler: "Handler", form: Form) -> None:
-    """自分の表示（テーマとライト・ダーク）を保存する。テーマが空なら既定のテーマに従う。"""
+    """自分の表示（ライト・ダーク）を保存する。"""
     user = _signed_in(handler)
-    theme = form.fields.get("theme", "") or None
     try:
-        handler.app.accounts.users.set_display(user.id, theme, form.fields.get("appearance", ""))
+        handler.app.accounts.users.set_appearance(user.id, form.fields.get("appearance", ""))
     except InvalidInputError as error:
         page = message_page(
             "表示を保存できませんでした",

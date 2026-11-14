@@ -97,5 +97,5 @@ gui:
   session_idle_hours: 168
   # ログインからこの日数が過ぎると、使っていてもログアウトする
   session_max_days: 30
-  # テーマを選んでいない人とログイン前の画面のデザインテーマ（professional か dog）
+  # 以前のデザインテーマ（professional か dog）。デザインを1つにしたので、いまは使いません
   theme: professional

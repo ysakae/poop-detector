@@ -73,8 +73,6 @@ class GuiApp:
     outages: OutageLog
     # 管理 › 設定で書き換える設定ファイル。None なら設定の画面は表示だけ（テストなど）。
     config_path: Path | None = None
-    # テーマを選んでいない人とログイン前の画面のテーマ（設定の gui.theme）。
-    default_theme: str = "professional"
     manual_only: bool = False
     # 範囲の登録で画面に見せた映像の一時置き場（保存にはその映像を使う）。
     snapshots: Snapshots = field(default_factory=Snapshots)
@@ -208,7 +206,6 @@ def make_server(
         title=page_title(pet_name),
         disk_mb=disk_mb,
         config_path=Path(config_path).resolve() if config_path is not None else None,
-        default_theme=web.theme,
         manual_only=manual_only,
         push_subscriptions=PushSubscriptions(database),
         push_keys=PushKeys(root),

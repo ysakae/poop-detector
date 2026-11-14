@@ -30,7 +30,7 @@ def manifest(handler: "Handler", _query: object) -> None:
         "scope": "/",
         "display": "standalone",
         "background_color": "#edf3f5",
-        "theme_color": "#254b60",
+        "theme_color": "#faf7f2",
         "lang": "ja",
         "icons": [
             {"src": f"/assets/icon-{size}.png", "sizes": f"{size}x{size}", "type": "image/png"}
