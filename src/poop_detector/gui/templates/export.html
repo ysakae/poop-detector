@@ -9,7 +9,7 @@
 <form method="post" action="{{ page }}/records.csv" class="settings-form">{{ csrf_field(token) }}
 <div class="settings-field"><label>始まり<input type="date" name="from" value="{{ start }}" required></label></div>
 <div class="settings-field"><label>終わり<input type="date" name="to" value="{{ end }}" required></label></div>
-<p class="toolbar"><button>CSV を書き出す</button><button class="secondary" formmethod="get" formaction="{{ page }}/summary">印刷用の集計を開く</button></p>
+<p class="toolbar"><button>排泄のCSVを書き出す</button><button class="secondary" formaction="{{ page }}/weights.csv">体重のCSVを書き出す</button><button class="secondary" formmethod="get" formaction="{{ page }}/summary">印刷用の集計を開く</button></p>
 </form>
 <p class="note">CSV は Excel などでそのまま開ける UTF-8（BOM 付き）です。印刷用の集計は、期間の回数と時間帯の分布を1ページにまとめます。ブラウザーの印刷で紙や PDF にしてください。</p>
 </section>

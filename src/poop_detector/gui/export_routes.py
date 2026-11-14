@@ -13,11 +13,13 @@ from typing import IO, TYPE_CHECKING, Any
 
 from ..errors import InvalidInputError
 from ..records.backup import create_backup
-from ..records.export import parse_period, records_csv, summarize_period
+from ..records.export import parse_period, records_csv, summarize_period, weights_csv
+from ..records.weights import weights
 from ..timezones import local_now, local_today, timezone_label
 from .pages import Query
 from .routes import Form, audit, first, get, post
 from .templating import render_template
+from .weight_routes import trend
 
 if TYPE_CHECKING:
     from .exchange import Exchange as Handler
@@ -62,6 +64,7 @@ def export_page(handler: "Handler", _query: Query) -> None:
 
 
 @post(f"{PAGE}/records.csv", role="admin")
+@post(f"{PAGE}/weights.csv", role="admin")
 def export_csv(handler: "Handler", form: Form) -> None:
     start = form.fields.get("from", "")
     end = form.fields.get("to", "")
@@ -70,8 +73,13 @@ def export_csv(handler: "Handler", form: Form) -> None:
     except InvalidInputError as error:
         _render(handler, status=400, start=start, end=end, error=str(error))
         return
-    data = records_csv(handler.app.store.records(), first_day, last_day)
-    name = f"poop-records-{first_day:%Y%m%d}-{last_day:%Y%m%d}.csv"
+    if handler.path.split("?", 1)[0].endswith("/weights.csv"):
+        data = weights_csv(weights(handler.app.store.database, first_day, last_day))
+        kind = "weights"
+    else:
+        data = records_csv(handler.app.store.records(), first_day, last_day)
+        kind = "records"
+    name = f"poop-{kind}-{first_day:%Y%m%d}-{last_day:%Y%m%d}.csv"
     audit(handler, "export.csv", _period_text(first_day, last_day))
     handler.respond(
         200,
@@ -125,11 +133,15 @@ def summary_page(handler: "Handler", query: Query) -> None:
         _render(handler, status=400, start=start, end=end, error=str(error))
         return
     values = _summary(first_day, last_day, list(handler.app.store.records()))
+    measurements = weights(handler.app.store.database, first_day, last_day)
     audit(handler, "export.summary", values["period"])
     page = render_template(
         "export_summary.html",
         title=handler.app.title,
         summary=values,
+        measurements=measurements,
+        points=trend(measurements),
+        bounds=(measurements[0].day, measurements[-1].day) if measurements else (),
         printed_at=local_now().strftime("%Y/%m/%d %H:%M"),
         timezone=timezone_label(),
     )

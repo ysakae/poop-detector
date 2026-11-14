@@ -286,6 +286,16 @@ def migrate_to_v11(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v12(db: sqlite3.Connection) -> None:
+    db.execute("CREATE TABLE pet_profile (id INTEGER PRIMARY KEY CHECK(id=1), birth TEXT)")
+    db.execute(
+        """CREATE TABLE weights (
+            id TEXT PRIMARY KEY, day TEXT NOT NULL,
+            grams INTEGER NOT NULL CHECK(grams > 0), note TEXT NOT NULL
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -299,6 +309,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v9,
     migrate_to_v10,
     migrate_to_v11,
+    migrate_to_v12,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

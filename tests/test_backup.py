@@ -4,7 +4,7 @@ import fcntl
 import json
 import sqlite3
 import zipfile
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import numpy as np
 import pytest
@@ -19,6 +19,7 @@ from poop_detector.records.backup import (
 )
 from poop_detector.records.database import LATEST_VERSION, events_database
 from poop_detector.records.events import Store
+from poop_detector.records.weights import birth_date, save_birth_date, save_weight, weights
 
 NOW = datetime(2026, 11, 12, 3, 4, 5, tzinfo=UTC)
 
@@ -30,6 +31,8 @@ def data(tmp_path):
     store = Store(root)
     store.record(np.full((20, 20, 3), 90, np.uint8), 0.1, None, 1)
     store.add_excretion("feces", "2026-11-01T08:00:00+09:00", note="元のメモ")
+    save_birth_date(store.database, "2025-01-01")
+    save_weight(store.database, "", date(2026, 1, 1), 1850, "健診")
     accounts = Accounts(events_database(root))
     user = accounts.users.create("管理者", "admin")
     with store.connect() as db:
@@ -135,6 +138,9 @@ def test_restore_keeps_the_previous_data_and_brings_back_the_backup(data, tmp_pa
     assert (data / "clips" / "one.mp4").is_file()
     notes = [row["note"] for row in Store(data).records()]
     assert notes == ["元のメモ"]
+    db = events_database(data)
+    assert birth_date(db) == date(2025, 1, 1)
+    assert [(row.grams, row.note) for row in weights(db)] == [(1850, "健診")]
     # 取得し直しが重い犬検出モデルは、元のデータから写す
     assert (data / "models" / "dog-yolox" / "model.onnx").read_bytes() == b"model"
     assert not (data / ".web-push-vapid.pem").exists()
