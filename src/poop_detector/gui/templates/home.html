@@ -2,6 +2,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import capacity_panel %}
 {% block content %}
+{% if manual_only %}<p><a class="button" href="/records/events?manual=1#manual-record">排泄を手動で記録する</a></p>{% endif %}
 <div class="dashboard">
 <section class="dashboard-card" aria-labelledby="review-title">
 <h2 id="review-title">確認待ち</h2>
@@ -12,7 +13,6 @@
 <h2 id="today-title">今日の記録</h2>
 <p class="dashboard-counts"><span>排便 {{ daily.feces }}件</span><span>排尿 {{ daily.urine }}件</span><span>種類不明 {{ daily.unspecified }}件</span></p>
 <p class="note">{{ today }}（{{ timezone }}）の確定記録です。<a href="/records">記録と集計を見る</a></p>
-{% if manual_only %}<p><a class="button" href="/records/events?manual=1#manual-record">排泄を手動で記録する</a></p>{% endif %}
 </section>
 <section class="dashboard-card" aria-labelledby="recent-title">
 <h2 id="recent-title">最近の確定記録</h2>
