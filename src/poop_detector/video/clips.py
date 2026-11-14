@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .benchmark_candidates import BenchmarkCandidates
     from .clip_labels import ClipLabels
     from .clip_reviews import AssessmentStore, CirclingReviews
+    from .judge_runs import JudgeRunLog
 
 CLIP_LABELS = {
     "feces": "排便",
@@ -111,6 +112,13 @@ class ClipStore:
         from .clip_reviews import AssessmentStore
 
         return AssessmentStore(self.store.database)
+
+    @property
+    def judge_runs(self) -> "JudgeRunLog":
+        """判定器を呼んだ記録（judge_runs）。動画には結び付けず、使用量の集計だけに使う。"""
+        from .judge_runs import JudgeRunLog
+
+        return JudgeRunLog(self.store.database)
 
     @property
     def circling(self) -> "CirclingReviews":

@@ -26,6 +26,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `records.events.Store`：検知イベントと排泄の記録
   - `video.clips.ClipStore`：動画の保存要求と状態
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
+  - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否だけ）
   - `video.clip_reviews.CirclingReviews`：旋回候補
   - `video.clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
   - `video.benchmark_candidates.BenchmarkCandidates`：判定器の比較に使う評価の候補と条件のタグ（`benchmark_candidates`）
@@ -104,6 +105,12 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 判定器の比較（`video-benchmark`）は、人が確認した録画の評価セット（`video/benchmark_sets.py`）を使います。`benchmark-dataset create` が台帳から下書きを作り（同じイベント・確定記録・30秒以内に重なる録画は1本にまとめる）、動画の画面で人が選んだ評価の候補と条件のタグ（`video/benchmark_candidates.py`）を反映し、`freeze` が版の番号と内容の SHA-256 を付け、録画を保護します。評価セットは録画ごとに撮影時の画角の署名を持ち、署名ごとの ROI・基準画像の場所（データの保存先と `tray-scenes/` の下の過去の登録、`--scene`）を記録します。比較は録画ごとに画像を一度だけ切り出し、同じ画像と指示をすべての判定器に渡します。結果には評価セットの版、指定したモデル、CLI の版（`video/cli_versions.py`）、画像と指示のハッシュ、抽出時刻を残し、運用の記録・ラベル・自動判定は書き換えません。
 
 `circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`experimental/circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。
+
+### 判定器の使用量
+
+判定の台帳（`video_assessments`）は動画1本につき1行で、失敗した判定は再試行で上書きされるため、CLI を呼んだ回数は数えられません。そこで `video.judge_runs.RecordingJudge` が判定器を包み、`judge` を呼ぶたびに `judge_runs` へ1行を追記します。監視と `video-review`（`Review._run`、用途 `review`）と、`video-benchmark`（`commands/benchmark.record_runs`、用途 `benchmark`）の両方で記録します。比較は運用の判定・ラベルを書き換えませんが、この記録だけは残します。版15への移行では、それまでの判定を台帳の1行につき1回として写します。
+
+サブスクリプションの5時間・週間の消費割合は保存せず、管理 › 判定器とモデルで押したときだけ `video.plan_usage.PlanUsageBoard` が各 CLI に問い合わせ、GUI のメモリーに置きます。どの CLI もモデルを呼ばない方法で問い合わせます（Codex CLI は `codex app-server` の `account/rateLimits/read`、Claude Code CLI は `claude --print /usage --max-turns 0` の表示、Antigravity CLI は `agy --print /usage --output-format json`）。型と範囲を確かめた割合と時刻だけを取り出し、アカウントの ID や応答の本文は持ちません。形が合わない版は「不明」と示します。
 
 ## 監視の停止とカメラの不調の見張り
 

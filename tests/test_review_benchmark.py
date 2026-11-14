@@ -117,6 +117,11 @@ def test_benchmark_cli_uses_identical_inputs_and_does_not_change_labels(
     assert main([*shown, "--send-images"]) == 0
     (saved,) = (root / "benchmarks").glob("*.json")
     assert json.loads(saved.read_text())["summaries"]
+    # 比較で判定器を呼んだ回数も、用途を分けて数える（運用の判定の台帳は変えない）。
+    usage = {(row.provider, row.model): row for row in clips.judge_runs.usage()}
+    assert {row.purpose for row in usage.values()} == {"benchmark"}
+    assert (usage["codex", "model-a"].total, usage["codex", "model-a"].failures) == (2, 0)
+    assert (usage["claude", "model-b"].total, usage["claude", "model-b"].failures) == (2, 2)
 
 
 def test_benchmark_cli_requires_distinct_models_and_preserves_existing_report(tmp_path):

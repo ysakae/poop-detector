@@ -40,6 +40,7 @@ ADMIN_POST = {
     "/manage/settings",
     "/manage/checks",
     "/manage/models",
+    "/manage/models/plan-usage",
     "/manage/areas",
     "/manage/export/records.csv",
     "/manage/export/weights.csv",

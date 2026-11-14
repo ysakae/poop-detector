@@ -31,6 +31,7 @@ from ..records.database import events_database
 from ..records.events import Store
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
+from ..video.plan_usage import PlanUsageBoard
 from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
 from ..web_push import PushKeys, PushSubscriptions
 from .accounts import Accounts
@@ -77,6 +78,8 @@ class GuiApp:
     manual_only: bool = False
     # 範囲の登録で画面に見せた映像の一時置き場（保存にはその映像を使う）。
     snapshots: Snapshots = field(default_factory=Snapshots)
+    # 直近に問い合わせた判定器の CLI のプランの使用量（管理 › 判定器とモデル）。
+    plan_usage: PlanUsageBoard = field(default_factory=PlanUsageBoard)
 
     def csrf_for(self, session_id: str) -> str:
         """セッションの CSRF トークン。セッションの ID と鍵の HMAC で、ID そのものは出さない。"""

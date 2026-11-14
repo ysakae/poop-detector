@@ -20,6 +20,7 @@ from ..video import benchmark_sets
 from ..video.benchmark_results import BenchmarkResult, load_results
 from ..video.benchmark_sets import LABELS, SPLIT_NAMES
 from ..video.clips import CLIP_LABELS, ClipStore
+from ..video.plan_usage import PlanUsageBoard, QuotaWindow
 from ..video.providers import PROVIDER_NAMES, build_judge
 from .pages import Query, local_time, message_page
 from .routes import Form, audit, first, get, post
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from .exchange import Exchange as Handler
 
 PAGE = "/manage/models"
+PLAN_USAGE = f"{PAGE}/plan-usage"
 DOG_MODEL_DIR = Path("models") / "dog-yolox"
 
 
@@ -45,18 +47,59 @@ def readiness(config: Config) -> str | None:
     return None
 
 
+PURPOSE_NAMES = {"review": "監視・保存済み動画", "benchmark": "判定器の比較"}
+
+
 def _judges(handler: "Handler") -> list[dict[str, Any]]:
     return [
         {
             "provider": PROVIDER_NAMES.get(usage.provider, usage.provider),
             "model": usage.model or "（既定）",
-            "total": usage.total,
-            "errors": usage.errors,
+            "purpose": PURPOSE_NAMES.get(usage.purpose, usage.purpose),
+            "counts": [
+                usage.today,
+                usage.last_7_days,
+                usage.last_30_days,
+                usage.this_month,
+                usage.total,
+            ],
+            "failures": usage.failures,
             "last_at": local_time(usage.last_at),
             "last_failed": usage.last_failed,
         }
-        for usage in handler.app.clips.assessments.by_judge()
+        for usage in handler.app.clips.judge_runs.usage()
     ]
+
+
+def _window(window: QuotaWindow | None) -> str:
+    if window is None:
+        return "―"
+    if window.resets_at is None:
+        return f"{window.used_percent}%"
+    resets = window.resets_at.astimezone().strftime("%Y/%m/%d %H:%M")
+    return f"{window.used_percent}%（{resets} に戻る）"
+
+
+def _plans(board: PlanUsageBoard) -> dict[str, Any]:
+    """直近に問い合わせたプランの使用量。CLI ごとにまとまりの行を並べる。"""
+    usages = list(board.snapshot().values())
+    rows = []
+    for usage in usages:
+        name = PROVIDER_NAMES.get(usage.provider, usage.provider)
+        if not usage.groups:
+            rows.append({"provider": name, "group": "―", "problem": usage.problem})
+        rows.extend(
+            {
+                "provider": name,
+                "group": group.name,
+                "problem": None,
+                "five_hour": _window(group.five_hour),
+                "weekly": _window(group.weekly),
+            }
+            for group in usage.groups
+        )
+    checked = max((usage.checked_at for usage in usages), default=None)
+    return {"rows": rows, "checked_at": local_time(checked.isoformat()) if checked else ""}
 
 
 ANSWER_NAMES = {**CLIP_LABELS, "uncertain": "判定不能", "error": "エラー"}
@@ -195,6 +238,8 @@ def _render(
         provider=current.review_provider if provider is None else provider,
         model=current.review_model if model is None else model,
         judges=_judges(handler),
+        plans=_plans(app.plan_usage),
+        plan_action=PLAN_USAGE,
         benchmarks=_benchmarks(results, app.clips),
         unreadable=unreadable,
         datasets=datasets,
@@ -251,3 +296,10 @@ def choose_judge(handler: "Handler", form: Form) -> None:
     summary = "、".join(f"{c.name}: {c.before or '（空）'} → {c.after or '（空）'}" for c in found)
     audit(handler, "judge.select", summary)
     handler.redirect(f"{PAGE}?saved=1")
+
+
+@post(PLAN_USAGE, role="admin")
+def ask_plan_usage(handler: "Handler", _form: Form) -> None:
+    """各 CLI にプランの使用量を問い合わせる（モデルは呼ばない）。数秒かかるので押したときだけ。"""
+    handler.app.plan_usage.refresh()
+    handler.redirect(PAGE)

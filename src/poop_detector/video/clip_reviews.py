@@ -22,18 +22,6 @@ class Assessment:
     location: str | None = None
 
 
-@dataclass(frozen=True)
-class JudgeUsage:
-    """判定器・モデルごとの判定の件数と、直近の判定の時刻と成否。"""
-
-    provider: str
-    model: str | None
-    total: int
-    errors: int
-    last_at: str
-    last_failed: bool
-
-
 class AssessmentStore:
     """video_assessments テーブル。判定の保存と、同じ排泄を二重に通知しないための権利の管理。"""
 
@@ -55,29 +43,6 @@ class AssessmentStore:
                 ORDER BY a.assessed_at DESC, c.requested_at DESC LIMIT 1"""
             ).fetchone()
         return dict(row) if row else None
-
-    def by_judge(self) -> list[JudgeUsage]:
-        """判定器・モデルごとの件数。直近に使ったものから並べる。"""
-        with self.connect() as db:
-            rows = db.execute(
-                """SELECT provider, model, COUNT(*) AS total,
-                SUM(error IS NOT NULL) AS errors, MAX(assessed_at) AS last_at,
-                (SELECT b.error IS NOT NULL FROM video_assessments b
-                 WHERE b.provider IS a.provider AND b.model IS a.model
-                 ORDER BY b.assessed_at DESC, b.rowid DESC LIMIT 1) AS last_failed
-                FROM video_assessments a GROUP BY provider, model ORDER BY last_at DESC"""
-            ).fetchall()
-        return [
-            JudgeUsage(
-                row["provider"],
-                row["model"],
-                row["total"],
-                row["errors"],
-                row["last_at"],
-                bool(row["last_failed"]),
-            )
-            for row in rows
-        ]
 
     def pending(
         self,

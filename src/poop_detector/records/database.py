@@ -312,6 +312,25 @@ def migrate_to_v14(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE care_entries ADD COLUMN amount_dg INTEGER CHECK(amount_dg > 0)")
 
 
+def migrate_to_v15(db: sqlite3.Connection) -> None:
+    """判定器を呼んだ記録（使用量の集計用）。これまでの判定は、台帳の1行を1回として数える。"""
+    db.execute(
+        """CREATE TABLE judge_runs (
+        id INTEGER PRIMARY KEY,
+        provider TEXT NOT NULL,
+        model TEXT,
+        purpose TEXT NOT NULL CHECK(purpose IN ('review', 'benchmark')),
+        ran_at TEXT NOT NULL,
+        failed INTEGER NOT NULL CHECK(failed IN (0, 1)))"""
+    )
+    db.execute("CREATE INDEX judge_runs_by_time ON judge_runs(ran_at)")
+    db.execute(
+        """INSERT INTO judge_runs (provider, model, purpose, ran_at, failed)
+        SELECT provider, model, 'review', assessed_at, error IS NOT NULL
+        FROM video_assessments WHERE assessed_at IS NOT NULL ORDER BY assessed_at"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -328,6 +347,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v12,
     migrate_to_v13,
     migrate_to_v14,
+    migrate_to_v15,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

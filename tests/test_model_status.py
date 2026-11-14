@@ -5,13 +5,10 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from support import ready_clip
 
 from poop_detector.features import dog_status
 from poop_detector.features.dog import MODEL_FILES
 from poop_detector.video import benchmark_results
-from poop_detector.video.clip_reviews import Assessment
-from poop_detector.video.clips import ClipStore
 
 
 def summary(cases=3, feces=(1, 0, 0), urine=(0, 0, 1), uncertain=1, errors=0):
@@ -182,21 +179,3 @@ def test_broken_check_result_is_ignored(tmp_path):
     folder.mkdir()
     (folder / dog_status.CHECK_FILE).write_text('{"repeat": "x"}')
     assert dog_status.load_check(folder) is None
-
-
-def test_assessments_are_counted_per_judge(tmp_path):
-    clips = ClipStore(tmp_path)
-    reviews = clips.assessments
-    ok = ready_clip(clips)
-    failed = ready_clip(clips)
-    other = ready_clip(clips)
-    reviews.save(ok, Assessment(label="none"), provider="codex", model=None)
-    reviews.save(failed, error="判定器の実行に失敗", provider="codex", model=None)
-    reviews.save(other, Assessment(label="feces"), provider="claude", model="model-b")
-    usage = {(row.provider, row.model): row for row in reviews.by_judge()}
-    codex = usage["codex", None]
-    assert (codex.total, codex.errors) == (2, 1)
-    assert codex.last_at
-    assert codex.last_failed is True
-    claude = usage["claude", "model-b"]
-    assert (claude.total, claude.errors, claude.last_failed) == (1, 0, False)
