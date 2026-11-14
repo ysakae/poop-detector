@@ -533,7 +533,7 @@ def _save_label(handler: "Handler", fields: Mapping[str, str]) -> None:
     )
 
 
-@post("/clips/request", "/clips/label", "/clips/confirm", "/clips/protect")
+@post("/clips/request", "/clips/label", "/clips/confirm", "/clips/protect", "/clips/quick")
 def clip_form(handler: "Handler", form: Form) -> None:
     """動画の保存要求・ラベル・確定記録・保護。処理は handler.path で分かれる。
 

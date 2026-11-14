@@ -366,7 +366,12 @@ class AssessmentNotifier(Protocol):
     """自動判定を通知する関数（NtfyNotifier.send_assessment など）。"""
 
     def __call__(
-        self, label: str, *, location: str | None = None, interrupted: bool = False
+        self,
+        label: str,
+        *,
+        location: str | None = None,
+        interrupted: bool = False,
+        clip_id: str = "",
     ) -> bool: ...
 
 
@@ -456,12 +461,14 @@ class Review:
                 and result.label in EXCRETION_TYPES
                 and self.store.assessments.claim_notice(row["id"])
             ):
-                if row["interrupted"]:
-                    sent = self.notify(result.label, location=result.location, interrupted=True)
-                elif result.location == "outside":
-                    sent = self.notify(result.label, location="outside")
-                else:
-                    sent = self.notify(result.label)
+                sent = self.notify(
+                    result.label,
+                    location=result.location
+                    if row["interrupted"] or result.location == "outside"
+                    else None,
+                    interrupted=bool(row["interrupted"]),
+                    clip_id=row["id"],
+                )
                 self.store.assessments.finish_notice(row["id"], sent)
         return completed, failures
 

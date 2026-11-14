@@ -121,7 +121,7 @@ def test_outside_notice_is_distinct_and_does_not_mark_tray_event(gui):
         lambda path, row, judge: Assessment(
             "urine", "excreting", 4, 6, "新しい濡れ跡", locations[row["id"]]
         ),
-        lambda label, location=None: notices.append((label, location)) or True,
+        lambda label, location=None, **kwargs: notices.append((label, location)) or True,
     )
     assert review.run(limit=3, since=now.isoformat()) == (3, 0)
     assert notices == [("urine", "outside"), ("urine", None)]

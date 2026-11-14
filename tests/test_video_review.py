@@ -47,7 +47,9 @@ def test_live_review_preserves_human_labels_and_deduplicates(tmp_path):
     store.labels.save(ids[0], ClipLabel("none", activity="feeding"))
     notified = []
     review = Review(
-        store, lambda path, row, judge: FECES, lambda label: notified.append(label) or True
+        store,
+        lambda path, row, judge: FECES,
+        lambda label, **kwargs: notified.append(label) or True,
     )
     review.run(limit=10, since=when.isoformat())
     review.run(limit=10, since=when.isoformat())
@@ -104,7 +106,9 @@ def test_live_review_notifies_of_excretion_with_clip_quality(
         sent.append(json.loads(request.data))
         return nullcontext(SimpleNamespace(status=200))
 
-    notifier = NtfyNotifier("family", early_topic="watch", opener=open_request)
+    notifier = NtfyNotifier(
+        "family", early_topic="watch", opener=open_request, public_url="https://toilet.example.com"
+    )
     result = (
         Assessment(label, "excreting", 10, 15, "新しい排泄の跡", location)
         if expected
@@ -119,6 +123,7 @@ def test_live_review_notifies_of_excretion_with_clip_quality(
     else:
         assert len(sent) == 1
         assert sent[0]["topic"] == "family"
+        assert sent[0]["click"] == f"https://toilet.example.com/clips?id={clip_id}&notice=1"
         assert expected in sent[0]["message"]
         assert ("一部欠落" in sent[0]["message"]) == interrupted
         assert store.assessments.get(clip_id)["notified_at"] is not None
@@ -273,7 +278,7 @@ def test_duplicate_both_is_not_a_second_notice(tmp_path):
     review = Review(
         store,
         lambda path, row, judge: FECES if row["id"] == first else both,
-        lambda label: notices.append(label) or True,
+        lambda label, **kwargs: notices.append(label) or True,
     )
     assert review.run(limit=3, since=when.isoformat()) == (2, 0)
     assert notices == ["feces"]
