@@ -5,7 +5,7 @@
 犬のトイレを RTSP カメラで見守り、排便・排尿の「可能性」をスマートフォンや Mac に通知するローカル監視ツールです。
 空のトイレの画像と今の映像を比べ、変化が一定時間残ったときに知らせます。映像は手元のマシンで処理し、クラウドへは送りません（任意の動画の自動判定を除く）。
 
-![GUI のホーム。確認待ちの件数、今日の記録、最近の確定記録、ライブ映像と直近の自動判定が並ぶ（人工データ）](docs/images/label-gui-top.jpg)
+![GUI のホーム。確認待ちの件数、今日の排便・排尿の回数と給餌量、記録の入口、最近の確定記録が並ぶ（人工データ）](docs/images/label-gui-top.jpg)
 
 > **English summary:** poop-detector watches a dog's toilet tray through an RTSP camera and notifies you when a lasting change suggests the dog has pooped or peed. It compares frames with an empty-tray baseline on your own machine; it does not recognize feces or urine itself. The documentation is in Japanese.
 
