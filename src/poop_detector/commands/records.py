@@ -77,13 +77,17 @@ def record(args: argparse.Namespace, context: CommandContext) -> int:
 
 
 def gui(args: argparse.Namespace, context: CommandContext) -> int:
+    from contextlib import ExitStack
+
     from ..config import load_connection_settings
     from ..gui.server import serve
 
     web = WebOptions.from_config(context.config, port=args.port)
     # 監視の停止は、止まった監視の代わりに GUI のサーバーが知らせる。
-    primary, _ = build_notifier(context.config, load_connection_settings(), sends=True)
-    with monitor_watchdog(context, with_web_push(primary, context)):
+    with ExitStack() as stack:
+        if not args.manual_only:
+            primary, _ = build_notifier(context.config, load_connection_settings(), sends=True)
+            stack.enter_context(monitor_watchdog(context, with_web_push(primary, context)))
         serve(
             context.root,
             web.port,
@@ -92,5 +96,6 @@ def gui(args: argparse.Namespace, context: CommandContext) -> int:
             pet_name=context.config.pet_name,
             web=web,
             config_path=args.config,
+            manual_only=args.manual_only,
         )
     return 0

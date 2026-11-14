@@ -291,7 +291,11 @@ def as_viewer(route: Callable[[Exchange, Any], None], exchange: Exchange, argume
             name=user.name,
             admin=user.role == "admin",
             path=_menu_path(exchange.path),
-            monitor=exchange.app.preview.monitor_status,
+            monitor=(
+                lambda: (
+                    "manual" if exchange.app.manual_only else exchange.app.preview.monitor_status()
+                )
+            ),
             pending=lambda: len(review_items(exchange.app.store, exchange.app.clips)),
         )
         if user is not None

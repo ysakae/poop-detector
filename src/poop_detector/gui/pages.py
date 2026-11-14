@@ -201,6 +201,7 @@ def render_events(
         metrics=metrics,
         counts=metrics["excretion_counts"],
         saved=bool(query.get("saved")),
+        manual_open=bool(query.get("manual")),
         items=items,
         row=event_detail(row) if row else None,
         locations=list(EXCRETION_LOCATIONS.items()),
@@ -216,6 +217,7 @@ def render_home(
     *,
     title: str | None = None,
     pending: int = 0,
+    manual_only: bool = False,
 ) -> str:
     """ホーム（ダッシュボード）。ライブ映像、確認待ちの件数、今日の回数、直近の確定記録。"""
     records = store.records()
@@ -235,6 +237,7 @@ def render_home(
         title=title or APP_TITLE,
         capacity=capacity_info(store.root, disk_mb),
         pending=pending,
+        manual_only=manual_only,
         today=today,
         daily=daily,
         recent=recent,

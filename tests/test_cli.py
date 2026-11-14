@@ -247,6 +247,7 @@ def test_gui_passes_settings_to_the_server(cli_env, monkeypatch):
                 "web": WebOptions(port=0),
                 # 管理 › 設定が書き換える設定ファイル（--config の値）。
                 "config_path": "config.yaml",
+                "manual_only": False,
             },
         )
     ]

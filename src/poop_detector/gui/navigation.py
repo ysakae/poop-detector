@@ -32,6 +32,7 @@ MANAGEMENT_PAGES: tuple[tuple[str, str], ...] = (
 )
 # 監視の状態（LivePreview.monitor_status の値）の表示。(文言, 見た目の区分)。
 MONITOR_STATES: dict[str, tuple[str, str]] = {
+    "manual": ("手動記録モード", "off"),
     "connected": ("稼働中", "ok"),
     "searching": ("カメラを再接続中", "warn"),
 }

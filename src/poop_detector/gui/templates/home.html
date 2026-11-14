@@ -2,6 +2,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import capacity_panel %}
 {% block content %}
+{% if manual_only %}<p><a class="button" href="/records/events?manual=1#manual-record">排泄を手動で記録する</a></p>{% endif %}
 <div class="dashboard">
 <section class="dashboard-card" aria-labelledby="review-title">
 <h2 id="review-title">確認待ち</h2>
@@ -24,6 +25,10 @@
 <p class="note"><a href="/records/events">検知の一覧と記録の追加</a>から、目視で確認した排泄も記録できます。</p>
 </section>
 </div>
+{% if manual_only %}
+{% if viewer_admin %}<p><a href="/manage/areas">カメラの見守りを追加する</a></p>{% endif %}
+{% else %}
 {% include "_live_panel.html" %}
 {{ capacity_panel(capacity) }}
+{% endif %}
 {% endblock %}
