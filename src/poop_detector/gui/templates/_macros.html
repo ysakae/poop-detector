@@ -19,3 +19,23 @@
 {% macro capacity_panel(capacity) -%}
 <section id="recording-capacity" aria-label="録画容量">{{ capacity_status(capacity) }}</section><script src="/assets/clip_storage.js" defer></script>
 {%- endmacro %}
+
+{#- アイコン。線の色は文字の色に従う（style.css の .icon）。名前は gui/icons.py の ICONS にあるものだけ。 -#}
+{% macro icon(name) -%}
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="{{ icons[name] }}"/></svg>
+{%- endmacro %}
+
+{#- 大きな数字。回数や量を、文章ではなく数字で見せる。 -#}
+{% macro stat(label, value, unit="", icon_name="") -%}
+<div class="stat"><span class="stat-label">{% if icon_name %}{{ icon(icon_name) }}{% endif %}{{ label }}</span><strong class="stat-value">{{ value }}{% if unit %}<span class="stat-unit">{{ unit }}</span>{% endif %}</strong></div>
+{%- endmacro %}
+
+{#- 状態のラベル。state は ok・warn・off。色だけに頼らず、文字で状態を書く。 -#}
+{% macro chip(text, state="off") -%}
+<span class="chip chip-{{ state }}">{{ text }}</span>
+{%- endmacro %}
+
+{#- 空の状態。記録がないときに、次の一歩を案内する。 -#}
+{% macro empty_state(title, body, href="", action="") -%}
+<div class="empty-state"><img src="/assets/dog.svg" alt="" width="96" height="96"><h3>{{ title }}</h3><p>{{ body }}</p>{% if href %}<p><a class="button" href="{{ href }}">{{ action }}</a></p>{% endif %}</div>
+{%- endmacro %}

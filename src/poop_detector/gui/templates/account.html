@@ -8,11 +8,7 @@
 <h3>表示</h3>
 {% if display_saved %}<p class="saved" role="status">表示を保存しました。</p>{% endif %}
 <form method="post" action="/account/display">{{ csrf_field(token) }}
-<div class="display-options"><fieldset><legend>デザインテーマ</legend>
-{%- for value, label in themes -%}
-<p><label><input type="radio" name="theme" value="{{ value }}"{% if value == theme %} checked{% endif %}> {{ label }}</label></p>
-{%- endfor -%}
-</fieldset><fieldset><legend>明るさ</legend>
+<div class="display-options"><fieldset><legend>明るさ</legend>
 {%- for value, label in appearances -%}
 <p><label><input type="radio" name="appearance" value="{{ value }}"{% if value == appearance %} checked{% endif %}> {{ label }}</label></p>
 {%- endfor -%}

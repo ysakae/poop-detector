@@ -9,6 +9,7 @@ from typing import Any
 
 from jinja2 import Environment, PackageLoader, StrictUndefined
 
+from .icons import ICONS
 from .navigation import Viewer, frame_for
 from .themes import Display
 
@@ -19,13 +20,15 @@ ENVIRONMENT = Environment(
     trim_blocks=True,
     lstrip_blocks=True,
 )
+# アイコンの形。_macros.html の icon が名前で引く（ない名前は StrictUndefined がエラーにする）。
+ENVIRONMENT.globals["icons"] = ICONS
 
 
 # 画面を見ている人。asgi.dispatch がルートを呼ぶスレッドで設定する（ログインしていなければ None）。
 # テンプレートは frame で共通の枠を、viewer_admin で管理者だけの操作の入口を出し分ける
 # （拒否はサーバーで行う）。
 VIEWER: ContextVar[Viewer | None] = ContextVar("viewer", default=None)
-# 画面の表示（テーマとライト・ダーク）。ログイン前の画面でも、管理者が決めた既定のテーマを使う。
+# 画面の表示（ライト・ダーク）。ログイン前の画面は OS の設定に合わせる。
 DISPLAY: ContextVar[Display | None] = ContextVar("display", default=None)
 
 

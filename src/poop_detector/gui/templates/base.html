@@ -6,7 +6,7 @@
 {%- endfor -%}
 </ul></nav>
 {%- endmacro -%}
-<!doctype html><html lang="ja" data-theme="{{ display.theme }}" data-appearance="{{ display.appearance }}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/assets/icon-192.png"><meta name="theme-color" content="#254b60"><style>
+<!doctype html><html lang="ja" data-appearance="{{ display.appearance }}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/assets/icon-192.png"><meta name="theme-color" content="#faf7f2"><style>
 {% include "style.css" %}
 </style><header class="site-header"><h1>{{ title }}</h1>
 {%- if frame %}<p class="site-status"><span class="monitor monitor-{{ frame.monitor_state }}">監視：{{ frame.monitor }}</span> <a href="/account">{{ frame.person }}さん</a> <a href="/logout">ログアウト</a></p>{% endif -%}

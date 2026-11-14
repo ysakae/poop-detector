@@ -119,7 +119,7 @@ class SecurityHeaders:
 
 
 # ログインしていなくても開ける場所（ログイン、パスキーの登録、その画面のスクリプト）。
-# 肉球の模様（ワンちゃんのテーマ）は、ログインの画面の見出しにも出すので公開する。
+# 肉球の模様と犬のイラストは、ログインの画面にも出すので公開する。
 # PWA のマニフェスト・アイコン・Service Worker は、ブラウザーが Cookie なしで読むことがあるので公開する。
 PUBLIC_PATHS = frozenset(
     {
@@ -127,6 +127,7 @@ PUBLIC_PATHS = frozenset(
         "/enroll",
         "/assets/passkey.js",
         "/assets/paw.svg",
+        "/assets/dog.svg",
         "/manifest.webmanifest",
         "/sw.js",
         "/assets/icon-192.png",
@@ -302,9 +303,7 @@ def as_viewer(route: Callable[[Exchange, Any], None], exchange: Exchange, argume
         if user is not None
         else None
     )
-    display = resolve(
-        user.theme if user else None, user.appearance if user else None, exchange.app.default_theme
-    )
+    display = resolve(user.appearance if user else None)
     token = VIEWER.set(viewer)
     display_token = DISPLAY.set(display)
     try:

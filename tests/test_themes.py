@@ -1,13 +1,11 @@
-"""デザインテーマ（#87）を検証する。
+"""デザインの変数と表示の選択（#87、#141）を検証する。
 
 色はデザイントークン（CSS のカスタムプロパティ）にまとめ、画面の CSS はトークンだけを参照する。
-トークンはテーマごとに light-dark(ライト, ダーク) で書くので、両テーマ・ライトとダークの組み合わせ
-すべてで、文字と背景のコントラストが WCAG 2.2 の AA（4.5:1、大きな文字と部品は 3:1）以上かを確かめる。
+デザインは1つで、トークンは light-dark(ライト, ダーク) で書くので、ライトとダークの両方で、文字と背景のコントラストが WCAG 2.2 の AA（4.5:1、大きな文字と部品は 3:1）以上かを確かめる。
 """
 
 import re
 import sqlite3
-import threading
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -16,9 +14,9 @@ from support import exchange, login
 
 from poop_detector.config import Config, ConfigError
 from poop_detector.gui.accounts import Accounts
-from poop_detector.gui.themes import APPEARANCES, THEMES
+from poop_detector.gui.templating import ENVIRONMENT
+from poop_detector.gui.themes import APPEARANCES
 from poop_detector.records.database import events_database
-from poop_detector.web_address import WebOptions
 
 TEMPLATES = Path(__file__).parents[1] / "src" / "poop_detector" / "gui" / "templates"
 STYLE = (TEMPLATES / "style.css").read_text()
@@ -42,6 +40,12 @@ PAIRS = [
     ("warn-text", "warn-bg", 4.5),
     ("text", "error-bg", 4.5),
     ("badge-text", "badge-bg", 4.5),
+    ("chip-ok-text", "chip-ok-bg", 4.5),
+    ("chip-warn-text", "chip-warn-bg", 4.5),
+    ("chip-off-text", "chip-off-bg", 4.5),
+    ("ok", "surface", 3),
+    ("warn", "surface", 3),
+    ("off", "surface", 3),
     ("media-text", "media-bg", 4.5),
     ("border-strong", "surface", 3),
     ("focus", "surface", 3),
@@ -81,23 +85,20 @@ def contrast(first, second):
 
 
 @pytest.mark.parametrize("mode", ["light", "dark"])
-@pytest.mark.parametrize("theme", sorted(THEMES))
-def test_every_theme_meets_wcag_aa_contrast(theme, mode):
-    base = tokens(token_block(":root"), mode)
-    values = (
-        base
-        if theme == "professional"
-        else {
-            **base,
-            **tokens(token_block(':root[data-theme="dog"]'), mode),
-        }
-    )
+def test_design_meets_wcag_aa_contrast(mode):
+    values = tokens(token_block(":root"), mode)
     failures = [
         f"{fg} / {bg}: {contrast(values[fg], values[bg]):.2f}"
         for fg, bg, needed in PAIRS
         if contrast(values[fg], values[bg]) < needed
     ]
-    assert not failures, f"{theme}・{mode} のコントラストが足りません: {failures}"
+    assert not failures, f"{mode} のコントラストが足りません: {failures}"
+
+
+def test_there_is_one_design():
+    """テーマごとの変数の上書きを置かない（#141）。"""
+    assert "data-theme" not in STYLE
+    assert "data-theme" not in (TEMPLATES / "base.html").read_text()
 
 
 def test_styles_use_only_tokens_for_colors():
@@ -122,10 +123,10 @@ def test_no_external_fonts_or_icons():
         assert "fonts.googleapis" not in path.read_text()
 
 
-def theme_attributes(html):
-    match = re.search(r'<html lang="ja" data-theme="([a-z]+)" data-appearance="([a-z]+)">', html)
-    assert match, "html 要素にテーマがありません"
-    return match[1], match[2]
+def appearance_attribute(html):
+    match = re.search(r'<html lang="ja" data-appearance="([a-z]+)">', html)
+    assert match, "html 要素に明るさがありません"
+    return match[1]
 
 
 def page(server, cookie, path="/"):
@@ -134,81 +135,54 @@ def page(server, cookie, path="/"):
     return body.decode()
 
 
-def test_default_is_professional_following_the_os(gui):
+def test_default_follows_the_os(gui):
     server, _, _ = gui
-    assert theme_attributes(page(server, login(server, role="member"))) == ("professional", "auto")
+    assert appearance_attribute(page(server, login(server, role="member"))) == "auto"
 
 
-def test_users_choose_their_own_theme_and_appearance(gui):
+def test_users_choose_their_own_appearance(gui):
     server, _, _ = gui
     cookie = login(server, "家族B", role="member")
     html = page(server, cookie, "/account")
-    assert "表示" in html
+    assert "明るさ" in html
+    assert 'name="theme"' not in html
     token = re.search(r'name="csrf" value="([^"]+)"', html)[1]
-    body = urlencode({"theme": "dog", "appearance": "dark", "csrf": token})
+    body = urlencode({"appearance": "dark", "csrf": token})
     status, headers, _ = exchange(
         server, "POST", "/account/display", body, {**FORM, **cookie}, auth=False
     )
     assert (status, headers["Location"]) == (303, "/account?display_saved=1")
-    assert theme_attributes(page(server, cookie)) == ("dog", "dark")
+    assert appearance_attribute(page(server, cookie)) == "dark"
     # ほかの人の表示は変わらない。
-    assert theme_attributes(page(server, login(server, role="member"))) == ("professional", "auto")
-    user = server.app.accounts.users.by_name("家族B")
-    assert (user.theme, user.appearance) == ("dog", "dark")
+    assert appearance_attribute(page(server, login(server, role="member"))) == "auto"
+    assert server.app.accounts.users.by_name("家族B").appearance == "dark"
 
 
-def test_invalid_display_choices_are_refused(gui):
+def test_invalid_appearance_is_refused(gui):
     server, _, _ = gui
     cookie = login(server, role="member")
     token = re.search(r'name="csrf" value="([^"]+)"', page(server, cookie, "/account"))[1]
-    body = urlencode({"theme": "neon", "appearance": "dark", "csrf": token})
+    body = urlencode({"appearance": "neon", "csrf": token})
     status, _, _ = exchange(
         server, "POST", "/account/display", body, {**FORM, **cookie}, auth=False
     )
     assert status == 400
-    assert theme_attributes(page(server, cookie)) == ("professional", "auto")
+    assert appearance_attribute(page(server, cookie)) == "auto"
 
 
-@pytest.fixture
-def dog_default_gui(tmp_path):
-    from poop_detector.gui.server import make_server
-
-    server = make_server(tmp_path, 0, web=WebOptions(theme="dog"))
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    yield server
-    server.shutdown()
-    server.server_close()
-    thread.join()
-
-
-def test_admin_default_theme_applies_to_users_who_follow_it(dog_default_gui):
-    server = dog_default_gui
-    host = {"Host": f"localhost:{server.server_address[1]}"}
-    status, _, body = exchange(server, "GET", "/login", headers=host, auth=False)
-    assert status == 200
-    assert theme_attributes(body.decode())[0] == "dog"
-    follower = login(server, role="member")
-    assert theme_attributes(page(server, follower))[0] == "dog"
-    chooser = login(server, "家族C", role="member")
-    users = server.app.accounts.users
-    users.set_display(users.by_name("家族C").id, "professional", "light")
-    assert theme_attributes(page(server, chooser)) == ("professional", "light")
-
-
-def test_theme_setting_is_validated():
+def test_old_theme_setting_is_still_accepted():
+    """デザインを1つにしたあとも、gui.theme を書いた設定ファイルで起動できる。"""
     assert Config(gui_theme="dog").gui_theme == "dog"
     with pytest.raises(ConfigError, match=r"gui\.theme"):
         Config(gui_theme="neon")
-    assert WebOptions.from_config(Config(gui_theme="dog")).theme == "dog"
 
 
-def test_display_choices_are_listed():
-    assert set(THEMES) == {"professional", "dog"}
+def test_appearance_choices_are_listed():
     assert set(APPEARANCES) == {"auto", "light", "dark"}
 
 
-def test_v7_database_keeps_users_who_follow_the_default(tmp_path):
+def test_v7_database_keeps_users_and_their_old_theme(tmp_path):
+    """theme 列は消さない。選んであった値は残し、明るさだけを読み書きする。"""
     from poop_detector.records.database import MIGRATIONS
 
     with sqlite3.connect(tmp_path / "events.sqlite3") as db:
@@ -218,19 +192,58 @@ def test_v7_database_keeps_users_who_follow_the_default(tmp_path):
         db.execute(
             "INSERT INTO users (id, name, role, created_at) VALUES ('old', '家族A', 'admin', '2026')"
         )
-    users = Accounts(events_database(tmp_path)).users
-    user = users.get("old")
-    assert (user.name, user.theme, user.appearance) == ("家族A", None, "auto")
-    users.set_display("old", None, "light")
-    assert (users.get("old").theme, users.get("old").appearance) == (None, "light")
+    database = events_database(tmp_path)
+    users = Accounts(database).users
+    with database.connect() as db:
+        db.execute("UPDATE users SET theme = 'dog' WHERE id = 'old'")
+    assert (users.get("old").name, users.get("old").appearance) == ("家族A", "auto")
+    users.set_appearance("old", "light")
+    assert users.get("old").appearance == "light"
+    with database.connect() as db:
+        assert db.execute("SELECT theme FROM users WHERE id = 'old'").fetchone()[0] == "dog"
 
 
-def test_paw_motif_is_served_from_this_server(gui):
-    """CSP の img-src 'self' のため、模様は data: URI でなく同梱の SVG を読む。"""
+@pytest.mark.parametrize("name", ["paw.svg", "dog.svg"])
+def test_illustrations_are_served_from_this_server(gui, name):
+    """CSP の img-src 'self' のため、絵は data: URI でなく同梱の SVG を読む。"""
     server, _, _ = gui
-    assert 'url("/assets/paw.svg")' in STYLE
     assert "data:image" not in STYLE
-    status, headers, body = exchange(server, "GET", "/assets/paw.svg", auth=False)
+    status, headers, body = exchange(server, "GET", f"/assets/{name}", auth=False)
     assert status == 200
     assert headers["Content-Type"] == "image/svg+xml"
     assert b"<script" not in body
+
+
+def macros():
+    return ENVIRONMENT.get_template("_macros.html").module
+
+
+def test_every_icon_draws_with_the_text_color():
+    from poop_detector.gui.icons import ICONS
+
+    assert {"home", "review", "records", "video", "feces", "urine", "food", "sheet"} <= set(ICONS)
+    for name in ICONS:
+        svg = str(macros().icon(name))
+        assert svg.startswith('<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"'), name
+        assert "currentColor" not in svg, name
+        assert "#" not in svg, name
+        assert "<path" in svg, name
+
+
+def test_unknown_icon_is_an_error():
+    with pytest.raises(Exception, match="nonexistent"):
+        macros().icon("nonexistent")
+
+
+def test_components_escape_their_values():
+    module = macros()
+    assert "&lt;b&gt;" in str(module.stat("排便", "<b>", "回", "feces"))
+    assert "&lt;b&gt;" in str(module.chip("<b>", "ok"))
+    empty = str(module.empty_state("<b>", "説明"))
+    assert "&lt;b&gt;" in empty
+    assert 'src="/assets/dog.svg"' in empty
+
+
+def test_component_styles_exist():
+    for selector in [".icon{", ".stat{", ".chip{", ".chip-ok{", ".empty-state{", ".ghost{"]:
+        assert selector in STYLE, selector
