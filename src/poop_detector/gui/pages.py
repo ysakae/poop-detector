@@ -6,6 +6,8 @@ from typing import Any, TypeAlias
 from urllib.parse import urlencode
 
 from ..features.outages import OUTAGE_KINDS, Outage, format_duration
+from ..records.care import entries as care_entries
+from ..records.care import format_grams
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
 from ..records.record_stats import summarize_records
 from ..timezones import local_today, parse_local, timezone_label, to_local
@@ -211,6 +213,17 @@ def render_events(
     )
 
 
+# ホームの「記録する」の入口。(URL, アイコン, 名前)。
+HOME_QUICK: tuple[tuple[str, str, str], ...] = (
+    ("/care#feeding", "food", "ごはん"),
+    ("/care#sheet", "sheet", "シート交換"),
+    ("/weight", "weight", "体重"),
+    (f"{EVENTS_PAGE}?manual=1#manual-record", "paw", "排泄"),
+)
+# 確定記録の種類ごとのアイコン（gui/icons.py の名前）。ない種類は肉球にする。
+RECORD_ICONS = {"feces": "feces", "urine": "urine"}
+
+
 def render_home(
     store: Store,
     disk_mb: float = DEFAULT_DISK_MIB,
@@ -219,14 +232,16 @@ def render_home(
     pending: int = 0,
     manual_only: bool = False,
 ) -> str:
-    """ホーム（ダッシュボード）。ライブ映像、確認待ちの件数、今日の回数、直近の確定記録。"""
+    """ホーム。確認待ちの件数、今日の回数と給餌量、記録の入口、直近の確定記録、ライブ映像。"""
     records = store.records()
     today = local_today()
     daily, _, _ = summarize_records(records, today, today)
+    fed = [entry.amount_dg for entry in care_entries(store.database, today) if entry.amount_dg]
     recent = [
         {
             "time": local_time(row["actual_start"] or row["timestamp"]),
             "type": EXCRETION_TYPES[row["excretion_type"]],
+            "icon": RECORD_ICONS.get(row["excretion_type"], "paw"),
             "location": EXCRETION_LOCATIONS.get(row["location"] or "", "場所不明"),
             "url": event_url(row["id"]),
         }
@@ -240,6 +255,8 @@ def render_home(
         manual_only=manual_only,
         today=today,
         daily=daily,
+        food_grams=format_grams(sum(fed)),
+        quick=HOME_QUICK,
         recent=recent,
         timezone=timezone_label(),
     )

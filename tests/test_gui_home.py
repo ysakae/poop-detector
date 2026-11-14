@@ -11,6 +11,20 @@ def page(server, path, cookie):
     return body.decode()
 
 
+def stat(html, label):
+    """大きな数字の部品（_macros.html の stat）から、値と単位を読む。"""
+    match = re.search(
+        rf'{label}</span><strong class="stat-value">([^<]+)<span class="stat-unit">([^<]+)', html
+    )
+    assert match, f"{label} の数字がありません"
+    return match[1], match[2]
+
+
+def filled_buttons(html):
+    """塗りのボタン（いちばん大事な操作）の数。枠線・文字のボタンは数えない。"""
+    return len(re.findall(r'class="button"', html))
+
+
 def test_home_is_a_dashboard_without_the_label_form(gui):
     server, _, _ = gui
     html = page(server, "/", login(server, role="member"))
@@ -26,8 +40,10 @@ def test_home_counts_todays_records(gui):
     store.classify(event_id, "feces")
     html = page(server, "/", login(server, role="member"))
     today = re.search(r'aria-labelledby="today-title".*?</section>', html, re.S)[0]
-    assert "排便 1件" in today
-    assert "排尿 0件" in today
+    assert stat(today, "排便") == ("1", "回")
+    assert stat(today, "排尿") == ("0", "回")
+    # 種類不明は、あるときだけ出す。
+    assert "種類不明" not in today
     assert "確認待ちはありません" in html
 
 
@@ -37,6 +53,7 @@ def test_home_lists_recent_records(gui):
     html = page(server, "/", login(server, role="member"))
     recent = re.search(r'aria-labelledby="recent-title".*?</section>', html, re.S)[0]
     assert "排尿" in recent
+    assert '<svg class="icon"' in recent
     assert f'href="/records/events?filter=all&amp;id={event_id}"' in recent
 
 
@@ -71,3 +88,58 @@ def test_record_edit_links_open_the_event_list(gui):
     store.classify(event_id, "feces")
     html = page(server, "/records", login(server, role="member"))
     assert f'href="/records/events?filter=all&amp;id={event_id}"' in html
+
+
+def test_home_has_one_main_action(gui):
+    """1画面に主役は1つ（#141）。確認待ちがあれば、それだけを塗りのボタンにする。"""
+    server, store, event_id = gui
+    cookie = login(server, role="member")
+    html = page(server, "/", cookie)
+    assert "確認待ち 1件を確認する" in html
+    assert filled_buttons(html) == 1
+    store.classify(event_id, "feces")
+    assert filled_buttons(page(server, "/", cookie)) == 0
+
+
+def test_home_records_care_in_one_tap(gui):
+    server, _, _ = gui
+    html = page(server, "/", login(server, role="member"))
+    quick = re.search(r'<nav class="quick" aria-label="記録する">.*?</nav>', html, re.S)[0]
+    for href, text in [
+        ("/care#feeding", "ごはん"),
+        ("/care#sheet", "シート交換"),
+        ("/weight", "体重"),
+        ("/records/events?manual=1#manual-record", "排泄"),
+    ]:
+        assert re.search(
+            rf'<a href="{re.escape(href)}"><svg class="icon".*?</svg>{text}</a>', quick
+        )
+
+
+def test_home_adds_up_todays_food(gui):
+    from poop_detector.records.care import CareEntry, save_entry
+    from poop_detector.timezones import local_now
+
+    server, store, _ = gui
+    cookie = login(server, role="member")
+    today = re.search(
+        r'aria-labelledby="today-title".*?</section>', page(server, "/", cookie), re.S
+    )
+    assert stat(today[0], "ごはん") == ("0", "g")
+    for amount in (305, 250):
+        save_entry(store.database, CareEntry("", local_now(), "feeding", "家族", "", "", amount))
+    save_entry(store.database, CareEntry("", local_now(), "sheet", "家族", ""))
+    today = re.search(
+        r'aria-labelledby="today-title".*?</section>', page(server, "/", cookie), re.S
+    )
+    assert stat(today[0], "ごはん") == ("55.5", "g")
+
+
+def test_home_shows_unspecified_records_only_when_they_exist(gui):
+    from poop_detector.timezones import local_now
+
+    server, store, _ = gui
+    store.add_excretion("unspecified", local_now().isoformat())
+    html = page(server, "/", login(server, role="member"))
+    today = re.search(r'aria-labelledby="today-title".*?</section>', html, re.S)[0]
+    assert stat(today, "種類不明") == ("1", "回")

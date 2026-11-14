@@ -1,31 +1,33 @@
-{#- ホーム（ダッシュボード）。ラベル付けは確認待ちと検知の一覧で行い、ここでは状況だけを示す。 -#}
+{#- ホーム。主役は確認待ちの1つだけで、今日の数字、1回押して記録する入口、最近の記録を並べる（Issue 141）。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import capacity_panel %}
+{% from "_macros.html" import capacity_panel, chip, empty_state, icon, stat %}
 {% block content %}
-{% if manual_only %}<p><a class="button" href="/records/events?manual=1#manual-record">排泄を手動で記録する</a></p>{% endif %}
-<div class="dashboard">
-<section class="dashboard-card" aria-labelledby="review-title">
+<section class="card home-review" aria-labelledby="review-title">
 <h2 id="review-title">確認待ち</h2>
-{% if pending %}<p><a class="button" href="/review">確認待ち {{ pending }}件を確認する</a></p><p class="note">まだラベルのない検知と、排泄に関わる動画です。</p>
-{% else %}<p>確認待ちはありません。</p>{% endif %}
+{% if pending %}<p class="home-review-count"><strong>{{ pending }}</strong>件</p>
+<p><a class="button" href="/review">確認待ち {{ pending }}件を確認する</a></p>
+{% else %}<p>{{ chip("確認待ちはありません", "ok") }}</p>{% endif %}
 </section>
-<section class="dashboard-card" aria-labelledby="today-title">
+<section class="card" aria-labelledby="today-title">
 <h2 id="today-title">今日の記録</h2>
-<p class="dashboard-counts"><span>排便 {{ daily.feces }}件</span><span>排尿 {{ daily.urine }}件</span><span>種類不明 {{ daily.unspecified }}件</span></p>
+<div class="stats">{{ stat("排便", daily.feces, "回", "feces") }}{{ stat("排尿", daily.urine, "回", "urine") }}{{ stat("ごはん", food_grams, "g", "food") }}{% if daily.unspecified %}{{ stat("種類不明", daily.unspecified, "回", "paw") }}{% endif %}</div>
 <p class="note">{{ today }}（{{ timezone }}）の確定記録です。<a href="/records">記録と集計を見る</a></p>
-<p><a class="button" href="/weight">体重を記録・確認する</a></p>
-<p><a class="button" href="/care">給餌・シート交換を記録する</a></p>
 </section>
-<section class="dashboard-card" aria-labelledby="recent-title">
-<h2 id="recent-title">最近の確定記録</h2>
-{% if recent %}<ul class="dashboard-recent">
-{%- for record in recent -%}
-<li><a href="{{ record.url }}">{{ record.time }}</a> {{ record.type }} ／ {{ record.location }}</li>
+<nav class="quick" aria-label="記録する">
+{%- for href, name, text in quick -%}
+<a href="{{ href }}">{{ icon(name) }}{{ text }}</a>
 {%- endfor -%}
-</ul>{% else %}<p>確定した記録はまだありません。</p>{% endif %}
-<p class="note"><a href="/records/events">検知の一覧と記録の追加</a>から、目視で確認した排泄も記録できます。</p>
+</nav>
+<section class="card" aria-labelledby="recent-title">
+<h2 id="recent-title">最近の確定記録</h2>
+{% if recent %}<ul class="timeline">
+{%- for record in recent -%}
+<li>{{ icon(record.icon) }}<span class="timeline-what">{{ record.type }}<small>{{ record.location }}</small></span><a href="{{ record.url }}">{{ record.time }}</a></li>
+{%- endfor -%}
+</ul>
+{% else %}{{ empty_state("確定した記録はまだありません", "排泄を見かけたら、ここから記録できます。", "/records/events?manual=1#manual-record", "排泄を記録する", "secondary") }}{% endif %}
+<p class="note"><a href="/records/events">検知の一覧と記録の追加</a></p>
 </section>
-</div>
 {% if manual_only %}
 {% if viewer_admin %}<p><a href="/manage/areas">カメラの見守りを追加する</a></p>{% endif %}
 {% else %}

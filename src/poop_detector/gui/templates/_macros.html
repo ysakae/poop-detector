@@ -36,6 +36,6 @@
 {%- endmacro %}
 
 {#- 空の状態。記録がないときに、次の一歩を案内する。 -#}
-{% macro empty_state(title, body, href="", action="") -%}
-<div class="empty-state"><img src="/assets/dog.svg" alt="" width="96" height="96"><h3>{{ title }}</h3><p>{{ body }}</p>{% if href %}<p><a class="button" href="{{ href }}">{{ action }}</a></p>{% endif %}</div>
+{% macro empty_state(title, body, href="", action="", kind="") -%}
+<div class="empty-state"><img src="/assets/dog.svg" alt="" width="96" height="96"><h3>{{ title }}</h3><p>{{ body }}</p>{% if href %}<p><a class="button{% if kind %} {{ kind }}{% endif %}" href="{{ href }}">{{ action }}</a></p>{% endif %}</div>
 {%- endmacro %}
