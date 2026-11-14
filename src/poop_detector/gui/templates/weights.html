@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf_field %}
+{% from "_macros.html" import chip, csrf_field, empty_state, stat %}
 {% block content %}
 <h2>体重の記録</h2>
 {% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
@@ -17,11 +17,12 @@
 <section class="settings-section">
 <h3>体重の推移</h3>
 {% if latest %}
-<p><strong>{{ "{:,}".format(latest.grams) }} g</strong>（{{ latest.day }}{% if age is not none %}、{{ age }}週{% endif %}）{% if change is not none %} ／ 前回比 {{ "{:+,}".format(change) }} g{% endif %}</p>
+<div class="stats">{{ stat("体重", "{:,}".format(latest.grams), "g", "weight") }}</div>
+<p class="note">{{ latest.day }}{% if age is not none %}、{{ age }}週{% endif %} {% if change is not none %}{{ chip("前回比 " ~ "{:+,}".format(change) ~ " g", "off") }}{% endif %}</p>
 {% include "_weight_chart.html" %}
-<table><thead><tr><th>測定日</th><th>体重</th><th>メモ</th><th>操作</th></tr></thead>
+<table class="weight-table"><thead><tr><th>測定日</th><th>体重</th><th>メモ</th><th>操作</th></tr></thead>
 <tbody>{% for row in rows %}<tr><td>{{ row.day }}</td><td>{{ "{:,}".format(row.grams) }} g</td><td>{{ row.note }}</td><td><a href="/weight?id={{ row.id }}">訂正</a></td></tr>{% endfor %}</tbody></table>
-{% else %}<p>体重の記録はまだありません。</p>{% endif %}
+{% else %}{{ empty_state("体重の記録はまだありません", "上の欄から、最初の測定を記録できます。") }}{% endif %}
 </section>
 <section class="settings-section">
 <h3>生年月日（任意）</h3>

@@ -106,3 +106,31 @@ def test_edit_feeding_uses_saved_values_and_keeps_invalid_input(gui):
         == 303
     )
     assert "19 g" in request(server, "GET", day_url)[1].decode()
+
+
+def test_day_view_is_one_timeline_with_totals(gui):
+    """その日のお世話・体重・排泄を、1本の時系列と大きな数字で見せる（#141）。"""
+    import re
+    from datetime import datetime
+
+    from poop_detector.records.care import CareEntry, save_entry
+    from poop_detector.records.weights import parse_day, save_weight
+    from poop_detector.timezones import to_local
+
+    server, store, _ = gui
+    day = "2024-03-01"
+    for hour, kind, amount in ((8, "feeding", 300), (19, "feeding", 255), (9, "sheet", None)):
+        at = to_local(datetime.fromisoformat(f"{day}T{hour:02d}:00:00+09:00").isoformat())
+        save_entry(store.database, CareEntry("", at, kind, "母", "", "", amount))
+    save_weight(store.database, "", parse_day(day), 1850, "")
+    store.add_excretion("urine", f"{day}T10:00:00+09:00")
+    html = request(server, "GET", f"/care?day={day}")[1].decode()
+    stats = dict(re.findall(r'([^<>]+)</span><strong class="stat-value">([^<]+)<span', html))
+    assert stats["ごはん"] == "55.5"
+    assert stats["シート交換"] == "1"
+    listing = html.split('<ul class="timeline day-list">', 1)[1].split("</ul>", 1)[0]
+    order = [listing.index(text) for text in ("19:00", "10:00", "09:00", "08:00")]
+    assert order == sorted(order)
+    for text in ("給餌", "シート交換", "排尿", "体重", "1,850 g", "25.5 g", "母"):
+        assert text in listing, text
+    assert listing.count('<svg class="icon"') == 5

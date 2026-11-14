@@ -1,8 +1,9 @@
 """家族のお世話を記録し、同じ日の体重・排泄と一緒に表示する。"""
 
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..errors import InvalidInputError
 from ..records.care import (
@@ -17,14 +18,71 @@ from ..records.care import (
 )
 from ..records.events import EXCRETION_TYPES
 from ..records.export import in_period
-from ..records.weights import parse_day, weights
-from ..timezones import local_now, local_today
-from .pages import Query, local_time
+from ..records.weights import Weight, parse_day, weights
+from ..timezones import local_now, local_today, to_local
+from .pages import Query
 from .routes import Form, first, get, post
 from .templating import render_template
 
 if TYPE_CHECKING:
     from .exchange import Exchange as Handler
+
+CARE_ICONS = {"feeding": "food", "sheet": "sheet"}
+EXCRETION_ICONS = {"feces": "feces", "urine": "urine"}
+
+
+def _timeline(
+    day: date,
+    rows: Sequence[CareEntry],
+    measured: Sequence[Weight],
+    records: Sequence[Mapping[str, Any]],
+) -> list[dict[str, str]]:
+    """その日のお世話・体重・確定した排泄を、新しい順の1本の時系列にする。
+
+    体重は時刻を持たないので、いちばん上に置く。
+    """
+    items: list[tuple[str, dict[str, str]]] = []
+    for row in rows:
+        amount = f"{row.grams} g" if row.grams else ""
+        detail = " ／ ".join(part for part in (row.food, amount, row.actor, row.note) if part)
+        items.append(
+            (
+                row.at.strftime("%H:%M:%S"),
+                {
+                    "time": row.at.strftime("%H:%M"),
+                    "icon": CARE_ICONS[row.kind],
+                    "what": KINDS[row.kind],
+                    "detail": detail,
+                    "url": f"/care?day={day.isoformat()}&id={row.id}",
+                },
+            )
+        )
+    for record in records:
+        at = to_local(record["actual_start"] or record["timestamp"])
+        items.append(
+            (
+                at.strftime("%H:%M:%S"),
+                {
+                    "time": at.strftime("%H:%M"),
+                    "icon": EXCRETION_ICONS.get(record["excretion_type"], "paw"),
+                    "what": EXCRETION_TYPES[record["excretion_type"]],
+                    "detail": "確定した排泄",
+                    "url": "",
+                },
+            )
+        )
+    ordered = [item for _, item in sorted(items, key=lambda pair: pair[0], reverse=True)]
+    weighed = [
+        {
+            "time": "",
+            "icon": "weight",
+            "what": "体重",
+            "detail": " ／ ".join(part for part in (f"{row.grams:,} g", row.note) if part),
+            "url": "",
+        }
+        for row in measured
+    ]
+    return weighed + ordered
 
 
 def _render(
@@ -57,18 +115,12 @@ def _render(
         grams=grams,
         food_history=food_history,
         submitted=submitted or {},
-        recorded_grams=format_grams(sum(amounts)) if amounts else "",
+        recorded_grams=format_grams(sum(amounts)) if amounts else "0",
+        sheet_count=sum(row.kind == "sheet" for row in rows),
+        timeline=_timeline(day, rows, weights(store.database, day, day), records),
         edit=edit,
         error=error,
         at=stamp.strftime("%Y-%m-%dT%H:%M:%S"),
-        measurements=weights(store.database, day, day),
-        excretion=[
-            (
-                local_time(row["actual_start"] or row["timestamp"]),
-                EXCRETION_TYPES[row["excretion_type"]],
-            )
-            for row in records
-        ],
     )
     handler.respond(400 if error else 200, page)
 

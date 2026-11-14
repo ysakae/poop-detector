@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf_field %}
+{% from "_macros.html" import csrf_field, icon, stat %}
 {% block content %}
 <h2>お世話の記録</h2>
 {% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
 {% for kind in form_kinds %}
 {% set retry = submitted.get("kind") == kind %}
 <section class="settings-section" id="{{ kind }}">
-<h3>{{ kinds[kind] }}{{ "の記録を訂正" if edit else "を記録" }}</h3>
+<h3>{{ icon("food" if kind == "feeding" else "sheet") }} {{ kinds[kind] }}{{ "の記録を訂正" if edit else "を記録" }}</h3>
 <form method="post" action="/care" class="settings-form">{{ csrf_field(token) }}
 <input type="hidden" name="view_day" value="{{ day }}">
 {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
@@ -35,11 +35,13 @@
 <form method="get" action="/care" class="toolbar">
 <label>日付<input type="date" name="day" value="{{ day }}" max="{{ today }}" required></label><button class="secondary">表示</button>
 </form>
-{% if recorded_grams %}<p>この日の給餌量の合計（入力分） <strong>{{ recorded_grams }} g</strong></p>{% endif %}
-{% if rows %}
-<table><thead><tr><th>時刻</th><th>お世話</th><th>担当者</th><th>メモ</th><th>操作</th></tr></thead>
-<tbody>{% for row in rows %}<tr><td>{{ row.at.strftime("%H:%M") }}</td><td>{{ kinds[row.kind] }}{% if row.food or row.grams %}<br>{{ row.food }}{% if row.food and row.grams %} ／ {% endif %}{% if row.grams %}{{ row.grams }} g{% endif %}{% endif %}</td><td>{{ row.actor }}</td><td>{{ row.note }}</td><td><a href="/care?day={{ day }}&amp;id={{ row.id }}">訂正</a></td></tr>{% endfor %}</tbody></table>
-{% else %}<p>この日のお世話の記録はありません。</p>{% endif %}
-{% if measurements %}<h4>体重</h4><ul>{% for row in measurements %}<li>{{ "{:,}".format(row.grams) }} g{% if row.note %} ／ {{ row.note }}{% endif %}</li>{% endfor %}</ul>{% endif %}
-{% if excretion %}<h4>確定した排泄</h4><ul>{% for stamp, label in excretion %}<li>{{ stamp }} ／ {{ label }}</li>{% endfor %}</ul>{% endif %}
+<section class="card" aria-label="この日のまとめ">
+<div class="stats">{{ stat("ごはん", recorded_grams, "g", "food") }}{{ stat("シート交換", sheet_count, "回", "sheet") }}</div>
+{% if timeline %}<ul class="timeline day-list">
+{%- for item in timeline -%}
+<li>{{ icon(item.icon) }}<span class="timeline-what">{{ item.what }}<small>{{ item.detail }}</small></span><span class="timeline-time">{{ item.time }}</span>{% if item.url %}<a href="{{ item.url }}">訂正</a>{% endif %}</li>
+{%- endfor -%}
+</ul>
+{% else %}<p class="note">この日のお世話の記録はありません。</p>{% endif %}
+</section>
 {% endblock %}

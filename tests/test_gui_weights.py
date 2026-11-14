@@ -23,7 +23,11 @@ def test_family_records_and_corrects_weight(gui):
     assert "1,850 g" in html
     assert "+350 g" in html
     assert "9週" in html
-    assert "<svg" in html
+    assert '<svg class="weight-chart"' in html
+    # 最新の体重は大きな数字で、前回との差は色付きのラベルで示す。
+    assert re.search(r'体重</span><strong class="stat-value">1,850<span class="stat-unit">g', html)
+    assert re.search(r'<span class="chip chip-[a-z]+">前回比 \+350 g</span>', html)
+    assert 'style="' not in html.split('<svg class="weight-chart"', 1)[1].split("</svg>", 1)[0]
     identifier = re.search(r'href="/weight\?id=([a-f0-9]+)"', html)[1]
     assert (
         submit(

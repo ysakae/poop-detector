@@ -304,6 +304,7 @@ def record_row(row: EventRow, videos: Sequence[str]) -> dict[str, Any]:
             SOURCES[row["kind"]],
             row["note"],
         ],
+        "icon": RECORD_ICONS.get(row["excretion_type"], "paw"),
         "videos": videos,
         "url": event_url(row["id"]),
     }
