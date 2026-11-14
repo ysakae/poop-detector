@@ -223,6 +223,7 @@ def parser() -> argparse.ArgumentParser:
     gui = commands.add_parser("gui", help="記録・ラベル付け・管理のGUIを起動")
     gui.add_argument("--port", type=gui_port, help="GUIのポート（既定は設定の gui.port）")
     gui.add_argument("--no-browser", action="store_true", help="ブラウザを自動で開かない")
+    gui.add_argument("--manual-only", action="store_true", help="カメラなしで手動記録の画面を開く")
     commands.add_parser("setup-dog-model", help="犬検出モデルを固定版・ハッシュ確認付きで取得")
     dog_check = commands.add_parser("check-dog", help="静止画で犬検出と処理負荷を確認")
     dog_check.add_argument("--image", required=True)

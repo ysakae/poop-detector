@@ -74,6 +74,7 @@ class GuiApp:
     config_path: Path | None = None
     # テーマを選んでいない人とログイン前の画面のテーマ（設定の gui.theme）。
     default_theme: str = "professional"
+    manual_only: bool = False
     # 範囲の登録で画面に見せた映像の一時置き場（保存にはその映像を使う）。
     snapshots: Snapshots = field(default_factory=Snapshots)
 
@@ -172,6 +173,7 @@ def make_server(
     web: WebOptions = LOCAL_ONLY,
     limits: RateLimits = DEFAULT_LIMITS,
     config_path: str | Path | None = None,
+    manual_only: bool = False,
 ) -> GuiServer:
     """GUI のサーバーを作る。待ち受けのアドレスと外部の URL は web、ポートは port を使う。
 
@@ -204,6 +206,7 @@ def make_server(
         disk_mb=disk_mb,
         config_path=Path(config_path).resolve() if config_path is not None else None,
         default_theme=web.theme,
+        manual_only=manual_only,
         push_subscriptions=PushSubscriptions(database),
         push_keys=PushKeys(root),
         outages=OutageLog(database),
@@ -279,9 +282,16 @@ def serve(
     pet_name: str = "",
     web: WebOptions = LOCAL_ONLY,
     config_path: str | Path | None = None,
+    manual_only: bool = False,
 ) -> None:
     with make_server(
-        root, port, disk_mb=disk_mb, pet_name=pet_name, web=web, config_path=config_path
+        root,
+        port,
+        disk_mb=disk_mb,
+        pet_name=pet_name,
+        web=web,
+        config_path=config_path,
+        manual_only=manual_only,
     ) as server:
         open_gui_url(server, open_browser)
         try:

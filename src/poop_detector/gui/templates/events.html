@@ -36,7 +36,7 @@
 {% else %}
 <div class="empty"><h2>該当する記録はありません</h2><p>「すべて」に切り替えるか、監視で記録が増えたら再表示してください。</p></div>
 {% endif %}
-</article></div>{% if not review %}<details><summary>目視で確認した排便・排尿を記録する</summary><p class="note">既に通知の画像がある場合は、その記録にラベルを付けてください。同じ排泄の重複登録を避けてください。</p><form method="post" action="/save">{{ csrf_field(token) }}<label>記録の種類<select name="action"><option value="manual">通常の手動記録</option><option value="missed">通知されなかった排泄（見逃し）</option></select></label><label>排泄の種類<select name="type">
+</article></div>{% if not review %}<details id="manual-record"{% if manual_open %} open{% endif %}><summary>目視で確認した排便・排尿を記録する</summary><p class="note">既に通知の画像がある場合は、その記録にラベルを付けてください。同じ排泄の重複登録を避けてください。</p><form method="post" action="/save">{{ csrf_field(token) }}<label>記録の種類<select name="action"><option value="manual">通常の手動記録</option><option value="missed">通知されなかった排泄（見逃し）</option></select></label><label>排泄の種類<select name="type">
 {%- for value, text in excretion_types -%}
 <option value="{{ value }}">{{ text }}</option>
 {%- endfor -%}

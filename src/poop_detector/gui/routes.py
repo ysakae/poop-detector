@@ -153,7 +153,12 @@ def home_page(handler: "Handler", _query: Query) -> None:
         return
     app = handler.app
     pending = len(review_items(app.store, app.clips))
-    handler.respond(200, render_home(app.store, app.disk_mb, title=app.title, pending=pending))
+    handler.respond(
+        200,
+        render_home(
+            app.store, app.disk_mb, title=app.title, pending=pending, manual_only=app.manual_only
+        ),
+    )
 
 
 @get(EVENTS_PAGE)
