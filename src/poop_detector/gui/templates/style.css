@@ -87,6 +87,12 @@ table{border-collapse:collapse}th,td{text-align:left;padding:6px 10px}
 .live-view{margin:0}.live-view img{width:100%;aspect-ratio:16/9;object-fit:contain}.live-view img[hidden]{display:none}.live-view figcaption{padding:10px 12px;text-align:left}.live-result{background:var(--surface);border-radius:var(--radius);padding:16px 20px;box-shadow:var(--shadow)}.live-result h3{margin:0 0 8px}
 .record-stats{background:var(--surface);padding:20px;border-radius:var(--radius);margin:16px 0;box-shadow:var(--shadow)}.record-stats h3{margin:0 0 8px}.record-stats input[type=date]{padding:8px}.record-stats details{padding:0;box-shadow:none}.hourly-scroll{max-height:22rem;overflow:auto}.hourly-scroll table{width:100%}.hourly-scroll th,.hourly-scroll td{padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap}.hourly-scroll thead{position:sticky;top:0;background:var(--surface)}.hourly-scroll meter{width:clamp(35px,12vw,160px)}
 
+/* 動画の確認：1回押して確定するボタンを主役にし、細かい入力はたたむ */
+.quick-confirm{margin:16px 0;padding:16px;background:var(--surface-2);border-radius:var(--radius)}.quick-confirm h4{margin:0 0 10px;font-size:16px}
+.quick-buttons{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px}.quick-buttons button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:56px;padding-inline:8px;font-size:17px;white-space:nowrap}.quick-buttons .icon{width:22px;height:22px}
+.clip-more{margin-top:16px;padding:14px 16px;border:1px solid var(--border);box-shadow:none}.clip-more>summary{font-weight:600}
+.clip-video{max-height:60vh}
+
 /* 管理 */
 .management-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,1fr);gap:20px;align-items:start}
 .management-preview,.management-controls{background:var(--surface);padding:18px;border-radius:var(--radius);box-shadow:var(--shadow)}

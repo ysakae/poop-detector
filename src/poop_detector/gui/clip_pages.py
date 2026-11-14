@@ -201,6 +201,33 @@ def label_form(row: Mapping[str, Any], assessment: Mapping[str, Any] | None) -> 
     }
 
 
+# 1回押して確定するボタン。(値, 名前, アイコン)。
+QUICK_LABELS: tuple[tuple[str, str, str], ...] = (
+    ("feces", "排便", "feces"),
+    ("urine", "排尿", "urine"),
+    ("both", "両方", "paw"),
+    ("none", "排泄なし", "none"),
+)
+
+
+def quick_form(
+    row: Mapping[str, Any], confirmation: Mapping[str, Any] | None, suggested: str
+) -> dict[str, Any] | None:
+    """まだ確かめていない変換済みの動画に出す、1回押して確定するボタン。
+
+    自動判定の候補（suggested）と同じ種類だけを塗りのボタンにする。ラベル済み・記録に
+    ひも付け済みの動画には出さない（/clips/quick も上書きしない）。
+    """
+    if confirmation is None or confirmation["linked"] or row["label"] is not None:
+        return None
+    return {
+        "buttons": [
+            {"value": value, "text": text, "icon": icon, "main": value == suggested}
+            for value, text, icon in QUICK_LABELS
+        ]
+    }
+
+
 def render_clips(
     root: str | Path,
     token: str,
@@ -226,6 +253,7 @@ def render_clips(
         "form": None,
         "confirmation": None,
         "benchmark": None,
+        "quick": None,
     }
     candidates = store.benchmark.all()
     if row is not None:
@@ -243,6 +271,7 @@ def render_clips(
             else None,
             benchmark=benchmark_form(store, row, candidates.get(row["id"])),
         )
+        context["quick"] = quick_form(row, context["confirmation"], form["label"])
     start = (
         raw_assessment["start_seconds"] if raw_assessment and not raw_assessment["error"] else None
     )
@@ -528,7 +557,11 @@ def handle_clip_post(
             )
             record_id = fields.get("record_id", "") if handler.path == "/clips/confirm" else None
             store.labels.save(clip_id, clip_label, record_id=record_id)
-        if fields.get("from") == "review" and handler.path in ("/clips/label", "/clips/confirm"):
+        if fields.get("from") == "review" and handler.path in (
+            "/clips/label",
+            "/clips/confirm",
+            "/clips/quick",
+        ):
             # 確認待ちから開いた動画は、保存したら次の件へ進む。
             handler.redirect(f"{NEXT_PAGE}?after=clip:{clip_id}")
             return

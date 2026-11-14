@@ -1,5 +1,6 @@
 {#- 確認待ち。未ラベルの検知イベントと、排泄に関わる動画の一覧。 -#}
 {% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
 {% block content %}
 <h2>確認待ち {{ entries|length }}件</h2>
 {% if done %}<p class="message" role="status">すべて確認しました。</p>{% endif %}
@@ -14,6 +15,6 @@
 </ul>
 <p class="note">動画のある検知は、動画で確かめる1件にまとめています。動画で「排泄なし」とすると、検知も誤検知として記録します。犬の出入りの動画は、自動判定が排泄の候補としたものだけを並べます。</p>
 {% elif not done %}
-<div class="empty"><h3>確認待ちはありません</h3><p>新しい検知や動画が保存されると、ここに並びます。</p></div>
+{{ empty_state("確認待ちはありません", "新しい検知や動画が保存されると、ここに並びます。") }}
 {% endif %}
 {% endblock %}
