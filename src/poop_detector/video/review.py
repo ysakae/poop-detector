@@ -29,6 +29,7 @@ from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, utcnow
 from .clip_reviews import Assessment
 from .clip_storage import REVIEW_LOCK
 from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
+from .judge_runs import RecordingJudge
 from .judge_source import FixedJudge, JudgeChoice, JudgeSource
 
 logger = logging.getLogger(__name__)
@@ -426,7 +427,10 @@ class Review:
                 path = self.store.video_path(row)
                 if path is None:
                     raise OSError("動画ファイルがありません")
-                result = self.inspect(path, row, choice.judge)
+                judge = RecordingJudge(
+                    choice.judge, self.store.judge_runs, choice.provider, choice.model, "review"
+                )
+                result = self.inspect(path, row, judge)
                 observed_at = (
                     (
                         datetime.fromisoformat(cast(str, row["start_at"]))

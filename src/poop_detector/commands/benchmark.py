@@ -18,6 +18,7 @@ from ..video.benchmark_results import REPORT_VERSION, default_output
 from ..video.benchmark_sets import Dataset
 from ..video.cli_versions import cli_version
 from ..video.clips import ClipStore
+from ..video.judge_runs import JudgeRunLog, RecordingJudge
 from ..video.review import VideoJudge
 from .context import CommandContext, CommandError, load_outside_roi, load_scene, load_tray_tracker
 from .datasets import check_dataset, print_problems, resolve
@@ -35,6 +36,15 @@ def parse_judges(values: list[str]) -> dict[str, VideoJudge]:
     if len(configurations) < 2:
         raise CommandError("比較する --judge を2つ以上指定してください")
     return {name: ready_judge(config) for name, config in configurations.items()}
+
+
+def record_runs(judges: dict[str, VideoJudge], log: JudgeRunLog) -> dict[str, VideoJudge]:
+    """比較で判定器を呼んだ回数を、運用の判定と分けて数える（判定の台帳は変えない）。"""
+    recorded: dict[str, VideoJudge] = {}
+    for name, judge in judges.items():
+        provider, _, model = name.partition(":")
+        recorded[name] = RecordingJudge(judge, log, provider, model, "benchmark")
+    return recorded
 
 
 def format_score(score: float | None) -> str:
@@ -131,7 +141,7 @@ def video_benchmark(args: argparse.Namespace, context: CommandContext) -> int:
         cases, excluded, scenes = _legacy_cases(args, context, manifest)
     else:
         (cases, scenes), excluded = _dataset_cases(args, context, dataset), []
-    judges = parse_judges(args.judge)
+    judges = record_runs(parse_judges(args.judge), ClipStore(context.root).judge_runs)
     details = judge_details(list(judges))
     destination.parent.mkdir(parents=True, exist_ok=True)
     with os.fdopen(os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as file:

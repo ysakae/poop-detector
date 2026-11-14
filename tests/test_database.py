@@ -300,3 +300,34 @@ def test_feeding_details_migration_keeps_old_care_entries(tmp_path):
     with Database(path).connect() as db:
         row = db.execute("SELECT note, food, amount_dg FROM care_entries WHERE id='old'").fetchone()
         assert tuple(row) == ("旧記録", "", None)
+
+
+def test_judge_runs_migration_counts_old_assessments_once(tmp_path):
+    """版14のデータベースに判定器の呼び出しの記録を足し、これまでの判定を1回ずつ数える。"""
+    path = tmp_path / "events.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:14]:
+            migration(db)
+        db.execute("PRAGMA user_version = 14")
+        db.execute("INSERT INTO clips (id,status,duration) VALUES ('c1','ready',30)")
+        db.execute("INSERT INTO clips (id,status,duration) VALUES ('c2','ready',30)")
+        db.execute(
+            "INSERT INTO video_assessments (clip_id,label,assessed_at,provider,model)"
+            " VALUES ('c1','none','2026-11-01T00:00:00+00:00','claude','model-b')"
+        )
+        db.execute(
+            "INSERT INTO video_assessments (clip_id,error,assessed_at)"
+            " VALUES ('c2','失敗','2026-11-02T00:00:00+00:00')"
+        )
+    clips = ClipStore(tmp_path)
+
+    assert version(path) == LATEST_VERSION
+    assert clips.assessments.get("c1")["label"] == "none"
+    usage = {(row.provider, row.model): row for row in clips.judge_runs.usage()}
+    assert (usage["claude", "model-b"].total, usage["claude", "model-b"].failures) == (1, 0)
+    assert usage["codex", None].purpose == "review"
+    assert (usage["codex", None].total, usage["codex", None].failures) == (1, 1)
+    with sqlite3.connect(path) as db, pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO judge_runs (provider,purpose,ran_at,failed) VALUES ('codex','x','t',0)"
+        )
