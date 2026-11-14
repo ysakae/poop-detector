@@ -1,10 +1,10 @@
 {#- 動画の一覧と、選んだ動画の再生・ラベル入力欄。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import capacity_panel, csrf_field, location_field %}
+{% from "_macros.html" import capacity_panel, chip, csrf_field, icon, location_field %}
 {% block content %}
 {% include "_review_bar.html" %}
 {% if not review %}
-<h2>動画を見てラベルを付ける</h2><p>排泄前後の動作も確認し、排泄なしの動画にもラベルを付けてください。排便や排尿を確認したら、動画ラベルと確定記録を一緒に保存できます。</p><form method="post" action="/clips/request">{{ csrf_field(token) }}<button>今の前後の動画を保存</button></form><p class="note">監視起動中に使えます。既定では操作前30秒と操作後30秒を保存します。録画後の変換が終わったら「更新」を押してください。</p><p><a href="/clips">更新</a></p>{{ capacity_panel(capacity) }}{% if viewer_admin %}<p><a href="/manage/storage">録画容量と古い動画の整理</a></p>{% endif %}
+<h2>動画</h2><p class="note">動画を見て、排泄があったかを確かめます。排泄のない動画にも「排泄なし」を付けてください。</p><form method="post" action="/clips/request" class="toolbar">{{ csrf_field(token) }}<button class="secondary">{{ icon("video") }} 今の前後の動画を保存</button><a class="button ghost" href="/clips">更新</a></form><p class="note">監視が動いているときに使えます。既定では前後30秒ずつを保存します。変換が終わったら「更新」を押してください。</p>{{ capacity_panel(capacity) }}{% if viewer_admin %}<p><a href="/manage/storage">録画容量と古い動画の整理</a></p>{% endif %}
 {% if not live %}<div class="message">動画収集のカメラ接続を確認できません。監視を起動し、カメラ接続を確認してください。</div>{% endif %}
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
 {% endif %}
@@ -17,27 +17,11 @@
 {% if notice %}<p>指定された動画を確認できません。<a href="/records/events?manual=1#manual-record">手動で記録する</a></p>{% endif %}
 <div class="empty"><h3>動画はまだありません</h3><p>監視を起動して保存ボタンを押すか、自動検知を待ってください。</p></div>
 {% else %}
-<h3>{{ clip.time }}</h3><p>{{ clip.source }} ／ {{ clip.status }}</p>
+<h3>{{ clip.time }}</h3><p class="note">{{ clip.source }} ／ {{ clip.status }}</p>
 {% if notice_unavailable %}<p>動画ファイルを確認できません。<a href="/records/events?manual=1#manual-record">手動で記録する</a></p>{% endif %}
 {% if clip.ready %}
-{% if not clip.pinned %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary" name="protected" value="1">この動画を保護</button></form>{% elif viewer_admin %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary" name="protected" value="0">保護指定を解除</button></form>{% else %}<p class="note">保護中の動画です（解除は管理者が行います）。</p>{% endif %}<video controls preload="metadata" class="clip-video" playsinline src="/clip-video?id={{ clip.id }}{{ seek }}">動画を再生できません。</video><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
+<video controls preload="metadata" class="clip-video" playsinline src="/clip-video?id={{ clip.id }}{{ seek }}">動画を再生できません。</video><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
 {% if clip.interrupted %}<div class="message">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>{% endif %}
-{% if notice and assessment and not assessment.error and assessment.draft and not confirmation.linked %}
-<form method="post" action="/clips/quick" class="settings-section">{{ csrf_field(token) }}
-<input type="hidden" name="id" value="{{ clip.id }}">
-<h4>排便・排尿の確認</h4>
-{{ location_field(locations, form.location) }}
-<label>保存先<select name="record_id">
-{% for record in confirmation.candidates %}<option value="{{ record.id }}" data-record-location="{{ record.location }}"{% if record.selected %} selected{% endif %}{% if record.disabled %} disabled{% endif %}>{{ record.time }} {{ record.label }}</option>{% endfor %}
-<option value="new" data-tray-event="{{ 1 if confirmation.tray_event else 0 }}"{% if confirmation.new_disabled %} disabled{% endif %}>新しい確定記録</option>
-</select></label>
-<div class="toolbar">
-<button name="label" value="feces">排便</button><button name="label" value="urine">排尿</button>
-<button name="label" value="both">両方</button><button class="secondary" name="label" value="none">排泄なし</button>
-</div>
-<p class="note">日時やメモも指定する場合は、下の入力欄を使ってください。</p>
-</form>
-{% endif %}
 {% if circling %}
 <div class="message"><strong>行動分析 ／ 旋回候補</strong><p>トレー付近の位置を取得 {{ circling.located }}/{{ circling.sampled }}コマ</p>
 {%- if not circling.candidates %}<p>旋回候補はありません。</p>{% endif -%}
@@ -56,6 +40,24 @@
 {%- if assessment.draft %}<br>動画を確認してからラベルを保存してください。{% endif %}</div>
 {% endif %}
 {% endif %}
+{% if quick %}
+<form method="post" action="/clips/quick" class="quick-confirm">{{ csrf_field(token) }}
+<input type="hidden" name="id" value="{{ clip.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}
+<h4>排便・排尿の確認</h4>
+<div class="quick-buttons">
+{%- for button in quick.buttons -%}
+<button{% if not button.main %} class="secondary"{% endif %} name="label" value="{{ button.value }}">{{ icon(button.icon) }}{{ button.text }}</button>
+{%- endfor -%}
+</div>
+<div class="times">{{ location_field(locations, form.location) }}
+<label>保存先<select name="record_id">
+{% for record in confirmation.candidates %}<option value="{{ record.id }}" data-record-location="{{ record.location }}"{% if record.selected %} selected{% endif %}{% if record.disabled %} disabled{% endif %}>{{ record.time }} {{ record.label }}</option>{% endfor %}
+<option value="new" data-tray-event="{{ 1 if confirmation.tray_event else 0 }}"{% if confirmation.new_disabled %} disabled{% endif %}>新しい確定記録</option>
+</select></label></div>
+<p class="note">押すと、動画のラベルと確定記録を保存します{% if review %}（次の件へ進みます）{% endif %}。日時やメモを付けるときは、下の「くわしく入力」を使ってください。</p>
+</form>
+{% endif %}
+<details class="clip-more"{% if not quick %} open{% endif %}><summary>くわしく入力（動作・開始と完了・メモ）</summary>
 <form method="post" action="/clips/label">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>動画の内容</legend><div class="choices">
 {%- for value, text in clip_labels -%}
 <label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == form.label %}checked{% endif %}>{{ text }}</label>
@@ -69,7 +71,11 @@
 <div><label>{{ text }}<input type="number" min="0" max="{{ clip.duration }}" step="0.01" name="{{ name }}" value="{{ value }}"></label><button class="secondary" type="button" data-video-offset="{{ name }}">ここを{{ button }}にする</button></div>
 {%- endfor -%}
 </div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000">{{ clip.note }}</textarea></label></p><button class="secondary">動画ラベルのみ保存</button>{% include "_confirmation.html" %}</form>
+</details>
+<details class="clip-more"><summary>そのほかの操作（保護・評価の候補）</summary>
+{% if not clip.pinned %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary" name="protected" value="1">この動画を保護</button></form>{% elif viewer_admin %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary" name="protected" value="0">保護指定を解除</button></form>{% else %}<p class="note">保護中の動画です（解除は管理者が行います）。</p>{% endif %}
 {% include "_benchmark_candidate.html" %}
+</details>
 {% if clip.event_id %}<p><a href="/records/events?filter=all&amp;id={{ clip.event_id }}">対応するイベント画像を確認</a></p>{% endif %}
 {% elif clip.removed is not none %}
 <p>{{ "録画ファイルは整理済みです。" if clip.removed else "録画ファイルの整理を再開できます。" }} {% if viewer_admin %}<a href="/manage/storage">録画の整理を開く</a>{% endif %}</p>
