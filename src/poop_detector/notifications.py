@@ -7,7 +7,7 @@ import subprocess
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 from .features.outages import format_duration
@@ -46,7 +46,12 @@ class ToiletNotifier:
         )
 
     def send_assessment(
-        self, label: str, *, location: str | None = None, interrupted: bool = False
+        self,
+        label: str,
+        *,
+        location: str | None = None,
+        interrupted: bool = False,
+        clip_id: str = "",
     ) -> bool:
         if label not in ("feces", "urine", "both"):
             return False
@@ -56,9 +61,12 @@ class ToiletNotifier:
             if interrupted
             else "動画を確認できます。"
         )
-        return self._display(
-            f"動画の自動判定で{place}{EXCRETION_TYPES[label]}の候補が見つかりました。{detail}"
-        )
+        message = f"動画の自動判定で{place}{EXCRETION_TYPES[label]}の候補が見つかりました。{detail}"
+        path = "/clips?" + urlencode({"id": clip_id, "notice": "1"}) if clip_id else ""
+        return self.enabled and self._deliver_assessment(message, path)
+
+    def _deliver_assessment(self, message: str, path: str) -> bool:  # noqa: ARG002
+        return self._display(message)
 
     def send_outage(self, kind: str, since: datetime) -> bool:
         """監視の停止（monitor）かカメラの不調（camera）を知らせる。since は始まった時刻。"""
@@ -115,6 +123,13 @@ class FanOutNotifier(ToiletNotifier):
     def _deliver_watchdog(self, message: str) -> bool:
         results = [
             notifier.enabled and notifier._deliver_watchdog(message) for notifier in self.notifiers
+        ]
+        return any(results)
+
+    def _deliver_assessment(self, message: str, path: str) -> bool:
+        results = [
+            notifier.enabled and notifier._deliver_assessment(message, path)
+            for notifier in self.notifiers
         ]
         return any(results)
 
@@ -184,6 +199,7 @@ class NtfyNotifier(ToiletNotifier):
         early_topic: str = "",
         pet_name: str = "",
         server: str = DEFAULT_NTFY_SERVER,
+        public_url: str = "",
     ) -> None:
         super().__init__(enabled, pet_name)
         targets = {"POOP_NTFY_TOPIC": topic}
@@ -201,15 +217,23 @@ class NtfyNotifier(ToiletNotifier):
         self.topic = topic
         self.early_topic = early_topic
         self.server = validated_ntfy_server(server)
+        self.public_url = public_url.rstrip("/")
         self.opener: Callable[..., Any] = urlopen if opener is None else opener
 
     def _deliver(self, message: str, *, early_alert: bool) -> bool:
+        return self._publish(message, early_alert=early_alert)
+
+    def _deliver_assessment(self, message: str, path: str) -> bool:
+        link = self.public_url + path if self.public_url and path else ""
+        return self._publish(message, early_alert=False, link=link)
+
+    def _publish(self, message: str, *, early_alert: bool, link: str = "") -> bool:
         separate = early_alert and bool(self.early_topic)
         topic = self.early_topic if separate else self.topic
-        payload = json.dumps(
-            {"topic": topic, "title": self.title(early_alert=separate), "message": message},
-            ensure_ascii=False,
-        ).encode("utf-8")
+        data = {"topic": topic, "title": self.title(early_alert=separate), "message": message}
+        if link:
+            data["click"] = link
+        payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
         # 送信先は validated_ntfy_server で http(s) だけに限っている。
         request = Request(  # noqa: S310
             self.server,

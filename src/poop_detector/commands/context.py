@@ -175,6 +175,7 @@ def build_notifier(
                 early_topic=early_topic,
                 pet_name=config.pet_name,
                 server=settings["POOP_NTFY_SERVER"].strip() or DEFAULT_NTFY_SERVER,
+                public_url=config.gui_public_url,
             )
         except ValueError as error:
             # トピック名やサーバーの検証の文言で、接続先の URL そのものは含まない。

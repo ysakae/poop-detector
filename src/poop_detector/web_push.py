@@ -246,6 +246,9 @@ class WebPushNotifier(ToiletNotifier):
         recipients = self.subscriptions.recipients(watchdog=True)
         return self._push(recipients, self.title(), message, WATCHDOG_URL)
 
+    def _deliver_assessment(self, message: str, path: str) -> bool:
+        return self._push(self.subscriptions.recipients(), self.title(), message, path or self.url)
+
     def _push(self, recipients: list[Subscription], title: str, message: str, url: str) -> bool:
         if not recipients:
             return False

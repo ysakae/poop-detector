@@ -216,7 +216,8 @@ def render_clips(
     store = ClipStore(root)
     rows = store.list(include_assessments=True)
     selected = query.get("id", [""])[0]
-    row = next((r for r in rows if r["id"] == selected), rows[0] if rows else None)
+    notice = bool(query.get("notice")) and bool(selected)
+    row = next((r for r in rows if r["id"] == selected), rows[0] if rows and not notice else None)
     raw_assessment = store.assessments.get(row["id"]) if row else None
     context: dict[str, Any] = {
         "clip": None,
@@ -231,6 +232,7 @@ def render_clips(
         form = label_form(row, cast("Mapping[str, Any] | None", raw_assessment))
         context.update(
             clip=clip_detail(store, row),
+            notice_unavailable=notice and store.video_path(cast(ClipRow, row)) is None,
             circling=circling_detail(store, row) if row["status"] == "ready" else None,
             assessment=assessment_detail(
                 cast("Mapping[str, Any] | None", raw_assessment), row["label"] is not None
@@ -241,6 +243,14 @@ def render_clips(
             else None,
             benchmark=benchmark_form(store, row, candidates.get(row["id"])),
         )
+    start = (
+        raw_assessment["start_seconds"] if raw_assessment and not raw_assessment["error"] else None
+    )
+    seek = (
+        f"#t={start:g}"
+        if notice and start is not None and row and 0 <= start <= (row["duration"] or 0)
+        else ""
+    )
     return render_template(
         "clips.html",
         title=title or APP_TITLE,
@@ -257,6 +267,8 @@ def render_clips(
         activities=list(ACTIVITIES.items()),
         locations=list(EXCRETION_LOCATIONS.items()),
         review=review,
+        notice=notice,
+        seek=seek,
         **context,
     )
 
@@ -478,6 +490,30 @@ def handle_clip_post(
             if fields.get("protected") not in ("0", "1"):
                 raise ValueError("保護の設定を確認してください")
             protect(store, clip_id, fields["protected"] == "1")
+        elif handler.path == "/clips/quick":
+            clip_id = fields.get("id", "")
+            label = fields.get("label", "")
+            if label not in ("feces", "urine", "both", "none"):
+                raise ValueError("排泄の種類を選んでください")
+            row = store.get(clip_id)
+            if row is None:
+                raise ValueError("動画が見つかりません")
+            linked = store.labels.confirmation(clip_id)
+            if linked or row["label"] is not None:
+                handler.redirect(f"/clips?id={clip_id}&saved=1")
+                return
+            location = fields.get("location") or None
+            record_id: str | None = fields.get("record_id") or (
+                "new" if not row["event_id"] else ""
+            )
+            store.labels.save(
+                clip_id,
+                ClipLabel(
+                    label, activity="other" if label == "none" else "excreting", location=location
+                ),
+                record_id=None if label == "none" else record_id,
+                only_unlabeled=True,
+            )
         else:
             clip_id = fields.get("id", "")
             start = float(fields["start"]) if fields.get("start") else None
@@ -512,7 +548,7 @@ def handle_clip_post(
             )
             handler.respond(400, page)
             return
-        if handler.path == "/clips/confirm":
+        if handler.path in ("/clips/confirm", "/clips/quick"):
             page = message_page(
                 "確定記録を保存できませんでした",
                 str(error),

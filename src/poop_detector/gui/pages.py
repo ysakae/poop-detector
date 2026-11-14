@@ -201,6 +201,7 @@ def render_events(
         metrics=metrics,
         counts=metrics["excretion_counts"],
         saved=bool(query.get("saved")),
+        manual_open=bool(query.get("manual")),
         items=items,
         row=event_detail(row) if row else None,
         locations=list(EXCRETION_LOCATIONS.items()),

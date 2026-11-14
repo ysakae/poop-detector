@@ -72,7 +72,14 @@ class ClipLabels:
                     links.setdefault(row["record_id"], []).append(row["id"])
         return links
 
-    def save(self, clip_id: str, clip_label: ClipLabel, *, record_id: str | None = None) -> None:
+    def save(
+        self,
+        clip_id: str,
+        clip_label: ClipLabel,
+        *,
+        record_id: str | None = None,
+        only_unlabeled: bool = False,
+    ) -> None:
         """動画にラベルを付ける。record_id を渡すと排泄の記録としても確定する（"new" で新規）。"""
         label, start, end = clip_label.label, clip_label.start, clip_label.end
         activity, note, location = clip_label.activity, clip_label.note, clip_label.location
@@ -86,6 +93,8 @@ class ClipLabels:
                 or activity not in ACTIVITIES
             ):
                 raise ValueError("保存済み動画とラベルを確認してください")
+            if only_unlabeled and row["label"] is not None:
+                return
             for value in (start, end):
                 if value is not None and (
                     not math.isfinite(value) or not 0 <= value <= row["duration"]
