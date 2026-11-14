@@ -119,3 +119,48 @@ def ready_clip(clips, *, event_id=None):
         start_at="2026-11-09T06:10:00+00:00",
     )
     return clip
+
+
+def write_video(path, frame, count=10):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    height, width = frame.shape[:2]
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 5, (width, height))
+    assert writer.isOpened()
+    for _ in range(count):
+        writer.write(frame)
+    writer.release()
+
+
+def add_clip(
+    clips,
+    start,
+    label,
+    *,
+    signature="scene-a",
+    event_id=None,
+    duration=2,
+    activity="other",
+    frame=None,
+    location=None,
+    **values,
+):
+    """保存済みの動画を1本登録し、人のラベルを付ける（frame を渡すと再生できる動画を書く）。"""
+    from poop_detector.video.clip_labels import ClipLabel
+
+    clip_id = clips.request(event_id=event_id)
+    clips.update(
+        clip_id,
+        status="ready",
+        path=f"clips/{clip_id}.mp4",
+        duration=duration,
+        start_at=start,
+        scene_signature=signature,
+        **values,
+    )
+    if frame is None:
+        (clips.root / "clips" / f"{clip_id}.mp4").write_bytes(b"x")
+    else:
+        write_video(clips.root / "clips" / f"{clip_id}.mp4", frame)
+    if label is not None:
+        clips.labels.save(clip_id, ClipLabel(label, activity=activity, location=location))
+    return clip_id

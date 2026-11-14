@@ -28,6 +28,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
   - `video.clip_reviews.CirclingReviews`：旋回候補
   - `video.clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
+  - `video.benchmark_candidates.BenchmarkCandidates`：判定器の比較に使う評価の候補と条件のタグ（`benchmark_candidates`）
   - `features.outages.OutageLog`：監視の停止とカメラの不調の履歴（`outages`）
   - `video.clip_storage`：保持期間・保護・整理
 
@@ -100,7 +101,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 `--video-review` では `video.review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を判定器（`video.review.VideoJudge`）に渡して JSON スキーマに沿った判定を受け取ります。判定器は差し替えられる作りで、既定の実装は Codex CLI（`video.codex_cli.CodexCliJudge`）です。このモードでは差分だけの通知を抑え、判定器が根拠を確認した場合にだけ通知します。`video-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
 
-判定器の比較（`video-benchmark`）は、人が確認した録画の評価セット（`video/benchmark_sets.py`）を使います。`benchmark-dataset create` が台帳から下書きを作り（同じイベント・確定記録・30秒以内に重なる録画は1本にまとめる）、`freeze` が版の番号と内容の SHA-256 を付け、録画を保護します。評価セットは録画ごとに撮影時の画角の署名を持ち、署名ごとの ROI・基準画像の場所（データの保存先と `tray-scenes/` の下の過去の登録、`--scene`）を記録します。比較は録画ごとに画像を一度だけ切り出し、同じ画像と指示をすべての判定器に渡します。結果には評価セットの版、指定したモデル、CLI の版（`video/cli_versions.py`）、画像と指示のハッシュ、抽出時刻を残し、運用の記録・ラベル・自動判定は書き換えません。
+判定器の比較（`video-benchmark`）は、人が確認した録画の評価セット（`video/benchmark_sets.py`）を使います。`benchmark-dataset create` が台帳から下書きを作り（同じイベント・確定記録・30秒以内に重なる録画は1本にまとめる）、動画の画面で人が選んだ評価の候補と条件のタグ（`video/benchmark_candidates.py`）を反映し、`freeze` が版の番号と内容の SHA-256 を付け、録画を保護します。評価セットは録画ごとに撮影時の画角の署名を持ち、署名ごとの ROI・基準画像の場所（データの保存先と `tray-scenes/` の下の過去の登録、`--scene`）を記録します。比較は録画ごとに画像を一度だけ切り出し、同じ画像と指示をすべての判定器に渡します。結果には評価セットの版、指定したモデル、CLI の版（`video/cli_versions.py`）、画像と指示のハッシュ、抽出時刻を残し、運用の記録・ラベル・自動判定は書き換えません。
 
 `circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`experimental/circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。
 

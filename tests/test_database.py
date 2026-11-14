@@ -256,3 +256,32 @@ def test_version_4_database_gains_the_account_tables(tmp_path):
     assert version(path) == LATEST_VERSION
     assert {"users", "passkeys", "enrollments", "gui_sessions"} <= tables(path)
     assert store.list()[0]["note"] == "朝の記録"
+
+
+def test_version_10_database_gains_the_benchmark_candidates_table(tmp_path):
+    """版10（監視の停止の履歴まで）のデータベースに、評価の候補とタグの表を足す。データは残る。"""
+    path = tmp_path / "events.sqlite3"
+    create(path, PRE_VERSIONING, [EVENT, LABEL])
+    db = sqlite3.connect(path)
+    try:
+        for migration in MIGRATIONS[:10]:
+            migration(db)
+        db.execute("PRAGMA user_version = 10")
+        db.execute("INSERT INTO clips (id,status,label,duration) VALUES ('c1','ready','feces',30)")
+        db.commit()
+    finally:
+        db.close()
+    assert "benchmark_candidates" not in tables(path)
+
+    clips = ClipStore(tmp_path)
+
+    assert version(path) == LATEST_VERSION
+    assert columns(path, "benchmark_candidates") == ["clip_id", "state", "tags", "updated_at"]
+    assert clips.get("c1")["label"] == "feces"
+    assert clips.store.list()[0]["note"] == "朝の記録"
+    db = sqlite3.connect(path)
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO benchmark_candidates VALUES ('c1','maybe','[]','2026-11-13')")
+    finally:
+        db.close()

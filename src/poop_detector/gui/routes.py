@@ -25,6 +25,7 @@ from .activity_page import render_activity
 from .auth_api import safe_next
 from .clip_pages import (
     capacity_status,
+    handle_benchmark_post,
     handle_clip_post,
     render_clips,
     render_storage,
@@ -540,6 +541,18 @@ def clip_form(handler: "Handler", form: Form) -> None:
     _clip_post(handler, form)
     if unprotect and _succeeded(handler):
         audit(handler, "clip.unprotect", form.fields.get("id", ""))
+
+
+@post("/clips/benchmark")
+def clip_benchmark(handler: "Handler", form: Form) -> None:
+    """評価の候補とタグ。ラベル付けと同じく、ログインした人なら誰でも選べる。"""
+    handle_benchmark_post(
+        handler,
+        handler.app.clips,
+        form.fields,
+        form.values.get("tag", []),
+        title=handler.app.title,
+    )
 
 
 @post("/manage/storage/cleanup", role="admin")

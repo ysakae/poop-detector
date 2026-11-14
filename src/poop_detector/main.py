@@ -186,6 +186,11 @@ def parser() -> argparse.ArgumentParser:
     sets.add_argument("--until", help="create: この日までの録画だけを使う")
     sets.add_argument("--base", help="create: tags・event・exclude を引き継ぐ既存の評価セット")
     sets.add_argument(
+        "--selected-only",
+        action="store_true",
+        help="create: 動画の画面で「評価に入れる」を選んだ録画だけを使う",
+    )
+    sets.add_argument(
         "--scene", action="append", help="create: 過去のROIと基準画像の場所（複数指定可）"
     )
     sets.add_argument("--version", type=int, help="freeze: 固定する版の番号（1以上）")

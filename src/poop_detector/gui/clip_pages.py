@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES
+from ..video.benchmark_candidates import CONDITION_TAGS, EVALUATED_LABELS, Candidate
+from ..video.benchmark_candidates import STATES as CANDIDATE_STATES
 from ..video.clip_labels import ClipLabel
 from ..video.clip_storage import (
     CLEANUP_LIMIT,
@@ -48,7 +50,9 @@ SOURCES = {
 }
 
 
-def clip_list_item(item: Mapping[str, Any], selected: str | None) -> dict[str, Any]:
+def clip_list_item(
+    item: Mapping[str, Any], selected: str | None, candidate: Candidate | None = None
+) -> dict[str, Any]:
     from .pages import local_time
 
     label = CLIP_LABELS.get(item["label"], "未ラベル")
@@ -60,6 +64,8 @@ def clip_list_item(item: Mapping[str, Any], selected: str | None) -> dict[str, A
     location = item["review_location"] if item["label"] is None else item["location"]
     if location:
         label += " ／ " + EXCRETION_LOCATIONS.get(location, "場所不明")
+    if candidate is not None and candidate.state is not None:
+        label += " ／ " + CANDIDATE_STATES[candidate.state]
     return {
         "id": item["id"],
         "active": item["id"] == selected,
@@ -150,6 +156,31 @@ def assessment_detail(assessment: Mapping[str, Any] | None, labeled: bool) -> di
     return detail
 
 
+def benchmark_form(
+    store: ClipStore, row: Mapping[str, Any], candidate: Candidate | None
+) -> dict[str, Any] | None:
+    """評価の候補とタグの入力欄。保存済みの動画だけに出し、ラベルがなければ案内だけにする。"""
+    if row["status"] != "ready":
+        return None
+    if row["label"] not in EVALUATED_LABELS:
+        return {"available": False}
+    tags = candidate.tags if candidate else ()
+    if store.labels.confirmation(row["id"]):
+        linked = "確定記録"
+    elif row["event_id"]:
+        linked = "検知"
+    else:
+        linked = None
+    return {
+        "available": True,
+        "state": (candidate.state if candidate else None) or "",
+        "states": [("", "選ばない"), *CANDIDATE_STATES.items()],
+        "presets": [{"tag": tag, "checked": tag in tags} for tag in CONDITION_TAGS],
+        "other": "、".join(tag for tag in tags if tag not in CONDITION_TAGS),
+        "linked": linked,
+    }
+
+
 def label_form(row: Mapping[str, Any], assessment: Mapping[str, Any] | None) -> dict[str, Any]:
     """動画のラベル入力欄の初期値。自動判定が下書きなら、その値を使う。"""
     draft: Mapping[str, Any] = (
@@ -193,7 +224,9 @@ def render_clips(
         "assessment": None,
         "form": None,
         "confirmation": None,
+        "benchmark": None,
     }
+    candidates = store.benchmark.all()
     if row is not None:
         form = label_form(row, cast("Mapping[str, Any] | None", raw_assessment))
         context.update(
@@ -206,6 +239,7 @@ def render_clips(
             confirmation=confirmation_info(store, row, local_time, form["location"])
             if row["status"] == "ready"
             else None,
+            benchmark=benchmark_form(store, row, candidates.get(row["id"])),
         )
     return render_template(
         "clips.html",
@@ -214,7 +248,11 @@ def render_clips(
         capacity=capacity_info(store.root, disk_mb),
         live=store.live(),
         saved=bool(query.get("saved")),
-        items=[clip_list_item(item, row["id"] if row else None) for item in rows],
+        benchmark_saved=bool(query.get("benchmark_saved")),
+        items=[
+            clip_list_item(item, row["id"] if row else None, candidates.get(item["id"]))
+            for item in rows
+        ],
         clip_labels=list(CLIP_LABELS.items()),
         activities=list(ACTIVITIES.items()),
         locations=list(EXCRETION_LOCATIONS.items()),
@@ -382,6 +420,37 @@ def read_range(path: Path, start: int, end: int) -> Iterator[bytes]:
                 break
             remaining -= len(block)
             yield block
+
+
+def handle_benchmark_post(
+    handler: "Exchange",
+    store: ClipStore,
+    fields: Mapping[str, str],
+    tags: Iterable[str],
+    *,
+    title: str | None = None,
+) -> None:
+    """動画の画面の「評価の候補」のフォームを保存し、その動画へ戻す。"""
+    from .pages import message_page
+
+    clip_id = fields.get("id", "")
+    try:
+        store.benchmark.save(
+            clip_id, fields.get("state") or None, [*tags, fields.get("other_tags", "")]
+        )
+    except ValueError as error:
+        # ValueError の文言はこのパッケージで書いたもので、テンプレートがエスケープする。
+        page = message_page(
+            "評価の候補を保存できませんでした",
+            str(error),
+            "/clips",
+            "動画一覧へ戻る",
+            title=title,
+            wrap_link=True,
+        )
+        handler.respond(400, page)
+        return
+    handler.redirect(f"/clips?id={clip_id}&benchmark_saved=1")
 
 
 def handle_clip_post(

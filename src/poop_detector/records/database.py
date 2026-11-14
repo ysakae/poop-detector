@@ -270,6 +270,22 @@ def migrate_to_v10(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE users ADD COLUMN push_watchdog INTEGER NOT NULL DEFAULT 1")
 
 
+def migrate_to_v11(db: sqlite3.Connection) -> None:
+    """判定器の比較に使う評価の候補と条件のタグ（動画の画面で人が選ぶ）。
+
+    state は include（評価に入れる）か exclude（評価から除く）で、NULL は選んでいない録画。
+    tags は条件のタグの JSON の配列。時刻は UTC の ISO 8601。
+    """
+    db.execute(
+        """CREATE TABLE benchmark_candidates (
+            clip_id TEXT PRIMARY KEY,
+            state TEXT CHECK (state IN ('include', 'exclude')),
+            tags TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -282,6 +298,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v8,
     migrate_to_v9,
     migrate_to_v10,
+    migrate_to_v11,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

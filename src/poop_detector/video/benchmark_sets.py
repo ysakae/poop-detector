@@ -18,11 +18,12 @@ from typing import Any, cast
 from ..errors import InvalidInputError
 from ..records.events import Store
 from ..timezones import to_local
+from .benchmark_candidates import EVALUATED_LABELS, Candidate
 from .clips import ClipRow, ClipStore
 
 FORMAT = 2
 DATASETS_DIR = Path("benchmarks") / "datasets"
-LABELS = ("feces", "urine", "both", "none")
+LABELS = EVALUATED_LABELS
 SPLITS = ("tuning", "final")
 SPLIT_NAMES = {"tuning": "調整用", "final": "最終評価用"}
 # この秒数以内に重なる録画は、同じ出来事を撮った重複とみなす。
@@ -191,13 +192,25 @@ def _groups(rows: Sequence[ClipRow], confirmations: Mapping[str, str]) -> list[l
     return list(grouped.values())
 
 
-def _representative(group: Sequence[ClipRow]) -> ClipRow:
-    """出来事を代表する録画。排泄を確認したもの、排泄なし、判定不能の順に、長いものを選ぶ。"""
+def _representative(group: Sequence[ClipRow], selections: Mapping[str, Candidate]) -> ClipRow:
+    """出来事を代表する録画。
+
+    人が評価に入れた録画を優先し、次に排泄を確認したもの、排泄なし、判定不能の順に、
+    長いものを選ぶ。評価から除いた録画は最後にする。
+    """
     rank = {"feces": 0, "urine": 0, "both": 0, "none": 1}
-    return min(
-        group,
-        key=lambda row: (rank.get(row["label"] or "", 2), -(row["duration"] or 0), row["id"]),
-    )
+    chosen = {"include": 0, None: 1, "exclude": 2}
+
+    def key(row: ClipRow) -> tuple[int, int, float, str]:
+        selection = selections.get(row["id"])
+        return (
+            chosen[selection.state if selection else None],
+            rank.get(row["label"] or "", 2),
+            -(row["duration"] or 0),
+            row["id"],
+        )
+
+    return min(group, key=key)
 
 
 def _auto_tags(row: ClipRow) -> set[str]:
@@ -276,9 +289,15 @@ def build(
     since: date | None = None,
     until: date | None = None,
     base: object = None,
+    selected_only: bool = False,
 ) -> Dataset:
-    """台帳の保存済み動画から下書きを作る。判定器の判定は正解に使わない。"""
+    """台帳の保存済み動画から下書きを作る。判定器の判定は正解に使わない。
+
+    動画の画面で選んだ評価の候補とタグ（store.benchmark）を反映する。選択は base の exclude
+    より優先し、タグは base と合わせる。selected_only なら、評価に入れた録画だけを使う。
+    """
     carried = {} if base is None else _carried(base)
+    selections = store.benchmark.all()
     ready = [
         row
         for row in (cast(ClipRow, item) for item in store.list())
@@ -286,16 +305,20 @@ def build(
         and _in_range(to_local(_interval(row)[0].isoformat()).date(), since, until)
     ]
     labeled = [row for row in ready if row["label"] in (*LABELS, "uncertain")]
+    if selected_only:
+        labeled = [row for row in labeled if _state(selections, row["id"]) == "include"]
     entries: list[Entry] = []
     duplicates: list[tuple[str, str]] = []
     uncertain: list[str] = []
     for group in _groups(labeled, _confirmations(store)):
-        kept = _representative(group)
+        kept = _representative(group, selections)
         duplicates.extend((row["id"], kept["id"]) for row in group if row is not kept)
         if kept["label"] not in LABELS:
             uncertain.append(kept["id"])
             continue
-        entries.append(_entry(kept, carried.get(kept["id"], {}), final_since))
+        entries.append(
+            _entry(kept, carried.get(kept["id"], {}), selections.get(kept["id"]), final_since)
+        )
     return Dataset(
         name=name,
         created_at=created_at,
@@ -309,11 +332,24 @@ def build(
     )
 
 
-def _entry(row: ClipRow, carried: Mapping[str, Any], final_since: date | None) -> Entry:
+def _state(selections: Mapping[str, Candidate], clip_id: str) -> str | None:
+    selection = selections.get(clip_id)
+    return selection.state if selection else None
+
+
+def _entry(
+    row: ClipRow,
+    carried: Mapping[str, Any],
+    selection: Candidate | None,
+    final_since: date | None,
+) -> Entry:
     day = to_local(_interval(row)[0].isoformat()).date()
     split = "final" if final_since is not None and day >= final_since else "tuning"
     event = carried.get("event") or row["event_id"] or f"clip:{row['id']}"
-    tags = {*carried.get("tags", ()), *_auto_tags(row)}
+    tags = {*carried.get("tags", ()), *(selection.tags if selection else ()), *_auto_tags(row)}
+    exclude = bool(carried.get("exclude", False))
+    if selection is not None and selection.state is not None:
+        exclude = selection.state == "exclude"
     return Entry(
         id=row["id"],
         label=str(row["label"]),
@@ -324,7 +360,7 @@ def _entry(row: ClipRow, carried: Mapping[str, Any], final_since: date | None) -
         scene_signature=row["scene_signature"],
         source=row["source"],
         activity=row["activity"],
-        exclude=bool(carried.get("exclude", False)),
+        exclude=exclude,
     )
 
 
