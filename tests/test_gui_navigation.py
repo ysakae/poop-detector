@@ -213,3 +213,40 @@ def test_every_menu_icon_exists():
     assert all(item.icon in ICONS for item in items)
     assert frame.tabs[1].badge == 2
     assert not frame.more_current
+
+
+# ログイン・登録・ログアウト・エラーの画面（#141）。犬の絵と、主な操作1つのカードで見せる。
+def entry_card(html):
+    match = re.search(r'<div class="card entry">.*?</div>\s*(?:<script|</main>)', html, re.S)
+    assert match, "入口のカードがありません"
+    return match[0]
+
+
+def test_login_page_is_a_friendly_card(gui):
+    server, _, _ = gui
+    host = {"Host": f"localhost:{server.server_address[1]}"}
+    _, _, body = exchange(server, "GET", "/login", headers=host, auth=False)
+    card = entry_card(body.decode())
+    assert '<img src="/assets/dog.svg" alt="" width="96" height="96">' in card
+    assert 'data-passkey="login"' in card
+    assert len(re.findall(r"<button", card)) == 1
+
+
+def test_enrollment_error_page_is_a_card_with_a_way_back(gui):
+    server, _, _ = gui
+    host = {"Host": f"localhost:{server.server_address[1]}"}
+    status, _, body = exchange(server, "GET", "/enroll?code=wrong", headers=host, auth=False)
+    assert status == 400
+    card = entry_card(body.decode())
+    assert "登録用 URL を使えません" in card
+    assert 'href="/login"' in card
+    assert "/assets/dog.svg" in card
+
+
+def test_logout_page_explains_how_to_come_back(gui):
+    server, _, _ = gui
+    html = page(server, "/logout", login(server, role="member"))
+    card = entry_card(html)
+    assert "トークン" not in html
+    assert "パスキー" in card
+    assert 'href="/"' in card

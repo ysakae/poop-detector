@@ -1,7 +1,9 @@
 {#- ログアウトの確認。CSRF トークン付きの POST でセッションを終える。 -#}
 {% extends "base.html" %}
 {% block content %}
-<h2>ログアウト</h2><p>この端末のブラウザーで GUI を使えなくします。もう一度使うには、GUI を起動した端末に表示されたトークン付きの URL を開いてください。</p>
+<div class="card entry"><img src="/assets/dog.svg" alt="" width="96" height="96">
+<h2>ログアウトしますか？</h2><p>この端末のブラウザーからログアウトします。もう一度使うときは、登録したパスキーでログインしてください。</p>
 <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ token }}"><button>ログアウトする</button></form>
-<p><a href="/">トップへ戻る</a></p>
+<p><a href="/">ホームへ戻る</a></p>
+</div>
 {% endblock %}
