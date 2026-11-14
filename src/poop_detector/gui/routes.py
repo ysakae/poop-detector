@@ -369,6 +369,7 @@ def logout(handler: "Handler", _form: Form) -> None:
 @get(
     "/assets/live.js",
     "/assets/clips.js",
+    "/assets/care.js",
     "/assets/clip_storage.js",
     "/assets/management.js",
     "/assets/areas.js",

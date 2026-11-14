@@ -29,3 +29,80 @@ def test_family_shares_care_entries(gui):
     assert "給餌" in page.decode()
     assert "30 g" in page.decode()
     assert "母" in page.decode()
+
+
+def test_feeding_defaults_and_food_history(gui):
+    from support import submit
+
+    server, _, _ = gui
+    for at, food, grams in (
+        ("2024-03-01T08:00", "フードA", "20"),
+        ("2024-03-01T12:00", "フードB", "25.5"),
+        ("2024-03-01T18:00", "フードA", "30"),
+    ):
+        assert (
+            submit(
+                server,
+                "/care",
+                {"kind": "feeding", "at": at, "food": food, "grams": grams},
+                page="/care",
+            )[0]
+            == 303
+        )
+    assert (
+        submit(
+            server,
+            "/care",
+            {"kind": "sheet", "at": "2024-03-01T20:00", "food": "混入", "grams": "99"},
+            page="/care",
+        )[0]
+        == 303
+    )
+    status, page = request(server, "GET", "/care?day=2024-03-01")
+    assert status == 200
+    html = page.decode()
+    assert 'name="food" value="フードA"' in html
+    assert 'name="grams" value="30"' in html
+    assert html.count('<option value="フードA">') == 1
+    assert '<option value="フードB">' in html
+    assert "25.5 g" in html
+    assert "混入" not in html
+    other = login(server, role="member")
+    assert b'name="grams" value="30"' in request(server, "GET", "/care", headers=other)[1]
+
+
+def test_edit_feeding_uses_saved_values_and_keeps_invalid_input(gui):
+    import re
+
+    from support import submit
+
+    server, _, _ = gui
+    fields = {"kind": "feeding", "at": "2024-03-01T08:00", "food": "旧フード", "grams": "18.5"}
+    assert submit(server, "/care", fields, page="/care")[0] == 303
+    day_url = "/care?day=2024-03-01"
+    identifier = re.search(rb"amp;id=([a-f0-9]+)", request(server, "GET", day_url)[1])[1].decode()
+    assert (
+        submit(
+            server,
+            "/care",
+            {**fields, "at": "2024-03-02T08:00", "food": "新フード", "grams": "25"},
+            page="/care",
+        )[0]
+        == 303
+    )
+    edit_url = f"{day_url}&id={identifier}"
+    assert b'name="grams" value="18.5"' in request(server, "GET", edit_url)[1]
+    status, page = submit(
+        server,
+        "/care",
+        {**fields, "id": identifier, "food": "入力中", "grams": "-1", "note": "メモ"},
+        page=edit_url,
+    )
+    assert status == 400
+    assert 'name="food" value="入力中"' in page.decode()
+    assert 'name="note" maxlength="500" value="メモ"' in page.decode()
+    assert (
+        submit(server, "/care", {**fields, "id": identifier, "grams": "19"}, page=edit_url)[0]
+        == 303
+    )
+    assert "19 g" in request(server, "GET", day_url)[1].decode()
