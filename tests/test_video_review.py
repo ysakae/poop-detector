@@ -1,6 +1,7 @@
 """動画の自動判定の保存・通知・CLI 連携と、判定器の差し替えを確認する。"""
 
 import json
+import subprocess
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -16,7 +17,13 @@ from poop_detector.video.clip_labels import ClipLabel
 from poop_detector.video.clips import ClipStore
 from poop_detector.video.codex_cli import CodexCliJudge
 from poop_detector.video.judge_source import FixedJudge, JudgeChoice, ReloadingJudge
-from poop_detector.video.review import Assessment, Review, inspect_clip, parse_assessment
+from poop_detector.video.review import (
+    Assessment,
+    Review,
+    inspect_clip,
+    parse_assessment,
+    retry_delay,
+)
 
 FECES = Assessment("feces", "excreting", 10, 15, "離れた後に新しい便が見えます")
 FEEDING = Assessment("none", "feeding", None, None, "餌皿で食べています")
@@ -475,3 +482,117 @@ def test_monitor_starts_from_the_judge_checked_at_startup(tmp_path):
     config = Config(review_provider="claude", review_model="")
     choice = judge_source(str(tmp_path / "missing.yaml"), config, first).current()
     assert (choice.judge, choice.provider, choice.model) == (first, "claude", None)
+
+
+class FlakyJudge:
+    """down の間は呼び出しに失敗する判定器。"""
+
+    name = "偽の判定器"
+
+    def __init__(self):
+        self.down = True
+        self.calls = 0
+
+    def check(self):
+        pass
+
+    def judge(self, folder, prompt, images, schema):
+        self.calls += 1
+        if self.down:
+            raise subprocess.CalledProcessError(1, "judge")
+        return {}
+
+
+def asking(result):
+    """判定器を1回呼んでから result を返す、inspect_clip の代わり。"""
+
+    def inspect(path, row, judge):
+        judge.judge(path.parent, "", [], {})
+        return result
+
+    return inspect
+
+
+def flaky_review(store, judge, notify=None):
+    return Review(
+        store, asking(FECES), notify, judges=FixedJudge(JudgeChoice(judge, "codex", None))
+    )
+
+
+def test_live_review_retries_clips_once_the_judge_recovers(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    clip_id = ready(store, when)
+    judge = FlakyJudge()
+    notified = []
+    review = flaky_review(store, judge, lambda label, **kwargs: notified.append(label) or True)
+
+    assert review.run(limit=1, since=when.isoformat()) == (0, 1)
+    assert review.run(limit=1, since=when.isoformat()) == (0, 1)
+    assert review.judge_failures == 2
+    assert store.assessments.get(clip_id)["error"]
+
+    judge.down = False
+    assert review.run(limit=1, since=when.isoformat()) == (1, 0)
+    assert review.judge_failures == 0
+    assert store.assessments.get(clip_id)["label"] == "feces"
+    assert notified == ["feces"]
+    assert review.run(limit=1, since=when.isoformat()) == (0, 0)
+
+
+def test_live_review_does_not_retry_failures_unrelated_to_the_judge(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    ready(store, when)
+
+    def unreadable(path, row, judge):
+        raise ValueError("動画からフレームを取得できません")
+
+    review = Review(store, unreadable)
+    assert review.run(limit=1, since=when.isoformat()) == (0, 1)
+    assert review.judge_failures == 0
+    assert review.run(limit=1, since=when.isoformat()) == (0, 0)
+
+
+def test_live_review_gives_up_on_a_clip_the_judge_keeps_failing(tmp_path, monkeypatch):
+    monkeypatch.setattr("poop_detector.video.review.MAX_RETRIES", 2)
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    ready(store, when)
+    judge = FlakyJudge()
+    review = flaky_review(store, judge)
+    for _ in range(3):
+        assert review.run(limit=1, since=when.isoformat()) == (0, 1)
+    assert review.run(limit=1, since=when.isoformat()) == (0, 0)
+    assert judge.calls == 3
+
+
+def test_live_review_judges_detections_before_outside_stays(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    outside = ready(store, when, source="outside_stay")
+    visit = ready(store, when + timedelta(seconds=1), source="dog_visit")
+    detected = ready(store, when + timedelta(seconds=2), source="detected")
+    order = []
+
+    def inspect(path, row, judge):
+        order.append(row["id"])
+        return FEEDING
+
+    assert Review(store, inspect).run(limit=3, since=when.isoformat()) == (3, 0)
+    assert order == [detected, visit, outside]
+
+
+def test_retry_delay_grows_while_the_judge_keeps_failing():
+    assert [retry_delay(count) for count in (0, 1, 2, 3, 4)] == [20, 20, 40, 80, 160]
+    assert retry_delay(8) == retry_delay(50) == 1800
+
+
+def test_worker_waits_longer_only_for_judge_failures(tmp_path):
+    review = Review(ClipStore(tmp_path), lambda path, row, judge: FECES)
+    worker = review.watch()
+    assert worker.next_wait(1, 0) == 0
+    assert worker.next_wait(0, 0) == 3
+    assert worker.next_wait(0, 1) == 20
+    review.judge_failures = 4
+    assert worker.next_wait(0, 1) == 160
