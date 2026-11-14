@@ -22,6 +22,24 @@ def post(server, fields, token=True):
     )
 
 
+def day_counts(html):
+    """記録の画面の1日の回数（大きな数字の部品）を、名前ごとの値にする。"""
+    section = html.split('id="daily-stats-title"', 1)[1].split("</form>", 1)[1]
+    return dict(re.findall(r'([^<>]+)</span><strong class="stat-value">([^<]+)<span', section)[:3])
+
+
+def test_records_are_a_timeline_with_icons(gui):
+    server, store, event = gui
+    store.classify(event, "feces", note="朝")
+    html = request(server, "GET", "/records")[1].decode()
+    listing = html.split('<ul class="timeline record-list">', 1)[1].split("</ul>", 1)[0]
+    assert '<svg class="icon"' in listing
+    assert "排便" in listing
+    assert "朝" in listing
+    assert f"id={event}" in listing
+    assert '<table class="data-table"' not in html
+
+
 def test_gui_lists_image_and_saves_label(gui):
     server, store, event = gui
     status, data = request(server, "GET", "/records/events")
@@ -101,7 +119,7 @@ def test_records_show_daily_counts_and_hourly_statistics_in_japan_time(gui):
     status, body = request(server, "GET", "/records?date=2026-11-08&days=7")
     assert status == 200
     html = body.decode()
-    assert "排便 1件 ／ 排尿 2件 ／ 種類不明 1件" in html
+    assert day_counts(html) == {"排便": "1", "排尿": "2", "種類不明": "1"}
     assert "2026-11-02〜2026-11-08（7日間・記録あり2日）" in html
     hourly = html.split('id="hourly-stats"', 1)[1].split("</table>", 1)[0]
     assert re.search(r"00:00〜00:59</th>.*?</meter> 2件.*?</meter> 2件", hourly)
@@ -113,11 +131,11 @@ def test_records_stats_follow_confirmed_start_or_fall_back_to_record_time(gui):
     with store.connect() as db:
         db.execute("UPDATE events SET timestamp=? WHERE id=?", ("2026-11-07T15:25:00+00:00", event))
     url = "/records?date=2026-11-08&days=7"
-    assert "排便 0件 ／ 排尿 0件".encode() in request(server, "GET", url)[1]
+    assert day_counts(request(server, "GET", url)[1].decode())["排尿"] == "0"
     store.classify(event, "urine", start=None)
-    assert "排便 0件 ／ 排尿 1件".encode() in request(server, "GET", url)[1]
+    assert day_counts(request(server, "GET", url)[1].decode())["排尿"] == "1"
     store.classify(event, "urine", start="2026-11-07T23:55:00+09:00")
-    assert "排便 0件 ／ 排尿 0件".encode() in request(server, "GET", url)[1]
+    assert day_counts(request(server, "GET", url)[1].decode())["排尿"] == "0"
     assert request(server, "GET", "/records?date=invalid&days=-1")[0] == 200
 
 

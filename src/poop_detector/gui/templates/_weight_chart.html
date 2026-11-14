@@ -1,9 +1,10 @@
 {% if points %}
-<figure>
-<svg width="320" height="125" viewBox="0 0 320 125" style="max-width:100%;height:auto" role="img" aria-label="体重の推移。値は表で確認できます">
-<line x1="12" y1="115" x2="308" y2="115" stroke="currentColor" opacity="0.45"/>
-<polyline fill="none" stroke="currentColor" stroke-width="2" points="{% for x,y in points %}{{ x }},{{ y }} {% endfor %}"/>
-{% for x,y in points %}<circle cx="{{ x }}" cy="{{ y }}" r="3" fill="currentColor"/>{% endfor %}
+<figure class="weight-figure">
+<svg class="weight-chart" width="320" height="125" viewBox="0 0 320 125" role="img" aria-label="体重の推移。値は表で確認できます">
+<polygon class="area" points="{{ points[0][0] }},115 {% for x,y in points %}{{ x }},{{ y }} {% endfor %}{{ points[-1][0] }},115"/>
+<line class="axis" x1="12" y1="115" x2="308" y2="115"/>
+<polyline class="line" points="{% for x,y in points %}{{ x }},{{ y }} {% endfor %}"/>
+{% for x,y in points %}<circle cx="{{ x }}" cy="{{ y }}" r="3.5"/>{% endfor %}
 </svg>
 <figcaption>{{ bounds[0] }}{% if bounds[0] != bounds[1] %} 〜 {{ bounds[1] }}{% endif %}</figcaption>
 </figure>
