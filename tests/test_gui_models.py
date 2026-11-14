@@ -3,17 +3,18 @@
 import json
 import re
 import threading
-from datetime import date
+from datetime import UTC, date, datetime
 from urllib.parse import urlencode
 
 import pytest
 from support import exchange, login, ready_clip
 
 from poop_detector.config import Config
-from poop_detector.video.clip_reviews import Assessment
+from poop_detector.video.plan_usage import QuotaGroup, QuotaWindow
 
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 PAGE = "/manage/models"
+PLAN = "/manage/models/plan-usage"
 SECRET_KEY = "sk-ant-secret-key-123"
 
 
@@ -102,15 +103,62 @@ def test_cli_judge_shows_readiness_without_secrets(models_gui):
     assert 'name="model" value="model-b"' in html
 
 
-def test_judge_counts_come_from_the_assessments(models_gui):
+def test_judge_counts_by_period_come_from_the_runs(models_gui):
     server, _ = models_gui
-    clips = server.app.clips
-    ok, failed = ready_clip(clips), ready_clip(clips)
-    clips.assessments.save(ok, Assessment(label="none"), provider="codex")
-    clips.assessments.save(failed, error="判定器の実行に失敗", provider="codex")
+    runs = server.app.clips.judge_runs
+    runs.record("codex", None, "review", failed=False)
+    runs.record("codex", None, "review", failed=True)
+    runs.record("claude", "model-b", "benchmark", failed=False, at=datetime(2020, 1, 1, tzinfo=UTC))
     html = page(server, login(server))
-    assert re.search(r"<td>Codex CLI</td><td>（既定）</td><td>2</td><td>1</td>", html)
-    assert "失敗" in html
+    for period in ("今日", "7日", "30日", "今月", "全期間"):
+        assert f'<th class="count">{period}</th>' in html
+    assert re.search(
+        r"<td>Codex CLI</td><td>（既定）</td><td>監視・保存済み動画</td>"
+        r'(<td class="count">2</td>){5}<td class="count">1</td>',
+        html,
+    )
+    assert re.search(
+        r'<td>判定器の比較</td>(<td class="count">0</td>){4}<td class="count">1</td>'
+        r'<td class="count">0</td>',
+        html,
+    )
+
+
+def test_plan_usage_is_asked_only_when_requested(models_gui):
+    server, _ = models_gui
+    asked = []
+
+    def codex():
+        asked.append("codex")
+        resets = datetime(2026, 11, 14, 15, 39, tzinfo=UTC)
+        return (QuotaGroup("Codex", QuotaWindow(30, resets), QuotaWindow(93, None)),)
+
+    def claude():
+        raise ValueError("CLI の出力 secret-output")
+
+    server.app.plan_usage.readers = {"codex": codex, "claude": claude}
+    cookie = login(server)
+    html = page(server, cookie)
+    assert "プランの使用量" in html
+    assert "まだ問い合わせていません" in html
+    assert asked == []
+
+    member = login(server, role="member")
+    status, _, _ = exchange(server, "POST", PLAN, "csrf=x", {**FORM, **member}, auth=False)
+    assert status == 403
+    token = re.search(r'name="csrf" value="([^"]+)"', html)[1]
+    body = urlencode({"csrf": token})
+    status, headers, _ = exchange(server, "POST", PLAN, body, {**FORM, **cookie}, auth=False)
+    assert status == 303
+    assert headers["Location"] == PAGE
+    assert asked == ["codex"]
+    html = page(server, cookie)
+    assert re.search(
+        r"<td>Codex CLI</td><td>Codex</td><td>30%（2026/11/15 00:39 に戻る）</td><td>93%</td>", html
+    )
+    assert "<td>Claude Code CLI</td>" in html
+    assert "不明（CLI のログインと版を確認してください）" in html
+    assert "secret-output" not in html
 
 
 def test_choosing_a_judge_writes_the_settings_and_the_audit_log(models_gui):
