@@ -1,3 +1,4 @@
+{%- from "_macros.html" import icon -%}
 {#- すべての画面に共通の枠。値は自動でエスケープされる。frame はログインしていない画面では None。 -#}
 {%- macro menu(items, label, css) -%}
 <nav class="{{ css }}" aria-label="{{ label }}"><ul>
@@ -6,13 +7,23 @@
 {%- endfor -%}
 </ul></nav>
 {%- endmacro -%}
-<!doctype html><html lang="ja" data-appearance="{{ display.appearance }}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/assets/icon-192.png"><meta name="theme-color" content="#faf7f2"><style>
+{#- スマートフォンの幅で画面の下に出すタブ。主な場所を並べ、ほかは「その他」（details）にまとめる。 -#}
+{%- macro tab(item) -%}
+<a href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{{ icon(item.icon) }}{{ item.text }}{% if item.badge %}<span class="badge">{{ item.badge }}</span>{% endif %}</a>
+{%- endmacro -%}
+<!doctype html><html lang="ja" data-appearance="{{ display.appearance }}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>{{ title }}</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/assets/icon-192.png"><meta name="theme-color" content="#faf7f2"><style>
 {% include "style.css" %}
 </style><header class="site-header"><h1>{{ title }}</h1>
-{%- if frame %}<p class="site-status"><span class="monitor monitor-{{ frame.monitor_state }}">監視：{{ frame.monitor }}</span> <a href="/account">{{ frame.person }}さん</a> <a href="/logout">ログアウト</a></p>{% endif -%}
+{%- if frame %}<p class="site-status"><span class="chip chip-{{ frame.monitor_state }}">監視：{{ frame.monitor }}</span> <a href="/account">{{ frame.person }}さん</a> <a class="header-logout" href="/logout">ログアウト</a></p>{% endif -%}
 </header>
 {%- if frame %}{{ menu(frame.menu, "メインメニュー", "site-menu") }}{% endif -%}
 <main>
 {%- if frame and frame.management %}{{ menu(frame.management, "管理のメニュー", "sub-menu") }}{% endif -%}
 {%- block content %}{% endblock -%}
-</main></html>
+</main>
+{%- if frame %}<nav class="tab-bar" aria-label="タブ"><ul>
+{%- for item in frame.tabs %}<li>{{ tab(item) }}</li>{% endfor -%}
+<li><details class="tab-more{% if frame.more_current %} current{% endif %}"><summary>{{ icon("more") }}その他</summary><ul>
+{%- for item in frame.more %}<li>{{ tab(item) }}</li>{% endfor -%}
+</ul></details></li></ul></nav>{% endif -%}
+</html>
