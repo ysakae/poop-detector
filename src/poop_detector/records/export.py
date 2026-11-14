@@ -16,6 +16,7 @@ from typing import Any
 from ..errors import InvalidInputError
 from ..timezones import to_local
 from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES
+from .weights import Weight
 
 CSV_HEADER: tuple[str, ...] = (
     "日付",
@@ -110,6 +111,15 @@ def in_period(
 
 def _cell(value: str) -> str:
     return "'" + value if value.startswith(FORMULA_PREFIXES) else value
+
+
+def weights_csv(rows: Iterable[Weight]) -> bytes:
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(("測定日", "体重（g）", "メモ"))
+    for row in rows:
+        writer.writerow((row.day.isoformat(), row.grams, _cell(row.note)))
+    return output.getvalue().encode("utf-8-sig")
 
 
 def _row(row: Mapping[str, Any]) -> list[str]:

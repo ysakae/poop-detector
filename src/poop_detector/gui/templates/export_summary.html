@@ -5,6 +5,13 @@
 <h2>排泄の記録の集計</h2>
 <p>期間：{{ summary.period }}（{{ summary.days }}日間） ／ 作成：{{ printed_at }}（{{ timezone }}）</p>
 <p class="note no-print">ブラウザーの印刷で紙や PDF にできます。<a href="/manage/export">書き出しとバックアップへ戻る</a></p>
+{% if measurements %}
+<section aria-labelledby="weight-title"><h3 id="weight-title">体重の推移</h3>
+{% include "_weight_chart.html" %}
+<table><thead><tr><th>測定日</th><th>体重</th><th>メモ</th></tr></thead>
+<tbody>{% for row in measurements %}<tr><td>{{ row.day }}</td><td>{{ "{:,}".format(row.grams) }} g</td><td>{{ row.note }}</td></tr>{% endfor %}</tbody></table>
+</section>
+{% endif %}
 <section aria-labelledby="count-title"><h3 id="count-title">回数</h3>
 <table><tbody>
 <tr><th scope="row">記録</th><td>{{ summary.total }}回（1日あたり {{ summary.per_day }}回、記録のあった日 {{ summary.recorded_days }}日）</td></tr>
