@@ -296,6 +296,17 @@ def migrate_to_v12(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v13(db: sqlite3.Connection) -> None:
+    db.execute(
+        """CREATE TABLE care_entries (
+            id TEXT PRIMARY KEY, at TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN ('feeding', 'sheet')),
+            actor TEXT NOT NULL, note TEXT NOT NULL
+        )"""
+    )
+    db.execute("CREATE INDEX care_entries_at ON care_entries(at)")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -310,6 +321,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v10,
     migrate_to_v11,
     migrate_to_v12,
+    migrate_to_v13,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

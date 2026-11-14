@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>お世話の記録</h2>
+{% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+<section class="settings-section">
+<h3>{{ "お世話の記録を訂正" if edit else "お世話を追加" }}</h3>
+<form method="post" action="/care" class="settings-form">{{ csrf_field(token) }}
+{% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
+<div class="settings-field"><label>実施した日時<input type="datetime-local" name="at" step="1" value="{{ at }}" required></label></div>
+<div class="settings-field"><label>メモ（任意）<input name="note" maxlength="500" value="{{ edit.note if edit else '' }}"></label></div>
+<p class="toolbar">
+{% for value, name in kinds.items() %}<button name="kind" value="{{ value }}">{{ name }}を保存</button>{% endfor %}
+{% if edit %}<a href="/care?day={{ day }}">訂正を取り消す</a>{% endif %}
+</p>
+</form>
+</section>
+<h3>日ごとの記録</h3>
+<form method="get" action="/care" class="toolbar">
+<label>日付<input type="date" name="day" value="{{ day }}" max="{{ today }}" required></label><button class="secondary">表示</button>
+</form>
+{% if rows %}
+<table><thead><tr><th>時刻</th><th>お世話</th><th>担当者</th><th>メモ</th><th>操作</th></tr></thead>
+<tbody>{% for row in rows %}<tr><td>{{ row.at.strftime("%H:%M") }}</td><td>{{ kinds[row.kind] }}</td><td>{{ row.actor }}</td><td>{{ row.note }}</td><td><a href="/care?day={{ day }}&amp;id={{ row.id }}">訂正</a></td></tr>{% endfor %}</tbody></table>
+{% else %}<p>この日のお世話の記録はありません。</p>{% endif %}
+{% if measurements %}<h4>体重</h4><ul>{% for row in measurements %}<li>{{ "{:,}".format(row.grams) }} g{% if row.note %} ／ {{ row.note }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+{% if excretion %}<h4>確定した排泄</h4><ul>{% for stamp, label in excretion %}<li>{{ stamp }} ／ {{ label }}</li>{% endfor %}</ul>{% endif %}
+{% endblock %}

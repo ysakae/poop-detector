@@ -38,6 +38,7 @@ from ..web_address import Site
 from . import (
     account_routes,  # noqa: F401
     areas_routes,  # noqa: F401
+    care_routes,  # noqa: F401
     checks_routes,  # noqa: F401
     export_routes,  # noqa: F401
     models_routes,  # noqa: F401
