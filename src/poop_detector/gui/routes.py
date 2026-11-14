@@ -218,19 +218,22 @@ def management_status(handler: "Handler") -> dict[str, Any]:
     status = TrayRegistration(app.root).status()
     monitor = app.preview.monitor_status()
     snapshot = app.preview.read()
+    tray = app.preview.tray_state() if monitor != "offline" else ""
     return {
         "phase": status["phase"],
         "message": status["error"] or REGISTRATION_MESSAGES[status["phase"]],
         "monitor": "停止中または未確認" if monitor == "offline" else "稼働中",
         "camera": {"connected": "接続中", "searching": "再接続中"}.get(monitor, "未確認"),
         "frame_time": local_time(snapshot[1]) if snapshot else "未取得",
-        "tracking": (
-            {"tracking": "追従中", "searching": "探索中", "fixed": "固定範囲"}.get(
-                app.preview.tray_state(), "未確認"
-            )
-            if monitor != "offline"
-            else "未確認"
+        "tracking": {"tracking": "追従中", "searching": "探索中", "fixed": "固定範囲"}.get(
+            tray, "未確認"
         ),
+        # 状態のラベルの色（ok・warn・off）。文言と同じ判断から決める。
+        "states": {
+            "monitor": "off" if monitor == "offline" else "ok",
+            "camera": {"connected": "ok", "searching": "warn"}.get(monitor, "off"),
+            "tracking": {"tracking": "ok", "fixed": "ok", "searching": "warn"}.get(tray, "off"),
+        },
     }
 
 

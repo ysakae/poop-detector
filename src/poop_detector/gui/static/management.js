@@ -103,7 +103,10 @@
         return;
       }
       for (const key of ["monitor", "camera", "frame_time", "tracking", "message"]) {
-        document.getElementById(`manage-${key}`).textContent = status[key];
+        const field = document.getElementById(`manage-${key}`);
+        field.textContent = status[key];
+        // 状態のラベルの色も、いまの状態に合わせる（ok・warn・off）。
+        if (status.states[key]) field.className = `chip chip-${status.states[key]}`;
       }
     } catch {
       // 次の更新で状態を取り直す。

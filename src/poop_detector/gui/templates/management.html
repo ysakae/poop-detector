@@ -17,10 +17,10 @@
 <section class="management-controls" aria-labelledby="status-heading">
 <h3 id="status-heading">稼働状況</h3>
 <dl class="management-status">
-<dt>監視</dt><dd id="manage-monitor">{{ monitor }}</dd>
-<dt>カメラ</dt><dd id="manage-camera">{{ camera }}</dd>
+<dt>監視</dt><dd><span id="manage-monitor" class="chip chip-{{ states.monitor }}">{{ monitor }}</span></dd>
+<dt>カメラ</dt><dd><span id="manage-camera" class="chip chip-{{ states.camera }}">{{ camera }}</span></dd>
 <dt>最終映像</dt><dd id="manage-frame_time">{{ frame_time }}</dd>
-<dt>トレー</dt><dd id="manage-tracking">{{ tracking }}</dd>
+<dt>トレー</dt><dd><span id="manage-tracking" class="chip chip-{{ states.tracking }}">{{ tracking }}</span></dd>
 </dl>
 <h3>トレー交換</h3>
 <p id="manage-message" role="status">{{ message }}</p>

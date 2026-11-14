@@ -71,3 +71,46 @@ def test_management_lists_recent_outages(gui):
     assert "継続中" in history
     assert "送信済み" in history
     assert "未送信" in history
+
+
+def test_status_is_shown_as_labels_that_follow_the_state(gui):
+    """稼働状況は、文字に加えて色付きのラベルで一目で分かるようにする（#141）。"""
+    import json
+    import re
+
+    from poop_detector.capture.live_preview import LivePreview
+
+    server, _, _ = gui
+
+    def chips():
+        html = request(server, "GET", "/manage")[1].decode()
+        found = re.findall(r'<span id="manage-(\w+)" class="chip chip-(\w+)">([^<]+)</span>', html)
+        return {key: (state, text) for key, state, text in found}
+
+    assert chips() == {
+        "monitor": ("off", "停止中または未確認"),
+        "camera": ("off", "未確認"),
+        "tracking": ("off", "未確認"),
+    }
+    LivePreview(server.app.root).pulse(True)
+    assert chips()["monitor"] == ("ok", "稼働中")
+    assert chips()["camera"] == ("ok", "接続中")
+    LivePreview(server.app.root).pulse(False)
+    assert chips()["camera"] == ("warn", "再接続中")
+    status = json.loads(request(server, "GET", "/manage/status")[1])
+    assert (status["states"]["monitor"], status["states"]["camera"]) == ("ok", "warn")
+    assert status["states"]["tracking"] in ("ok", "warn", "off")
+
+
+def test_messages_and_tables_share_one_look():
+    """管理の画面の知らせと表は、どの画面でも同じ見た目にする。"""
+    from pathlib import Path
+
+    import poop_detector.gui
+
+    style = (Path(poop_detector.gui.__file__).parent / "templates" / "style.css").read_text()
+    assert ".message,.saved{" in style
+    assert ".message-error,.error{" in style
+    assert "main table{" in style
+    script = (Path(poop_detector.gui.__file__).parent / "static" / "management.js").read_text()
+    assert "status.states" in script
