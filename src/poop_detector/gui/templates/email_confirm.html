@@ -2,6 +2,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf_field %}
 {% block content %}
+<div class="card entry"><img src="/assets/dog.svg" alt="" width="96" height="96">
 <h2>メールアドレスの確認</h2>
 <p>メールアドレスをログイン中のアカウントにひも付けます。</p>
 <form method="post" action="/account/email/confirm">{{ csrf_field(token) }}
@@ -9,4 +10,5 @@
 <button>ひも付ける</button>
 </form>
 <p><a href="/account">アカウントへ戻る</a></p>
+</div>
 {% endblock %}

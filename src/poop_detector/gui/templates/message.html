@@ -1,6 +1,8 @@
-{#- 保存や整理に失敗したときの画面。 -#}
+{#- 保存や整理に失敗したとき、開けない画面を開いたときなどの知らせ。 -#}
 {% extends "base.html" %}
 {% block content %}
+<div class="card entry"><img src="/assets/dog.svg" alt="" width="96" height="96">
 <h2>{{ heading }}</h2><p>{{ message }}</p>
 {% if wrap_link %}<p><a href="{{ back_url }}">{{ back_text }}</a></p>{% else %}<a href="{{ back_url }}">{{ back_text }}</a>{% endif %}
+</div>
 {% endblock %}
