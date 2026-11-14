@@ -130,6 +130,8 @@ class RecordingJudge:
         self.model = model
         self.purpose = purpose
         self.name = judge.name
+        # 直近の呼び出しが失敗したか。まだ呼んでいなければ None。
+        self.failed: bool | None = None
 
     def check(self) -> None:
         self.inner.check()
@@ -140,8 +142,10 @@ class RecordingJudge:
         try:
             output = self.inner.judge(folder, prompt, images, schema)
         except BaseException:
+            self.failed = True
             self._record(failed=True)
             raise
+        self.failed = False
         self._record(failed=False)
         return output
 

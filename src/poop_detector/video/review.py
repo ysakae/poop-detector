@@ -34,6 +34,25 @@ from .judge_source import FixedJudge, JudgeChoice, JudgeSource
 
 logger = logging.getLogger(__name__)
 EVIDENCE = {"feces": "new_stool", "urine": "new_wet_patch", "both": "both_visible"}
+# 判定器の呼び出しに失敗した動画を、監視中に試し直す回数の上限。待ち時間を伸ばしながら
+# 試すので、5時間の利用枠が戻るまでのおよそ5時間を覆う。
+MAX_RETRIES = 16
+# 試し直しを待つ動画を覚えておく本数の上限。超えたら古いものから諦める。
+RETRY_BACKLOG = 500
+FAILURE_WAIT = 20
+MAX_WAIT = 30 * 60
+
+
+def retry_delay(judge_failures: int) -> int:
+    """判定に失敗したあと、次の判定まで待つ秒数。
+
+    判定器の呼び出しが続けて失敗した回数に応じて倍に伸ばし、利用上限に達した判定器を
+    呼び続けないようにする。動画の側の失敗（0回）は、これまでどおり短く待つ。
+    """
+    doublings = max(0, min(judge_failures, 16) - 1)
+    return min(FAILURE_WAIT << doublings, MAX_WAIT)
+
+
 SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -398,6 +417,10 @@ class Review:
         self.scene_signature = scene_signature
         # 判定器は動画ごとに受け取るので、監視中に選び直した判定器も次の動画から使える。
         self.judges = judges or FixedJudge(JudgeChoice(default_judge(), "codex", None))
+        # 判定器の呼び出しが続けて失敗した回数。呼び出しが成功すると 0 に戻る。
+        self.judge_failures = 0
+        # 判定器の呼び出しに失敗し、監視中に試し直す動画と、その失敗の回数。
+        self.retries: dict[str, int] = {}
 
     def run(
         self, limit: int, since: str | None = None, clip_id: str | None = None
@@ -419,17 +442,19 @@ class Review:
 
     def _run(self, limit: int, since: str | None, clip_id: str | None) -> tuple[int, int]:
         completed = failures = 0
-        rows = self.store.assessments.pending(limit, since, clip_id, self.scene_signature)
+        rows = self.store.assessments.pending(
+            limit, since, clip_id, self.scene_signature, retry=tuple(self.retries)
+        )
         for row in rows:
             # 台帳には、この動画で実際に使った判定器を記録する。
             choice = self.judges.current()
+            judge = RecordingJudge(
+                choice.judge, self.store.judge_runs, choice.provider, choice.model, "review"
+            )
             try:
                 path = self.store.video_path(row)
                 if path is None:
                     raise OSError("動画ファイルがありません")
-                judge = RecordingJudge(
-                    choice.judge, self.store.judge_runs, choice.provider, choice.model, "review"
-                )
                 result = self.inspect(path, row, judge)
                 observed_at = (
                     (
@@ -448,7 +473,9 @@ class Review:
                 )
                 logger.warning("自動判定に失敗しました（動画 %s）", row["id"])
                 failures += 1
+                self._track(row["id"], judge.failed, retry=since is not None)
                 continue
+            self._track(row["id"], judge.failed, retry=False)
             stored = self.store.assessments.save(
                 row["id"],
                 result,
@@ -476,6 +503,20 @@ class Review:
                 self.store.assessments.finish_notice(row["id"], sent)
         return completed, failures
 
+    def _track(self, clip_id: str, judge_failed: bool | None, *, retry: bool) -> None:
+        """判定器の呼び出しの成否を数え、呼び出しに失敗した動画を試し直しに回す。
+
+        動画を読めない、判定の形式が合わないなど、判定器の呼び出し以外の失敗は試し直さない。
+        """
+        attempts = self.retries.pop(clip_id, 0) + 1
+        if judge_failed is None:
+            return
+        self.judge_failures = self.judge_failures + 1 if judge_failed else 0
+        if judge_failed and retry and attempts <= MAX_RETRIES:
+            self.retries[clip_id] = attempts
+            while len(self.retries) > RETRY_BACKLOG:
+                del self.retries[next(iter(self.retries))]
+
     def watch(self) -> "ReviewWorker":
         return ReviewWorker(self)
 
@@ -500,7 +541,20 @@ class ReviewWorker:
             except (OSError, sqlite3.Error):
                 logger.warning("自動判定の台帳にアクセスできません。次回再試行します")
                 completed = failed = 0
-            self.stop.wait(20 if failed else (0 if completed else 3))
+            self.stop.wait(self.next_wait(completed, failed))
+
+    def next_wait(self, completed: int, failed: int) -> int:
+        """次に動画を探すまで待つ秒数。判定器の失敗が続く間は、間隔を伸ばして休む。"""
+        if not failed:
+            return 0 if completed else 3
+        wait = retry_delay(self.review.judge_failures)
+        if wait > FAILURE_WAIT:
+            logger.warning(
+                "判定器の呼び出しに%d回続けて失敗しました。%d秒後に試し直します",
+                self.review.judge_failures,
+                wait,
+            )
+        return wait
 
     def __exit__(
         self,

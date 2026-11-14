@@ -124,7 +124,8 @@ def test_outside_notice_is_distinct_and_does_not_mark_tray_event(gui):
         lambda label, location=None, **kwargs: notices.append((label, location)) or True,
     )
     assert review.run(limit=3, since=now.isoformat()) == (3, 0)
-    assert notices == [("urine", "outside"), ("urine", None)]
+    # トレー内の検知を、トレー外の滞在より先に判定する。
+    assert notices == [("urine", None), ("urine", "outside")]
     (event,) = store.list()
     assert event["notified_at"] is None
 

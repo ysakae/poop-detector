@@ -9,6 +9,13 @@ from ..records.database import Database
 from ..records.events import utcnow, validate_location
 from .clips import AssessmentRow, ClipRow
 
+# 監視中に判定する順番。排泄の検知と滞在の通知を先に、トレー外の滞在を最後にする。
+# 判定器が止まって動画がたまったあとも、通知につながりやすい動画から判定する。
+PRIORITY_ORDER = (
+    "CASE c.source WHEN 'outside_stay' THEN 2"
+    " WHEN 'dog_visit' THEN 1 WHEN 'dog_enter' THEN 1 WHEN 'dog_exit' THEN 1 ELSE 0 END"
+)
+
 
 @dataclass(frozen=True)
 class Assessment:
@@ -50,13 +57,25 @@ class AssessmentStore:
         since: str | None = None,
         clip_id: str | None = None,
         scene_signature: str | None = None,
+        *,
+        retry: Sequence[str] = (),
     ) -> list[ClipRow]:
-        """自動判定を待つ動画。since を指定すると、それ以降の未判定の動画だけを古い順に返す。"""
+        """自動判定を待つ動画。
+
+        since を指定すると、それ以降の未判定の動画と retry に挙げた失敗済みの動画を、
+        きっかけの優先度の高い順、同じ優先度では古い順に返す。
+        """
         conditions = ["c.status='ready'", "c.label IS NULL"]
         params: list[object] = []
         if since is not None:
-            conditions.extend(["c.requested_at>=?", "a.clip_id IS NULL"])
-            params.append(since)
+            retried = ",".join("?" * len(retry))
+            conditions.extend(
+                [
+                    "c.requested_at>=?",
+                    f"(a.clip_id IS NULL OR (a.error IS NOT NULL AND c.id IN ({retried})))",
+                ]
+            )
+            params.extend([since, *retry])
         else:
             conditions.append("(a.clip_id IS NULL OR a.error IS NOT NULL)")
         if scene_signature is not None:
@@ -65,7 +84,9 @@ class AssessmentStore:
         if clip_id is not None:
             conditions.append("c.id=?")
             params.append(clip_id)
-        order = "ASC" if since is not None else "DESC"
+        order = (
+            f"{PRIORITY_ORDER}, c.requested_at ASC" if since is not None else "c.requested_at DESC"
+        )
         # 条件はこの関数内の固定の文字列だけで組み立て、値はすべてプレースホルダーで渡す。
         with self.connect() as db:
             return [
@@ -74,7 +95,7 @@ class AssessmentStore:
                     """SELECT c.* FROM clips c
                     LEFT JOIN video_assessments a ON a.clip_id=c.id WHERE """  # noqa: S608
                     + " AND ".join(conditions)
-                    + f" ORDER BY c.requested_at {order} LIMIT ?",
+                    + f" ORDER BY {order} LIMIT ?",
                     (*params, limit),
                 )
             ]
