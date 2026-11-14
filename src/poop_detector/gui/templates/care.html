@@ -5,7 +5,7 @@
 {% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
 {% for kind in form_kinds %}
 {% set retry = submitted.get("kind") == kind %}
-<section class="settings-section">
+<section class="settings-section" id="{{ kind }}">
 <h3>{{ kinds[kind] }}{{ "の記録を訂正" if edit else "を記録" }}</h3>
 <form method="post" action="/care" class="settings-form">{{ csrf_field(token) }}
 <input type="hidden" name="view_day" value="{{ day }}">
