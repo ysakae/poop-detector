@@ -4,7 +4,7 @@
 {% block content %}
 <h2>確認待ち {{ entries|length }}件</h2>
 {% if done %}<p class="message" role="status">すべて確認しました。</p>{% endif %}
-{% if end and entries %}<p class="message" role="status">最後まで進みました。飛ばした件が残っています。</p>{% endif %}
+{% if end and entries %}<p class="message message-warn" role="status">最後まで進みました。飛ばした件が残っています。</p>{% endif %}
 {% if entries %}
 <p>新しい順に並んでいます。ラベルを保存すると、次の件が開きます。</p>
 <p><a class="button" href="{{ next_url }}">確認を始める</a></p>

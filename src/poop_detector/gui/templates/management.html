@@ -24,7 +24,7 @@
 </dl>
 <h3>トレー交換</h3>
 <p id="manage-message" role="status">{{ message }}</p>
-{% if error %}<p class="message" role="alert">{{ error }}</p>{% endif %}
+{% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
 {% if phase in ("idle", "applied", "cancelled") %}
 <form method="post" action="/manage/tray">{{ csrf_field(token) }}
 <button name="action" value="begin">トレー交換を開始</button></form>

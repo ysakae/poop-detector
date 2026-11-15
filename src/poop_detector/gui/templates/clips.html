@@ -5,7 +5,7 @@
 {% include "_review_bar.html" %}
 {% if not review %}
 <h2>動画</h2><p class="note">動画を見て、排泄があったかを確かめます。排泄のない動画にも「排泄なし」を付けてください。</p><form method="post" action="/clips/request" class="toolbar">{{ csrf_field(token) }}<button class="secondary">{{ icon("video") }} 今の前後の動画を保存</button><a class="button ghost" href="/clips">更新</a></form><p class="note">監視が動いているときに使えます。既定では前後30秒ずつを保存します。変換が終わったら「更新」を押してください。</p>{{ capacity_panel(capacity) }}{% if viewer_admin %}<p><a href="/manage/storage">録画容量と古い動画の整理</a></p>{% endif %}
-{% if not live %}<div class="message">動画収集のカメラ接続を確認できません。監視を起動し、カメラ接続を確認してください。</div>{% endif %}
+{% if not live %}<div class="message message-warn" role="status">動画収集のカメラ接続を確認できません。監視を起動し、カメラ接続を確認してください。</div>{% endif %}
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
 {% endif %}
 <div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav id="clip-list" aria-label="動画一覧">
@@ -21,9 +21,9 @@
 {% if notice_unavailable %}<p>動画ファイルを確認できません。<a href="/records/events?manual=1#manual-record">手動で記録する</a></p>{% endif %}
 {% if clip.ready %}
 <video controls preload="metadata" class="clip-video" playsinline src="/clip-video?id={{ clip.id }}{{ seek }}">動画を再生できません。</video><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
-{% if clip.interrupted %}<div class="message">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>{% endif %}
+{% if clip.interrupted %}<div class="message message-warn">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>{% endif %}
 {% if circling %}
-<div class="message"><strong>行動分析 ／ 旋回候補</strong><p>トレー付近の位置を取得 {{ circling.located }}/{{ circling.sampled }}コマ</p>
+<div class="message message-info"><strong>行動分析 ／ 旋回候補</strong><p>トレー付近の位置を取得 {{ circling.located }}/{{ circling.sampled }}コマ</p>
 {%- if not circling.candidates %}<p>旋回候補はありません。</p>{% endif -%}
 {%- for candidate in circling.candidates -%}
 <p><button class="secondary" type="button" data-video-seek="{{ candidate.start }}">旋回候補 {{ "%.1f"|format(candidate.start) }}〜{{ "%.1f"|format(candidate.end) }}秒へ移動</button>{% if candidate.lead is not none %} ／ 排泄の開始記録より {{ "%.1f"|format(candidate.lead) }}秒前に検出{% endif %}</p>
@@ -31,8 +31,8 @@
 </div>
 {% endif %}
 {% if assessment %}
-{% if assessment.error %}<div class="message">{{ assessment.error }}</div>{% else %}
-<div class="message"><strong>自動判定の候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %} ／ {{ assessment.activity }}</strong><br>{{ assessment.reason }}
+{% if assessment.error %}<div class="message message-error">{{ assessment.error }}</div>{% else %}
+<div class="message message-info"><strong>自動判定の候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %} ／ {{ assessment.activity }}</strong><br>{{ assessment.reason }}
 {%- for seek in assessment.seeks -%}
 <p><button class="secondary" type="button" data-video-seek="{{ seek.value }}">{{ seek.text }}（{{ seek.shown }}秒）</button></p>
 {%- endfor -%}

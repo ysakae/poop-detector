@@ -8,7 +8,7 @@
 {% if editable %}
 <p class="note">監視するマシンの設定ファイル（{{ file }}）を書き換えます。監視（run）と GUI は起動したときに設定を読むので、保存した設定は起動し直すと反映されます。書き換えるのは変えた項目の値だけで、コメントは残ります。</p>
 {% else %}
-<p class="message">設定ファイルの場所が分からないため、表示だけです（既定値を表示しています）。</p>
+<p class="message message-warn">設定ファイルの場所が分からないため、表示だけです（既定値を表示しています）。</p>
 {% endif %}
 <form method="post" action="/manage/settings" class="settings-form">{{ csrf_field(token) }}<input type="hidden" name="base" value="{{ base }}">
 {% if pending %}

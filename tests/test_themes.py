@@ -247,3 +247,42 @@ def test_components_escape_their_values():
 def test_component_styles_exist():
     for selector in [".icon{", ".stat{", ".chip{", ".chip-ok{", ".empty-state{", ".ghost{"]:
         assert selector in STYLE, selector
+
+
+# 知らせの種類（#164）。成功は message、注意は message-warn、失敗は message-error、
+# 判定の候補などの案内は message-info にし、色から種類を読み取れるようにする。
+NOTICES = [
+    ("clips.html", "message message-warn", "動画収集のカメラ接続を確認できません"),
+    ("clips.html", "message message-warn", "切断・停止・フレーム欠落がある部分動画です"),
+    ("clips.html", "message message-error", "{{ assessment.error }}"),
+    ("clips.html", "message message-info", "<strong>自動判定の候補"),
+    ("clips.html", "message message-info", "<strong>行動分析"),
+    ("clips.html", 'message" role="status', "保存しました。"),
+    ("settings.html", "message message-warn", "設定ファイルの場所が分からないため"),
+    ("models.html", "message message-warn", "設定ファイルの場所が分からないため"),
+    ("review.html", "message message-warn", "飛ばした件が残っています"),
+    ("review.html", 'message" role="status', "すべて確認しました。"),
+    ("management.html", "message message-error", "{{ error }}"),
+]
+
+
+@pytest.mark.parametrize(("template", "kind", "text"), NOTICES)
+def test_notices_use_the_class_for_their_kind(template, kind, text):
+    source = (TEMPLATES / template).read_text()
+    pattern = rf'class="{re.escape(kind)}"[^>]*>(?:(?!</(?:div|p)>).)*?{re.escape(text)}'
+    assert re.search(pattern, source, re.S), f"{template}: {text}"
+
+
+def test_notice_kinds_have_their_own_colors():
+    for selector in [".message-warn{", ".message-info{", ".message-error,.error{"]:
+        assert selector in STYLE, selector
+    warn = STYLE.split(".message-warn{", 1)[1].split("}", 1)[0]
+    assert "var(--warn-bg)" in warn
+    assert "var(--warn-text)" in warn
+    assert "var(--warn-border)" in warn
+
+
+def test_clip_page_warns_when_the_camera_is_not_connected(gui):
+    server, _, _ = gui
+    html = page(server, login(server, role="member"), "/clips")
+    assert re.search(r'<div class="message message-warn" role="status">動画収集のカメラ接続', html)
