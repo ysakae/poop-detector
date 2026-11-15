@@ -114,6 +114,8 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 判定器の呼び出しに失敗したかどうかは `RecordingJudge.failed` で分かります。`Review` は続けて失敗した回数（`judge_failures`）を数え、`ReviewWorker.next_wait` が `retry_delay` で次の判定までの間隔を20秒から最長30分まで倍に伸ばします。呼び出しに失敗した動画は `Review.retries` に覚えておき、監視中に `MAX_RETRIES` 回まで試し直します（メモリー上だけで、監視を起動し直すと引き継ぎません）。動画を読めない、判定の形式が合わないなど、呼び出し以外の失敗は試し直しません。監視中に判定する順番は `clip_reviews.PRIORITY_ORDER` で、検知と滞在の通知が先、トレー外の滞在が最後です。失敗が続いたときの通知は、下の「監視の停止とカメラの不調の見張り」にあります。
 
+`review.fallback` に予備の判定器があるときは、`judge_source.FallbackJudges` が主の判定器の出どころを包みます。`Review` が続けて失敗した回数を `JudgeSource.note` で伝え、`SWITCH_AFTER` 回に達すると、使える状態の次の判定器に切り替えます。続けて失敗した回数は切り替えても 0 に戻さないので、切り替えた先も失敗すればすぐ次へ進み、待ち時間も伸び続けます。`RETURN_SECONDS` が過ぎたら主の判定器に戻して試します。
+
 ### 判定器の使用量
 
 判定の台帳（`video_assessments`）は動画1本につき1行で、失敗した判定は再試行で上書きされるため、CLI を呼んだ回数は数えられません。そこで `video.judge_runs.RecordingJudge` が判定器を包み、`judge` を呼ぶたびに `judge_runs` へ1行を追記します。監視と `video-review`（`Review._run`、用途 `review`）と、`video-benchmark`（`commands/benchmark.record_runs`、用途 `benchmark`）の両方で記録します。比較は運用の判定・ラベルを書き換えませんが、この記録だけは残します。版15への移行では、それまでの判定を台帳の1行につき1回として写します。
