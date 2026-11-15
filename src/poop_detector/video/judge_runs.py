@@ -177,6 +177,12 @@ class RecordingJudge:
         # 直近の呼び出しが失敗したか。まだ呼んでいなければ None。
         self.failed: bool | None = None
 
+    @property
+    def last_usage(self) -> TokenUsage | None:
+        """包んだ判定器が直近の呼び出しで使ったトークン数（出さない判定器は None）。"""
+        usage = getattr(self.inner, "last_usage", None)
+        return usage if isinstance(usage, TokenUsage) else None
+
     def check(self) -> None:
         self.inner.check()
 
@@ -195,14 +201,14 @@ class RecordingJudge:
 
     def _record(self, *, failed: bool) -> None:
         # トークン数は、出せる判定器だけが last_usage に置く。
-        usage = getattr(self.inner, "last_usage", None)
+        usage = self.last_usage
         try:
             self.log.record(
                 self.provider,
                 self.model,
                 self.purpose,
                 failed=failed,
-                usage=usage if isinstance(usage, TokenUsage) else None,
+                usage=usage,
             )
         except sqlite3.Error:
             # 使用量の記録が書けなくても、判定そのものは続ける。

@@ -305,8 +305,11 @@ def test_benchmark_runs_a_frozen_dataset_with_each_scene(two_scenes, monkeypatch
     assert report["judges"]["claude:model-b"] == {
         "provider": "claude",
         "model": "model-b",
+        "effort": None,
         "cli_version": "claude 9.9",
     }
+    # 既定のシートの作り方も、結果に残す。
+    assert report["sheet"] == {"max_frames": 24, "tile_width": 480, "difference": True}
     case = report["cases"][1]
     assert case["split"] == "final"
     assert case["scene_signature"] == setup["signatures"][1]

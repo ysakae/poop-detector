@@ -25,9 +25,13 @@ class CodexCliJudge:
 
     name = "Codex CLI"
 
-    def __init__(self, runner: Callable[..., Any] = subprocess.run, *, model: str = "") -> None:
+    def __init__(
+        self, runner: Callable[..., Any] = subprocess.run, *, model: str = "", effort: str = ""
+    ) -> None:
         self.runner = runner
         self.model = model
+        # 推論の深さ（low など）。空なら CLI の既定。
+        self.effort = effort
         # 直近の呼び出しで使ったトークン数。CLI が出さなければ None。
         self.last_usage: TokenUsage | None = None
 
@@ -66,6 +70,8 @@ class CodexCliJudge:
                 "exec",
                 "--json",
                 *(["--model", self.model] if self.model else []),
+                # 利用者の設定は読まないので、推論の深さは設定の上書きとして渡す。
+                *(["-c", f'model_reasoning_effort="{self.effort}"'] if self.effort else []),
                 "--sandbox",
                 "read-only",
                 "--ignore-user-config",

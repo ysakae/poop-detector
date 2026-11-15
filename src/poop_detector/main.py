@@ -162,7 +162,19 @@ def parser() -> argparse.ArgumentParser:
     compare = commands.add_parser("video-benchmark", help="ラベル付き動画で判定器・モデルを比較")
     compare.add_argument("--dataset", required=True, help="評価する録画IDとタグを指定したJSON")
     compare.add_argument(
-        "--judge", required=True, action="append", help="判定器:モデル名（複数指定）"
+        "--judge",
+        required=True,
+        action="append",
+        help="判定器:モデル名、または 判定器:モデル名@推論の深さ（複数指定できる）",
+    )
+    compare.add_argument(
+        "--sheet-frames", type=int, default=24, help="判定器に渡すコマ数の上限（2〜24、既定24）"
+    )
+    compare.add_argument(
+        "--sheet-width", type=int, default=480, help="1コマの幅の上限（120〜480、既定480）"
+    )
+    compare.add_argument(
+        "--no-difference-sheet", action="store_true", help="差分の比較画像を付けない"
     )
     compare.add_argument(
         "--output", help="結果を保存する新しいJSONファイル（既定は data/benchmarks/ の下）"

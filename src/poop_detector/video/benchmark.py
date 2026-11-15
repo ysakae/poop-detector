@@ -18,7 +18,8 @@ from ..features.tray_tracking import TrayTracker
 from .benchmark_sets import Dataset
 from .clip_reviews import Assessment
 from .clips import ClipRow, ClipStore
-from .review import PreparedClip, VideoJudge, prepare_clip
+from .review import DEFAULT_SHEET, PreparedClip, SheetOptions, VideoJudge, prepare_clip
+from .token_usage import TokenUsage
 
 LABELS = ("feces", "urine", "both", "none")
 PREDICTIONS = (*LABELS, "uncertain", "error")
@@ -174,14 +175,50 @@ def input_metadata(prepared: PreparedClip, extracted_at: str) -> dict[str, Any]:
     }
 
 
-def evaluate_case(case: Case, judges: Mapping[str, VideoJudge], scene: Scene) -> dict[str, Any]:
+def _tokens(judge: VideoJudge) -> dict[str, int] | None:
+    """判定器が直近の呼び出しで使ったトークン数（出さない判定器は None）。"""
+    usage = getattr(judge, "last_usage", None)
+    if not isinstance(usage, TokenUsage):
+        return None
+    return {
+        "input": usage.input_tokens,
+        "cached": usage.cached_tokens,
+        "output": usage.output_tokens,
+    }
+
+
+def mean_tokens(results: Sequence[Mapping[str, Any]]) -> dict[str, int] | None:
+    """トークン数を出した判定の、1回あたりの平均。1回もなければ None。"""
+    measured = [result["tokens"] for result in results if result.get("tokens")]
+    if not measured:
+        return None
+    return {
+        "measured": len(measured),
+        **{
+            key: round(sum(tokens[key] for tokens in measured) / len(measured))
+            for key in ("input", "cached", "output")
+        },
+    }
+
+
+def evaluate_case(
+    case: Case,
+    judges: Mapping[str, VideoJudge],
+    scene: Scene,
+    sheet: SheetOptions = DEFAULT_SHEET,
+) -> dict[str, Any]:
     """1本の録画から画像を一度だけ切り出し、同じ画像と指示をすべての判定器に渡す。"""
     results: dict[str, dict[str, Any]] = {}
     metadata = None
     outside = scene.outside_roi if case.row["source"] in ("outside_stay", "manual") else None
     try:
         with prepare_clip(
-            case.path, case.row, scene.roi, tray_tracker=scene.tray_tracker, outside_roi=outside
+            case.path,
+            case.row,
+            scene.roi,
+            tray_tracker=scene.tray_tracker,
+            outside_roi=outside,
+            sheet=sheet,
         ) as prepared:
             if isinstance(prepared, Assessment):
                 results = {name: asdict(prepared) for name in judges}
@@ -192,6 +229,9 @@ def evaluate_case(case: Case, judges: Mapping[str, VideoJudge], scene: Scene) ->
                         results[name] = asdict(prepared.inspect(judge))
                     except REVIEW_ERRORS:
                         results[name] = {"label": "error", "error": "判定器の実行に失敗"}
+                    tokens = _tokens(judge)
+                    if tokens is not None:
+                        results[name]["tokens"] = tokens
     except REVIEW_ERRORS:
         results = {
             name: {"label": "error", "error": "評価用の動画を準備できません"} for name in judges
@@ -208,10 +248,13 @@ def evaluate_case(case: Case, judges: Mapping[str, VideoJudge], scene: Scene) ->
 
 
 def evaluate(
-    cases: Sequence[Case], judges: Mapping[str, VideoJudge], scenes: Mapping[str, Scene]
+    cases: Sequence[Case],
+    judges: Mapping[str, VideoJudge],
+    scenes: Mapping[str, Scene],
+    sheet: SheetOptions = DEFAULT_SHEET,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """録画ごとに判定し、判定器ごとに全体・条件別・分割別の集計を返す。"""
-    rows = [evaluate_case(case, judges, scenes[case.scene]) for case in cases]
+    rows = [evaluate_case(case, judges, scenes[case.scene], sheet) for case in cases]
     tags = sorted({tag for case in cases for tag in case.tags})
     splits = sorted({case.split for case in cases if case.split})
     summaries = {}
@@ -220,6 +263,7 @@ def evaluate(
         paired = list(zip(cases, pairs, strict=True))
         summaries[name] = {
             **summarize(pairs),
+            "tokens": mean_tokens([row["results"][name] for row in rows]),
             "by_tag": {
                 tag: summarize([pair for case, pair in paired if tag in case.tags]) for tag in tags
             },
