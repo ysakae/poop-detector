@@ -66,8 +66,10 @@ class ClaudeCodeJudge:
 
     name = "Claude Code CLI"
 
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: str, effort: str = "") -> None:
         self.model = model
+        # 推論の深さ（low など）。空なら CLI の既定。
+        self.effort = effort
         # 直近の呼び出しで使ったトークン数。CLI が出さなければ None。
         self.last_usage: TokenUsage | None = None
 
@@ -135,6 +137,7 @@ class ClaudeCodeJudge:
                     "--json-schema",
                     json.dumps(schema),
                     *([f"--model={self.model}"] if self.model else []),
+                    *(["--effort", self.effort] if self.effort else []),
                 ],
                 input=(json.dumps(message) + "\n").encode(),
                 stdout=subprocess.PIPE,
@@ -316,11 +319,20 @@ PROVIDER_NAMES = {
 }
 
 
-def build_judge(provider: str, model: str = "") -> "VideoJudge":
+# 判定器に指定できる推論の深さ。空は CLI の既定。
+EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
+
+
+def build_judge(provider: str, model: str = "", effort: str = "") -> "VideoJudge":
+    """判定器を作る。effort は推論の深さで、空なら CLI の既定。"""
+    if effort and effort not in EFFORTS:
+        raise ValueError(f"推論の深さには {'、'.join(EFFORTS)} のいずれかを指定してください")
     if provider == "codex":
-        return CodexCliJudge(model=model)
+        return CodexCliJudge(model=model, effort=effort)
     if provider == "claude":
-        return ClaudeCodeJudge(model)
+        return ClaudeCodeJudge(model, effort)
     if provider == "gemini":
+        if effort:
+            raise ValueError("Antigravity CLI の推論の深さは、モデル名で選んでください")
         return AntigravityJudge(model)
     raise ValueError("判定器には codex、claude、gemini のいずれかを指定してください")

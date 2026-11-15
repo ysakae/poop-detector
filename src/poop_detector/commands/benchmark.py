@@ -4,11 +4,12 @@ import argparse
 import hashlib
 import json
 import os
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from ..config import Config
+from ..config import Config, ConfigError
 from ..detection.roi import ROI
 from ..detection.scene import load_baseline, scene_signature
 from ..features.tray_tracking import TrayTracker
@@ -19,27 +20,58 @@ from ..video.benchmark_sets import Dataset
 from ..video.cli_versions import cli_version
 from ..video.clips import ClipStore
 from ..video.judge_runs import JudgeRunLog, RecordingJudge
-from ..video.review import VideoJudge
+from ..video.providers import EFFORTS
+from ..video.review import SheetOptions, VideoJudge
 from .context import CommandContext, CommandError, load_outside_roi, load_scene, load_tray_tracker
 from .datasets import check_dataset, print_problems, resolve
 from .datasets import load_scene as load_scene_folder
-from .review import ready_judge
+
+JUDGE_FORMAT = "--judge は 判定器:モデル名 か 判定器:モデル名@推論の深さ で指定してください"
+
+
+def parse_judge(value: str) -> tuple[str, str, str]:
+    """`判定器:モデル名[@推論の深さ]` を (判定器, モデル名, 推論の深さ) に分ける。"""
+    provider, separator, rest = value.partition(":")
+    model, marked, effort = rest.partition("@")
+    if not separator or not model or (marked and effort not in EFFORTS):
+        raise CommandError(JUDGE_FORMAT)
+    try:
+        # 判定器とモデル名の規則は、設定の表（config.SETTINGS）と同じ。
+        Config(review_provider=provider, review_model=model)
+    except ConfigError as error:
+        raise CommandError(str(error)) from None
+    return provider, model, effort
+
+
+def _ready(provider: str, model: str, effort: str) -> VideoJudge:
+    """判定器を用意し、使える状態か確かめる。"""
+    from ..video import providers
+
+    try:
+        judge = (
+            providers.build_judge(provider, model, effort)
+            if effort
+            else providers.build_judge(provider, model)
+        )
+        judge.check()
+    except ValueError as error:
+        # インストールとログインの案内だけで、外部の出力は含まない。
+        raise CommandError(str(error)) from None
+    return judge
 
 
 def parse_judges(values: list[str]) -> dict[str, VideoJudge]:
-    configurations = {}
-    for value in values:
-        provider, separator, model = value.partition(":")
-        if not separator or not model or value in configurations:
-            raise CommandError("--judge は異なる 判定器:モデル名 を指定してください")
-        configurations[value] = Config(review_provider=provider, review_model=model)
-    if len(configurations) < 2:
-        raise CommandError("比較する --judge を2つ以上指定してください")
-    return {name: ready_judge(config) for name, config in configurations.items()}
+    """比較する判定器。シートの作り方だけを変えて比べられるよう、1つでもよい。"""
+    if len(set(values)) != len(values):
+        raise CommandError("--judge には、異なる条件を指定してください")
+    return {value: _ready(*parse_judge(value)) for value in values}
 
 
 def record_runs(judges: dict[str, VideoJudge], log: JudgeRunLog) -> dict[str, VideoJudge]:
-    """比較で判定器を呼んだ回数を、運用の判定と分けて数える（判定の台帳は変えない）。"""
+    """比較で判定器を呼んだ回数を、運用の判定と分けて数える（判定の台帳は変えない）。
+
+    推論の深さを指定した条件は、モデル名に `@深さ` を付けたまま記録する。
+    """
     recorded: dict[str, VideoJudge] = {}
     for name, judge in judges.items():
         provider, _, model = name.partition(":")
@@ -47,19 +79,47 @@ def record_runs(judges: dict[str, VideoJudge], log: JudgeRunLog) -> dict[str, Vi
     return recorded
 
 
+def sheet_options(args: argparse.Namespace) -> SheetOptions:
+    try:
+        return SheetOptions(
+            max_frames=args.sheet_frames,
+            tile_width=args.sheet_width,
+            difference=not args.no_difference_sheet,
+        )
+    except ValueError as error:
+        raise CommandError(str(error)) from None
+
+
 def format_score(score: float | None) -> str:
     return "―" if score is None else f"{score:.1%}"
 
 
+def format_tokens(tokens: dict[str, int] | None) -> str:
+    if tokens is None:
+        return "―"
+    return f"入力 {tokens['input']:,}（キャッシュ {tokens['cached']:,}）／出力 {tokens['output']:,}"
+
+
 def print_summary(summaries: dict[str, Any]) -> None:
-    print("判定器:モデル\t件数\t排便 適合率/再現率\t排尿 適合率/再現率\t判定不能\tエラー")
+    print(
+        "判定器:モデル\t件数\t排便 適合率/再現率\t排尿 適合率/再現率\t判定不能\tエラー"
+        "\t1回あたりのトークン"
+    )
     for name, summary in summaries.items():
         scores = [
             f"{format_score(summary['types'][label]['precision'])}/"
             f"{format_score(summary['types'][label]['recall'])}"
             for label in ("feces", "urine")
         ]
-        print(name, summary["cases"], *scores, summary["uncertain"], summary["errors"], sep="\t")
+        print(
+            name,
+            summary["cases"],
+            *scores,
+            summary["uncertain"],
+            summary["errors"],
+            format_tokens(summary.get("tokens")),
+            sep="\t",
+        )
 
 
 def _legacy_cases(
@@ -119,8 +179,13 @@ def judge_details(names: list[str]) -> dict[str, dict[str, str | None]]:
     """結果に残す、指定した判定器・モデルと CLI の版。"""
     details: dict[str, dict[str, str | None]] = {}
     for name in names:
-        provider, _, model = name.partition(":")
-        details[name] = {"provider": provider, "model": model, "cli_version": cli_version(provider)}
+        provider, model, effort = parse_judge(name)
+        details[name] = {
+            "provider": provider,
+            "model": model,
+            "effort": effort or None,
+            "cli_version": cli_version(provider),
+        }
     return details
 
 
@@ -141,11 +206,12 @@ def video_benchmark(args: argparse.Namespace, context: CommandContext) -> int:
         cases, excluded, scenes = _legacy_cases(args, context, manifest)
     else:
         (cases, scenes), excluded = _dataset_cases(args, context, dataset), []
+    sheet = sheet_options(args)
     judges = record_runs(parse_judges(args.judge), ClipStore(context.root).judge_runs)
     details = judge_details(list(judges))
     destination.parent.mkdir(parents=True, exist_ok=True)
     with os.fdopen(os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as file:
-        rows, summaries = evaluate(cases, judges, scenes)
+        rows, summaries = evaluate(cases, judges, scenes, sheet)
         report = {
             "version": REPORT_VERSION,
             "created_at": created.isoformat(),
@@ -162,6 +228,7 @@ def video_benchmark(args: argparse.Namespace, context: CommandContext) -> int:
             "track_tray": args.track_tray or config.track_tray_enabled,
             "detect_outside": args.detect_outside or config.detect_outside_enabled,
             "judges": details,
+            "sheet": asdict(sheet),
             "excluded_without_confirmed_label": excluded,
             "cases": rows,
             "summaries": summaries,

@@ -144,6 +144,30 @@ def parse_assessment(
     return Assessment(label, activity, start, end, reason.strip()[:1000], location)
 
 
+@dataclass(frozen=True)
+class SheetOptions:
+    """判定器に渡すコンタクトシートの作り方。既定は監視と同じ。
+
+    判定器の比較で、コマ数や大きさを減らしたときの精度と消費量を比べるために変える。
+    """
+
+    # 取り出すコマ数の上限、1コマの幅の上限（高さは 480:300 の比）、差分の比較画像を付けるか。
+    max_frames: int = 24
+    tile_width: int = 480
+    difference: bool = True
+
+    def __post_init__(self) -> None:
+        if not 2 <= self.max_frames <= 24 or not 120 <= self.tile_width <= 480:
+            raise ValueError("シートのコマ数は2〜24、1コマの幅は120〜480で指定してください")
+
+    @property
+    def tile_height(self) -> float:
+        return self.tile_width * 300 / 480
+
+
+DEFAULT_SHEET = SheetOptions()
+
+
 class TrayNotVisibleError(ValueError):
     """動画の中でトレーの位置を確かめられるフレームが足りない。"""
 
@@ -199,20 +223,26 @@ def write_sheet(
     tray_tracker: TrayTracker | None = None,
     outside_roi: AnyROI | None = None,
     difference_path: Path | None = None,
+    sheet: SheetOptions = DEFAULT_SHEET,
 ) -> list[float]:
-    """動画から最大24コマを取り出してシートにし、各コマの秒数を返す。"""
+    """動画から最大24コマ（sheet で減らせる）を取り出してシートにし、各コマの秒数を返す。"""
     capture = cv2.VideoCapture(str(path))
     tiles: list[Frame] = []
     timestamps: list[float] = []
     mask: Mask | None = None
     count = 0
-    compare = difference_path is not None and tray_tracker is not None and outside_roi is None
+    compare = (
+        sheet.difference
+        and difference_path is not None
+        and tray_tracker is not None
+        and outside_roi is None
+    )
     try:
         fps = capture.get(cv2.CAP_PROP_FPS)
         frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
         if not math.isfinite(fps) or fps <= 0 or frame_count < 2:
             raise ValueError("動画からフレームを取得できません")
-        count = min(frame_count, 24, max(2, math.ceil(duration / 2.5) + 1))
+        count = min(frame_count, sheet.max_frames, max(2, math.ceil(duration / 2.5) + 1))
         for index in np.linspace(0, frame_count - 1, count, dtype=int):
             capture.set(cv2.CAP_PROP_POS_FRAMES, int(index))
             ok, frame = capture.read()
@@ -234,7 +264,7 @@ def write_sheet(
                 annotated = frame.copy()
                 cv2.polylines(annotated, [outline(roi, frame.shape)], True, (0, 255, 0), 2)
                 crop = outside_roi.crop(annotated)
-            scale = min(480 / crop.shape[1], 300 / crop.shape[0])
+            scale = min(sheet.tile_width / crop.shape[1], sheet.tile_height / crop.shape[0])
             height, width = crop.shape[:2]
             tile = cv2.resize(crop, (max(1, round(width * scale)), max(1, round(height * scale))))
             if compare and mask is None:
@@ -297,6 +327,7 @@ def prepare_clip(
     *,
     tray_tracker: TrayTracker | None = None,
     outside_roi: AnyROI | None = None,
+    sheet: SheetOptions = DEFAULT_SHEET,
 ) -> Iterator[PreparedClip | Assessment]:
     """シートと指示を作り、判定の間だけ一時ファイルを保持する。"""
     outside_stay = row.get("source") == "outside_stay"
@@ -314,6 +345,7 @@ def prepare_clip(
                 tray_tracker=tray_tracker,
                 outside_roi=outside_roi,
                 difference_path=difference_path,
+                sheet=sheet,
             )
         except TrayNotVisibleError:
             yield Assessment(
