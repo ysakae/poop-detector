@@ -16,6 +16,8 @@ PRIORITY_ORDER = (
     "CASE c.source WHEN 'outside_stay' THEN 2"
     " WHEN 'dog_visit' THEN 1 WHEN 'dog_enter' THEN 1 WHEN 'dog_exit' THEN 1 ELSE 0 END"
 )
+# 画面に出す、優先度（0・1・2）ごとのきっかけの名前。
+PRIORITY_NAMES = ("検知・滞在の通知", "犬の出入り", "トレー外の滞在")
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,23 @@ class AssessmentStore:
                     (*params, limit),
                 )
             ]
+
+    def waiting_counts(self, since: str) -> tuple[tuple[int, ...], int]:
+        """since 以降の動画のうち、(優先度ごとの未判定の本数, 判定に失敗したままの本数)。"""
+        with self.connect() as db:
+            rows = db.execute(
+                f"""SELECT {PRIORITY_ORDER} AS priority,
+                SUM(a.clip_id IS NULL) AS waiting, SUM(a.error IS NOT NULL) AS failed
+                FROM clips c LEFT JOIN video_assessments a ON a.clip_id=c.id
+                WHERE c.status='ready' AND c.label IS NULL AND c.requested_at>=?
+                GROUP BY priority""",  # noqa: S608
+                (since,),
+            ).fetchall()
+        waiting = {row["priority"]: row["waiting"] for row in rows}
+        return (
+            tuple(waiting.get(priority, 0) for priority in range(len(PRIORITY_NAMES))),
+            sum(row["failed"] for row in rows),
+        )
 
     def save(
         self,

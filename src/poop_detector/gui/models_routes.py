@@ -9,6 +9,7 @@
 """
 
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +23,7 @@ from ..video.benchmark_sets import LABELS, SPLIT_NAMES
 from ..video.clips import CLIP_LABELS, ClipStore
 from ..video.plan_usage import PlanUsageBoard, QuotaWindow
 from ..video.providers import PROVIDER_NAMES, build_judge
+from ..video.review_status import ReviewStatus, review_status
 from .pages import Query, local_time, message_page
 from .routes import Form, audit, first, get, post
 from .templating import render_template
@@ -48,6 +50,37 @@ def readiness(config: Config) -> str | None:
 
 
 PURPOSE_NAMES = {"review": "監視・保存済み動画", "benchmark": "判定器の比較"}
+
+
+def _review_status(status: ReviewStatus) -> dict[str, Any]:
+    """監視中の判定の状況を、画面の文に整える。state は色付きのラベルの種類（ok・warn）。"""
+    limit = f"上限 {status.max_per_hour}回" if status.max_per_hour else "上限なし"
+    if status.capped:
+        scope, scope_state = "上限に達したため、枠が空くまで判定を待っています", "warn"
+    elif status.postponed:
+        scope, scope_state = f"{'、'.join(status.postponed)}を後回しにしています", "warn"
+    else:
+        scope, scope_state = "すべての動画を判定します", "ok"
+    if status.outage_since:
+        judge = f"{local_time(status.outage_since)} から失敗が続いています（停止として記録）"
+        judge_state = "warn"
+    elif status.judge_failures:
+        judge, judge_state = (
+            f"直近の呼び出しが {status.judge_failures}回続けて失敗しています",
+            "warn",
+        )
+    else:
+        judge, judge_state = "続けての失敗はありません", "ok"
+    return {
+        "calls": f"{status.used}回（{limit}）",
+        "scope": scope,
+        "scope_state": scope_state,
+        "waiting": "、".join(f"{name} {count}本" for name, count in status.waiting),
+        "failed": f"{status.failed}本",
+        "judge": judge,
+        "judge_state": judge_state,
+        "fallback": "、".join(status.fallback) or "なし（review.fallback）",
+    }
 
 
 def _judges(handler: "Handler") -> list[dict[str, Any]]:
@@ -237,6 +270,9 @@ def _render(
         providers=list(PROVIDER_NAMES.items()),
         provider=current.review_provider if provider is None else provider,
         model=current.review_model if model is None else model,
+        review_status=_review_status(
+            review_status(app.clips, app.outages, current, datetime.now(UTC))
+        ),
         judges=_judges(handler),
         plans=_plans(app.plan_usage),
         plan_action=PLAN_USAGE,

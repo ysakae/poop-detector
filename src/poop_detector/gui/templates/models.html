@@ -14,6 +14,17 @@
 </tbody></table>
 <p class="note">監視するマシンで、選んだ判定器の CLI にログインしてください。</p>
 </section>
+<section class="settings-section" aria-labelledby="review-status-title"><h3 id="review-status-title">監視中の判定の状況</h3>
+<table><tbody>
+<tr><th scope="row">直近1時間の呼び出し</th><td>{{ review_status.calls }}</td></tr>
+<tr><th scope="row">いま判定する動画</th><td><span class="state state-{{ review_status.scope_state }}">{{ review_status.scope }}</span></td></tr>
+<tr><th scope="row">判定を待つ動画（24時間以内）</th><td>{{ review_status.waiting }}</td></tr>
+<tr><th scope="row">判定に失敗したままの動画（24時間以内）</th><td>{{ review_status.failed }}</td></tr>
+<tr><th scope="row">判定器の呼び出し</th><td><span class="state state-{{ review_status.judge_state }}">{{ review_status.judge }}</span></td></tr>
+<tr><th scope="row">予備の判定器</th><td>{{ review_status.fallback }}</td></tr>
+</tbody></table>
+<p class="note">判定器を呼ぶ回数は、1時間あたりの上限（<code>review.max_per_hour</code>）で抑えています。上限の半分を超えるとトレー外の滞在、4分の3を超えると犬の出入りの動画を後回しにし、余裕が戻ってから判定します。監視を起動し直す前の動画は、<code>video-review</code> で判定してください。</p>
+</section>
 <section class="settings-section" aria-labelledby="choose-title"><h3 id="choose-title">判定器とモデルを選び直す</h3>
 {% if editable %}
 <form method="post" action="{{ page }}" class="settings-form">{{ csrf_field(token) }}<input type="hidden" name="base" value="{{ base }}">
