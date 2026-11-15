@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # 動画の保存要求のきっかけ。dog_visit は短い入退場をまとめた録画で、要求としては受け付けない。
 RequestSource: TypeAlias = Literal[
-    "manual", "detected", "dog_enter", "dog_exit", "early_alert", "outside_stay"
+    "manual", "detected", "dog_enter", "dog_exit", "early_alert", "outside_stay", "toilet_reentry"
 ]
 ClipSource: TypeAlias = RequestSource | Literal["dog_visit"]
 ClipStatus: TypeAlias = Literal[

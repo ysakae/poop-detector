@@ -12,9 +12,11 @@
 """
 
 import logging
+import sqlite3
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -61,6 +63,7 @@ class MonitorNotifier(Protocol):
 
     def send(self) -> bool: ...
     def send_early_alert(self) -> bool: ...
+    def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> bool: ...
 
 
 class Clock(Protocol):
@@ -106,6 +109,11 @@ class MonitorExtension:
 
     def on_frame(self, view: FrameView) -> None:
         """位置合わせと差分の判定を終えたフレームを受け取る。"""
+
+    def on_event(
+        self, db: sqlite3.Connection, event_id: str, view: FrameView, detector: IncrementalDetector
+    ) -> None:
+        """排泄候補を記録した直後のフレームと更新前の基準を受け取る。"""
 
     def log_status(self) -> None:
         """稼働ログ（HEALTH_LOG_SECONDS ごと）に、機能ごとの状態を書く。"""
@@ -407,6 +415,11 @@ class Monitor:
 
     def _record(self, view: FrameView) -> None:
         """イベントを記録し、その跡を通知済み状態にしてから、動画保存と通知へ進む。"""
+
+        def record_details(db: sqlite3.Connection, event_id: str) -> None:
+            for extension in self.extensions:
+                extension.on_event(db, event_id, view, self.detector)
+
         event_id = self.store.record(
             view.raw,
             view.observation.score,
@@ -414,6 +427,7 @@ class Monitor:
             (self.clock.monotonic() - view.tick) * 1000,
             reference=view.crop,
             signature=self.signature,
+            record_details=record_details,
         )
         self.detector.accept(view.crop)
         self.state.machine = self._new_machine()
@@ -495,7 +509,14 @@ def standard_extensions(
             from ..experimental.outside import OutsideWatch
 
             watch = OutsideWatch(roi, outside_roi, config.dog_exit_seconds)
-        extensions.append(DogExtension(dog_observer, roi, config, clock, collector, watch))
+        dog = DogExtension(dog_observer, roi, config, clock, collector, watch)
+        extensions.append(dog)
+        if config.reentry_enabled:
+            from ..features.reentry_extension import ReentryExtension
+
+            if collector is None:
+                raise ValueError("再侵入検知には動画保存が必要です")
+            extensions.append(ReentryExtension(config, dog, notifier, collector))
     return extensions
 
 

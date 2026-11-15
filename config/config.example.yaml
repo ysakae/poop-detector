@@ -77,6 +77,16 @@ dog:
   exit_seconds: 2
   clip_cooldown_seconds: 60
 
+# 排泄後の再侵入。固定トレー・動画保存・登録済みの reentry-layout.json が必要。
+reentry:
+  enabled: false
+  seconds: 2
+  margin: 0.02
+  high_distance: 0.04
+  uncollected_minutes: 30
+  notice: medium
+  quiet_hours: ""
+
 # 動画の自動判定器（features.video_review を有効にして使う）
 review:
   provider: codex   # codex（Codex CLI）、claude（Claude Code CLI）、gemini（Antigravity CLI）

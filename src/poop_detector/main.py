@@ -16,6 +16,7 @@ from .commands import (
     dog_model,
     notify,
     records,
+    reentry,
     review,
     run,
     setup,
@@ -48,6 +49,7 @@ HANDLERS: dict[str, Handler] = {
     "acknowledge": records.acknowledge,
     "missed": records.missed,
     "records": records.records,
+    "reentry": reentry.run,
     "record": records.record,
     "gui": records.gui,
     "setup-dog-model": dog_model.setup_dog_model,
@@ -226,6 +228,7 @@ def parser() -> argparse.ArgumentParser:
     missed.add_argument("--start", required=True)
     missed.add_argument("--end")
     missed.add_argument("--type", choices=EXCRETION_TYPES, default="unspecified")
+    reentry.add_parser(commands)
     commands.add_parser("records", help="確認済みの排便・排尿記録")
     record = commands.add_parser("record", help="目視で確認した排便・排尿を記録")
     record.add_argument("--type", required=True, choices=EXCRETION_TYPES)

@@ -70,7 +70,7 @@ class AssessmentStore:
         きっかけの優先度の高い順、同じ優先度では古い順に返す。max_priority を指定すると、
         それより優先度の低い（数の大きい）きっかけの動画を後回しにする。
         """
-        conditions = ["c.status='ready'", "c.label IS NULL"]
+        conditions = ["c.status='ready'", "c.label IS NULL", "c.source IS NOT 'toilet_reentry'"]
         params: list[object] = []
         if since is not None:
             retried = ",".join("?" * len(retry))

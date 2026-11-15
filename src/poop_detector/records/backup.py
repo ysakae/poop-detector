@@ -56,6 +56,7 @@ ALLOWED = re.compile(
             r"roi\.json",
             r"outside-roi\.json",
             r"activity-layout\.json",
+            r"reentry-layout\.json",
             r"activity-[0-9a-f]{32}\.jpg",
             r"events/[0-9a-f]+\.jpg",
             rf"baseline/{_PART}",
@@ -64,7 +65,7 @@ ALLOWED = re.compile(
         )
     )
 )
-SINGLE_FILES = ("roi.json", "outside-roi.json", "activity-layout.json")
+SINGLE_FILES = ("roi.json", "outside-roi.json", "activity-layout.json", "reentry-layout.json")
 DIRECTORIES = ("baseline", "tray-scenes")
 STABLE_PHASES = ("idle", "applied", "cancelled")
 CHUNK = 1 << 20

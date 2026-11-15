@@ -52,6 +52,7 @@ def data(tmp_path):
     (root / "tray-scenes" / "ab").mkdir(parents=True)
     (root / "tray-scenes" / "ab" / "roi.json").write_text("{}")
     (root / "activity-layout.json").write_text("{}")
+    (root / "reentry-layout.json").write_text("{}")
     (root / f"activity-{'a' * 32}.jpg").write_bytes(b"jpg")
     sqlite3.connect(root / "activity.sqlite3").execute("CREATE TABLE t (x)").connection.commit()
     (root / "clips").mkdir()
@@ -82,6 +83,7 @@ def test_backup_contains_records_and_registrations_but_not_secrets(data, tmp_pat
         "baseline/empty.json",
         "tray-scenes/ab/roi.json",
         "activity-layout.json",
+        "reentry-layout.json",
         f"activity-{'a' * 32}.jpg",
     } <= listed
     assert any(name.startswith("events/") and name.endswith(".jpg") for name in listed)
@@ -135,6 +137,7 @@ def test_restore_keeps_the_previous_data_and_brings_back_the_backup(data, tmp_pa
     assert (preserved / "roi.json").read_text() == '{"x": 99}'
     assert (preserved / ".web-push-vapid.pem").is_file()
     assert (data / "roi.json").read_text() == '{"x": 0}'
+    assert (data / "reentry-layout.json").read_text() == "{}"
     assert (data / "clips" / "one.mp4").is_file()
     notes = [row["note"] for row in Store(data).records()]
     assert notes == ["元のメモ"]
