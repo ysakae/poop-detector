@@ -127,3 +127,13 @@ def test_watchdog_settings(tmp_path):
     assert (config.watchdog_enabled, config.watchdog_minutes) == (False, 15)
     with pytest.raises(ConfigError, match=r"watchdog\.minutes"):
         Config.load(write(tmp_path, "watchdog: {minutes: 0}\n"))
+
+
+def test_review_hourly_cap_defaults_to_twenty_and_rejects_negative_values(tmp_path):
+    assert Config().review_max_per_hour == 20
+    path = tmp_path / "config.yaml"
+    path.write_text("review: {max_per_hour: 0}\n", encoding="utf-8")
+    assert Config.load(path).review_max_per_hour == 0
+    path.write_text("review: {max_per_hour: -1}\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match=r"review.max_per_hour"):
+        Config.load(path)

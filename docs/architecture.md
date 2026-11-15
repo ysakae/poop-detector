@@ -106,6 +106,10 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 `circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`experimental/circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。
 
+### 判定器を呼ぶ回数の上限
+
+監視中（`Review.run` に `since` を渡したとき）は、`review.max_per_hour` を守ります。`Review._waiting` が動画を1本選ぶたびに、直近1時間の呼び出しの回数（`JudgeRunLog.count_since`）を数え直し、`PRIORITY_SHARES` の割合を超えた優先度の動画を後回しにします（`AssessmentStore.pending` の `max_priority`）。後回しにした動画は未判定のまま残り、回数に余裕が戻ると選ばれます。`video-review` と `video-benchmark` には上限をかけませんが、その呼び出しも回数に数えます。
+
 ### 判定器が止まったとき
 
 判定器の呼び出しに失敗したかどうかは `RecordingJudge.failed` で分かります。`Review` は続けて失敗した回数（`judge_failures`）を数え、`ReviewWorker.next_wait` が `retry_delay` で次の判定までの間隔を20秒から最長30分まで倍に伸ばします。呼び出しに失敗した動画は `Review.retries` に覚えておき、監視中に `MAX_RETRIES` 回まで試し直します（メモリー上だけで、監視を起動し直すと引き継ぎません）。動画を読めない、判定の形式が合わないなど、呼び出し以外の失敗は試し直しません。監視中に判定する順番は `clip_reviews.PRIORITY_ORDER` で、検知と滞在の通知が先、トレー外の滞在が最後です。失敗が続いたときの通知は、下の「監視の停止とカメラの不調の見張り」にあります。

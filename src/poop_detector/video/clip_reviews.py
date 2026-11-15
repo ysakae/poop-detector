@@ -9,8 +9,9 @@ from ..records.database import Database
 from ..records.events import utcnow, validate_location
 from .clips import AssessmentRow, ClipRow
 
-# 監視中に判定する順番。排泄の検知と滞在の通知を先に、トレー外の滞在を最後にする。
-# 判定器が止まって動画がたまったあとも、通知につながりやすい動画から判定する。
+# 監視中に判定する順番（きっかけの優先度。0 が最も高い）。排泄の検知と滞在の通知を先に、
+# トレー外の滞在を最後にする。判定器が止まって動画がたまったあとも、通知につながりやすい
+# 動画から判定する。
 PRIORITY_ORDER = (
     "CASE c.source WHEN 'outside_stay' THEN 2"
     " WHEN 'dog_visit' THEN 1 WHEN 'dog_enter' THEN 1 WHEN 'dog_exit' THEN 1 ELSE 0 END"
@@ -59,11 +60,13 @@ class AssessmentStore:
         scene_signature: str | None = None,
         *,
         retry: Sequence[str] = (),
+        max_priority: int | None = None,
     ) -> list[ClipRow]:
         """自動判定を待つ動画。
 
         since を指定すると、それ以降の未判定の動画と retry に挙げた失敗済みの動画を、
-        きっかけの優先度の高い順、同じ優先度では古い順に返す。
+        きっかけの優先度の高い順、同じ優先度では古い順に返す。max_priority を指定すると、
+        それより優先度の低い（数の大きい）きっかけの動画を後回しにする。
         """
         conditions = ["c.status='ready'", "c.label IS NULL"]
         params: list[object] = []
@@ -84,6 +87,9 @@ class AssessmentStore:
         if clip_id is not None:
             conditions.append("c.id=?")
             params.append(clip_id)
+        if max_priority is not None:
+            conditions.append(f"{PRIORITY_ORDER} <= ?")
+            params.append(max_priority)
         order = (
             f"{PRIORITY_ORDER}, c.requested_at ASC" if since is not None else "c.requested_at DESC"
         )
