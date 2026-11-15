@@ -1,6 +1,7 @@
 """トレー外の録画、判定、通知、確定記録を検証する。"""
 
 import json
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -187,3 +188,94 @@ def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path,
         == 5
     )
     assert collector.sources == ["outside_stay"]
+
+
+class StayingDog:
+    """犬がトレーの外にいて、位置を変えるたびに新しい滞在になる状況を作る。"""
+
+    def __init__(self):
+        self.box = (13, 25, 30, 45)
+
+    def update(self, *_):
+        from poop_detector.features.dog import DogState
+
+        boxes = [] if self.box is None else [self.box]
+        return DogState(bool(boxes), False, None, boxes, 1)
+
+    def reset(self):
+        pass
+
+
+class OutsideClips:
+    def __init__(self):
+        self.triggers = []
+        self.accept = True
+        self.now = 0.0
+
+    def trigger(self, *, source):
+        if not self.accept:
+            return None
+        self.triggers.append((source, self.now))
+        return "recording"
+
+
+def outside_extension(tmp_path):
+    from poop_detector.config import Config
+    from poop_detector.detection.monitoring import DogExtension
+    from poop_detector.experimental.outside import OutsideWatch
+
+    tray = ROI(0.4, 0.2, 0.4, 0.5)
+    scope = ROI(0.1, 0.1, 0.8, 0.8)
+    dog, clips = StayingDog(), OutsideClips()
+    clock = SimpleNamespace(monotonic=lambda: clips.now)
+    config = Config(data_dir=str(tmp_path), clip_before_seconds=30, clip_after_seconds=30)
+    extension = DogExtension(dog, tray, config, clock, clips, OutsideWatch(tray, scope, 2))
+    frame = np.full((100, 100, 3), 80, np.uint8)
+
+    def advance(until, *, move_at=()):
+        while clips.now < until:
+            clips.now += 1
+            if clips.now in move_at:
+                # 体の大きさの4割より大きく動くと、別の場所での滞在として数え直す。
+                dog.box = (60, 60, 77, 80) if dog.box[0] == 13 else (13, 25, 30, 45)
+            extension.on_frame(SimpleNamespace(frame=frame, observation=SimpleNamespace(kind="")))
+
+    return extension, clips, advance, dog
+
+
+def test_outside_stays_in_quick_succession_are_recorded_without_overlap(tmp_path):
+    _extension, clips, advance, _dog = outside_extension(tmp_path)
+    # 3秒で最初の録画。10秒・20秒・40秒に場所を変えても、前の録画（前後30秒）と重ねない。
+    advance(100, move_at=(10, 20, 40))
+    assert clips.triggers == [("outside_stay", 3), ("outside_stay", 63)]
+
+
+def test_a_single_outside_stay_is_recorded_once(tmp_path):
+    _extension, clips, advance, _dog = outside_extension(tmp_path)
+    advance(200)
+    assert clips.triggers == [("outside_stay", 3)]
+
+
+def test_outside_stay_after_the_previous_clip_is_recorded_at_once(tmp_path):
+    _extension, clips, advance, _dog = outside_extension(tmp_path)
+    advance(200, move_at=(100,))
+    assert clips.triggers == [("outside_stay", 3), ("outside_stay", 102)]
+
+
+def test_postponed_outside_clip_is_retried_when_the_recorder_is_busy_and_dropped_on_interrupt(
+    tmp_path,
+):
+    extension, clips, advance, dog = outside_extension(tmp_path)
+    advance(20, move_at=(10,))
+    clips.accept = False
+    advance(70)
+    clips.accept = True
+    advance(72)
+    assert clips.triggers == [("outside_stay", 3), ("outside_stay", 71)]
+
+    advance(80, move_at=(75,))
+    # 映像が途切れたら、先に延ばした録画は捨てる。犬がいなくなれば、もう録画しない。
+    extension.on_interrupt()
+    dog.box = None
+    advance(200)
+    assert len(clips.triggers) == 2
