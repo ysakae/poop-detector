@@ -57,7 +57,10 @@ def clip_list_item(
     from .pages import local_time
 
     label = CLIP_LABELS.get(item["label"], "未ラベル")
+    # 人がラベルを付けたものは済み、まだのものは注意、再生できないものは控えめに示す。
+    state = "ok"
     if item["label"] is None:
+        state = "warn" if item["status"] == "ready" else "off"
         if item["review_label"]:
             label = "自動判定の候補 ／ " + CLIP_LABELS[item["review_label"]]
         elif item["review_error"]:
@@ -73,6 +76,8 @@ def clip_list_item(
         "time": local_time(item["requested_at"]),
         "status": STATES.get(item["status"], item["status"]),
         "label": label,
+        "state": state,
+        "thumbnail": item["status"] == "ready" and bool(item["path"]),
     }
 
 

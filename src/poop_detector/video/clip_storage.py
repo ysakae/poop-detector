@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..errors import AlreadyRunningError
+from .thumbnails import thumbnail_path
 
 if TYPE_CHECKING:
     # clips がこのモジュールを読み込むため、型の参照だけにする。
@@ -128,6 +129,8 @@ def remove_video(store: "ClipStore", clip_id: str, before: str) -> bool:
         file = candidate_file(store, row) if row is not None else None
         if file is None or row["status"] != "removing":
             return False
+        # サムネイルを先に消す。途中で止まっても、動画の整理をやり直せば残らない。
+        thumbnail_path(file[0]).unlink(missing_ok=True)
         file[0].unlink(missing_ok=True)
         db.execute("UPDATE clips SET status='removed',path=NULL WHERE id=?", (clip_id,))
     return True

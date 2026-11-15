@@ -10,7 +10,7 @@
 {% endif %}
 <div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav id="clip-list" aria-label="動画一覧">
 {%- for item in items -%}
-<a class="{% if item.active %}active{% endif %}" href="/clips?id={{ item.id }}">{{ item.time }}<small>{{ item.status }} ／ {{ item.label }}</small></a>
+<a class="{% if item.active %}active{% endif %}" href="/clips?id={{ item.id }}"{% if item.active %} aria-current="true"{% endif %}><span class="clip-thumb">{% if item.thumbnail %}<img src="/clip-thumbnail?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon("video") }}{% endif %}</span><span class="clip-text">{{ item.time }}<small>{{ item.status }}</small>{{ chip(item.label, item.state) }}</span></a>
 {%- endfor -%}
 </nav>{% endif %}<article id="clip-detail">
 {% if clip is none %}
