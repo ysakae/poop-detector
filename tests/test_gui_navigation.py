@@ -250,3 +250,26 @@ def test_logout_page_explains_how_to_come_back(gui):
     assert "トークン" not in html
     assert "パスキー" in card
     assert 'href="/"' in card
+
+
+# メニューの操作を助けるスクリプト（#163）。動かなくても、開閉とリンクはそのまま使える。
+def test_menu_script_is_loaded_only_for_signed_in_pages(gui):
+    server, _, _ = gui
+    tag = '<script src="/assets/menu.js" defer></script>'
+    assert tag in page(server, "/", login(server, role="member"))
+    host = {"Host": f"localhost:{server.server_address[1]}"}
+    _, _, body = exchange(server, "GET", "/login", headers=host, auth=False)
+    assert tag not in body.decode()
+
+
+def test_menu_script_is_served_to_signed_in_people(gui):
+    server, _, _ = gui
+    cookie = login(server, role="member")
+    status, headers, body = exchange(server, "GET", "/assets/menu.js", headers=cookie, auth=False)
+    assert status == 200
+    assert headers["Content-Type"] == "text/javascript; charset=utf-8"
+    script = body.decode()
+    # 「その他」は外側を押す・Esc で閉じ、管理のメニューは開いている項目まで送る。
+    for needle in ('".tab-more"', '"Escape"', '".sub-menu"', "scrollLeft"):
+        assert needle in script, needle
+    assert exchange(server, "GET", "/assets/menu.js", auth=False)[0] == 403
