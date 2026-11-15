@@ -11,6 +11,8 @@ from ..timezones import local_now, parse_local, to_local
 from .database import Database
 
 KINDS = {"feeding": "給餌", "sheet": "シート交換"}
+# ホームからの記録で、同じ人の同じ種類の押し直しを二重の記録にしない秒数。
+DOUBLE_TAP_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -92,7 +94,8 @@ def entries(database: Database, day: date) -> list[CareEntry]:
     ]
 
 
-def save_entry(database: Database, entry: CareEntry) -> None:
+def save_entry(database: Database, entry: CareEntry) -> str:
+    """記録を足すか訂正し、その ID を返す。"""
     if entry.kind not in KINDS or entry.at > local_now() or len(entry.note) > 500:
         raise InvalidInputError("種類、日時、メモ（500文字以内）を確認してください")
     food = entry.food.strip() if entry.kind == "feeding" else ""
@@ -107,12 +110,56 @@ def save_entry(database: Database, entry: CareEntry) -> None:
                 (stamp, entry.kind, entry.note, food, amount, entry.id),
             ).rowcount:
                 raise InvalidInputError("訂正する記録が見つかりません")
-        else:
-            db.execute(
-                """INSERT INTO care_entries (id, at, kind, actor, note, food, amount_dg)
-                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (uuid4().hex, stamp, entry.kind, entry.actor, entry.note, food, amount),
-            )
+            return entry.id
+        identifier = uuid4().hex
+        db.execute(
+            """INSERT INTO care_entries (id, at, kind, actor, note, food, amount_dg)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (identifier, stamp, entry.kind, entry.actor, entry.note, food, amount),
+        )
+    return identifier
+
+
+def last_feeding(database: Database) -> tuple[str, int | None] | None:
+    """銘柄か量を入れた直近の給餌の (銘柄, 0.1 g単位の量)。なければ None。"""
+    with database.connect() as db:
+        row = db.execute(
+            """SELECT food, amount_dg FROM care_entries WHERE kind='feeding'
+            AND (food != '' OR amount_dg IS NOT NULL) ORDER BY at DESC, rowid DESC LIMIT 1"""
+        ).fetchone()
+    return (row["food"], row["amount_dg"]) if row else None
+
+
+def feeding_text(food: str, amount_dg: int | None) -> str:
+    """給餌の銘柄と量を、画面に出す1つの文字列にする。"""
+    amount = f"{format_grams(amount_dg)} g" if amount_dg is not None else ""
+    return " ／ ".join(part for part in (food, amount) if part)
+
+
+def quick_entry(database: Database, kind: str, actor: str) -> str | None:
+    """ホームから1回押して記録する。前回と同じ給餌か、シート交換を、いまの時刻で足す。
+
+    記録の ID を返す。同じ人が同じ種類を DOUBLE_TAP_SECONDS 以内に押したときは、足さずに
+    先の記録の ID を返す（押し間違いの二重の記録を防ぐ）。前回の給餌がなければ None。
+    """
+    if kind not in KINDS:
+        raise InvalidInputError("記録する種類を確認してください")
+    now = local_now()
+    since = (now - timedelta(seconds=DOUBLE_TAP_SECONDS)).astimezone(UTC).isoformat()
+    with database.connect() as db:
+        recent = db.execute(
+            """SELECT id FROM care_entries WHERE kind=? AND actor=? AND at >= ?
+            ORDER BY at DESC, rowid DESC LIMIT 1""",
+            (kind, actor, since),
+        ).fetchone()
+    if recent:
+        return str(recent["id"])
+    if kind == "feeding":
+        last = last_feeding(database)
+        if last is None:
+            return None
+        return save_entry(database, CareEntry("", now, kind, actor, "", last[0], last[1]))
+    return save_entry(database, CareEntry("", now, kind, actor, ""))
 
 
 def care_time(value: str) -> datetime:

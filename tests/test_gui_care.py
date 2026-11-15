@@ -134,3 +134,97 @@ def test_day_view_is_one_timeline_with_totals(gui):
     for text in ("給餌", "シート交換", "排尿", "体重", "1,850 g", "25.5 g", "母"):
         assert text in listing, text
     assert listing.count('<svg class="icon"') == 5
+
+
+# ホームから1回押して記録する（#162）。前回と同じ給餌と、シート交換。
+def quick(server, cookie, kind):
+    import re
+    from urllib.parse import urlencode
+
+    from support import exchange
+
+    html = exchange(server, "GET", "/", headers=cookie, auth=False)[2].decode()
+    token = re.search(r'name="csrf" value="([^"]+)"', html)[1]
+    form = {"Content-Type": "application/x-www-form-urlencoded", **cookie}
+    body = urlencode({"kind": kind, "csrf": token})
+    status, headers, _ = exchange(server, "POST", "/care/quick", body, form, auth=False)
+    return status, headers.get("Location", "")
+
+
+def home(server, cookie, path="/"):
+    from support import exchange
+
+    status, _, body = exchange(server, "GET", path, headers=cookie, auth=False)
+    assert status == 200, path
+    return body.decode()
+
+
+def test_home_repeats_the_last_feeding_in_one_tap(gui):
+    import re
+
+    from poop_detector.records.care import CareEntry, entries, save_entry
+    from poop_detector.timezones import local_now, local_today
+
+    server, store, _ = gui
+    mother = login(server, name="母", role="member")
+    earlier = local_now().replace(microsecond=0)
+    save_entry(store.database, CareEntry("", earlier, "feeding", "父", "", "フードA", 305))
+    html = home(server, mother)
+    form = re.search(r'<form method="post" action="/care/quick".*?</form>', html, re.S)[0]
+    assert '<button class="secondary" name="kind" value="feeding">' in form
+    assert "前回と同じごはん" in form
+    assert "フードA" in form
+    assert "30.5 g" in form
+    status, location = quick(server, mother, "feeding")
+    assert status == 303
+    rows = [row for row in entries(store.database, local_today()) if row.kind == "feeding"]
+    assert len(rows) == 2
+    new = next(row for row in rows if row.actor == "母")
+    assert (new.food, new.amount_dg) == ("フードA", 305)
+    assert location == f"/?recorded={new.id}"
+    done = home(server, mother, location)
+    notice = re.search(r'<p class="message" role="status">.*?</p>', done, re.S)[0]
+    assert "ごはん（フードA ／ 30.5 g）を記録しました" in notice
+    assert f'href="/care?day={local_today().isoformat()}&amp;id={new.id}"' in notice
+    # ほかの人や古い ID では、知らせを出さない。
+    assert 'class="message"' not in home(server, mother, "/?recorded=unknown")
+
+
+def test_home_records_a_sheet_change_in_one_tap(gui):
+    from poop_detector.records.care import entries
+    from poop_detector.timezones import local_today
+
+    server, store, _ = gui
+    cookie = login(server, name="母", role="member")
+    assert '<button class="secondary" name="kind" value="sheet">' in home(server, cookie)
+    status, location = quick(server, cookie, "sheet")
+    assert status == 303
+    (row,) = entries(store.database, local_today())
+    assert (row.kind, row.actor) == ("sheet", "母")
+    assert "シート交換を記録しました" in home(server, cookie, location)
+
+
+def test_quick_feeding_without_a_previous_one_opens_the_form(gui):
+    from poop_detector.records.care import entries
+    from poop_detector.timezones import local_today
+
+    server, store, _ = gui
+    cookie = login(server, role="member")
+    assert 'name="kind" value="feeding"' not in home(server, cookie)
+    assert quick(server, cookie, "feeding") == (303, "/care#feeding")
+    assert entries(store.database, local_today()) == []
+
+
+def test_quick_record_ignores_a_double_tap_and_unknown_kinds(gui):
+    from poop_detector.records.care import entries
+    from poop_detector.timezones import local_today
+
+    server, store, _ = gui
+    cookie = login(server, name="母", role="member")
+    first = quick(server, cookie, "sheet")
+    assert quick(server, cookie, "sheet") == first
+    assert len(entries(store.database, local_today())) == 1
+    # 別の人が続けて記録したものは、別の記録として残す。
+    assert quick(server, login(server, name="父", role="member"), "sheet")[0] == 303
+    assert len(entries(store.database, local_today())) == 2
+    assert quick(server, cookie, "weight")[0] == 400

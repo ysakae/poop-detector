@@ -147,7 +147,8 @@ def _review_bar(handler: "Handler", query: Query, key: str) -> dict[str, Any] | 
 def home_page(handler: "Handler", _query: Query) -> None:
     """ホーム（ダッシュボード）。問い合わせ文字列付きの古いリンクは検知の一覧へ移す。"""
     query = urlsplit(handler.path).query
-    if query:
+    recorded = first(_query, "recorded")
+    if query and set(_query) != {"recorded"}:
         # 検知の一覧がホームにあった頃の URL（/?filter=…&id=…）。
         handler.redirect(f"{EVENTS_PAGE}?{query}", status=301)
         return
@@ -156,7 +157,13 @@ def home_page(handler: "Handler", _query: Query) -> None:
     handler.respond(
         200,
         render_home(
-            app.store, app.disk_mb, title=app.title, pending=pending, manual_only=app.manual_only
+            app.store,
+            app.disk_mb,
+            title=app.title,
+            pending=pending,
+            manual_only=app.manual_only,
+            token=handler.csrf,
+            recorded=recorded,
         ),
     )
 

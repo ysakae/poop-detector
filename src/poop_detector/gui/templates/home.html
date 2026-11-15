@@ -1,7 +1,8 @@
 {#- ホーム。主役は確認待ちの1つだけで、今日の数字、1回押して記録する入口、最近の記録を並べる（Issue 141）。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import capacity_panel, chip, empty_state, icon, stat %}
+{% from "_macros.html" import capacity_panel, chip, csrf_field, empty_state, icon, stat %}
 {% block content %}
+{% if recorded %}<p class="message" role="status">{{ recorded.text }}を記録しました。<a href="{{ recorded.url }}">直す</a></p>{% endif %}
 <section class="card home-review" aria-labelledby="review-title">
 <h2 id="review-title">確認待ち</h2>
 {% if pending %}<p class="home-review-count"><strong>{{ pending }}</strong>件</p>
@@ -13,6 +14,11 @@
 <div class="stats">{{ stat("排便", daily.feces, "回", "feces") }}{{ stat("排尿", daily.urine, "回", "urine") }}{{ stat("ごはん", food_grams, "g", "food") }}{% if daily.unspecified %}{{ stat("種類不明", daily.unspecified, "回", "paw") }}{% endif %}</div>
 <p class="note">{{ today }}（{{ timezone }}）の確定記録です。<a href="/records">記録と集計を見る</a></p>
 </section>
+<form method="post" action="/care/quick" class="quick-record" aria-label="1回押して記録する">{{ csrf_field(token) }}
+{% if quick_feed %}<button class="secondary" name="kind" value="feeding">{{ icon("food") }}<span>前回と同じごはん<small>{{ quick_feed }}</small></span></button>{% endif %}
+<button class="secondary" name="kind" value="sheet">{{ icon("sheet") }}<span>シート交換をした</span></button>
+</form>
+<p class="note quick-note">押すと、いまの時刻で記録します。量や時刻を変えるときは、下から開いてください。</p>
 <nav class="quick" aria-label="記録する">
 {%- for href, name, text in quick -%}
 <a href="{{ href }}">{{ icon(name) }}{{ text }}</a>
