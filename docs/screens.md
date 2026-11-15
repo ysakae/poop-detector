@@ -171,6 +171,7 @@ CLI の `test-notification`・`check-camera`・`diagnose` と同じ処理を、�
 - 画面は `templates/_macros.html` の部品を組み合わせて作る：アイコン（`icon`）、大きな数字（`stat`）、状態のラベル（`chip`）、空の状態（`empty_state`）。ボタンは、いちばん大事な操作だけを塗り（`button`）にし、ほかは枠線（`secondary`）か文字（`ghost`）にする
 - `tests/test_themes.py` が、ライトとダークの両方で、文字と背景のコントラストが WCAG 2.2 の AA（本文 4.5:1、大きな文字と部品の境界 3:1）以上か、変数の外で色を直接書いていないかを確かめる
 - 状態は色だけで伝えず、文字でも示す（監視の状態、確認待ちの件数など）
+- 知らせは種類で色を分ける：成功は `message`（緑）、注意は `message message-warn`（黄）、失敗は `message message-error`（赤）、自動判定の候補などの案内は `message message-info`（差し色の線）。`tests/test_themes.py` が、主な知らせが種類に合うクラスを使っているかを確かめる
 - フォントとアイコンは外部から読まない。文字は OS のフォント（見出しは丸ゴシック）。アイコンはこのプロジェクトのために描いた線画で、形を `gui/icons.py` に持ち、インラインの SVG として出す（線の色は文字の色に従う）。肉球の模様と犬の絵は同梱の SVG（`static/paw.svg`・`static/dog.svg`。CSP の `img-src 'self'` のため data: URI は使わない）
 - 監視範囲を描く画面の線と塗り（`static/management.js`・`areas.js`）は、カメラの映像の上に重ねるので、明るさに関わらず同じ色にしている
 

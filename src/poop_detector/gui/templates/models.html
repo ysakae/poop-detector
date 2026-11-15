@@ -35,7 +35,7 @@
 <p><button>保存</button></p>
 </form>
 <p class="note">設定ファイルの review の値だけを書き換えます。動いている監視（run）は、次の動画の判定から反映します。新しい判定器を使えない（未ログインなど）ときは、前の判定器のまま続けます。</p>
-{% else %}<p class="message">設定ファイルの場所が分からないため、表示だけです。</p>{% endif %}
+{% else %}<p class="message message-warn">設定ファイルの場所が分からないため、表示だけです。</p>{% endif %}
 </section>
 <section class="settings-section" aria-labelledby="usage-title"><h3 id="usage-title">これまでの判定</h3>
 {% if judges %}

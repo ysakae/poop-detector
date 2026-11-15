@@ -46,6 +46,10 @@ button,a.button{font:inherit;font-weight:600;padding:11px 20px;border:1px solid 
 a.button{display:inline-block;text-decoration:none}
 button.secondary,a.button.secondary{background:var(--surface);color:var(--text);border-color:var(--border-strong)}button.ghost,a.button.ghost{background:none;color:var(--link);border-color:transparent;padding-inline:8px}button:hover,a.button:hover{filter:brightness(.94)}button:disabled{cursor:not-allowed;opacity:.6}
 .message,.saved{background:var(--success-bg);padding:12px;margin-bottom:16px;border-left:4px solid var(--success-border);border-radius:var(--radius-small)}.message-error,.error{background:var(--error-bg);padding:12px;margin-bottom:16px;border-left:4px solid var(--error-border);border-radius:var(--radius-small)}
+/* 知らせの種類：成功は message、注意は message-warn、失敗は message-error、判定の候補などの案内は message-info。
+   色だけに頼らず、文言でも種類が分かるように書く。 */
+.message-warn{background:var(--warn-bg);color:var(--warn-text);border-left-color:var(--warn-border)}.message-warn a{color:var(--warn-text)}
+.message-info{background:var(--surface-2);border-left-color:var(--primary)}
 ul.message,ul.message-error{padding-left:34px}
 .capacity-warning{background:var(--warn-bg);color:var(--warn-text);padding:12px;border-left:4px solid var(--warn-border);border-radius:var(--radius-small)}
 details{margin-top:24px;padding:20px}summary{cursor:pointer;font-weight:bold}details form{margin-top:18px}.empty{padding:50px 24px;text-align:center}
