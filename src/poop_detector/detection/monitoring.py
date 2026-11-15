@@ -147,9 +147,13 @@ class DogExtension(MonitorExtension):
         self.collector, self.outside_watch = collector, outside_watch
         self.state: DogState | None = None
         self.clip_times: dict[DogTransition, float] = {}
+        # トレー外の滞在を最後に録画した時刻と、前の録画と重ねないよう先に延ばした録画の時刻。
+        self.outside_clip_at = float("-inf")
+        self.outside_due: float | None = None
 
     def on_interrupt(self) -> None:
         self.observer.reset()
+        self.outside_due = None
         if self.outside_watch is not None:
             self.outside_watch.reset()
 
@@ -158,16 +162,34 @@ class DogExtension(MonitorExtension):
         state = self.state = self.observer.update(view.frame, self.roi, now)
         if self.outside_watch is not None:
             boxes = [] if state.error else state.boxes
-            if (
-                self.outside_watch.update(boxes, view.frame.shape, now)
-                and self.collector is not None
-                and self.collector.trigger(source="outside_stay") is not None
-            ):
-                self.outside_watch.recorded = True
+            self._record_outside(self.outside_watch.update(boxes, view.frame.shape, now), now)
         # 推論に失敗した間も、犬がいる可能性があるので判定を保留する。
         if state.error or state.on_roi:
             view.observation.kind = "occupied"
         self._record_transition(state)
+
+    def _record_outside(self, staying: bool, now: float) -> None:
+        """トレー外の滞在を録画する。前の録画と時間が重なるときは、重ならない時刻まで延ばす。
+
+        犬が少し動くたびに新しい滞在になるので、そのたびに録画すると同じ場面の動画が
+        何本もでき、判定器を何度も呼ぶことになる。延ばした録画は前の録画の直後から始まるので、
+        滞在の間の映像は途切れない。延ばしている間の滞在は、その1本にまとめる。
+        """
+        if self.collector is None or self.outside_watch is None:
+            return
+        if staying:
+            self.outside_watch.recorded = True
+            if self.outside_due is None:
+                spacing = self.config.clip_before_seconds + self.config.clip_after_seconds
+                self.outside_due = max(now, self.outside_clip_at + spacing)
+        # 同時処理数を超えて録画できなかったときは、次のフレームでやり直す。
+        if (
+            self.outside_due is not None
+            and now >= self.outside_due
+            and self.collector.trigger(source="outside_stay") is not None
+        ):
+            self.outside_clip_at = now
+            self.outside_due = None
 
     def _record_transition(self, state: "DogState") -> None:
         """入場・退場の前後を、種類ごとに dog_clip_cooldown_seconds の間隔で録画する。"""
