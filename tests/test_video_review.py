@@ -596,3 +596,17 @@ def test_worker_waits_longer_only_for_judge_failures(tmp_path):
     assert worker.next_wait(0, 1) == 20
     review.judge_failures = 4
     assert worker.next_wait(0, 1) == 160
+
+
+def test_worker_reports_judge_failures_to_the_watchdog(tmp_path):
+    store = ClipStore(tmp_path)
+    judge = FlakyJudge()
+    review = flaky_review(store, judge)
+    seen = []
+    worker = review.watch(SimpleNamespace(observe=seen.append))
+    ready(store, datetime.now(UTC))
+    worker.poll_once()
+    worker.poll_once()
+    judge.down = False
+    worker.poll_once()
+    assert seen == [1, 2, 0]

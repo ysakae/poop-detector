@@ -1,6 +1,6 @@
-"""監視の停止とカメラの不調の履歴（outages テーブル）と、通知の重複を防ぐ状態遷移。
+"""監視の停止・カメラの不調・判定器の停止の履歴（outages テーブル）と、通知の重複を防ぐ状態遷移。
 
-停止は種類（monitor・camera）ごとに続いている行を1つまで持つ（部分一意インデックス）。
+停止は種類（monitor・camera・judge）ごとに続いている行を1つまで持つ（部分一意インデックス）。
 同じデータを2つの見張りが見ていても、行を作った側だけが停止を知らせ、行を閉じた側だけが
 復旧を知らせるので、同じ停止で通知を繰り返さない。
 """
@@ -13,9 +13,9 @@ from typing import Literal, Protocol, get_args
 
 from ..records.database import Database
 
-OutageKind = Literal["monitor", "camera"]
+OutageKind = Literal["monitor", "camera", "judge"]
 # 画面に出す種類の名前。
-OUTAGE_KINDS: dict[str, str] = {"monitor": "監視", "camera": "カメラ"}
+OUTAGE_KINDS: dict[str, str] = {"monitor": "監視", "camera": "カメラ", "judge": "判定器"}
 
 
 def utc_stamp(epoch: float) -> str:

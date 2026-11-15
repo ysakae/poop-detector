@@ -1,11 +1,13 @@
-"""監視の停止とカメラの不調を管理者に知らせる見張り。
+"""監視の停止・カメラの不調・判定器の停止を管理者に知らせる見張り。
 
-見張りは2つに分ける。
+見張りは3つに分ける。
 
 - カメラの不調: 監視自身が、映像の届かない時間を CameraWatchdogExtension で数える。
 - 監視の停止: 止まった監視は自分で知らせられないので、GUI のサーバーが MonitorWatchdog で
   監視のハートビート（LivePreview.pulse のファイル）を見張る。監視が自分で終了したとき
   （LivePreview.mark_stopped）と、一度も動かしていないときは知らせない。
+- 判定器の停止: 動画の自動判定のスレッド（video.review.ReviewWorker）が、判定器の呼び出しが
+  続けて失敗した回数を JudgeWatchdog に伝える。
 """
 
 import logging
@@ -53,6 +55,35 @@ class CameraWatchdogExtension(MonitorExtension):
             self.tracker.observe(None, now)
             return
         self.tracker.observe(now - (tick - self.last_frame), now)
+
+
+class JudgeWatchdog:
+    """判定器の呼び出しが失敗し続けたら知らせる（利用上限に達したときなど）。
+
+    1回きりの失敗で知らせないよう、MIN_FAILURES 回続けて失敗し、かつ最初の失敗から
+    見張りのしきい値（watchdog.minutes）が過ぎたときに停止とする。
+    """
+
+    MIN_FAILURES = 3
+
+    def __init__(self, tracker: OutageTracker, wall: Callable[[], float] = time.time) -> None:
+        self.tracker, self.wall = tracker, wall
+        self.down_since: float | None = None
+        # 前回の監視が残した停止は、知らせずに閉じる（監視を止めていた時間を停止と数えない）。
+        tracker.log.close_open(tracker.kind, utc_stamp(wall()))
+        tracker.current = None
+
+    def observe(self, judge_failures: int) -> None:
+        """judge_failures は、判定器の呼び出しが続けて失敗している回数（成功すると 0）。"""
+        now = self.wall()
+        if judge_failures == 0:
+            self.down_since = None
+            self.tracker.observe(None, now)
+            return
+        if self.down_since is None:
+            self.down_since = now
+        if judge_failures >= self.MIN_FAILURES:
+            self.tracker.observe(self.down_since, now)
 
 
 class MonitorWatchdog:

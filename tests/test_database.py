@@ -9,6 +9,7 @@ import sqlite3
 import numpy as np
 import pytest
 
+from poop_detector.features.outages import OutageLog
 from poop_detector.records.database import (
     LATEST_VERSION,
     MIGRATIONS,
@@ -331,3 +332,30 @@ def test_judge_runs_migration_counts_old_assessments_once(tmp_path):
         db.execute(
             "INSERT INTO judge_runs (provider,purpose,ran_at,failed) VALUES ('codex','x','t',0)"
         )
+
+
+def test_version_15_database_accepts_judge_outages_and_keeps_old_ones(tmp_path):
+    """版15の停止の履歴を残したまま、停止の種類に判定器（judge）を加える。"""
+    path = tmp_path / "events.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:15]:
+            migration(db)
+        db.execute("PRAGMA user_version = 15")
+        db.execute(
+            "INSERT INTO outages (kind, started_at, notified_at, ended_at) VALUES"
+            " ('camera', '2026-11-01T00:00:00+00:00', '2026-11-01T00:05:00+00:00',"
+            " '2026-11-01T01:00:00+00:00'), ('monitor', '2026-11-02T00:00:00+00:00', NULL, NULL)"
+        )
+    log = OutageLog(Database(path))
+
+    assert version(path) == LATEST_VERSION
+    assert [(o.id, o.kind, o.notified_at, o.ended_at) for o in log.recent()] == [
+        (2, "monitor", None, None),
+        (1, "camera", "2026-11-01T00:05:00+00:00", "2026-11-01T01:00:00+00:00"),
+    ]
+    judge, created = log.begin("judge", "2026-11-03T00:00:00+00:00")
+    assert (judge.id, created) == (3, True)
+    # 続いている停止は、種類ごとに1行までのまま。
+    assert log.begin("monitor", "2026-11-03T00:00:00+00:00")[1] is False
+    with sqlite3.connect(path) as db, pytest.raises(sqlite3.IntegrityError):
+        db.execute("INSERT INTO outages (kind, started_at) VALUES ('other', '2026-11-03')")

@@ -69,12 +69,21 @@ class ToiletNotifier:
         return self._display(message)
 
     def send_outage(self, kind: str, since: datetime) -> bool:
-        """監視の停止（monitor）かカメラの不調（camera）を知らせる。since は始まった時刻。"""
+        """監視の停止（monitor）、カメラの不調（camera）、判定器の停止（judge）を知らせる。
+
+        since は始まった時刻。
+        """
         start = since.astimezone().strftime("%m/%d %H:%M")
         if kind == "monitor":
             message = (
                 f"{self.owner}トイレの監視が{start}から止まっています。"
                 "監視するマシンを確認してください。"
+            )
+        elif kind == "judge":
+            # 差分だけの通知は抑えたままなので、届かなくなる通知を伝える。
+            message = (
+                f"{start}から動画の自動判定が失敗し続けています。この間、排泄の通知は届きません。"
+                "判定器の利用上限とログインを確認してください。"
             )
         else:
             message = (
@@ -88,6 +97,11 @@ class ToiletNotifier:
         duration = format_duration(seconds)
         if kind == "monitor":
             message = f"{self.owner}トイレの監視が再開しました。{duration}止まっていました。"
+        elif kind == "judge":
+            message = (
+                f"動画の自動判定が再開しました。{duration}止まっていました。"
+                "この間の動画を順に判定します。"
+            )
         else:
             message = f"カメラの映像が戻りました。{duration}届いていませんでした。"
         return self.enabled and self._deliver_watchdog(message)

@@ -331,6 +331,32 @@ def migrate_to_v15(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v16(db: sqlite3.Connection) -> None:
+    """停止の種類に judge（判定器の停止）を加える。
+
+    SQLite は CHECK 制約を書き換えられないので、表を作り直して行をすべて写す。
+    """
+    db.execute("DROP INDEX outages_by_start")
+    db.execute("DROP INDEX outages_open")
+    db.execute("ALTER TABLE outages RENAME TO outages_before_v16")
+    db.execute(
+        """CREATE TABLE outages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL CHECK (kind IN ('monitor', 'camera', 'judge')),
+            started_at TEXT NOT NULL,
+            notified_at TEXT,
+            ended_at TEXT
+        )"""
+    )
+    db.execute(
+        """INSERT INTO outages (id, kind, started_at, notified_at, ended_at)
+        SELECT id, kind, started_at, notified_at, ended_at FROM outages_before_v16"""
+    )
+    db.execute("DROP TABLE outages_before_v16")
+    db.execute("CREATE INDEX outages_by_start ON outages(started_at)")
+    db.execute("CREATE UNIQUE INDEX outages_open ON outages(kind) WHERE ended_at IS NULL")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -348,6 +374,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v13,
     migrate_to_v14,
     migrate_to_v15,
+    migrate_to_v16,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

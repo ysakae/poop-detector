@@ -30,7 +30,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `video.clip_reviews.CirclingReviews`：旋回候補
   - `video.clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
   - `video.benchmark_candidates.BenchmarkCandidates`：判定器の比較に使う評価の候補と条件のタグ（`benchmark_candidates`）
-  - `features.outages.OutageLog`：監視の停止とカメラの不調の履歴（`outages`）
+  - `features.outages.OutageLog`：監視の停止・カメラの不調・判定器の停止の履歴（`outages`）
   - `video.clip_storage`：保持期間・保護・整理
 
   接続とスキーマは `records/database.py` が管理します。スキーマの版を `PRAGMA user_version` に記録し、開くときに未適用の移行処理を順に適用します（版管理を入れる前のデータベースは版0として扱い、版1への移行でいまの形にそろえます）。
@@ -108,7 +108,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 ### 判定器が止まったとき
 
-判定器の呼び出しに失敗したかどうかは `RecordingJudge.failed` で分かります。`Review` は続けて失敗した回数（`judge_failures`）を数え、`ReviewWorker.next_wait` が `retry_delay` で次の判定までの間隔を20秒から最長30分まで倍に伸ばします。呼び出しに失敗した動画は `Review.retries` に覚えておき、監視中に `MAX_RETRIES` 回まで試し直します（メモリー上だけで、監視を起動し直すと引き継ぎません）。動画を読めない、判定の形式が合わないなど、呼び出し以外の失敗は試し直しません。監視中に判定する順番は `clip_reviews.PRIORITY_ORDER` で、検知と滞在の通知が先、トレー外の滞在が最後です。
+判定器の呼び出しに失敗したかどうかは `RecordingJudge.failed` で分かります。`Review` は続けて失敗した回数（`judge_failures`）を数え、`ReviewWorker.next_wait` が `retry_delay` で次の判定までの間隔を20秒から最長30分まで倍に伸ばします。呼び出しに失敗した動画は `Review.retries` に覚えておき、監視中に `MAX_RETRIES` 回まで試し直します（メモリー上だけで、監視を起動し直すと引き継ぎません）。動画を読めない、判定の形式が合わないなど、呼び出し以外の失敗は試し直しません。監視中に判定する順番は `clip_reviews.PRIORITY_ORDER` で、検知と滞在の通知が先、トレー外の滞在が最後です。失敗が続いたときの通知は、下の「監視の停止とカメラの不調の見張り」にあります。
 
 ### 判定器の使用量
 
@@ -118,12 +118,13 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 ## 監視の停止とカメラの不調の見張り
 
-止まった監視は自分で知らせられないので、見張り役を2つに分けています（`features/watchdog.py`）。
+止まった監視は自分で知らせられないので、見張り役を分けています（`features/watchdog.py`）。
 
 - カメラの不調は、監視ループの拡張 `CameraWatchdogExtension` が、映像の届かない時間で判断します。拡張の呼び出しが `PAUSE_SECONDS` より空いたとき（トレー交換の保留）は数え直します。`run` はトレーを交換して拡張を作り直すときも、この拡張を残します。
 - 監視の停止は、GUI のサーバーの別スレッド（`watching`）で `MonitorWatchdog.check` が、ハートビートの更新時刻で判断します。`gui` と `run --gui` のどちらでも動き、`commands/context.monitor_watchdog` が準備します。
+- 判定器の停止は、動画の自動判定のスレッド（`ReviewWorker.poll_once`）が、判定器の呼び出しが続けて失敗した回数を `JudgeWatchdog.observe` に伝えます。`MIN_FAILURES` 回続けて失敗し、最初の失敗からしきい値が過ぎたら停止とします。この間も差分だけの通知は抑えたままです。
 
-どちらも `features/outages.OutageTracker` が、停止が `watchdog.minutes` 続いたら一度だけ知らせ、戻ったら長さと合わせて知らせます。続いている停止は `outages` テーブルに種類ごとに1行まで（部分一意インデックス）で、行を作った見張りだけが停止を、行を閉じた見張りだけが復旧を知らせます。GUI を開き直したり、2つの GUI が同じデータを見ていたりしても、同じ停止で通知を繰り返しません。通知の文面は `ToiletNotifier.send_outage`・`send_recovery` にあり、`_deliver_watchdog` で送ります。既定はトイレの通知と同じ送り先で、`WebPushNotifier` は受け取りを選んだ管理者（`users.push_watchdog`）だけに送ります。
+いずれも `features/outages.OutageTracker` が、停止が `watchdog.minutes` 続いたら一度だけ知らせ、戻ったら長さと合わせて知らせます。続いている停止は `outages` テーブルに種類ごとに1行まで（部分一意インデックス）で、行を作った見張りだけが停止を、行を閉じた見張りだけが復旧を知らせます。GUI を開き直したり、2つの GUI が同じデータを見ていたりしても、同じ停止で通知を繰り返しません。通知の文面は `ToiletNotifier.send_outage`・`send_recovery` にあり、`_deliver_watchdog` で送ります。既定はトイレの通知と同じ送り先で、`WebPushNotifier` は受け取りを選んだ管理者（`users.push_watchdog`）だけに送ります。
 
 ## 通知先
 

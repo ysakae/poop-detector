@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..features.tray_tracking import TrayTracker
+    from ..features.watchdog import JudgeWatchdog
     from ..notifications import ToiletNotifier
     from ..video.clip_reviews import Assessment
     from ..video.clips import ClipRow
@@ -183,7 +184,7 @@ def watch(
                 notifier,
                 judge_source(args.config, config, judge),
             )
-            stack.enter_context(review.watch())
+            stack.enter_context(review.watch(judge_watchdog(context, notifier)))
         if args.gui:
             # 同じプロセスの GUI からも、監視ループが止まっていないかを見張る。
             stack.enter_context(monitor_watchdog(context, notifier))
@@ -260,6 +261,15 @@ def watch(
         # 自分で終了したことを残し、GUI の見張りが停止として知らせないようにする。
         preview.mark_stopped()
     return 0
+
+
+def judge_watchdog(context: CommandContext, notifier: "ToiletNotifier") -> "JudgeWatchdog | None":
+    """判定器の呼び出しが watchdog.minutes 失敗し続けたら知らせる見張り（無効なら None）。"""
+    if not context.config.watchdog_enabled:
+        return None
+    from ..features.watchdog import JudgeWatchdog
+
+    return JudgeWatchdog(outage_tracker(context, "judge", notifier))
 
 
 def camera_watchdog(context: CommandContext, notifier: "ToiletNotifier") -> list[MonitorExtension]:
