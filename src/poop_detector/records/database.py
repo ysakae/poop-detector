@@ -357,6 +357,15 @@ def migrate_to_v16(db: sqlite3.Connection) -> None:
     db.execute("CREATE UNIQUE INDEX outages_open ON outages(kind) WHERE ended_at IS NULL")
 
 
+def migrate_to_v17(db: sqlite3.Connection) -> None:
+    """判定器の呼び出しごとのトークン数（CLI が出すときだけ。出さなければ NULL）。
+
+    input_tokens はキャッシュから読んだ分（cached_tokens）を含む入力の合計。
+    """
+    for column in ("input_tokens", "cached_tokens", "output_tokens"):
+        db.execute(f"ALTER TABLE judge_runs ADD COLUMN {column} INTEGER")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -375,6 +384,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v14,
     migrate_to_v15,
     migrate_to_v16,
+    migrate_to_v17,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

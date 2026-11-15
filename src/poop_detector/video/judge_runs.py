@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..records.database import Database
+from .token_usage import TokenUsage
 
 if TYPE_CHECKING:
     from .review import VideoJudge
@@ -39,6 +40,11 @@ class JudgeRunUsage:
     failures: int
     last_at: str
     last_failed: bool
+    # 直近30日のうち、CLI がトークン数を出した呼び出しの回数と、その合計。
+    measured: int = 0
+    input_tokens: int = 0
+    cached_tokens: int = 0
+    output_tokens: int = 0
 
 
 def _boundaries(now: datetime) -> tuple[str, str, str, str]:
@@ -67,15 +73,25 @@ class JudgeRunLog:
         *,
         failed: bool,
         at: datetime | None = None,
+        usage: TokenUsage | None = None,
     ) -> None:
         if purpose not in PURPOSES:
             raise ValueError(f"判定器の用途は {'、'.join(PURPOSES)} のいずれかです")
         stamp = (at or datetime.now(UTC)).astimezone(UTC).isoformat()
         with self.connect() as db:
             db.execute(
-                "INSERT INTO judge_runs (provider, model, purpose, ran_at, failed)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (provider, model, purpose, stamp, int(failed)),
+                "INSERT INTO judge_runs (provider, model, purpose, ran_at, failed,"
+                " input_tokens, cached_tokens, output_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    provider,
+                    model,
+                    purpose,
+                    stamp,
+                    int(failed),
+                    usage.input_tokens if usage else None,
+                    usage.cached_tokens if usage else None,
+                    usage.output_tokens if usage else None,
+                ),
             )
 
     def count_since(self, since: datetime) -> int:
@@ -109,11 +125,15 @@ class JudgeRunLog:
                 SUM(julianday(ran_at) >= julianday(?)) AS last_30_days,
                 SUM(julianday(ran_at) >= julianday(?)) AS this_month,
                 COUNT(*) AS total, SUM(failed) AS failures, MAX(ran_at) AS last_at,
+                SUM(input_tokens IS NOT NULL AND julianday(ran_at) >= julianday(?)) AS measured,
+                TOTAL(CASE WHEN julianday(ran_at) >= julianday(?) THEN input_tokens END) AS input,
+                TOTAL(CASE WHEN julianday(ran_at) >= julianday(?) THEN cached_tokens END) AS cached,
+                TOTAL(CASE WHEN julianday(ran_at) >= julianday(?) THEN output_tokens END) AS output,
                 (SELECT b.failed FROM judge_runs b
                  WHERE b.provider IS a.provider AND b.model IS a.model AND b.purpose=a.purpose
                  ORDER BY b.ran_at DESC, b.id DESC LIMIT 1) AS last_failed
                 FROM judge_runs a GROUP BY provider, model, purpose ORDER BY last_at DESC""",
-                (today, week, month_window, month),
+                (today, week, month_window, month, *[month_window] * 4),
             ).fetchall()
         return [
             JudgeRunUsage(
@@ -128,6 +148,10 @@ class JudgeRunLog:
                 row["failures"],
                 row["last_at"],
                 bool(row["last_failed"]),
+                row["measured"],
+                int(row["input"]),
+                int(row["cached"]),
+                int(row["output"]),
             )
             for row in rows
         ]
@@ -170,8 +194,16 @@ class RecordingJudge:
         return output
 
     def _record(self, *, failed: bool) -> None:
+        # トークン数は、出せる判定器だけが last_usage に置く。
+        usage = getattr(self.inner, "last_usage", None)
         try:
-            self.log.record(self.provider, self.model, self.purpose, failed=failed)
+            self.log.record(
+                self.provider,
+                self.model,
+                self.purpose,
+                failed=failed,
+                usage=usage if isinstance(usage, TokenUsage) else None,
+            )
         except sqlite3.Error:
             # 使用量の記録が書けなくても、判定そのものは続ける。
             logger.warning("判定器の呼び出しを記録できませんでした（%s）", self.provider)

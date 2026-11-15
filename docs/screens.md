@@ -125,6 +125,10 @@ CLI の `test-notification`・`check-camera`・`diagnose` と同じ処理を、�
 
 ![これまでの判定とプランの使用量（人工のデータ）](images/label-gui-judge-usage.jpg)
 
+「これまでの判定」には、直近30日の1回の呼び出しあたりのトークン数の平均（入力、そのうちキャッシュから読んだ分、出力）も出します。CLI が数を出す Codex CLI と Claude Code CLI の呼び出しだけが対象で、Antigravity CLI は「―」です。入力には、CLI が自動で足す指示の分も含みます。
+
+![1回あたりのトークン数（人工のデータ）](images/label-gui-judge-tokens.jpg)
+
 ![判定器・モデルの比較と録画ごとの回答（人工のデータ）](images/label-gui-benchmark-answers.jpg)
 
 ![評価セットの件数と欠損（人工のデータ）](images/label-gui-benchmark-datasets.jpg)

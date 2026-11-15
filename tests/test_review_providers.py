@@ -10,6 +10,7 @@ from poop_detector.commands.context import CommandError
 from poop_detector.commands.review import ready_judge
 from poop_detector.config import Config
 from poop_detector.video.providers import build_judge
+from poop_detector.video.token_usage import TokenUsage
 
 SCHEMA = {"type": "object", "properties": {"label": {"type": "string"}}, "required": ["label"]}
 RESULT = {"label": "none"}
@@ -45,7 +46,12 @@ def test_claude_cli_passes_two_images_and_schema_without_credentials(tmp_path, m
             "ZGlmZmVyZW5jZXM=",
         ]
         assert content[-1] == {"type": "text", "text": "指示"}
-        response = {"type": "result", "subtype": "success", "structured_output": RESULT}
+        response = {
+            "type": "result",
+            "subtype": "success",
+            "structured_output": RESULT,
+            "usage": {"input_tokens": 20, "cache_read_input_tokens": 5000, "output_tokens": 90},
+        }
         stdout = b'{"type":"system","subtype":"init"}\n' + json.dumps(response).encode() + b"\n"
         return subprocess.CompletedProcess(args, 0, stdout)
 
@@ -53,6 +59,8 @@ def test_claude_cli_passes_two_images_and_schema_without_credentials(tmp_path, m
     judge = ready_judge(Config(review_provider="claude", review_model="sonnet"))
     assert judge.name == "Claude Code CLI"
     assert judge.judge(tmp_path, "指示", ["frames.jpg", "differences.jpg"], SCHEMA) == RESULT
+    # 結果の usage から、キャッシュの分を含む入力と出力のトークン数を残す。
+    assert judge.last_usage == TokenUsage(5020, 5000, 90)
 
 
 @pytest.mark.parametrize(("provider", "command"), [("claude", "claude"), ("gemini", "agy")])

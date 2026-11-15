@@ -120,6 +120,8 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 判定の台帳（`video_assessments`）は動画1本につき1行で、失敗した判定は再試行で上書きされるため、CLI を呼んだ回数は数えられません。そこで `video.judge_runs.RecordingJudge` が判定器を包み、`judge` を呼ぶたびに `judge_runs` へ1行を追記します。監視と `video-review`（`Review._run`、用途 `review`）と、`video-benchmark`（`commands/benchmark.record_runs`、用途 `benchmark`）の両方で記録します。比較は運用の判定・ラベルを書き換えませんが、この記録だけは残します。版15への移行では、それまでの判定を台帳の1行につき1回として写します。
 
+トークン数は、CLI が出すときだけ同じ行に残します（`video/token_usage.py`。版17で `input_tokens`・`cached_tokens`・`output_tokens` の列を足した）。Codex CLI は `codex exec --json` の `turn.completed`、Claude Code CLI は結果の `usage` から、型と範囲を確かめた数だけを取り出します。判定器は直近の呼び出しの数を `last_usage` に置き、`RecordingJudge` が読んで記録します。`input_tokens` は、キャッシュから読んだ分（`cached_tokens`）を含む入力の合計にそろえています。
+
 サブスクリプションの5時間・週間の消費割合は保存せず、管理 › 判定器とモデルで押したときだけ `video.plan_usage.PlanUsageBoard` が各 CLI に問い合わせ、GUI のメモリーに置きます。どの CLI もモデルを呼ばない方法で問い合わせます（Codex CLI は `codex app-server` の `account/rateLimits/read`、Claude Code CLI は `claude --print /usage --max-turns 0` の表示、Antigravity CLI は `agy --print /usage --output-format json`）。型と範囲を確かめた割合と時刻だけを取り出し、アカウントの ID や応答の本文は持ちません。形が合わない版は「不明」と示します。
 
 ## 監視の停止とカメラの不調の見張り
