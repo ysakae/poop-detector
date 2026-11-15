@@ -287,6 +287,14 @@ SETTINGS: tuple[Setting, ...] = (
         "英数字で始まるモデル名（空なら Codex の既定）",
     ),
     Setting(
+        "review_max_per_hour",
+        "review",
+        "max_per_hour",
+        int,
+        _number(0, 1000),
+        "0〜1000 の整数（監視中に判定器を呼ぶ1時間あたりの上限。0 で上限なし）",
+    ),
+    Setting(
         "video_review_enabled",
         "features",
         "video_review",
@@ -434,6 +442,7 @@ class Config:
     early_alert_cooldown_seconds: float = 30
     review_provider: str = "codex"
     review_model: str = ""
+    review_max_per_hour: int = 20
     video_review_enabled: bool = False
     early_alert_enabled: bool = False
     track_tray_enabled: bool = False

@@ -610,3 +610,89 @@ def test_worker_reports_judge_failures_to_the_watchdog(tmp_path):
     judge.down = False
     worker.poll_once()
     assert seen == [1, 2, 0]
+
+
+def sourced(store, when, *sources):
+    return [
+        ready(store, when + timedelta(seconds=offset), source=source)
+        for offset, source in enumerate(sources)
+    ]
+
+
+def judged(store):
+    with store.store.connect() as db:
+        return {row["clip_id"] for row in db.execute("SELECT clip_id FROM video_assessments")}
+
+
+def test_hourly_cap_stops_live_review_until_the_window_moves(tmp_path, caplog):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    ids = sourced(store, when, "detected", "detected", "detected")
+    clock = [when + timedelta(minutes=1)]
+    judge = FlakyJudge()
+    judge.down = False
+    review = Review(
+        store,
+        asking(FEEDING),
+        judges=FixedJudge(JudgeChoice(judge, "codex", None)),
+        max_per_hour=2,
+        now=lambda: clock[0],
+    )
+
+    assert review.run(limit=10, since=when.isoformat()) == (2, 0)
+    with caplog.at_level("WARNING"):
+        assert review.run(limit=10, since=when.isoformat()) == (0, 0)
+        assert review.run(limit=10, since=when.isoformat()) == (0, 0)
+    # 上限に達したことは、状態が変わったときに一度だけ知らせる。
+    warnings = [record.message for record in caplog.records if record.levelname == "WARNING"]
+    assert warnings == [
+        "判定器の呼び出しが1時間あたりの上限（2回）に達しました。枠が空くまで判定を待ちます"
+    ]
+    assert judged(store) == set(ids[:2])
+    clock[0] += timedelta(minutes=61)
+    assert review.run(limit=10, since=when.isoformat()) == (1, 0)
+
+
+def test_hourly_cap_keeps_room_for_detections_by_postponing_low_priority_clips(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    outside, visit, detected = sourced(store, when, "outside_stay", "dog_visit", "detected")
+    clock = [when + timedelta(minutes=1)]
+    judge = FlakyJudge()
+    judge.down = False
+    review = Review(
+        store,
+        asking(FEEDING),
+        judges=FixedJudge(JudgeChoice(judge, "codex", None)),
+        max_per_hour=20,
+        now=lambda: clock[0],
+    )
+    # 上限の半分（10回）を使うと、トレー外の滞在を後回しにする。
+    for _ in range(10):
+        store.judge_runs.record("codex", None, "review", failed=False, at=clock[0])
+    assert review.run(limit=10, since=when.isoformat()) == (2, 0)
+    assert judged(store) == {visit, detected}
+    # 4分の3（15回）を使うと、犬の出入りも後回しにして、検知と滞在の通知だけを判定する。
+    for _ in range(3):
+        store.judge_runs.record("codex", None, "review", failed=False, at=clock[0])
+    later_visit, later_detected = sourced(
+        store, when + timedelta(seconds=10), "dog_exit", "early_alert"
+    )
+    assert review.run(limit=10, since=when.isoformat()) == (1, 0)
+    assert judged(store) == {visit, detected, later_detected}
+    # 1時間が過ぎると、後回しにした動画を判定する。
+    clock[0] += timedelta(minutes=61)
+    assert review.run(limit=10, since=when.isoformat()) == (2, 0)
+    assert judged(store) == {visit, detected, later_detected, later_visit, outside}
+
+
+def test_manual_review_and_a_zero_cap_are_not_limited(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    sourced(store, when, "outside_stay", "outside_stay", "outside_stay")
+    judge = FlakyJudge()
+    judge.down = False
+    judges = FixedJudge(JudgeChoice(judge, "codex", None))
+    assert Review(store, asking(FEEDING), judges=judges, max_per_hour=1).run(limit=2) == (2, 0)
+    unlimited = Review(store, asking(FEEDING), judges=judges, max_per_hour=0)
+    assert unlimited.run(limit=10, since=when.isoformat()) == (1, 0)

@@ -78,6 +78,15 @@ class JudgeRunLog:
                 (provider, model, purpose, stamp, int(failed)),
             )
 
+    def count_since(self, since: datetime) -> int:
+        """since 以降に判定器を呼んだ回数（用途と成否を問わない）。"""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT COUNT(*) FROM judge_runs WHERE julianday(ran_at) >= julianday(?)",
+                (since.astimezone(UTC).isoformat(),),
+            ).fetchone()
+        return int(row[0])
+
     def usage(self, now: datetime | None = None) -> list[JudgeRunUsage]:
         """判定器・モデル・用途ごとの回数。直近に使ったものから並べる。"""
         today, week, month_window, month = _boundaries(now or datetime.now(UTC))

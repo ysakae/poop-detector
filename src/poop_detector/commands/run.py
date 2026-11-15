@@ -104,6 +104,7 @@ def review_watcher(
     outside_roi: AnyROI | None,
     notifier: "ToiletNotifier",
     judges: "JudgeSource",
+    max_per_hour: int = 0,
 ) -> "Review":
     """録画時の基準で動画を自動判定する。判定器は動画ごとに judges から受け取る。"""
     from ..video.review import Review, inspect_clip
@@ -126,6 +127,7 @@ def review_watcher(
         inspect,
         notifier.send_assessment if notifier.enabled else None,
         judges=judges,
+        max_per_hour=max_per_hour,
     )
 
 
@@ -183,6 +185,7 @@ def watch(
                 outside_roi,
                 notifier,
                 judge_source(args.config, config, judge),
+                config.review_max_per_hour,
             )
             stack.enter_context(review.watch(judge_watchdog(context, notifier)))
         if args.gui:

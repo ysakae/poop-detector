@@ -13,7 +13,7 @@ import threading
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Protocol, Self, cast
@@ -40,6 +40,10 @@ MAX_RETRIES = 16
 # 試し直しを待つ動画を覚えておく本数の上限。超えたら古いものから諦める。
 RETRY_BACKLOG = 500
 FAILURE_WAIT = 20
+# きっかけの優先度（clip_reviews.PRIORITY_ORDER の 0・1・2）ごとに、1時間あたりの上限のうち
+# 使ってよい割合。犬の出入りは4分の3、トレー外の滞在は半分までで後回しにし、
+# 検知と滞在の通知のために枠を残す。
+PRIORITY_SHARES = (1.0, 0.75, 0.5)
 MAX_WAIT = 30 * 60
 
 
@@ -410,8 +414,14 @@ class Review:
         scene_signature: str | None = None,
         *,
         judges: JudgeSource | None = None,
+        max_per_hour: int = 0,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self.store = store
+        # 監視中に判定器を呼ぶ1時間あたりの上限（0 は上限なし）。now はテストで差し替える。
+        self.max_per_hour, self.now = max_per_hour, now
+        # 直前に判定してよかった優先度。変わったときだけログに残す。
+        self.allowed_priority: int | None = len(PRIORITY_SHARES) - 1
         self.inspect = inspect
         self.notify = notify
         self.scene_signature = scene_signature
@@ -442,10 +452,7 @@ class Review:
 
     def _run(self, limit: int, since: str | None, clip_id: str | None) -> tuple[int, int]:
         completed = failures = 0
-        rows = self.store.assessments.pending(
-            limit, since, clip_id, self.scene_signature, retry=tuple(self.retries)
-        )
-        for row in rows:
+        for row in self._waiting(limit, since, clip_id):
             # 台帳には、この動画で実際に使った判定器を記録する。
             choice = self.judges.current()
             judge = RecordingJudge(
@@ -502,6 +509,63 @@ class Review:
                 )
                 self.store.assessments.finish_notice(row["id"], sent)
         return completed, failures
+
+    def _waiting(self, limit: int, since: str | None, clip_id: str | None) -> Iterator[ClipRow]:
+        """判定を待つ動画を順に返す。監視中（since あり）は、1時間あたりの上限を守る。
+
+        上限のあるときは、呼び出しの回数が動画ごとに変わるので、1本ずつ数え直して選ぶ。
+        """
+        pending = self.store.assessments.pending
+        if since is None or not self.max_per_hour:
+            yield from pending(
+                limit, since, clip_id, self.scene_signature, retry=tuple(self.retries)
+            )
+            return
+        seen: set[str] = set()
+        for _ in range(limit):
+            priority = self._allowed_priority()
+            if priority is None:
+                return
+            rows = pending(
+                1,
+                since,
+                clip_id,
+                self.scene_signature,
+                retry=tuple(self.retries),
+                max_priority=priority,
+            )
+            # 判定器の呼び出しに失敗した動画は試し直しに残るので、同じ実行では繰り返さない。
+            if not rows or rows[0]["id"] in seen:
+                return
+            seen.add(rows[0]["id"])
+            yield rows[0]
+
+    def _allowed_priority(self) -> int | None:
+        """いま判定してよい、最も低い優先度。上限に達していれば None。"""
+        used = self.store.judge_runs.count_since(self.now() - timedelta(hours=1))
+        allowed = [
+            priority
+            for priority, share in enumerate(PRIORITY_SHARES)
+            if used < self.max_per_hour * share
+        ]
+        priority = max(allowed) if allowed else None
+        if priority != self.allowed_priority:
+            self.allowed_priority = priority
+            if priority is None:
+                logger.warning(
+                    "判定器の呼び出しが1時間あたりの上限（%d回）に達しました。"
+                    "枠が空くまで判定を待ちます",
+                    self.max_per_hour,
+                )
+            elif priority < len(PRIORITY_SHARES) - 1:
+                logger.info(
+                    "判定器の呼び出しが1時間あたりの上限（%d回）に近いため、"
+                    "優先度の低い動画の判定を後回しにします",
+                    self.max_per_hour,
+                )
+            else:
+                logger.info("判定の後回しを解除しました")
+        return priority
 
     def _track(self, clip_id: str, judge_failed: bool | None, *, retry: bool) -> None:
         """判定器の呼び出しの成否を数え、呼び出しに失敗した動画を試し直しに回す。
