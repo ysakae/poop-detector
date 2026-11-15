@@ -6,8 +6,8 @@ from typing import Any, TypeAlias
 from urllib.parse import urlencode
 
 from ..features.outages import OUTAGE_KINDS, Outage, format_duration
+from ..records.care import CareEntry, feeding_text, format_grams, last_feeding
 from ..records.care import entries as care_entries
-from ..records.care import format_grams
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
 from ..records.record_stats import summarize_records
 from ..timezones import local_today, parse_local, timezone_label, to_local
@@ -224,6 +224,16 @@ HOME_QUICK: tuple[tuple[str, str, str], ...] = (
 RECORD_ICONS = {"feces": "feces", "urine": "urine"}
 
 
+def _recorded_notice(entry: CareEntry, day: str) -> dict[str, str]:
+    """ホームから記録した直後の知らせ。何を記録したかと、直す画面の URL。"""
+    detail = feeding_text(entry.food, entry.amount_dg) if entry.kind == "feeding" else ""
+    name = "ごはん" if entry.kind == "feeding" else "シート交換"
+    return {
+        "text": f"{name}（{detail}）" if detail else name,
+        "url": f"/care?day={day}&id={entry.id}",
+    }
+
+
 def render_home(
     store: Store,
     disk_mb: float = DEFAULT_DISK_MIB,
@@ -231,12 +241,20 @@ def render_home(
     title: str | None = None,
     pending: int = 0,
     manual_only: bool = False,
+    token: str = "",
+    recorded: str = "",
 ) -> str:
-    """ホーム。確認待ちの件数、今日の回数と給餌量、記録の入口、直近の確定記録、ライブ映像。"""
+    """ホーム。確認待ちの件数、今日の回数と給餌量、記録の入口、直近の確定記録、ライブ映像。
+
+    recorded は、ホームから記録した直後のお世話の記録の ID（知らせと「直す」の入口を出す）。
+    """
     records = store.records()
     today = local_today()
     daily, _, _ = summarize_records(records, today, today)
-    fed = [entry.amount_dg for entry in care_entries(store.database, today) if entry.amount_dg]
+    cared = care_entries(store.database, today)
+    fed = [entry.amount_dg for entry in cared if entry.amount_dg]
+    last = last_feeding(store.database)
+    done = next((entry for entry in cared if recorded and entry.id == recorded), None)
     recent = [
         {
             "time": local_time(row["actual_start"] or row["timestamp"]),
@@ -256,6 +274,9 @@ def render_home(
         today=today,
         daily=daily,
         food_grams=format_grams(sum(fed)),
+        token=token,
+        quick_feed=feeding_text(*last) if last else "",
+        recorded=_recorded_notice(done, today.isoformat()) if done else None,
         quick=HOME_QUICK,
         recent=recent,
         timezone=timezone_label(),

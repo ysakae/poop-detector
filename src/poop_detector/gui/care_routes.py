@@ -14,13 +14,14 @@ from ..records.care import (
     feeding_history,
     format_grams,
     parse_amount,
+    quick_entry,
     save_entry,
 )
 from ..records.events import EXCRETION_TYPES
 from ..records.export import in_period
 from ..records.weights import Weight, parse_day, weights
 from ..timezones import local_now, local_today, to_local
-from .pages import Query
+from .pages import Query, message_page
 from .routes import Form, first, get, post
 from .templating import render_template
 
@@ -164,3 +165,22 @@ def save_care(handler: "Handler", form: Form) -> None:
         _render(handler, day, values.get("id", ""), str(error), dict(values))
         return
     handler.redirect(f"/care?day={stamp.astimezone().date().isoformat()}")
+
+
+@post("/care/quick")
+def quick_care(handler: "Handler", form: Form) -> None:
+    """ホームから1回押して、前回と同じ給餌かシート交換を記録する。"""
+    user = handler.user
+    if user is None:
+        handler.respond(403, "ログインしてください")
+        return
+    try:
+        identifier = quick_entry(handler.app.store.database, form.fields.get("kind", ""), user.name)
+    except InvalidInputError as error:
+        page = message_page(
+            "記録できませんでした", str(error), "/", "ホームへ戻る", title=handler.app.title
+        )
+        handler.respond(400, page)
+        return
+    # 前回の給餌がなければ、銘柄と量を入れる画面を開く。
+    handler.redirect(f"/?recorded={identifier}" if identifier else "/care#feeding")
