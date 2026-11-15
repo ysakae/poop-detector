@@ -349,3 +349,28 @@ def test_benchmark_shows_each_clip_answer_and_judge_versions(models_gui):
     assert "not-in-ledger" not in html
     assert "最終評価用" in html
     assert re.search(r'<td class="answer-miss">エラー</td>', html)
+
+
+def test_review_status_shows_the_cap_postponed_clips_and_judge_failures(models_gui):
+    server, config_path = models_gui
+    config_path.write_text(
+        config_path.read_text() + "review: {max_per_hour: 4, fallback: claude}\n"
+    )
+    html = page(server, login(server))
+    assert '<h3 id="review-status-title">監視中の判定の状況</h3>' in html
+    assert "0回（上限 4回）" in html
+    assert "すべての動画を判定します" in html
+    assert "Claude Code CLI" in html
+
+    runs = server.app.clips.judge_runs
+    for _ in range(3):
+        runs.record("codex", None, "review", failed=True)
+    server.app.outages.begin("judge", datetime(2026, 11, 14, 22, 30, tzinfo=UTC).isoformat())
+    html = page(server, login(server))
+    assert "3回（上限 4回）" in html
+    assert "犬の出入り、トレー外の滞在を後回しにしています" in html
+    assert "2026/11/15 07:30:00 から失敗が続いています" in html
+
+    runs.record("codex", None, "review", failed=False)
+    html = page(server, login(server))
+    assert "上限に達したため、枠が空くまで判定を待っています" in html

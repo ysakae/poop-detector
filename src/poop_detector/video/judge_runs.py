@@ -87,6 +87,17 @@ class JudgeRunLog:
             ).fetchone()
         return int(row[0])
 
+    def trailing_failures(self, purpose: str = "review") -> int:
+        """purpose の呼び出しが、直近で続けて失敗している回数（最後が成功なら 0）。"""
+        with self.connect() as db:
+            row = db.execute(
+                """SELECT COUNT(*) FROM judge_runs a WHERE a.purpose = ? AND NOT EXISTS (
+                    SELECT 1 FROM judge_runs b WHERE b.purpose = a.purpose AND b.failed = 0
+                    AND (julianday(b.ran_at), b.id) >= (julianday(a.ran_at), a.id))""",
+                (purpose,),
+            ).fetchone()
+        return int(row[0])
+
     def usage(self, now: datetime | None = None) -> list[JudgeRunUsage]:
         """判定器・モデル・用途ごとの回数。直近に使ったものから並べる。"""
         today, week, month_window, month = _boundaries(now or datetime.now(UTC))

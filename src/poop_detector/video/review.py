@@ -47,6 +47,14 @@ PRIORITY_SHARES = (1.0, 0.75, 0.5)
 MAX_WAIT = 30 * 60
 
 
+def allowed_priority(used: int, max_per_hour: int) -> int | None:
+    """直近1時間に used 回呼んだとき、判定してよい最も低い優先度。上限に達していれば None。"""
+    allowed = [
+        priority for priority, share in enumerate(PRIORITY_SHARES) if used < max_per_hour * share
+    ]
+    return max(allowed) if allowed else None
+
+
 def retry_delay(judge_failures: int) -> int:
     """判定に失敗したあと、次の判定まで待つ秒数。
 
@@ -543,12 +551,7 @@ class Review:
     def _allowed_priority(self) -> int | None:
         """いま判定してよい、最も低い優先度。上限に達していれば None。"""
         used = self.store.judge_runs.count_since(self.now() - timedelta(hours=1))
-        allowed = [
-            priority
-            for priority, share in enumerate(PRIORITY_SHARES)
-            if used < self.max_per_hour * share
-        ]
-        priority = max(allowed) if allowed else None
+        priority = allowed_priority(used, self.max_per_hour)
         if priority != self.allowed_priority:
             self.allowed_priority = priority
             if priority is None:
