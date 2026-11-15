@@ -287,6 +287,16 @@ SETTINGS: tuple[Setting, ...] = (
         "英数字で始まるモデル名（空なら Codex の既定）",
     ),
     Setting(
+        "review_fallback",
+        "review",
+        "fallback",
+        str,
+        lambda value: all(
+            name.strip() in ("codex", "claude", "gemini") for name in value.split(",") if value
+        ),
+        "codex、claude、gemini をカンマで区切った並び（空なら切り替えない）",
+    ),
+    Setting(
         "review_max_per_hour",
         "review",
         "max_per_hour",
@@ -442,6 +452,7 @@ class Config:
     early_alert_cooldown_seconds: float = 30
     review_provider: str = "codex"
     review_model: str = ""
+    review_fallback: str = ""
     review_max_per_hour: int = 20
     video_review_enabled: bool = False
     early_alert_enabled: bool = False
@@ -493,6 +504,16 @@ class Config:
             else:
                 result[setting.key] = value
         return result
+
+    @property
+    def fallback_providers(self) -> tuple[str, ...]:
+        """review.fallback に並べた予備の判定器。主の判定器と重複は除く。"""
+        names = [name.strip() for name in self.review_fallback.split(",") if name.strip()]
+        return tuple(
+            name
+            for index, name in enumerate(names)
+            if name != self.review_provider and name not in names[:index]
+        )
 
     def enabled_features(self) -> list[str]:
         """有効な機能の名前（起動時のログに出す）。"""

@@ -81,6 +81,9 @@ dog:
 review:
   provider: codex   # codex（Codex CLI）、claude（Claude Code CLI）、gemini（Antigravity CLI）
   model: ""         # 空欄は選んだ CLI の既定。指定する場合は画像入力対応のモデル名
+  # 判定器の呼び出しが失敗し続けたとき（利用上限など）に切り替える予備の判定器。
+  # カンマ区切りで、書いた順に試す（例: "claude,gemini"）。空なら切り替えない
+  fallback: ""
   # 監視中に判定器を呼ぶ1時間あたりの上限（0 で上限なし）。上限の半分でトレー外の滞在、
   # 4分の3で犬の出入りの動画を後回しにし、検知と滞在の通知のために枠を残す
   max_per_hour: 20

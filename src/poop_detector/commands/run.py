@@ -91,10 +91,12 @@ def load_activity_recorder(context: CommandContext) -> ActivityRecorder:
 
 def judge_source(config_path: str, config: Config, judge: "VideoJudge") -> "JudgeSource":
     """管理 › 判定器とモデルで選び直した判定器を、監視を止めずに次の動画から使う。"""
-    from ..video.judge_source import JudgeChoice, ReloadingJudge
+    from ..video.judge_source import FallbackJudges, JudgeChoice, ReloadingJudge
 
     initial = JudgeChoice(judge, config.review_provider, config.review_model or None)
-    return ReloadingJudge(config_path, initial)
+    primary = ReloadingJudge(config_path, initial)
+    spares = config.fallback_providers
+    return FallbackJudges(primary, spares) if spares else primary
 
 
 def review_watcher(

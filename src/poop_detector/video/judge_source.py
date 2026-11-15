@@ -7,7 +7,8 @@
 
 import logging
 import threading
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
@@ -37,6 +38,10 @@ class JudgeSource(Protocol):
 
     def current(self) -> JudgeChoice: ...
 
+    def note(self, judge_failures: int) -> None:
+        """判定器の呼び出しが続けて失敗している回数を受け取る（成功すると 0）。"""
+        ...
+
 
 class FixedJudge:
     """起動時に選んだ判定器を使い続ける（video-review サブコマンドなど）。"""
@@ -46,6 +51,9 @@ class FixedJudge:
 
     def current(self) -> JudgeChoice:
         return self.choice
+
+    def note(self, judge_failures: int) -> None:
+        del judge_failures
 
 
 def _default_builder(provider: str, model: str) -> "VideoJudge":
@@ -107,3 +115,69 @@ class ReloadingJudge:
             return self.choice
         logger.info("判定器を %s（モデル: %s）に切り替えました", provider, model or "既定")
         return JudgeChoice(judge, provider, model or None)
+
+    def note(self, judge_failures: int) -> None:
+        del judge_failures
+
+
+class FallbackJudges:
+    """判定器の呼び出しが失敗し続けたら、予備の判定器（review.fallback）に切り替える。
+
+    利用上限に達した判定器を待つ間も、判定を続けるためのもの。予備は CLI の既定のモデルで使い、
+    使える状態（インストールとログイン）のものだけを選ぶ。RETURN_SECONDS が過ぎたら主の判定器に
+    戻して試し、まだ失敗するならもう一度切り替える。
+    """
+
+    # この回数だけ続けて失敗したら、次の判定器に切り替える。
+    SWITCH_AFTER = 3
+    # 予備に切り替えてから、主の判定器に戻して試すまでの秒数。
+    RETURN_SECONDS = 3600.0
+
+    def __init__(
+        self,
+        primary: JudgeSource,
+        providers: Sequence[str],
+        *,
+        build: JudgeBuilder = _default_builder,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.primary, self.providers = primary, tuple(providers)
+        self.build, self.clock = build, clock
+        # いま使っている判定器の位置（0 は主、1 以降は providers の順）と、予備の判定器。
+        self.position = 0
+        self.spare: JudgeChoice | None = None
+        self.return_at = float("inf")
+        self.lock = threading.Lock()
+
+    def current(self) -> JudgeChoice:
+        with self.lock:
+            if self.spare is not None and self.clock() >= self.return_at:
+                logger.info("主の判定器に戻して試します")
+                self.position, self.spare = 0, None
+            return self.spare or self.primary.current()
+
+    def note(self, judge_failures: int) -> None:
+        self.primary.note(judge_failures)
+        if judge_failures < self.SWITCH_AFTER:
+            return
+        with self.lock:
+            count = len(self.providers) + 1
+            for step in range(1, count):
+                position = (self.position + step) % count
+                if position == 0:
+                    logger.warning("予備の判定器も失敗したため、主の判定器に戻します")
+                    self.position, self.spare = 0, None
+                    return
+                provider = self.providers[position - 1]
+                try:
+                    judge = self.build(provider, "")
+                    judge.check()
+                except ValueError:
+                    continue
+                logger.warning(
+                    "判定器の呼び出しが続けて失敗したため、予備の判定器（%s）に切り替えます",
+                    provider,
+                )
+                self.position, self.spare = position, JudgeChoice(judge, provider, None)
+                self.return_at = self.clock() + self.RETURN_SECONDS
+                return

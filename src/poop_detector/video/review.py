@@ -576,6 +576,7 @@ class Review:
         if judge_failed is None:
             return
         self.judge_failures = self.judge_failures + 1 if judge_failed else 0
+        self.judges.note(self.judge_failures)
         if judge_failed and retry and attempts <= MAX_RETRIES:
             self.retries[clip_id] = attempts
             while len(self.retries) > RETRY_BACKLOG:
