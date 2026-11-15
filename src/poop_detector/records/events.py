@@ -2,6 +2,7 @@
 
 import builtins
 import sqlite3
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, TypeAlias, TypedDict, cast
@@ -109,6 +110,8 @@ class Store:
         processing_ms: float,
         reference: Frame | None = None,
         signature: str | None = None,
+        *,
+        record_details: Callable[[sqlite3.Connection, str], None] | None = None,
     ) -> str:
         """差分検知のイベントを画像付きで保存し、ID を返す。
 
@@ -126,6 +129,8 @@ class Store:
                 VALUES (?,?,?,?,?,?,?)""",
                 (event_id, utcnow(), "SUSPECTED", score, detection_started, processing_ms, image),
             )
+            if record_details is not None:
+                record_details(db, event_id)
             if encoded is not None:
                 db.execute(
                     "INSERT OR REPLACE INTO detection_reference VALUES (1,?,?)",

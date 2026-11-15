@@ -68,6 +68,23 @@ class ToiletNotifier:
     def _deliver_assessment(self, message: str, path: str) -> bool:  # noqa: ARG002
         return self._display(message)
 
+    def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> bool:
+        detail, risk = {
+            "reentry": ("未回収の排泄候補があるトレーに再侵入", "MEDIUM"),
+            "high": ("排泄物を踏んだ可能性が高い", "HIGH"),
+            "uncollected": ("排泄候補の片付けが未確認", "要確認"),
+        }[kind]
+        path = (
+            ("/clips?" + urlencode({"id": clip_id}))
+            if clip_id
+            else ("/records/events?" + urlencode({"filter": "all", "id": event_id}))
+        )
+        message = (
+            f"{at:%Y-%m-%d %H:%M:%S %Z} [{risk}] {detail}。"
+            f"映像とトレーを確認し、必要に応じて片付けてください。記録ID: {event_id}"
+        )
+        return self.enabled and self._deliver_assessment(message, path)
+
     def send_outage(self, kind: str, since: datetime) -> bool:
         """監視の停止（monitor）、カメラの不調（camera）、判定器の停止（judge）を知らせる。
 

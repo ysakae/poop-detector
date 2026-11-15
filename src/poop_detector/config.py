@@ -228,6 +228,41 @@ SETTINGS: tuple[Setting, ...] = (
     ),
     Setting("clip_memory_mb", "clips", "memory_mb", float, _number(8, 4096), "8〜4096 の数（MiB）"),
     Setting("clip_disk_mb", "clips", "disk_mb", float, _number(8), "8 以上の数（MiB）"),
+    Setting("reentry_enabled", "reentry", "enabled", bool, _always, "true または false"),
+    Setting("reentry_seconds", "reentry", "seconds", float, _number(0.2, 60), "0.2〜60秒"),
+    Setting("reentry_margin", "reentry", "margin", float, _number(0, 0.2), "0〜0.2"),
+    Setting(
+        "reentry_high_distance",
+        "reentry",
+        "high_distance",
+        float,
+        _number(0.001, 0.3),
+        "0.001〜0.3",
+    ),
+    Setting(
+        "reentry_uncollected_minutes",
+        "reentry",
+        "uncollected_minutes",
+        float,
+        _number(0),
+        "0以上の分数",
+    ),
+    Setting(
+        "reentry_notice",
+        "reentry",
+        "notice",
+        str,
+        lambda v: v in ("medium", "high", "off"),
+        "medium、high、off のいずれか",
+    ),
+    Setting(
+        "reentry_quiet_hours",
+        "reentry",
+        "quiet_hours",
+        str,
+        lambda v: not v or all(h in {str(i) for i in range(24)} for h in v.split(",")),
+        "0〜23の時をカンマ区切りにした文字列",
+    ),
     Setting("dog_enabled", "dog", "enabled", bool, _always, "true または false"),
     Setting("dog_fps", "dog", "fps", float, _number(0.2, 10), "0.2〜10 の数"),
     Setting(
@@ -441,6 +476,13 @@ class Config:
     clip_max_width: int = 1280
     clip_memory_mb: float = 128
     clip_disk_mb: float = DEFAULT_DISK_MIB
+    reentry_enabled: bool = False
+    reentry_seconds: float = 2
+    reentry_margin: float = 0.02
+    reentry_high_distance: float = 0.04
+    reentry_uncollected_minutes: float = 30
+    reentry_notice: str = "medium"
+    reentry_quiet_hours: str = ""
     dog_enabled: bool = False
     dog_fps: float = 1
     dog_confidence: float = 0.4
@@ -520,6 +562,7 @@ class Config:
         names = {
             "clip_enabled": "動画保存",
             "dog_enabled": "犬の検出",
+            "reentry_enabled": "排泄後の再侵入検知",
             "video_review_enabled": "動画の自動判定",
             "early_alert_enabled": "見守り通知",
             "track_tray_enabled": "トレー追従",
@@ -607,6 +650,10 @@ def check_monitor_features(config: Config) -> Config:
             "動画の自動判定（features.video_review / --video-review）には、"
             "動画保存（clips.enabled）を有効にしてください"
         )
+    if config.reentry_enabled:
+        if config.track_tray_enabled or not config.clip_enabled:
+            raise ConfigError("再侵入検知には、固定トレーと clips.enabled: true が必要です")
+        config = replace(config, dog_enabled=True)
     if (config.activity_map_enabled or config.detect_outside_enabled) and not config.dog_enabled:
         logger.info("行動マップ・トレー外検知のため、犬の検出を有効にします")
         return replace(config, dog_enabled=True)

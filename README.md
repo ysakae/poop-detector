@@ -46,6 +46,7 @@
 | 任意 | 録画を待たない見守り通知 | `features.early_alert`、`--early-alert` | 滞在を知らせるだけで、排泄の判定ではない | [判定の仕組み](docs/detection.md#録画を待たずトイレの様子を知らせる) |
 | 任意 | 動画の自動判定 | `features.video_review`、`--video-review` | 既定の判定器は Codex CLI で、ログインが必要。動画から切り出した画像を提供元に送る | [動画](docs/video.md#動画の自動判定と通知を使う) |
 | 任意 | 犬の存在・出入りの検出 | `dog.enabled`、`--dog` | `setup-dog-model` でモデルを取得する。実映像での検出精度は確かめていない | [犬の検出](docs/dog.md) |
+| 任意 | 排泄後の再侵入・踏みつけリスク | `reentry.enabled` | 固定トレー・動画保存・領域登録が必要。片付けは手動確認 | [再侵入の見守り](docs/reentry.md) |
 | 任意 | サークルの行動マップ | `features.activity_map`、`--activity-map` | 床面の登録と犬の検出が必要 | [犬の検出](docs/dog.md#サークルの行動マップ) |
 | 実験的 | トレー外の排泄候補 | `features.detect_outside`、`--detect-outside` | 動画の自動判定と犬の検出が必要。精度は確かめていない | [犬の検出](docs/dog.md#トレー外の排泄候補を検知する) |
 | 実験的 | 保存動画の旋回候補の分析 | `circling-review` | 保存済みの動画の分析だけで、監視や通知にはつながっていない | [犬の検出](docs/dog.md#保存動画から旋回候補を確認する) |
@@ -130,6 +131,10 @@ uv run poop-detector gui
 通知された画像や動画に「排便」「排尿」「誤検知」などのラベルを付け、目視で確認した排泄や見逃しを記録できます。記録は日別・時間帯別に集計でき、検知の精度の評価にも使います。詳しくは [記録とラベル付け](docs/records.md) を参照してください。
 
 管理者は「管理 › 書き出しとバックアップ」で、期間の確定記録を CSV に書き出し、動物病院に見せる印刷用の集計を開けます。記録と登録情報のバックアップは画面か `uv run poop-detector backup FILE.zip` で作り、`uv run poop-detector restore FILE.zip` で戻せます（[書き出しとバックアップ](docs/records.md#書き出しとバックアップ)）。
+
+## 排泄後の再侵入を見守る
+
+再侵入の見守りを有効にすると、トレーから出た犬が戻った時刻と、踏みつけの推定リスクを記録します。片付けたら `uv run poop-detector reentry collect EVENT_ID` で回収を記録し、`uv run poop-detector reentry report` で仕切り設置前後の配置ごとの集計を確認できます。領域の登録、起動、通知、フィードバックの手順は [再侵入の見守り](docs/reentry.md) を参照してください。
 
 ## データの保存先と外部への送信
 

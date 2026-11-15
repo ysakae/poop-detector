@@ -46,6 +46,7 @@ SOURCES = {
     "dog_exit": "犬の退場",
     "dog_visit": "犬の入退場",
     "early_alert": "トイレ見守り",
+    "toilet_reentry": "排泄後の再侵入",
     "outside_stay": "トレー外での滞在",
 }
 

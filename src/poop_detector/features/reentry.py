@@ -1,0 +1,238 @@
+"""トレーへの再侵入の判定と、排泄候補ごとの片付け記録。"""
+
+import math
+import sqlite3
+from contextlib import closing
+from pathlib import Path
+from typing import Literal
+
+import cv2
+
+from ..detection.roi import AnyROI, outline
+from ..frames import Shape
+from ..records.database import events_database
+from ..records.events import utcnow
+from .dog import Box, overlaps_roi
+
+Position = tuple[float, float]
+Side = Literal["inside", "outside"]
+
+
+class Presence:
+    """確実な退場の後、内外に一定時間続けている場合だけ境界通過とする。"""
+
+    def __init__(self, seconds: float, max_gap: float) -> None:
+        self.seconds = seconds
+        self.max_gap = max_gap
+        self.interrupt()
+
+    def interrupt(self) -> None:
+        self.side: Side | None = None
+        self.candidate: Side | None = None
+        self.since = self.last = float("-inf")
+
+    def update(self, side: Side | None, tick: float) -> Side | None:
+        if tick - self.last > self.max_gap:
+            self.interrupt()
+        self.last = tick
+        if side != self.candidate:
+            self.candidate, self.since = side, tick
+        if side is None or side == self.side or tick - self.since < self.seconds:
+            return None
+        if self.side is None and side == "inside":
+            return None
+        self.side = side
+        return side
+
+
+def dog_position(
+    box: Box, toilet: AnyROI, living: AnyROI | None, shape: Shape, margin: float
+) -> tuple[Side | None, Position | None]:
+    """検出枠の下辺中央を接地点と近似する。画面端や境界では保留する。"""
+    x1, y1, x2, y2 = box
+    height, width = shape[:2]
+    if x1 <= 0 or y1 <= 0 or x2 >= width - 1 or y2 >= height - 1:
+        return None, None
+    point = ((x1 + x2) / 2, float(y2))
+    distance = cv2.pointPolygonTest(outline(toilet, shape), point, True)
+    band = min(width, height) * margin
+    if distance > band:
+        return "inside", (point[0] / (width - 1), point[1] / (height - 1))
+    if distance >= -band or overlaps_roi(box, toilet, shape):
+        return None, None
+    if living is None or cv2.pointPolygonTest(outline(living, shape), point, False) >= 0:
+        return "outside", None
+    return None, None
+
+
+class ReentryStore:
+    """既存の events.sqlite3 に片付け状態と再侵入をひも付ける。"""
+
+    def __init__(self, root: Path) -> None:
+        self.db = events_database(root)
+
+    def register(self, event_id: str, configuration_id: str, position: Position | None) -> None:
+        with closing(self.db.connect()) as db, db:
+            self.register_in(db, event_id, configuration_id, position)
+
+    @staticmethod
+    def register_in(
+        db: sqlite3.Connection, event_id: str, configuration_id: str, position: Position | None
+    ) -> None:
+        x, y = position if position is not None else (None, None)
+        db.execute(
+            """INSERT OR IGNORE INTO reentry_waste
+               (event_id, configuration_id, status, position_x, position_y)
+               VALUES (?, ?, ?, ?, ?)""",
+            (event_id, configuration_id, "uncollected" if position else "unknown", x, y),
+        )
+
+    def pending(self, configuration_id: str) -> list[sqlite3.Row]:
+        with closing(self.db.connect()) as db:
+            return db.execute(
+                "SELECT * FROM pending_waste WHERE configuration_id=?",
+                (configuration_id,),
+            ).fetchall()
+
+    def collect(self, event_id: str) -> bool:
+        with closing(self.db.connect()) as db, db:
+            changed = db.execute(
+                """UPDATE reentry_waste SET status='collected', collected_at=?, current_risk=NULL
+                   WHERE event_id=? AND status!='collected'""",
+                (utcnow(), event_id),
+            ).rowcount
+            if changed:
+                db.execute(
+                    """UPDATE reentry_visits SET interrupted=1
+                       WHERE event_id=? AND ended_at IS NULL""",
+                    (event_id,),
+                )
+            return changed == 1
+
+    def claim(self, event_id: str, kind: str) -> bool:
+        """保存済みの通知キーを再起動後も使う。"""
+        with closing(self.db.connect()) as db, db:
+            return (
+                db.execute(
+                    """INSERT OR IGNORE INTO reentry_notices SELECT id, ? FROM pending_waste WHERE id=?""",
+                    (kind, event_id),
+                ).rowcount
+                == 1
+            )
+
+    def start(self, event_id: str, at: str) -> int | None:
+        with closing(self.db.connect()) as db, db:
+            cursor = db.execute(
+                """INSERT INTO reentry_visits (event_id, started_at, risk)
+                   SELECT id, ?, 'MEDIUM' FROM pending_waste WHERE id=?""",
+                (at, event_id),
+            )
+            return cursor.lastrowid if cursor.rowcount else None
+
+    def finish(self, visit: int, at: str | None) -> None:
+        with closing(self.db.connect()) as db, db:
+            db.execute(
+                """UPDATE reentry_visits SET ended_at=?, interrupted=?
+                   WHERE id=? AND ended_at IS NULL AND interrupted=0""",
+                (at, int(at is None), visit),
+            )
+
+    def high(self, visit: int, distance: float) -> bool:
+        with closing(self.db.connect()) as db, db:
+            return (
+                db.execute(
+                    """UPDATE reentry_visits SET risk='HIGH', distance=?
+                   WHERE id=? AND risk='MEDIUM' AND interrupted=0 AND ended_at IS NULL
+                   AND event_id IN (SELECT id FROM pending_waste)""",
+                    (distance, visit),
+                ).rowcount
+                == 1
+            )
+
+    def attach_clip(self, visit: int, clip_id: str, *, high: bool) -> None:
+        with closing(self.db.connect()) as db, db:
+            if high:
+                db.execute("UPDATE reentry_visits SET high_clip_id=? WHERE id=?", (clip_id, visit))
+            else:
+                db.execute("UPDATE reentry_visits SET clip_id=? WHERE id=?", (clip_id, visit))
+
+    def set_risk(self, event_id: str, risk: str | None) -> None:
+        with closing(self.db.connect()) as db, db:
+            db.execute(
+                """UPDATE reentry_waste SET current_risk=?
+                   WHERE event_id=? AND status!='collected' AND current_risk IS NOT ?""",
+                (risk, event_id, risk),
+            )
+
+    def interrupt_open(self, configuration_id: str) -> None:
+        with closing(self.db.connect()) as db, db:
+            db.execute(
+                "UPDATE reentry_waste SET current_risk=NULL WHERE configuration_id=? AND current_risk IS NOT NULL",
+                (configuration_id,),
+            )
+            db.execute(
+                """UPDATE reentry_visits SET interrupted=1 WHERE ended_at IS NULL AND interrupted=0
+                   AND event_id IN (SELECT event_id FROM reentry_waste WHERE configuration_id=?)""",
+                (configuration_id,),
+            )
+
+
+class ReentryMonitor:
+    """観測ごとに未回収の候補を確認し、排泄候補単位で再侵入を記録する。"""
+
+    def __init__(
+        self, store: ReentryStore, configuration_id: str, presence: Presence, high_distance: float
+    ) -> None:
+        self.store, self.configuration_id = store, configuration_id
+        self.presence, self.high_distance = presence, high_distance
+        self.armed: set[str] = set()
+        self.visits: dict[str, int] = {}
+        self.last_known = float("-inf")
+        self.store.interrupt_open(configuration_id)
+
+    def interrupt(self) -> None:
+        if self.visits or self.armed:
+            self.store.interrupt_open(self.configuration_id)
+        self.visits.clear()
+        self.armed.clear()
+        self.presence.interrupt()
+
+    def observe(
+        self, side: Side | None, point: Position | None, tick: float, at: str
+    ) -> list[tuple[str, str, int]]:
+        if tick - self.last_known > self.presence.max_gap:
+            self.interrupt()
+        if side is not None:
+            self.last_known = tick
+        change = self.presence.update(side, tick)
+        rows = {row["id"]: row for row in self.store.pending(self.configuration_id)}
+        for event_id in self.visits.keys() - rows.keys():
+            self.store.finish(self.visits.pop(event_id), None)
+        self.armed.intersection_update(rows)
+        if change == "outside":
+            for visit in self.visits.values():
+                self.store.finish(visit, at)
+            self.visits.clear()
+        if side == self.presence.side == "outside":
+            for event_id in rows.keys() - self.armed:
+                self.store.set_risk(event_id, "LOW")
+            self.armed.update(rows)
+        notices: list[tuple[str, str, int]] = []
+        if change == "inside":
+            for event_id in sorted(self.armed):
+                new_visit = self.store.start(event_id, at)
+                if new_visit is not None:
+                    self.visits[event_id] = new_visit
+                    self.store.set_risk(event_id, "MEDIUM")
+                    notices.append((event_id, "reentry", new_visit))
+            self.armed.clear()
+        if side == "inside" and point is not None:
+            for event_id, visit in self.visits.items():
+                row = rows[event_id]
+                x, y = row["position_x"], row["position_y"]
+                if x is not None and y is not None:
+                    distance = math.hypot(point[0] - x, point[1] - y)
+                    if distance <= self.high_distance and self.store.high(visit, distance):
+                        self.store.set_risk(event_id, "HIGH")
+                        notices.append((event_id, "high", visit))
+        return notices

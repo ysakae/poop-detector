@@ -366,6 +366,63 @@ def migrate_to_v17(db: sqlite3.Connection) -> None:
         db.execute(f"ALTER TABLE judge_runs ADD COLUMN {column} INTEGER")
 
 
+def migrate_to_v18(db: sqlite3.Connection) -> None:
+    """排泄候補の回収状態、再侵入、通知の送信予約を追加する。"""
+    db.execute(
+        """CREATE TABLE reentry_waste (
+            event_id TEXT PRIMARY KEY REFERENCES events(id),
+            configuration_id TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('unknown', 'uncollected', 'collected')),
+            collected_at TEXT,
+            position_x REAL,
+            position_y REAL,
+            current_risk TEXT,
+            stool TEXT,
+            note TEXT NOT NULL DEFAULT ''
+        )"""
+    )
+    db.execute(
+        """CREATE TABLE reentry_visits (
+            id INTEGER PRIMARY KEY,
+            event_id TEXT NOT NULL REFERENCES reentry_waste(event_id),
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            risk TEXT NOT NULL,
+            distance REAL,
+            clip_id TEXT,
+            high_clip_id TEXT,
+            interrupted INTEGER NOT NULL DEFAULT 0,
+            correct INTEGER,
+            stepped INTEGER,
+            note TEXT NOT NULL DEFAULT ''
+        )"""
+    )
+    db.execute(
+        """CREATE VIEW pending_waste AS
+           SELECT e.id, e.timestamp, w.configuration_id, w.position_x, w.position_y, w.current_risk
+           FROM reentry_waste w JOIN events e ON e.id=w.event_id
+           LEFT JOIN excretion_labels l ON l.event_id=e.id
+           WHERE w.status!='collected' AND e.feedback IS NOT 0
+             AND l.excretion_type IS NOT 'urine' AND e.location IS NOT 'outside'"""
+    )
+    db.execute("CREATE INDEX reentry_visits_by_event ON reentry_visits(event_id, started_at)")
+    db.execute(
+        """CREATE TABLE reentry_notices (
+            event_id TEXT NOT NULL REFERENCES reentry_waste(event_id),
+            kind TEXT NOT NULL,
+            PRIMARY KEY (event_id, kind)
+        )"""
+    )
+    db.execute(
+        """CREATE TABLE reentry_configurations (
+            id TEXT PRIMARY KEY,
+            installed_at TEXT NOT NULL,
+            description TEXT NOT NULL,
+            layout TEXT NOT NULL
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -385,6 +442,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v15,
     migrate_to_v16,
     migrate_to_v17,
+    migrate_to_v18,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

@@ -144,6 +144,17 @@ class IncrementalDetector(Detector):
         dirty = self.difference_mask(frame, valid)
         if not np.any(dirty):
             return Observation("empty", 0.0)
+        mask = self.addition_mask(frame, valid, dirty)
+        result = self.classify_mask(mask, valid)
+        if result.score > 0.8:
+            return Observation("unstable", result.score)
+        return result
+
+    def addition_mask(
+        self, frame: Frame, valid: NDArray[np.bool_], dirty: Frame | None = None
+    ) -> Frame:
+        if dirty is None:
+            dirty = self.difference_mask(frame, valid)
         delta = self.reference.difference_mask(frame, valid)
         # 基準へ近づく変化（拭き取り・乾燥など）を追加物体として扱わない。
         additions = (
@@ -151,14 +162,9 @@ class IncrementalDetector(Detector):
             & (dirty > 0)
             & (self.strength(frame) >= self.strength(self.reference_image) - 0.05)
         )
-        mask = cv2.morphologyEx(
+        return cv2.morphologyEx(
             additions.astype(np.uint8) * 255, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)
         )
-        result = self.classify_mask(mask, valid)
-        # 除去分を含む総差分ではなく、追加分に遮蔽・広範囲変動の基準を適用する。
-        if result.score > 0.8:
-            return Observation("unstable", result.score)
-        return result
 
     def changed_from(self, frame: Frame, previous: Frame, valid_mask: Mask | None = None) -> bool:
         detector = Detector(
