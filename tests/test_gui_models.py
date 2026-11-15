@@ -11,6 +11,7 @@ from support import exchange, login, ready_clip
 
 from poop_detector.config import Config
 from poop_detector.video.plan_usage import QuotaGroup, QuotaWindow
+from poop_detector.video.token_usage import TokenUsage
 
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 PAGE = "/manage/models"
@@ -122,6 +123,14 @@ def test_judge_counts_by_period_come_from_the_runs(models_gui):
         r'<td class="count">0</td>',
         html,
     )
+    # トークン数を出さなかった呼び出しだけなら、1回あたりの数は出さない。
+    assert "<th>1回あたりのトークン（30日）</th>" in html
+    assert "入力" not in html.split('id="usage-title"')[1].split("</table>")[0]
+
+    runs.record("codex", None, "review", failed=False, usage=TokenUsage(17000, 4000, 200))
+    runs.record("codex", None, "review", failed=False, usage=TokenUsage(19001, 0, 401))
+    html = page(server, login(server))
+    assert "<td>入力 18,000（キャッシュ 2,000）／出力 300</td>" in html
 
 
 def test_plan_usage_is_asked_only_when_requested(models_gui):

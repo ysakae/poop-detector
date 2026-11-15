@@ -21,6 +21,7 @@ from ..video import benchmark_sets
 from ..video.benchmark_results import BenchmarkResult, load_results
 from ..video.benchmark_sets import LABELS, SPLIT_NAMES
 from ..video.clips import CLIP_LABELS, ClipStore
+from ..video.judge_runs import JudgeRunUsage
 from ..video.plan_usage import PlanUsageBoard, QuotaWindow
 from ..video.providers import PROVIDER_NAMES, build_judge
 from ..video.review_status import ReviewStatus, review_status
@@ -83,6 +84,17 @@ def _review_status(status: ReviewStatus) -> dict[str, Any]:
     }
 
 
+def _tokens(usage: JudgeRunUsage) -> str:
+    """直近30日の、1回の呼び出しあたりのトークン数の平均。CLI が数を出した呼び出しがなければ「―」。"""
+    if not usage.measured:
+        return "―"
+    average = [
+        round(total / usage.measured)
+        for total in (usage.input_tokens, usage.cached_tokens, usage.output_tokens)
+    ]
+    return f"入力 {average[0]:,}（キャッシュ {average[1]:,}）／出力 {average[2]:,}"
+
+
 def _judges(handler: "Handler") -> list[dict[str, Any]]:
     return [
         {
@@ -99,6 +111,7 @@ def _judges(handler: "Handler") -> list[dict[str, Any]]:
             "failures": usage.failures,
             "last_at": local_time(usage.last_at),
             "last_failed": usage.last_failed,
+            "tokens": _tokens(usage),
         }
         for usage in handler.app.clips.judge_runs.usage()
     ]

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .codex_cli import CodexCliJudge
+from .token_usage import TokenUsage, parse_claude
 
 if TYPE_CHECKING:
     from .review import VideoJudge
@@ -67,6 +68,8 @@ class ClaudeCodeJudge:
 
     def __init__(self, model: str) -> None:
         self.model = model
+        # 直近の呼び出しで使ったトークン数。CLI が出さなければ None。
+        self.last_usage: TokenUsage | None = None
 
     def check(self) -> None:
         executable = _executable("claude", self.name)
@@ -91,6 +94,7 @@ class ClaudeCodeJudge:
         self, folder: Path, prompt: str, images: Sequence[str], schema: dict[str, Any]
     ) -> object:
         executable = _executable("claude", self.name)
+        self.last_usage = None
         message = {
             "type": "user",
             "message": {
@@ -148,6 +152,7 @@ class ClaudeCodeJudge:
             if process.returncode or len(process.stdout) > RESPONSE_LIMIT:
                 raise ValueError
             response = json.loads(process.stdout.rstrip().rsplit(b"\n", 1)[-1])
+            self.last_usage = parse_claude(response.get("usage"))
             if (
                 response["type"] != "result"
                 or response["subtype"] != "success"

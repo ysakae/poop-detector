@@ -8,6 +8,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from .token_usage import TokenUsage, parse_codex
+
 
 def codex_environment() -> dict[str, str]:
     """Codex CLI に渡す最小限の環境変数。RTSP の URL などは渡さない。"""
@@ -26,6 +28,8 @@ class CodexCliJudge:
     def __init__(self, runner: Callable[..., Any] = subprocess.run, *, model: str = "") -> None:
         self.runner = runner
         self.model = model
+        # 直近の呼び出しで使ったトークン数。CLI が出さなければ None。
+        self.last_usage: TokenUsage | None = None
 
     def check(self) -> None:
         """Codex CLI がインストール済みでログインしているか確かめる。"""
@@ -52,12 +56,15 @@ class CodexCliJudge:
         (folder / "result.json").unlink(missing_ok=True)
         (folder / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
         image_options = [option for image in images for option in ("--image", image)]
-        self.runner(
+        self.last_usage = None
+        # 標準出力には --json のイベントだけが出る。使用量の数だけを読み、応答の本文は捨てる。
+        completed = self.runner(
             [
                 "codex",
                 "--ask-for-approval",
                 "never",
                 "exec",
+                "--json",
                 *(["--model", self.model] if self.model else []),
                 "--sandbox",
                 "read-only",
@@ -79,9 +86,10 @@ class CodexCliJudge:
             cwd=folder,
             env=codex_environment(),
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             check=True,
             timeout=120,
         )
+        self.last_usage = parse_codex(getattr(completed, "stdout", None))
         return json.loads((folder / "result.json").read_text(encoding="utf-8"))
