@@ -23,6 +23,7 @@ from ..frames import Frame
 from ..records.events import utcnow
 from .clip_storage import DEFAULT_DISK_MIB, MIB, recording_usage
 from .clips import ClipStore, RequestSource
+from .thumbnails import ensure_thumbnail
 
 logger = logging.getLogger(__name__)
 # 入場からこの秒数以内の退場は、入場の録画を延ばして1本にまとめる（短い出入りで動画を分けない）。
@@ -327,6 +328,7 @@ class ClipCollector:
                     self.store.update(
                         clip_id, status="ready", path=f"clips/{path.name}", duration=duration
                     )
+                    self._thumbnail(clip_id)
                 except (OSError, ValueError, subprocess.SubprocessError, sqlite3.Error):
                     try:
                         self.store.update(
@@ -346,6 +348,13 @@ class ClipCollector:
                         self.jobs.pop(clip_id, None)
             finally:
                 self.queue.task_done()
+
+    def _thumbnail(self, clip_id: str) -> None:
+        """一覧のサムネイルを作る。作れなくても録画は成功のままにし、開いたときに作り直す。"""
+        try:
+            ensure_thumbnail(self.store, self.store.get(clip_id))
+        except sqlite3.Error:
+            logger.warning("動画のサムネイルを作れませんでした")
 
     def drain(self) -> None:
         self.queue.join()

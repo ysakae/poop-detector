@@ -19,6 +19,7 @@ from ..features.activity_map import ActivityLayout
 from ..features.tray_registration import REGISTRATION_MESSAGES, TrayRegistration
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow
 from ..video.clips import CLIP_LABELS
+from ..video.thumbnails import ensure_thumbnail
 from .access import expired_cookie, session_ids
 from .accounts import ROLES, Role
 from .activity_page import render_activity
@@ -418,6 +419,17 @@ def event_image(handler: "Handler", query: Query) -> None:
 @get("/clip-video")
 def clip_video(handler: "Handler", query: Query) -> None:
     stream_video(handler, handler.app.root, first(query, "id"))
+
+
+@get("/clip-thumbnail")
+def clip_thumbnail(handler: "Handler", query: Query) -> None:
+    """動画の一覧に出すサムネイル。まだない動画は、ここで作ってから返す。"""
+    clips = handler.app.clips
+    path = ensure_thumbnail(clips, clips.get(first(query, "id")))
+    if path is None:
+        handler.respond(404, "サムネイルがありません")
+        return
+    handler.respond(200, path.read_bytes(), "image/jpeg")
 
 
 @get("/activity/background")
