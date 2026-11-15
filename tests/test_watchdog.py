@@ -11,7 +11,12 @@ import pytest
 
 from poop_detector.capture.live_preview import LivePreview
 from poop_detector.features.outages import OutageLog, OutageTracker, format_duration
-from poop_detector.features.watchdog import CameraWatchdogExtension, MonitorWatchdog, watching
+from poop_detector.features.watchdog import (
+    CameraWatchdogExtension,
+    JudgeWatchdog,
+    MonitorWatchdog,
+    watching,
+)
 from poop_detector.notifications import FanOutNotifier, ToiletNotifier
 from poop_detector.records.database import MIGRATIONS, events_database
 
@@ -319,3 +324,54 @@ def test_v9_database_gains_outages_and_admin_watchdog_preference(tmp_path):
     assert OutageLog(database).recent() == []
     with database.connect() as db:
         assert db.execute("SELECT id FROM events").fetchone()["id"] == "e1"
+
+
+def test_judge_outage_needs_repeated_failures_for_the_threshold_and_reports_recovery(log):
+    alerts = Alerts()
+    now = [T0]
+    watchdog = JudgeWatchdog(OutageTracker(log, "judge", 300, alerts), wall=lambda: now[0])
+    watchdog.observe(1)
+    now[0] = T0 + 600
+    # 1回きりの失敗は、時間が経っても停止として知らせない。
+    watchdog.observe(1)
+    assert alerts.sent == []
+    watchdog.observe(3)
+    watchdog.observe(4)
+    assert alerts.sent == [("outage", "judge", datetime.fromtimestamp(T0, UTC))]
+    now[0] = T0 + 3900
+    watchdog.observe(0)
+    watchdog.observe(0)
+    assert alerts.sent[1:] == [("recovery", "judge", 3900)]
+    (outage,) = log.recent()
+    assert (outage.kind, outage.ended_at) == ("judge", iso(T0 + 3900))
+
+
+def test_judge_failures_shorter_than_the_threshold_are_not_reported(log):
+    alerts = Alerts()
+    now = [T0]
+    watchdog = JudgeWatchdog(OutageTracker(log, "judge", 300, alerts), wall=lambda: now[0])
+    watchdog.observe(1)
+    now[0] = T0 + 140
+    watchdog.observe(3)
+    watchdog.observe(0)
+    assert alerts.sent == []
+    assert log.recent() == []
+
+
+def test_judge_watchdog_closes_an_outage_left_by_the_previous_monitor(log):
+    log.begin("judge", iso(T0))
+    alerts = Alerts()
+    JudgeWatchdog(OutageTracker(log, "judge", 300, alerts), wall=lambda: T0 + 60)
+    assert log.current("judge") is None
+    assert alerts.sent == []
+
+
+def test_judge_watchdog_messages_say_what_stops_and_what_to_check():
+    notifier = Recording()
+    assert notifier.send_outage("judge", datetime(2026, 11, 12, 0, 30, tzinfo=UTC))
+    assert notifier.send_recovery("judge", 3900)
+    assert notifier.messages == [
+        "11/12 09:30から動画の自動判定が失敗し続けています。この間、排泄の通知は届きません。"
+        "判定器の利用上限とログインを確認してください。",
+        "動画の自動判定が再開しました。約1時間5分止まっていました。この間の動画を順に判定します。",
+    ]

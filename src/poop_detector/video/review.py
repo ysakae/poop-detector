@@ -517,15 +517,22 @@ class Review:
             while len(self.retries) > RETRY_BACKLOG:
                 del self.retries[next(iter(self.retries))]
 
-    def watch(self) -> "ReviewWorker":
-        return ReviewWorker(self)
+    def watch(self, watchdog: "JudgeObserver | None" = None) -> "ReviewWorker":
+        return ReviewWorker(self, watchdog)
+
+
+class JudgeObserver(Protocol):
+    """判定器の呼び出しが続けて失敗した回数を受け取る見張り（features.watchdog.JudgeWatchdog）。"""
+
+    def observe(self, judge_failures: int) -> None: ...
 
 
 class ReviewWorker:
     """監視中に新しい動画を定期的に探し、別スレッドで Review を実行する。"""
 
-    def __init__(self, review: Review) -> None:
+    def __init__(self, review: Review, watchdog: JudgeObserver | None = None) -> None:
         self.review = review
+        self.watchdog = watchdog
         self.since = utcnow()
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._poll, daemon=True)
@@ -536,12 +543,18 @@ class ReviewWorker:
 
     def _poll(self) -> None:
         while not self.stop.is_set():
-            try:
-                completed, failed = self.review.run(limit=1, since=self.since)
-            except (OSError, sqlite3.Error):
-                logger.warning("自動判定の台帳にアクセスできません。次回再試行します")
-                completed = failed = 0
-            self.stop.wait(self.next_wait(completed, failed))
+            self.stop.wait(self.poll_once())
+
+    def poll_once(self) -> int:
+        """動画を1本判定し、判定器の状態を見張りに伝えて、次に探すまで待つ秒数を返す。"""
+        try:
+            completed, failed = self.review.run(limit=1, since=self.since)
+            if self.watchdog is not None:
+                self.watchdog.observe(self.review.judge_failures)
+        except (OSError, sqlite3.Error):
+            logger.warning("自動判定の台帳にアクセスできません。次回再試行します")
+            completed = failed = 0
+        return self.next_wait(completed, failed)
 
     def next_wait(self, completed: int, failed: int) -> int:
         """次に動画を探すまで待つ秒数。判定器の失敗が続く間は、間隔を伸ばして休む。"""
