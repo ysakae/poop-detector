@@ -35,7 +35,7 @@ def test_unlabeled_event_offers_one_tap_buttons(gui):
     for value, text in [
         ("feces", "排便"),
         ("urine", "排尿"),
-        ("both", "両方（排便・排尿）"),
+        ("both", "両方"),
         ("false", "誤検知"),
     ]:
         assert f'name="label" value="{value}"' in form

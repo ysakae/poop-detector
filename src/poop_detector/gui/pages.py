@@ -105,7 +105,7 @@ FILTERS = {
 EVENT_QUICK_LABELS: tuple[tuple[str, str, str], ...] = (
     ("feces", "排便", "feces"),
     ("urine", "排尿", "urine"),
-    ("both", "両方（排便・排尿）", "paw"),
+    ("both", "両方", "paw"),
     ("false", "誤検知", "none"),
 )
 KIND_SUFFIXES = {"MISSED": "（見逃し）", "MANUAL": "（手動）", "VIDEO": "（映像）"}
