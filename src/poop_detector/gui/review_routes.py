@@ -5,10 +5,11 @@
 読み込んだときに行う（asgi.py が読み込む）。
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .clip_pages import SOURCES, clip_assessment_summary
-from .pages import Query, local_time
+from .list_time import by_day, list_time
+from .pages import Query
 from .review_queue import NEXT_PAGE, ReviewItem, item_time, next_item, review_items
 from .routes import first, get
 from .templating import render_template
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 REVIEW_PAGE = "/review"
 
 
-def _entry(item: ReviewItem) -> dict[str, str]:
+def _entry(item: ReviewItem) -> dict[str, Any]:
     """一覧の1行。動画の一覧（clip_pages.clip_list_item）と同じ見せ方にそろえる。"""
     if item.kind == "event":
         what = "差分の検知（画像）"
@@ -32,7 +33,7 @@ def _entry(item: ReviewItem) -> dict[str, str]:
         )
         thumbnail = f"/clip-thumbnail?id={item.id}"
     return {
-        "time": local_time(item.at),
+        "when": list_time(item.at),
         "what": what,
         "kind": item.kind,
         "assessment": clip_assessment_summary(item.review_label, item.location, item.review_failed),
@@ -49,7 +50,8 @@ def review_page(handler: "Handler", query: Query) -> None:
     page = render_template(
         "review.html",
         title=app.title,
-        entries=entries,
+        count=len(entries),
+        groups=by_day(entries),
         done=first(query, "done") == "1",
         end=first(query, "end") == "1",
         next_url=NEXT_PAGE,
