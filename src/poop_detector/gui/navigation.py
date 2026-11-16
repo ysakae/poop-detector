@@ -19,7 +19,8 @@ MEMBER_SECTIONS: tuple[tuple[str, str, str], ...] = (
 )
 MANAGEMENT = ("/manage", "管理", "manage")
 # スマートフォンの幅で画面の下に並べる場所。ほかの場所と PERSONAL は「その他」にまとめる。
-TAB_SECTIONS = frozenset({"/", "/review", "/records", "/clips"})
+# 毎日使う場所を並べる。動画は、確認待ちからラベルを付けるので「その他」に置く。
+TAB_SECTIONS = frozenset({"/", "/review", "/records", "/care"})
 PERSONAL: tuple[tuple[str, str, str], ...] = (
     ("/account", "自分の設定", "user"),
     ("/logout", "ログアウト", "logout"),
