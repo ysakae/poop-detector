@@ -47,3 +47,8 @@
 {% macro empty_state(title, body, href="", action="", kind="") -%}
 <div class="empty-state"><img src="/assets/dog.svg" alt="" width="96" height="96"><h3>{{ title }}</h3><p>{{ body }}</p>{% if href %}<p><a class="button{% if kind %} {{ kind }}{% endif %}" href="{{ href }}">{{ action }}</a></p>{% endif %}</div>
 {%- endmacro %}
+
+{#- 一覧の時刻。clock=true なら日の見出しの下に置く時刻だけを出す（正確な時刻は title）。 -#}
+{% macro when(value, clock=false) -%}
+{% if value %}<time datetime="{{ value.iso }}" title="{{ value.full }}">{{ value.clock if clock else value.text }}</time>{% endif %}
+{%- endmacro %}
