@@ -19,11 +19,11 @@
 {%- endfor -%}
 </nav>{% endif %}<article id="clip-detail">
 {% if clip is none %}
-{% if notice %}<p>指定された動画を確認できません。<a href="/records/events?manual=1#manual-record">手動で記録する</a></p>{% endif %}
+{% if notice %}<p>指定された動画を確認できません。<a href="/records/new">手動で記録する</a></p>{% endif %}
 {% if any_clips %}<div class="empty"><h3>この条件の動画はありません</h3><p>「すべて」に切り替えてください。</p></div>{% else %}<div class="empty"><h3>動画はまだありません</h3><p>監視を起動して保存ボタンを押すか、自動検知を待ってください。</p></div>{% endif %}
 {% else %}
 <h3>{{ clip.time }}</h3><p class="note">{{ clip.source }} ／ {{ clip.status }}</p>
-{% if notice_unavailable %}<p>動画ファイルを確認できません。<a href="/records/events?manual=1#manual-record">手動で記録する</a></p>{% endif %}
+{% if notice_unavailable %}<p>動画ファイルを確認できません。<a href="/records/new">手動で記録する</a></p>{% endif %}
 {% if clip.ready %}
 <video controls preload="metadata" class="clip-video" playsinline src="/clip-video?id={{ clip.id }}{{ seek }}">動画を再生できません。</video><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
 {% if clip.interrupted %}<div class="message message-warn">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>{% endif %}

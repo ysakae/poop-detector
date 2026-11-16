@@ -1,10 +1,10 @@
-{#- 検知の一覧（記録の下）。イベントの一覧と、選んだイベントのラベル入力欄、目視の記録の追加。 -#}
+{#- 検知の一覧（記録の下）。イベントの一覧と、選んだイベントのラベル入力欄。 -#}
 {% extends "base.html" %}
 {% from "_macros.html" import csrf_field, location_field %}
 {% block content %}
 {% include "_review_bar.html" %}
 {% if not review %}
-<h2>検知の一覧と記録の追加</h2>
+<h2>検知の一覧</h2>{% if waiting %}<p class="message message-info" role="status">確認待ちが{{ waiting }}件あります。<a href="/review">確認待ちを開く</a></p>{% endif %}
 <div class="toolbar"><form method="get" action="/records/events"><label>表示する記録<select name="filter">
 {%- for value, text in filters -%}
 <option value="{{ value }}" {% if value == mode %}selected{% endif %}>{{ text }}</option>
@@ -12,7 +12,7 @@
 </select></label> <button class="secondary">表示</button></form>
 <p>未ラベル {{ metrics.unlabeled }}件 ／ 排便 {{ counts.feces }}件 ／ 排尿 {{ counts.urine }}件 ／ 種類不明 {{ counts.unknown }}件</p></div>
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
-<p class="note">自動検知は排泄の疑いです。便・尿の種類は確認して記録してください。尿跡が残っていても追加の変化を監視します。同じ跡は再通知せず、判断できない排泄は手動で記録できます。</p>
+<p class="note">自動検知は排泄の疑いです。便・尿の種類は確認して記録してください。尿跡が残っていても追加の変化を監視します。同じ跡は再通知しません。検知されなかった排泄は<a href="/records/new">排泄を記録</a>から足せます。</p>
 {% endif %}
 <div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav aria-label="イベント一覧">
 {%- for item in items -%}
@@ -36,9 +36,5 @@
 {% else %}
 <div class="empty"><h2>該当する記録はありません</h2><p>「すべて」に切り替えるか、監視で記録が増えたら再表示してください。</p></div>
 {% endif %}
-</article></div>{% if not review %}<details id="manual-record"{% if manual_open %} open{% endif %}><summary>目視で確認した排便・排尿を記録する</summary><p class="note">既に通知の画像がある場合は、その記録にラベルを付けてください。同じ排泄の重複登録を避けてください。</p><form method="post" action="/save">{{ csrf_field(token) }}<label>記録の種類<select name="action"><option value="manual">通常の手動記録</option><option value="missed">通知されなかった排泄（見逃し）</option></select></label><label>排泄の種類<select name="type">
-{%- for value, text in excretion_types -%}
-<option value="{{ value }}">{{ text }}</option>
-{%- endfor -%}
-</select></label>{{ location_field(locations, None) }}<div class="times"><label>開始（{{ timezone }}・必須）<input type="datetime-local" step="1" name="start" required></label><label>完了（任意）<input type="datetime-local" step="1" name="end"></label></div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000"></textarea></label></p><p style="margin-top:16px"><button>排泄を記録</button></p></form></details><footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>{% endif %}
+</article></div>{% if not review %}<footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>{% endif %}
 {% endblock %}

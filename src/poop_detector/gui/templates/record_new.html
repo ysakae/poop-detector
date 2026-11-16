@@ -1,0 +1,13 @@
+{#- 目視で確認した排泄（通常の手動記録・見逃し）を記録する画面。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field, location_field %}
+{% block content %}
+<h2>排泄を記録</h2>
+<p class="note">目で見て確かめた排便・排尿を記録します。通知の画像や動画がある排泄は、<a href="/review">確認待ち</a>でラベルを付けてください（同じ排泄を二重に記録しないため）。</p>
+<form method="post" action="/save" class="card">{{ csrf_field(token) }}<label>記録の種類<select name="action"><option value="manual">通常の手動記録</option><option value="missed">通知されなかった排泄（見逃し）</option></select></label><label>排泄の種類<select name="type">
+{%- for value, text in excretion_types -%}
+<option value="{{ value }}">{{ text }}</option>
+{%- endfor -%}
+</select></label>{{ location_field(locations, None) }}<div class="times"><label>開始（{{ timezone }}・必須）<input type="datetime-local" step="1" name="start" required></label><label>完了（任意）<input type="datetime-local" step="1" name="end"></label></div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000"></textarea></label></p><p><button>排泄を記録</button></p></form>
+<p><a href="/records">記録へ戻る</a></p>
+{% endblock %}

@@ -34,6 +34,7 @@ from .clip_pages import (
 )
 from .pages import (
     EVENTS_PAGE,
+    NEW_RECORD_PAGE,
     Query,
     local_time,
     message_page,
@@ -41,6 +42,7 @@ from .pages import (
     parse_time,
     render_events,
     render_home,
+    render_new_record,
     render_records,
     save_failed_page,
 )
@@ -172,14 +174,22 @@ def home_page(handler: "Handler", _query: Query) -> None:
 @get(EVENTS_PAGE)
 def events_page(handler: "Handler", query: Query) -> None:
     app = handler.app
+    if first(query, "manual"):
+        # 目視の記録の入力欄は専用の画面へ移した。古いリンクとブックマークを移す。
+        handler.redirect(NEW_RECORD_PAGE, status=301)
+        return
+    review = _review_bar(handler, query, f"event:{first(query, 'id')}")
+    # 確認待ちから開いていないときは、確認待ちへの入口のために件数を渡す。
+    waiting = 0 if review else len(review_items(app.store, app.clips))
     page = render_events(
-        app.store,
-        handler.csrf,
-        query,
-        title=app.title,
-        review=_review_bar(handler, query, f"event:{first(query, 'id')}"),
+        app.store, handler.csrf, query, title=app.title, review=review, waiting=waiting
     )
     handler.respond(200, page)
+
+
+@get(NEW_RECORD_PAGE)
+def new_record_page(handler: "Handler", _query: Query) -> None:
+    handler.respond(200, render_new_record(handler.csrf, title=handler.app.title))
 
 
 @get("/records")
@@ -518,6 +528,10 @@ def save_label(handler: "Handler", form: Form) -> None:
     if form.fields.get("from") == "review":
         # 確認待ちから開いたイベントは、保存したら次の件へ進む（保留でも同じ件に戻らない）。
         handler.redirect(f"{NEXT_PAGE}?after=event:{form.fields.get('id', '')}")
+        return
+    if form.fields.get("action") in ("missed", "manual"):
+        # 目視の記録は、足した記録が見える記録の画面へ戻す。
+        handler.redirect("/records?saved=1")
         return
     mode = form.fields.get("filter", "unlabeled")
     if mode not in FILTERS:
