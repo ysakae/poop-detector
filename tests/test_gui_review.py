@@ -6,6 +6,8 @@ from urllib.parse import urlencode
 import numpy as np
 from support import exchange, login
 
+from poop_detector.video.clip_reviews import Assessment
+
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 
 
@@ -184,3 +186,28 @@ def test_menu_marks_review_while_reviewing(gui):
         html = page(server, path, cookie)
         nav = re.search(r'aria-label="メインメニュー".*?</nav>', html, re.S)[0]
         assert re.search(r'aria-current="page">確認待ち', nav)
+
+
+def test_review_list_shows_thumbnails_and_what_was_found(gui):
+    """動画の一覧と同じ情報（サムネイル・きっかけ・自動判定の候補）で、開く前に見分けられる。"""
+    server, _, event_id = gui
+    clip_id = ready_clip(server, source="early_alert")
+    plain = ready_clip(server, source="manual")
+    server.app.clips.assessments.save(
+        clip_id,
+        Assessment(
+            label="feces",
+            activity="excreting",
+            start_seconds=1,
+            end_seconds=2,
+            reason="人工データ",
+            location="tray",
+        ),
+    )
+    html = page(server, "/review", login(server, role="member"))
+    assert f'<img src="/clip-thumbnail?id={clip_id}" alt=""' in html
+    assert f'<img src="/image?id={event_id}" alt=""' in html
+    assert "トイレ見守りの動画" in html
+    assert '<span class="chip chip-warn">自動判定の候補 ／ 排便 ／ トレー内</span>' in html
+    row = re.search(rf'<li><a href="/clips\?id={plain}.*?</li>', html, re.S)[0]
+    assert '<span class="chip chip-warn">未ラベル</span>' in row

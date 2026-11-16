@@ -138,3 +138,15 @@ def test_no_excretion_on_the_video_keeps_an_existing_detection_label(tmp_path):
     clips.labels.save(clip_id, ClipLabel("none", None, None, "other", "", None))
     row = next(row for row in store.list() if row["id"] == event_id)
     assert (row["feedback"], row["excretion_type"]) == (1, "urine")
+
+
+def test_items_carry_what_the_list_shows():
+    """一覧に出す、検知の画像の有無と、自動判定の場所を持つ。"""
+    events = [{**event("e1", "2026-01-01T00:00:00+00:00"), "image": "events/e1.jpg"}]
+    clips = [clip("c1", "2026-01-02T00:00:00+00:00", review_label="urine", review_location="tray")]
+    video, image = pending_items(events, clips)
+    assert (video.review_label, video.location, video.image) == ("urine", "tray", False)
+    assert (image.kind, image.image) == ("event", True)
+    # 画像のない検知と、場所の分からない動画でも並べられる。
+    bare = pending_items([event("e2", "2026-01-03T00:00:00+00:00")], [])[0]
+    assert (bare.image, bare.location) == (False, None)

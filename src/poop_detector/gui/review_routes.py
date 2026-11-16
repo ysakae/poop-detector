@@ -7,6 +7,7 @@
 
 from typing import TYPE_CHECKING
 
+from ..records.events import EXCRETION_LOCATIONS
 from ..video.clips import CLIP_LABELS
 from .clip_pages import SOURCES
 from .pages import Query, local_time
@@ -21,14 +22,30 @@ REVIEW_PAGE = "/review"
 
 
 def _entry(item: ReviewItem) -> dict[str, str]:
+    """一覧の1行。動画の一覧（clip_pages.clip_list_item）と同じ見せ方にそろえる。"""
     if item.kind == "event":
         what = "差分の検知（画像）"
-    elif item.event_id:
-        what = "差分の検知（動画）"
+        thumbnail = f"/image?id={item.id}" if item.image else ""
     else:
-        what = f"{SOURCES.get(item.source, '保存要求')}の動画"
-    hint = f"自動判定：{CLIP_LABELS[item.review_label]}" if item.review_label else ""
-    return {"time": local_time(item.at), "what": what, "hint": hint, "url": item.url}
+        what = (
+            "差分の検知（動画）"
+            if item.event_id
+            else f"{SOURCES.get(item.source, '保存要求')}の動画"
+        )
+        thumbnail = f"/clip-thumbnail?id={item.id}"
+    label = "未ラベル"
+    if item.review_label:
+        label = "自動判定の候補 ／ " + CLIP_LABELS[item.review_label]
+        if item.location:
+            label += " ／ " + EXCRETION_LOCATIONS.get(item.location, "場所不明")
+    return {
+        "time": local_time(item.at),
+        "what": what,
+        "label": label,
+        "thumbnail": thumbnail,
+        "icon": "camera" if item.kind == "event" else "video",
+        "url": item.url,
+    }
 
 
 @get(REVIEW_PAGE)
