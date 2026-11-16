@@ -23,6 +23,7 @@ from ..video.clip_storage import (
     retention_days,
 )
 from ..video.clips import ACTIVITIES, CLIP_LABELS, PENDING_STATUSES, ClipRow, ClipStore
+from .list_time import by_day, list_time
 from .review_queue import NEXT_PAGE, ReviewItem, review_bar
 from .templating import render_template
 
@@ -101,8 +102,6 @@ def clip_list_item(
     candidate: Candidate | None = None,
     mode: str = "all",
 ) -> dict[str, Any]:
-    from .pages import local_time
-
     label = CLIP_LABELS.get(item["label"], "")
     if label and item["location"]:
         label += " ／ " + EXCRETION_LOCATIONS.get(item["location"], "場所不明")
@@ -110,7 +109,7 @@ def clip_list_item(
         "id": item["id"],
         "url": _clips_url(mode, item["id"]),
         "active": item["id"] == selected,
-        "time": local_time(item["requested_at"]),
+        "when": list_time(item["requested_at"]),
         "status": STATES.get(item["status"], item["status"]),
         "label": label,
         "assessment": clip_assessment_summary(
@@ -379,7 +378,7 @@ def render_clips(
         refresh_url=_clips_url(mode, row["id"] if row else None),
         saved=bool(query.get("saved")),
         benchmark_saved=bool(query.get("benchmark_saved")),
-        items=items,
+        groups=by_day(items),
         filters=clip_filters(rows, mode),
         show=mode,
         any_clips=bool(rows),

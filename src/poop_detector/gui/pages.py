@@ -14,6 +14,7 @@ from ..timezones import local_today, parse_local, timezone_label, to_local
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
 from .clip_pages import capacity_info
+from .list_time import by_day, list_time
 from .templating import render_template
 
 # parse_qs で読んだ問い合わせ文字列。同じ名前の値はリストになる。
@@ -153,7 +154,7 @@ def event_item(row: EventRow, mode: str, active: bool) -> dict[str, Any]:
         "id": row["id"],
         "image": bool(row["image"]),
         "icon": icon,
-        "time": local_time(row["timestamp"]),
+        "when": list_time(row["timestamp"]),
         "label": label_text(row),
         "state": "warn" if row["feedback"] is None else "ok",
     }
@@ -303,7 +304,7 @@ def render_home(
     done = next((entry for entry in cared if recorded and entry.id == recorded), None)
     recent = [
         {
-            "time": local_time(row["actual_start"] or row["timestamp"]),
+            "when": list_time(row["actual_start"] or row["timestamp"]),
             "type": EXCRETION_TYPES[row["excretion_type"]],
             "icon": RECORD_ICONS.get(row["excretion_type"], "paw"),
             "location": EXCRETION_LOCATIONS.get(row["location"] or "", "場所不明"),
@@ -359,19 +360,19 @@ def record_stats(records: Iterable[EventRow], query: Query) -> dict[str, Any]:
 
 
 def record_row(row: EventRow, videos: Sequence[str]) -> dict[str, Any]:
-    recorded_at = local_time(row["actual_start"] or row["timestamp"])
-    if row["kind"] == "VIDEO" and not row["actual_start"]:
-        recorded_at += "（動画時刻・開始不明）"
+    start = list_time(row["actual_start"] or row["timestamp"])
+    end = list_time(row["actual_end"])
     return {
-        "cells": [
-            recorded_at,
-            local_time(row["actual_end"]),
-            EXCRETION_TYPES[row["excretion_type"]],
-            EXCRETION_LOCATIONS.get(row["location"] or "", "場所不明"),
-            SOURCES[row["kind"]],
-            row["note"],
-        ],
+        "type": EXCRETION_TYPES[row["excretion_type"]],
+        "location": EXCRETION_LOCATIONS.get(row["location"] or "", "場所不明"),
+        "source": SOURCES[row["kind"]],
+        "note": row["note"],
         "icon": RECORD_ICONS.get(row["excretion_type"], "paw"),
+        "when": start,
+        "end": end,
+        # 完了が開始と別の日なら、完了にも日付を付ける。
+        "end_clock": bool(start and end and start.day == end.day),
+        "start_unknown": row["kind"] == "VIDEO" and not row["actual_start"],
         "videos": videos,
         "url": event_url(row["id"]),
     }
@@ -388,5 +389,5 @@ def render_records(
         title=title or APP_TITLE,
         stats=record_stats(records, query),
         timezone=timezone_label(),
-        records=[record_row(row, video_links.get(row["id"], [])) for row in reversed(records)],
+        groups=by_day(record_row(row, video_links.get(row["id"], [])) for row in reversed(records)),
     )

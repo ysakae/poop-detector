@@ -1,6 +1,6 @@
 {#- 確定した排泄の記録と、日別・時間帯別の集計。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state, icon, stat %}
+{% from "_macros.html" import empty_state, icon, stat, when %}
 {% block content %}
 <h2>排便・排尿の記録</h2>{% if saved %}<div class="message" role="status">記録しました。</div>{% endif %}<p class="toolbar"><a class="button secondary" href="/records/new">排泄を記録</a><a class="button ghost" href="/records/events">検知の一覧</a></p>
 <section class="record-stats" aria-labelledby="daily-stats-title"><h3 id="daily-stats-title">1日の排便・排尿回数</h3><form method="get" action="/records" class="toolbar"><label>集計日<input type="date" name="date" value="{{ stats.day }}" required></label><label>時間帯別の集計期間<select name="days">
@@ -17,14 +17,18 @@
 {%- endfor -%}
 </tbody></table></div></details></section>
 <h3>確定記録一覧（全期間）</h3>
-{% if records %}<ul class="timeline record-list">
-{%- for record in records -%}
-<li>{{ icon(record.icon) }}<span class="timeline-what">{{ record.cells[2] }}<small>{{ record.cells[3] }} ／ {{ record.cells[4] }}{% if record.cells[5] %} ／ {{ record.cells[5] }}{% endif %}</small></span><span class="timeline-time">{{ record.cells[0] }}{% if record.cells[1] %}〜{{ record.cells[1] }}{% endif %}</span>
+{% if groups %}
+{%- for group in groups %}
+<h3 class="day-heading">{{ group.day }}</h3>
+<ul class="timeline record-list">
+{%- for record in group.rows -%}
+<li>{{ icon(record.icon) }}<span class="timeline-what">{{ record.type }}<small>{{ record.location }} ／ {{ record.source }}{% if record.note %} ／ {{ record.note }}{% endif %}</small></span><span class="timeline-time">{{ when(record.when, clock=true) }}{% if record.end %}〜{{ when(record.end, clock=record.end_clock) }}{% endif %}{% if record.start_unknown %}（動画時刻・開始不明）{% endif %}</span>
 {%- for clip_id in record.videos -%}
 <a href="/clips?id={{ clip_id }}">映像を見る{% if loop.index > 1 %} ({{ loop.index }}){% endif %}</a>
 {%- endfor -%}
 <a href="{{ record.url }}">編集</a></li>
 {%- endfor -%}
 </ul>
+{%- endfor %}
 {% else %}<div class="card">{{ empty_state("確認済みの排泄記録はまだありません", "動画や検知を確かめるか、目視で見た排泄を記録すると、ここに並びます。", "/records/new", "排泄を記録する", "secondary") }}</div>{% endif %}
 {% endblock %}
