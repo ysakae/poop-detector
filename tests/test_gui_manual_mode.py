@@ -18,10 +18,10 @@ def test_manual_home_hides_live_view_and_links_to_manual_entry(gui):
             html = page.decode()
             assert "手動記録モード" in html
             assert "現在のカメラ映像" not in html
-            assert 'href="/records/events?manual=1#manual-record"' in html
-            status, page = request(manual, "GET", "/records/events?manual=1")
+            assert 'href="/records/new"' in html
+            status, page = request(manual, "GET", "/records/new")
             assert status == 200
-            assert b'<details id="manual-record" open>' in page
+            assert "排泄を記録".encode() in page
             assert (
                 submit(
                     manual,

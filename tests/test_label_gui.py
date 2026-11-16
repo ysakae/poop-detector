@@ -252,3 +252,41 @@ def test_serve_without_users_explains_the_first_registration(launch):
     out = run(False, has_users=False)
     assert opened == []
     assert "users invite" in out
+
+
+def test_manual_record_has_its_own_page(gui):
+    """目視の記録は、検知の一覧の下ではなく、専用の画面で入力する。"""
+    server, _, _ = gui
+    status, body = request(server, "GET", "/records/new")
+    page = body.decode()
+    assert status == 200
+    assert "<h2>排泄を記録</h2>" in page
+    assert 'name="action"' in page
+    assert 'name="start"' in page
+    # 検知の一覧は履歴だけにする。
+    events = request(server, "GET", "/records/events")[1].decode()
+    assert "<h2>検知の一覧</h2>" in events
+    assert 'name="action"' not in events
+    assert "目視で確認した排便・排尿を記録する" not in events
+    # 保存すると記録の画面へ戻り、足した記録が見える。
+    fields = {"action": "manual", "type": "feces", "start": "2026-11-08T23:10"}
+    body = urlencode({**fields, "csrf": csrf_token(server)})
+    form = {"Content-Type": "application/x-www-form-urlencoded"}
+    status, headers, _ = exchange(server, "POST", "/save", body, form)
+    assert (status, headers["Location"]) == (303, "/records?saved=1")
+    assert "記録しました" in request(server, "GET", "/records?saved=1")[1].decode()
+    assert 'href="/records/new"' in request(server, "GET", "/records")[1].decode()
+
+
+def test_old_manual_record_link_moves_to_the_new_page(gui):
+    server, _, _ = gui
+    status, headers, _ = exchange(server, "GET", "/records/events?manual=1")
+    assert (status, headers["Location"]) == (301, "/records/new")
+
+
+def test_event_list_points_to_the_review_when_something_waits(gui):
+    server, store, event_id = gui
+    page = request(server, "GET", "/records/events")[1].decode()
+    assert '確認待ちが1件あります。<a href="/review">確認待ちを開く</a>' in page
+    store.classify(event_id, "false")
+    assert "確認待ちが" not in request(server, "GET", "/records/events?filter=all")[1].decode()

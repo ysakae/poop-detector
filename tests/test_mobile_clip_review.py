@@ -35,7 +35,7 @@ def test_missing_notification_clip_shows_manual_entry(gui):
     status, body = request(server, "GET", "/clips?id=missing&notice=1")
     assert status == 200
     assert "指定された動画を確認できません" in body.decode()
-    assert b"/records/events?manual=1#manual-record" in body
+    assert b'href="/records/new"' in body
 
 
 def quick_form(html):

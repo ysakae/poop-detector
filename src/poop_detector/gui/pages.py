@@ -20,6 +20,8 @@ from .templating import render_template
 Query: TypeAlias = Mapping[str, list[str]]
 STATS_PERIODS = ("7", "30", "90")
 EVENTS_PAGE = "/records/events"
+# 目視で確認した排泄を記録する画面。
+NEW_RECORD_PAGE = "/records/new"
 RECENT_RECORDS = 5
 APP_TITLE = "トイレ記録"
 
@@ -173,10 +175,11 @@ def render_events(
     *,
     title: str | None = None,
     review: Mapping[str, Any] | None = None,
+    waiting: int = 0,
 ) -> str:
     """検知の一覧。イベントの一覧と、選んだイベントのラベル入力欄。
 
-    review は確認待ちから開いたときの帯（review_queue.review_bar）。
+    review は確認待ちから開いたときの帯（review_queue.review_bar）。waiting は確認待ちの件数。
     """
     mode = query.get("filter", ["unlabeled"])[0]
     if mode not in FILTERS:
@@ -203,13 +206,24 @@ def render_events(
         metrics=metrics,
         counts=metrics["excretion_counts"],
         saved=bool(query.get("saved")),
-        manual_open=bool(query.get("manual")),
         items=items,
         row=event_detail(row) if row else None,
         locations=list(EXCRETION_LOCATIONS.items()),
-        excretion_types=list(EXCRETION_TYPES.items()),
         timezone=timezone_label(),
         review=review,
+        waiting=waiting,
+    )
+
+
+def render_new_record(token: str, *, title: str | None = None) -> str:
+    """目視で確認した排泄（通常の手動記録と、通知されなかった見逃し）を記録する画面。"""
+    return render_template(
+        "record_new.html",
+        title=title or APP_TITLE,
+        token=token,
+        locations=list(EXCRETION_LOCATIONS.items()),
+        excretion_types=list(EXCRETION_TYPES.items()),
+        timezone=timezone_label(),
     )
 
 
@@ -218,7 +232,7 @@ HOME_QUICK: tuple[tuple[str, str, str], ...] = (
     ("/care#feeding", "food", "ごはん"),
     ("/care#sheet", "sheet", "シート交換"),
     ("/weight", "weight", "体重"),
-    (f"{EVENTS_PAGE}?manual=1#manual-record", "paw", "排泄"),
+    (NEW_RECORD_PAGE, "paw", "排泄"),
 )
 # 確定記録の種類ごとのアイコン（gui/icons.py の名前）。ない種類は肉球にする。
 RECORD_ICONS = {"feces": "feces", "urine": "urine"}
@@ -338,6 +352,7 @@ def render_records(
     video_links = clips.labels.record_videos()
     return render_template(
         "records.html",
+        saved=bool(query.get("saved")),
         title=title or APP_TITLE,
         stats=record_stats(records, query),
         timezone=timezone_label(),
