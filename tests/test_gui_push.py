@@ -159,3 +159,32 @@ def test_only_admins_choose_watchdog_alerts(gui):
     post(server, admin, "/account/push/preferences", {"watchdog": "1"})
     user = users.by_name("管理者B")
     assert (user.push_alerts, user.push_watchdog) == (False, True)
+
+
+def test_notification_target_survives_a_browser_that_opens_the_start_page(gui):
+    """iOS のホーム画面のアプリは、通知を開いても start_url を出すことがある。
+
+    Service Worker が開く先を預け、開いた画面のスクリプトが受け取ってそこへ移る。
+    """
+    server, _, _ = gui
+    cookie = login(server, "家族", role="member")
+    worker = exchange(server, "GET", "/sw.js", auth=False)[2].decode()
+    assert 'caches.open("notification-target")' in worker
+    assert "client.postMessage(" in worker
+    # navigate が使えない・断られるブラウザーでも、残りの手順を続ける。
+    assert "catch" in worker.split('addEventListener("notificationclick"')[1]
+
+    status, headers, body = exchange(
+        server, "GET", "/assets/notification_target.js", headers=cookie, auth=False
+    )
+    assert status == 200
+    assert headers["Content-Type"].startswith("text/javascript")
+    script = body.decode()
+    assert '"notification-target"' in script
+    # 自分のサイトの中の画面だけを開く。
+    assert 'startsWith("//")' in script
+    assert "visibilitychange" in script
+    assert exchange(server, "GET", "/assets/notification_target.js", auth=False)[0] == 403
+
+    page = exchange(server, "GET", "/", headers=cookie, auth=False)[2].decode()
+    assert '<script src="/assets/notification_target.js" defer></script>' in page

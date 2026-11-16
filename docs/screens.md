@@ -180,7 +180,7 @@ CLI の `test-notification`・`check-camera`・`diagnose` と同じ処理を、�
 GUI はホーム画面に追加できる Web アプリ（PWA）です（`gui/push_routes.py`）。
 
 - マニフェスト（`/manifest.webmanifest`）とアイコン、Service Worker（`/sw.js`、`static/sw.js`）を返す。ブラウザーが Cookie なしで読むことがあるので、ログインしていなくても開ける。CSP には `manifest-src 'self'` と `worker-src 'self'` を加えた
-- Service Worker は通知を出し、開くとその画面へ移る。オフラインのときは短い案内だけを出し、画面や記録は保存しない
+- Service Worker は通知を出し、開くとその画面へ移る。iOS のホーム画面のアプリは、通知を開いても最初の画面を出すことがあるので、Service Worker が行き先を預け、開いた画面のスクリプト（`static/notification_target.js`）が受け取って移る（自分のサイトの中のパスだけ、預けてから60秒以内）。オフラインのときは短い案内だけを出し、画面や記録は保存しない
 - 「自分の設定 › 通知（Web Push）」（`static/push.js`）で、この端末のブラウザーの購読を登録・解除し、受け取る通知を選ぶ。購読の宛先は既知のプッシュサービスに限る（`web_push.valid_endpoint`）
 - 送信は監視が行う（`web_push.WebPushNotifier`。ntfy・macOS の通知と `FanOutNotifier` で並べる）。詳しくは [通知](notifications.md#ブラウザーで通知を受け取るweb-push) を参照
 
