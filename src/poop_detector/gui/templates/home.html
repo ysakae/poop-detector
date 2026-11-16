@@ -1,6 +1,6 @@
 {#- ホーム。主役は確認待ちの1つだけで、今日の数字、1回押して記録する入口、最近の記録を並べる（Issue 141）。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import capacity_panel, chip, csrf_field, empty_state, icon, stat %}
+{% from "_macros.html" import capacity_panel, chip, csrf_field, empty_state, icon, stat, when %}
 {% block content %}
 {% if recorded %}<p class="message" role="status">{{ recorded.text }}を記録しました。<a href="{{ recorded.url }}">直す</a></p>{% endif %}
 <section class="card home-review" aria-labelledby="review-title">
@@ -28,7 +28,7 @@
 <h2 id="recent-title">最近の確定記録</h2>
 {% if recent %}<ul class="timeline">
 {%- for record in recent -%}
-<li>{{ icon(record.icon) }}<span class="timeline-what">{{ record.type }}<small>{{ record.location }}</small></span><a href="{{ record.url }}">{{ record.time }}</a></li>
+<li>{{ icon(record.icon) }}<span class="timeline-what">{{ record.type }}<small>{{ record.location }}</small></span><a href="{{ record.url }}">{{ when(record.when) }}</a></li>
 {%- endfor -%}
 </ul>
 {% else %}{{ empty_state("確定した記録はまだありません", "排泄を見かけたら、ここから記録できます。", "/records/new", "排泄を記録する", "secondary") }}{% endif %}
