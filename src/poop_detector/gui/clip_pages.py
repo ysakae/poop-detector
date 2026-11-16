@@ -22,7 +22,7 @@ from ..video.clip_storage import (
     recording_usage,
     retention_days,
 )
-from ..video.clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
+from ..video.clips import ACTIVITIES, CLIP_LABELS, PENDING_STATUSES, ClipRow, ClipStore
 from .review_queue import NEXT_PAGE, ReviewItem, review_bar
 from .templating import render_template
 
@@ -107,7 +107,21 @@ def clip_list_item(
         "label": label,
         "state": state,
         "thumbnail": item["status"] == "ready" and bool(item["path"]),
+        **pending_marks(item["status"]),
     }
+
+
+def pending_marks(status: str) -> dict[str, Any]:
+    """変換待ちかどうかと、状態の値（static/clip_status.js が変化を見比べる）。"""
+    return {"pending": status in PENDING_STATUSES, "status_key": status}
+
+
+def tools_alert(live: bool, capacity: Mapping[str, Any]) -> str:
+    """たたんだ「動画を保存する・録画容量」の見出しに出す、開かなくても伝えたい注意。"""
+    alerts = [] if live else ["カメラ接続を確認できません"]
+    if capacity["percentage"] >= 90:
+        alerts.append("録画容量に注意")
+    return "・".join(alerts)
 
 
 def clip_detail(store: ClipStore, row: Mapping[str, Any]) -> dict[str, Any]:
@@ -131,6 +145,7 @@ def clip_detail(store: ClipStore, row: Mapping[str, Any]) -> dict[str, Any]:
         "interrupted": row["interrupted"],
         "note": row["note"],
         "event_id": row["event_id"],
+        **pending_marks(status),
     }
 
 
@@ -329,18 +344,27 @@ def render_clips(
         if notice and start is not None and row and 0 <= start <= (row["duration"] or 0)
         else ""
     )
+    capacity = capacity_info(store.root, disk_mb)
+    live = store.live()
+    items = [
+        clip_list_item(item, row["id"] if row else None, candidates.get(item["id"]), mode)
+        for item in listed
+    ]
+    has_pending = any(item["pending"] for item in items) or bool(
+        context["clip"] and context["clip"]["pending"]
+    )
     return render_template(
         "clips.html",
         title=title or APP_TITLE,
         token=token,
-        capacity=capacity_info(store.root, disk_mb),
-        live=store.live(),
+        capacity=capacity,
+        live=live,
+        tools_alert=tools_alert(live, capacity),
+        has_pending=has_pending,
+        refresh_url=_clips_url(mode, row["id"] if row else None),
         saved=bool(query.get("saved")),
         benchmark_saved=bool(query.get("benchmark_saved")),
-        items=[
-            clip_list_item(item, row["id"] if row else None, candidates.get(item["id"]), mode)
-            for item in listed
-        ],
+        items=items,
         filters=clip_filters(rows, mode),
         any_clips=bool(rows),
         waiting=len(queue),

@@ -7,6 +7,7 @@ role="admin" を付けて登録する（既定はログインした人なら誰�
 """
 
 import json
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -233,6 +234,23 @@ def moved_page(handler: "Handler", _query: Query) -> None:
     handler.redirect(f"{target}?{url.query}" if url.query else target, status=301)
 
 
+# 変換待ちの状態を一度に確かめる動画の数の上限。画面に出る変換待ちは、ふつう数本しかない。
+STATUS_LIMIT = 50
+CLIP_ID = re.compile(r"[0-9a-f]{32}")
+
+
+@get("/clips/status")
+def clip_status(handler: "Handler", query: Query) -> None:
+    """変換待ちの動画の状態を、ID と状態だけの JSON で返す（static/clip_status.js が使う）。"""
+    if handler.headers.get("Sec-Fetch-Site") == "cross-site":
+        handler.respond(403, "アクセスできません")
+        return
+    ids = [clip for clip in query.get("id", []) if CLIP_ID.fullmatch(clip)]
+    found = handler.app.clips.statuses(list(dict.fromkeys(ids))[:STATUS_LIMIT])
+    payload = {"clips": [{"id": clip, "status": status} for clip, status in found.items()]}
+    handler.respond(200, json.dumps(payload), "application/json; charset=utf-8")
+
+
 @get("/clips/capacity")
 def capacity(handler: "Handler", _query: Query) -> None:
     handler.respond(200, capacity_status(handler.app.clips.root, handler.app.disk_mb))
@@ -397,6 +415,7 @@ def logout(handler: "Handler", _form: Form) -> None:
 @get(
     "/assets/live.js",
     "/assets/clips.js",
+    "/assets/clip_status.js",
     "/assets/care.js",
     "/assets/clip_storage.js",
     "/assets/management.js",
