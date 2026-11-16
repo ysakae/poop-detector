@@ -37,6 +37,7 @@ from .state_machine import Machine
 if TYPE_CHECKING:
     from ..experimental.outside import OutsideWatch
     from ..features.dog import DogObserver, DogState, DogTransition, Predict
+    from ..notifications import Delivery
 
 logger = logging.getLogger(__name__)
 HEALTH_LOG_SECONDS = 30
@@ -63,7 +64,9 @@ class MonitorNotifier(Protocol):
 
     def send(self) -> bool: ...
     def send_early_alert(self) -> bool: ...
-    def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> bool: ...
+    def send_reentry(
+        self, kind: str, event_id: str, at: datetime, clip_id: str | None
+    ) -> "Delivery": ...
 
 
 class Clock(Protocol):
@@ -516,7 +519,7 @@ def standard_extensions(
 
             if collector is None:
                 raise ValueError("再侵入検知には動画保存が必要です")
-            extensions.append(ReentryExtension(config, dog, notifier, collector))
+            extensions.append(ReentryExtension(config, dog, notifier, collector, baseline))
     return extensions
 
 

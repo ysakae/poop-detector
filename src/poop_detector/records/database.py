@@ -423,6 +423,23 @@ def migrate_to_v18(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v19(db: sqlite3.Connection) -> None:
+    """連続観測が確認できた最後の時刻を保存する。"""
+    db.execute("ALTER TABLE reentry_waste ADD COLUMN observed_until TEXT")
+
+
+def migrate_to_v20(db: sqlite3.Connection) -> None:
+    """通知の送信状態を追加する。以前の送信予約は結果不明として扱う。"""
+    db.execute("ALTER TABLE reentry_notices ADD COLUMN status TEXT NOT NULL DEFAULT 'unknown'")
+    db.execute("ALTER TABLE reentry_notices ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1")
+    db.execute("ALTER TABLE reentry_notices ADD COLUMN occurred_at TEXT")
+    db.execute("ALTER TABLE reentry_notices ADD COLUMN clip_id TEXT")
+    db.execute("ALTER TABLE reentry_notices ADD COLUMN next_attempt_at TEXT")
+    db.execute(
+        "CREATE INDEX reentry_notices_due ON reentry_notices (next_attempt_at) WHERE status='retry'"
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -443,6 +460,8 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v16,
     migrate_to_v17,
     migrate_to_v18,
+    migrate_to_v19,
+    migrate_to_v20,
 )
 LATEST_VERSION = len(MIGRATIONS)
 
