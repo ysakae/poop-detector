@@ -59,10 +59,17 @@ CLIP_FILTERS: dict[str, tuple[str, Callable[[Mapping[str, Any]], bool]]] = {
 }
 
 
-def _clips_url(mode: str, clip_id: str | None = None) -> str:
-    """動画の画面の URL。絞り込みが「すべて」のときは付けない。"""
+def _clips_url(mode: str, clip_id: str | None = None, **extra: str) -> str:
+    """動画の画面の URL。絞り込みが「すべて」のときは付けない。extra は後ろに足す値。"""
     values = ({"id": clip_id} if clip_id else {}) | ({"show": mode} if mode != "all" else {})
+    values |= extra
     return "/clips" + ("?" + urlencode(values) if values else "")
+
+
+def kept_filter(fields: Mapping[str, str]) -> str:
+    """フォームが持ち帰った絞り込み。知らない値は「すべて」にして、転送先に付けない。"""
+    mode = fields.get("show", "all")
+    return mode if mode in CLIP_FILTERS else "all"
 
 
 def clip_filters(rows: Sequence[Mapping[str, Any]], mode: str) -> list[dict[str, Any]]:
@@ -373,6 +380,7 @@ def render_clips(
         benchmark_saved=bool(query.get("benchmark_saved")),
         groups=by_day(items),
         filters=clip_filters(rows, mode),
+        show=mode,
         any_clips=bool(rows),
         waiting=len(queue),
         clip_labels=list(CLIP_LABELS.items()),
@@ -575,7 +583,7 @@ def handle_benchmark_post(
         )
         handler.respond(400, page)
         return
-    handler.redirect(f"/clips?id={clip_id}&benchmark_saved=1")
+    handler.redirect(_clips_url(kept_filter(fields), clip_id, benchmark_saved="1"))
 
 
 def handle_clip_post(
@@ -613,7 +621,7 @@ def handle_clip_post(
                 raise ValueError("動画が見つかりません")
             linked = store.labels.confirmation(clip_id)
             if linked or row["label"] is not None:
-                handler.redirect(f"/clips?id={clip_id}&saved=1")
+                handler.redirect(_clips_url(kept_filter(fields), clip_id, saved="1"))
                 return
             location = fields.get("location") or None
             record_id: str | None = fields.get("record_id") or (
@@ -649,7 +657,7 @@ def handle_clip_post(
             # 確認待ちから開いた動画は、保存したら次の件へ進む。
             handler.redirect(f"{NEXT_PAGE}?after=clip:{clip_id}")
             return
-        handler.redirect(f"/clips?id={clip_id}&saved=1")
+        handler.redirect(_clips_url(kept_filter(fields), clip_id, saved="1"))
     except (ValueError, TypeError) as error:
         from .pages import message_page
 

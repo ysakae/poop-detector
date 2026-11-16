@@ -5,7 +5,7 @@
 <p class="note">ラベルを保存すると、評価の候補に選べます（「判断できない」の動画は精度の集計から外すため選べません）。</p>
 {%- else -%}
 {%- if benchmark_saved %}<div class="message" role="status">評価の候補を保存しました。</div>{% endif -%}
-<form method="post" action="/clips/benchmark">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><fieldset><legend>評価セットへの入れ方</legend><div class="choices">
+<form method="post" action="/clips/benchmark">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}<fieldset><legend>評価セットへの入れ方</legend><div class="choices">
 {%- for value, text in benchmark.states -%}
 <label class="choice"><input type="radio" name="state" value="{{ value }}" {% if value == benchmark.state %}checked{% endif %}>{{ text }}</label>
 {%- endfor -%}
