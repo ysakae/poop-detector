@@ -53,8 +53,8 @@ SOURCES = {
 # 一覧の絞り込み（?show=）。値は、動画の行がその条件に入るかを返す。
 CLIP_FILTERS: dict[str, tuple[str, Callable[[Mapping[str, Any]], bool]]] = {
     "all": ("すべて", lambda _row: True),
-    "unlabeled": ("未ラベル", lambda row: row["label"] is None),
-    "labeled": ("ラベル済み", lambda row: row["label"] is not None),
+    "unlabeled": ("人のラベルなし", lambda row: row["label"] is None),
+    "labeled": ("人のラベルあり", lambda row: row["label"] is not None),
 }
 
 
@@ -84,18 +84,24 @@ def clip_list_item(
 ) -> dict[str, Any]:
     from .pages import local_time
 
-    label = CLIP_LABELS.get(item["label"], "未ラベル")
-    # 人がラベルを付けたものは済み、まだのものは注意、再生できないものは控えめに示す。
-    state = "ok"
-    if item["label"] is None:
+    if item["label"] is not None:
+        label = "人のラベル：" + CLIP_LABELS[item["label"]]
+        if item["location"]:
+            label += " ／ " + EXCRETION_LOCATIONS.get(item["location"], "場所不明")
+        state = "ok"
+    else:
+        label = "人のラベルなし"
         state = "warn" if item["status"] == "ready" else "off"
-        if item["review_label"]:
-            label = "自動判定の候補 ／ " + CLIP_LABELS[item["review_label"]]
-        elif item["review_error"]:
-            label = "自動判定の失敗"
-    location = item["review_location"] if item["label"] is None else item["location"]
-    if location:
-        label += " ／ " + EXCRETION_LOCATIONS.get(location, "場所不明")
+
+    review_label = item["review_label"]
+    assessment = "自動判定：失敗" if item["review_error"] else "自動判定：結果なし"
+    if review_label:
+        result = CLIP_LABELS[review_label]
+        assessment = "自動判定：" + result
+        if review_label in EXCRETION_TYPES:
+            assessment += "の候補"
+        if item["review_location"]:
+            assessment += " ／ " + EXCRETION_LOCATIONS.get(item["review_location"], "場所不明")
     if candidate is not None and candidate.state is not None:
         label += " ／ " + CANDIDATE_STATES[candidate.state]
     return {
@@ -106,6 +112,7 @@ def clip_list_item(
         "status": STATES.get(item["status"], item["status"]),
         "label": label,
         "state": state,
+        "assessment": assessment,
         "thumbnail": item["status"] == "ready" and bool(item["path"]),
         **pending_marks(item["status"]),
     }
