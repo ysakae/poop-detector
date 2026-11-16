@@ -21,16 +21,33 @@ self.addEventListener("push", event => {
   }));
 });
 
+// 通知の行き先を預ける。iOS のホーム画面のアプリは、通知を開いても最初の画面を出したり、
+// ここからの画面の切り替えを受け付けなかったりするので、開いた画面（notification_target.js）が受け取って移る。
+async function remember(target) {
+  try {
+    const store = await caches.open("notification-target");
+    const body = JSON.stringify({ url: target, at: Date.now() });
+    await store.put("/notification-target", new Response(body));
+  } catch {
+    // 預けられなくても、下の手順で画面を開く。
+  }
+}
+
 self.addEventListener("notificationclick", event => {
   event.notification.close();
   const target = event.notification.data?.url ?? "/";
   event.waitUntil((async () => {
+    await remember(target);
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of windows) {
-      if (new URL(client.url).origin === self.location.origin && "focus" in client) {
+      if (new URL(client.url).origin !== self.location.origin || !("focus" in client)) continue;
+      try {
         await client.navigate(target);
-        return client.focus();
+      } catch {
+        // navigate を使えない・断られたときは、画面の側に移ってもらう。
+        client.postMessage({ type: "notification-target" });
       }
+      return client.focus();
     }
     return self.clients.openWindow(target);
   })());
