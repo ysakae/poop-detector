@@ -27,15 +27,34 @@ PAGE = "/manage/checks"
 def first_setup(handler: "Handler", _query: Query) -> None:
     app = handler.app
     context = CommandContext(_config(handler))
+    camera_configured = bool(load_connection_settings()["POOP_RTSP_URL"].strip())
+    roi_registered = context.roi_path.is_file()
+    baseline_registered = context.baseline_path.is_file()
+    monitor = app.preview.monitor_status()
+    done = {
+        "camera": camera_configured,
+        "tray": roi_registered and baseline_registered,
+        "monitor": monitor in ("connected", "searching"),
+    }
     page = render_template(
         "first_setup.html",
         title=app.title,
-        camera_configured=bool(load_connection_settings()["POOP_RTSP_URL"].strip()),
-        roi_registered=context.roi_path.is_file(),
-        baseline_registered=context.baseline_path.is_file(),
-        monitor=app.preview.monitor_status(),
+        camera_configured=camera_configured,
+        roi_registered=roi_registered,
+        baseline_registered=baseline_registered,
+        monitor=monitor,
+        done=done,
+        next_step=_next_step(done),
     )
     handler.respond(200, page)
+
+
+def _next_step(done: dict[str, bool]) -> str:
+    """まだ済んでいない最初の手順。画面はこの手順のボタンだけを塗りにする。
+
+    家族の招待と通知は済んだかを判断できないので、ほかがすべて済んだときの次の手順にする。
+    """
+    return next((step for step, finished in done.items() if not finished), "family")
 
 
 class NotificationFailedError(UserError):
