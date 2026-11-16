@@ -85,8 +85,8 @@ def test_monitor_sends_and_records_early_alert_alongside_codex(tmp_path, monkeyp
             return stays.copy()
 
     class Notifier:
-        def send_early_alert(self):
-            calls.append("notice")
+        def send_early_alert(self, *, clip_id=None):
+            calls.append(("notice", clip_id))
             return True
 
     class Collector:
@@ -95,6 +95,7 @@ def test_monitor_sends_and_records_early_alert_alongside_codex(tmp_path, monkeyp
 
         def trigger(self, *, source):
             calls.append(source)
+            return "stay-clip"
 
     monkeypatch.setattr(EarlyAlert, "update", lambda *args: True)
     monitor(
@@ -108,7 +109,7 @@ def test_monitor_sends_and_records_early_alert_alongside_codex(tmp_path, monkeyp
         review_notifications=True,
         early_alert=True,
     )
-    assert calls == ["notice", "early_alert"]
+    assert calls == ["early_alert", ("notice", "stay-clip")]
     assert parser().parse_args(["run", "--codex", "--early-alert"]).early_alert
     assert not parser().parse_args(["run"]).early_alert
 

@@ -38,16 +38,21 @@ self.addEventListener("notificationclick", event => {
   const target = event.notification.data?.url ?? "/";
   event.waitUntil((async () => {
     await remember(target);
+    const destination = new URL(target, self.location.origin).href;
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of windows) {
       if (new URL(client.url).origin !== self.location.origin || !("focus" in client)) continue;
+      let navigated;
       try {
-        await client.navigate(target);
+        navigated = await client.navigate(target);
       } catch {
-        // navigate を使えない・断られたときは、画面の側に移ってもらう。
+        // 移動を拒まれた場合も、開いている画面に知らせる。
+      }
+      if (navigated?.url !== destination) {
+        // navigate が例外を出さず null を返した場合も、画面の側で移動する。
         client.postMessage({ type: "notification-target" });
       }
-      return client.focus();
+      return (navigated ?? client).focus();
     }
     return self.clients.openWindow(target);
   })());

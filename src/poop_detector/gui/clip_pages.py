@@ -324,7 +324,9 @@ def render_clips(
         form = label_form(row, cast("Mapping[str, Any] | None", raw_assessment))
         context.update(
             clip=clip_detail(store, row),
-            notice_unavailable=notice and store.video_path(cast(ClipRow, row)) is None,
+            notice_unavailable=notice
+            and row["status"] not in PENDING_STATUSES
+            and store.video_path(cast(ClipRow, row)) is None,
             circling=circling_detail(store, row) if row["status"] == "ready" else None,
             assessment=assessment_detail(
                 cast("Mapping[str, Any] | None", raw_assessment), row["label"] is not None

@@ -166,7 +166,7 @@ def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path,
             return "recording"
 
     class Notifier:
-        def send(self):
+        def send(self, *, clip_id=None):
             raise AssertionError("犬が立ち止まっただけで通知しない")
 
     monkeypatch.setattr(monitoring.time, "monotonic", lambda: now)

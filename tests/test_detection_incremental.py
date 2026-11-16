@@ -66,7 +66,7 @@ def run_frames(root, frames):
             self.frames = iter(frames)
 
     class Silent:
-        def send(self):
+        def send(self, *, clip_id=None):
             return False
 
     config = Config(data_dir=str(root), fps=100, verify_seconds=0.01, clear_seconds=0.01)

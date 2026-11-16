@@ -62,8 +62,8 @@ class FrameSource(Protocol):
 class MonitorNotifier(Protocol):
     """監視ループが使う通知。"""
 
-    def send(self) -> bool: ...
-    def send_early_alert(self) -> bool: ...
+    def send(self, *, clip_id: str | None = None) -> bool: ...
+    def send_early_alert(self, *, clip_id: str | None = None) -> bool: ...
     def send_reentry(
         self, kind: str, event_id: str, at: datetime, clip_id: str | None
     ) -> "Delivery": ...
@@ -136,10 +136,9 @@ class EarlyAlertExtension(MonitorExtension):
     def on_frame(self, view: FrameView) -> None:
         if not self.stay.update(view.crop, view.valid_mask, view.tick):
             return
-        if self.notifier.send_early_alert():
+        clip_id = self.collector.trigger(source="early_alert") if self.collector else None
+        if self.notifier.send_early_alert(clip_id=clip_id):
             logger.info("トイレ見守りの早期通知を送りました")
-        if self.collector is not None:
-            self.collector.trigger(source="early_alert")
 
 
 class DogExtension(MonitorExtension):
@@ -436,9 +435,8 @@ class Monitor:
         self.state.machine = self._new_machine()
         self.state.started_at = None
         self.state.settled_since = None
-        if self.collector is not None:
-            self.collector.trigger(event_id)
-        if not self.review_notifications and self.notifier.send():
+        clip_id = self.collector.trigger(event_id) if self.collector else None
+        if not self.review_notifications and self.notifier.send(clip_id=clip_id):
             self.store.update(event_id, notified_at=utcnow())
         logger.info("排泄の疑いを記録しました: %s", event_id)
 

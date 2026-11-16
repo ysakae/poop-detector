@@ -38,6 +38,20 @@ def test_missing_notification_clip_shows_manual_entry(gui):
     assert b'href="/records/new"' in body
 
 
+def test_notification_opens_the_requested_clip_while_it_is_recording(gui):
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    clip = clips.request(source="early_alert")
+    clips.update(clip, status="recording")
+    ready_clip(clips)
+    status, body = request(server, "GET", f"/clips?id={clip}&notice=1")
+    assert status == 200
+    html = body.decode()
+    assert f'<article id="clip-detail" data-pending-clip="{clip}"' in html
+    assert "録画・変換中の動画があります" in html
+    assert "動画ファイルを確認できません" not in html
+
+
 def quick_form(html):
     import re
 

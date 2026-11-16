@@ -245,3 +245,22 @@ def test_review_list_shows_thumbnails_and_what_was_found(gui):
     assert '<span class="chip chip-warn">自動判定の候補 ／ 排便 ／ トレー内</span>' in html
     row = re.search(rf'<li><a href="/clips\?id={plain}.*?</li>', html, re.S)[0]
     assert '<span class="chip chip-warn">未ラベル</span>' in row
+
+
+def test_stay_clips_require_an_excretion_candidate(gui):
+    server, _, _ = gui
+    clips = server.app.clips
+    pending = ready_clip(server, source="outside_stay")
+    negative = ready_clip(server, source="early_alert")
+    clips.assessments.save(negative, Assessment("none", "other", None, None, "人工データ"))
+    positive = ready_clip(server, source="outside_stay")
+    clips.assessments.save(
+        positive, Assessment("urine", "excreting", 1, 2, "人工データ", "outside")
+    )
+    cookie = login(server, role="member")
+    review = page(server, "/review", cookie)
+    library = page(server, "/clips?show=unlabeled", cookie)
+    assert f"/clips?id={positive}&amp;from=review" in review
+    for clip_id in (pending, negative):
+        assert f"/clips?id={clip_id}&amp;from=review" not in review
+        assert f"/clips?id={clip_id}" in library
