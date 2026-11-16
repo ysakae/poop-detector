@@ -7,7 +7,20 @@
 {%- for value in stats.periods -%}
 <option value="{{ value }}"{% if value == stats.period %} selected{% endif %}>{{ value }}日間</option>
 {%- endfor -%}
-</select></label><button class="secondary">集計を表示</button></form><div class="stats">{{ stat("排便", stats.daily.feces, "回", "feces") }}{{ stat("排尿", stats.daily.urine, "回", "urine") }}{{ stat("種類不明", stats.daily.unspecified, "回", "paw") }}</div><p class="note">{{ timezone }}で集計します。開始時刻が不明な記録は記録時刻を使います。「排便・排尿」は各1件です。0件は確定記録が0件だったことを表します。</p><details open><summary>時間帯別の排便・排尿</summary><p>{{ stats.start }}〜{{ stats.day }}（{{ stats.length }}日間・記録あり{{ stats.recorded_days }}日）</p><div class="hourly-scroll" role="region" aria-label="1時間ごとの集計表" tabindex="0"><table id="hourly-stats"><thead><tr><th scope="col">時間帯</th><th scope="col">排便</th><th scope="col">排尿</th></tr></thead><tbody>
+</select></label><button class="secondary">集計を表示</button></form><div class="stats">{{ stat("排便", stats.daily.feces, "回", "feces") }}{{ stat("排尿", stats.daily.urine, "回", "urine") }}{{ stat("種類不明", stats.daily.unspecified, "回", "paw") }}</div><p class="note">{{ timezone }}で集計します。開始時刻が不明な記録は記録時刻を使います。「排便・排尿」は各1件です。0件は確定記録が0件だったことを表します。</p><h4 class="hourly-title">時間帯別の排便・排尿</h4><p>{{ stats.start }}〜{{ stats.day }}（{{ stats.length }}日間・記録あり{{ stats.recorded_days }}日）</p>
+{% if stats.busiest %}<p class="hourly-busiest">多い時間帯：{{ stats.busiest }}</p>
+<figure class="hourly-figure"><div class="hourly-legend" aria-hidden="true"><span class="bar-key bar-feces"></span>排便 <span class="bar-key bar-urine"></span>排尿</div><div class="hourly-chart" aria-hidden="true">
+{%- for col in stats.chart -%}
+<div class="hour-col"><div class="hour-bars">
+{%- for bar in col.bars -%}
+<span class="bar bar-{{ bar.kind }} level-{{ bar.level }}">{% if bar.count %}<b>{{ bar.count }}</b>{% endif %}</span>
+{%- endfor -%}
+</div><span class="hour-label">{{ col.label }}</span></div>
+{%- endfor -%}
+</div></figure>
+{% else %}<p class="note">この期間の確定記録はありません。</p>{% endif %}
+<details>
+<summary>数で見る（1時間ごとの表）</summary><div class="hourly-scroll" role="region" aria-label="1時間ごとの集計表" tabindex="0"><table id="hourly-stats"><thead><tr><th scope="col">時間帯</th><th scope="col">排便</th><th scope="col">排尿</th></tr></thead><tbody>
 {%- for hour, counts in stats.hourly -%}
 <tr><th scope="row">{{ "%02d"|format(hour) }}:00〜{{ "%02d"|format(hour) }}:59</th>
 {%- for kind in ("feces", "urine") -%}

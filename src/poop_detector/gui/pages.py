@@ -350,6 +350,45 @@ def event_url(event_id: str) -> str:
     return f"{EVENTS_PAGE}?" + urlencode({"filter": "all", "id": event_id})
 
 
+# 時間帯別の棒グラフ。棒の高さは CSS の level-0〜level-10 の段階で示す（CSP でインラインの
+# style を使えないため）。軸の目盛りは CHART_TICK 時間ごと、多い時間帯は BUSIEST 件まで挙げる。
+CHART_LEVELS = 10
+CHART_TICK = 3
+BUSIEST = 2
+CHART_KINDS = ("feces", "urine")
+
+
+def _bar_level(count: int, scale: int) -> int:
+    """件数を棒の高さの段階にする。1件でもあれば、見える高さ（1）にする。"""
+    if count <= 0:
+        return 0
+    return max(1, round(count * CHART_LEVELS / scale))
+
+
+def hourly_chart(hourly: Sequence[Mapping[str, int]], scale: int) -> list[dict[str, Any]]:
+    """24時間の棒グラフの列。各列に排便・排尿の件数と棒の高さの段階を持つ。"""
+    return [
+        {
+            "hour": hour,
+            "label": str(hour) if hour % CHART_TICK == 0 else "",
+            "bars": [
+                {"kind": kind, "count": counts[kind], "level": _bar_level(counts[kind], scale)}
+                for kind in CHART_KINDS
+            ],
+        }
+        for hour, counts in enumerate(hourly)
+    ]
+
+
+def busiest_hours(hourly: Sequence[Mapping[str, int]]) -> str:
+    """排便・排尿の多い時間帯を言葉で示す（例：「7時台（3件）、19時台（1件）」）。"""
+    totals = [
+        (sum(counts[kind] for kind in CHART_KINDS), hour) for hour, counts in enumerate(hourly)
+    ]
+    top = sorted((item for item in totals if item[0] > 0), key=lambda item: (-item[0], item[1]))
+    return "、".join(f"{hour}時台（{total}件）" for total, hour in top[:BUSIEST])
+
+
 def record_stats(records: Iterable[EventRow], query: Query) -> dict[str, Any]:
     """記録の画面の、1日の件数と時間帯別の件数。"""
     try:
@@ -361,6 +400,7 @@ def record_stats(records: Iterable[EventRow], query: Query) -> dict[str, Any]:
         period = "30"
     start = date.fromordinal(max(1, day.toordinal() - int(period) + 1))
     daily, hourly, recorded_days = summarize_records(records, start, day)
+    scale = max(1, *(counts[kind] for counts in hourly for kind in CHART_KINDS))
     return {
         "day": day,
         "period": period,
@@ -370,7 +410,9 @@ def record_stats(records: Iterable[EventRow], query: Query) -> dict[str, Any]:
         "daily": daily,
         "hourly": list(enumerate(hourly)),
         "recorded_days": recorded_days,
-        "scale": max(1, *(counts[kind] for counts in hourly for kind in ("feces", "urine"))),
+        "scale": scale,
+        "chart": hourly_chart(hourly, scale),
+        "busiest": busiest_hours(hourly),
     }
 
 
