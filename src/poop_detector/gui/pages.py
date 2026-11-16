@@ -10,7 +10,7 @@ from ..records.care import CareEntry, feeding_text, format_grams, last_feeding
 from ..records.care import entries as care_entries
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
 from ..records.record_stats import summarize_records
-from ..timezones import local_today, parse_local, timezone_label, to_local
+from ..timezones import local_now, local_today, parse_local, timezone_label, to_local
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
 from .clip_pages import capacity_info
@@ -108,6 +108,16 @@ EVENT_QUICK_LABELS: tuple[tuple[str, str, str], ...] = (
     ("urine", "排尿", "urine"),
     ("both", "両方", "paw"),
     ("false", "誤検知", "none"),
+)
+# 排泄を記録の、押すと保存するボタン。(type の値, 名前, アイコン)。
+NEW_RECORD_BUTTONS: tuple[tuple[str, str, str], ...] = (
+    *EVENT_QUICK_LABELS[:3],
+    ("unspecified", "種類不明", "paw"),
+)
+# 「通知は来ましたか？」の答え。(action の値, 名前)。保存する値は従来の manual・missed。
+NEW_RECORD_KINDS: tuple[tuple[str, str], ...] = (
+    ("manual", "来た、または通知とは関係なく記録する"),
+    ("missed", "来なかった（見逃しとして数える）"),
 )
 KIND_SUFFIXES = {"MISSED": "（見逃し）", "MANUAL": "（手動）", "VIDEO": "（映像）"}
 SOURCES = {"MANUAL": "手動", "MISSED": "見逃し", "SUSPECTED": "検知を確認", "VIDEO": "映像で確認"}
@@ -249,13 +259,18 @@ def render_events(
 
 
 def render_new_record(token: str, *, title: str | None = None) -> str:
-    """目視で確認した排泄（通常の手動記録と、通知されなかった見逃し）を記録する画面。"""
+    """目視で確認した排泄（通常の手動記録と、通知されなかった見逃し）を記録する画面。
+
+    見かけてすぐ記録できるよう、開始にはいまの時刻を入れておき、種類のボタンを押すと保存する。
+    """
     return render_template(
         "record_new.html",
         title=title or APP_TITLE,
         token=token,
         locations=list(EXCRETION_LOCATIONS.items()),
-        excretion_types=list(EXCRETION_TYPES.items()),
+        buttons=NEW_RECORD_BUTTONS,
+        kinds=NEW_RECORD_KINDS,
+        now=local_now().strftime("%Y-%m-%dT%H:%M"),
         timezone=timezone_label(),
     )
 
