@@ -67,7 +67,7 @@ def _timeline(
                     "time": at.strftime("%H:%M"),
                     "icon": EXCRETION_ICONS.get(record["excretion_type"], "paw"),
                     "what": EXCRETION_TYPES[record["excretion_type"]],
-                    "detail": "確定した排泄",
+                    "detail": "確定記録",
                     "url": "",
                 },
             )

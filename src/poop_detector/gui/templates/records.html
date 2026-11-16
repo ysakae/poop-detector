@@ -1,4 +1,4 @@
-{#- 確定した排泄の記録と、日別・時間帯別の集計。 -#}
+{#- 確定記録と、日別・時間帯別の集計。 -#}
 {% extends "base.html" %}
 {% from "_macros.html" import empty_state, icon, stat, when %}
 {% block content %}
@@ -43,5 +43,5 @@
 {%- endfor -%}
 </ul>
 {%- endfor %}
-{% else %}<div class="card">{{ empty_state("確認済みの排泄記録はまだありません", "動画や検知を確かめるか、目視で見た排泄を記録すると、ここに並びます。", "/records/new", "排泄を記録する", "secondary") }}</div>{% endif %}
+{% else %}<div class="card">{{ empty_state("確定記録はまだありません", "動画や検知を確かめるか、目視で見た排泄を記録すると、ここに並びます。", "/records/new", "排泄を記録", "secondary") }}</div>{% endif %}
 {% endblock %}
