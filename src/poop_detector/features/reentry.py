@@ -3,6 +3,7 @@
 import math
 import sqlite3
 from contextlib import closing
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -10,6 +11,7 @@ import cv2
 
 from ..detection.roi import AnyROI, outline
 from ..frames import Shape
+from ..notifications import Delivery
 from ..records.database import events_database
 from ..records.events import utcnow
 from .dog import Box, overlaps_roi
@@ -65,6 +67,24 @@ def dog_position(
     return None, None
 
 
+class WasteTrack:
+    """同じ候補とみなせる局所差分が二度続くときだけ位置を更新する。"""
+
+    def __init__(self) -> None:
+        self.previous: Position | None = None
+
+    def update(
+        self, position: Position | None, last_known: Position, radius: float
+    ) -> Position | None:
+        previous, self.previous = self.previous, None
+        if position is None or math.dist(position, last_known) > radius:
+            return None
+        self.previous = position
+        if previous is not None and math.dist(position, previous) <= radius / 4:
+            return position
+        return None
+
+
 class ReentryStore:
     """既存の events.sqlite3 に片付け状態と再侵入をひも付ける。"""
 
@@ -94,6 +114,26 @@ class ReentryStore:
                 (configuration_id,),
             ).fetchall()
 
+    def update_position(self, event_id: str, position: Position) -> None:
+        with closing(self.db.connect()) as db, db:
+            db.execute(
+                """UPDATE reentry_waste SET position_x=?, position_y=?
+                   WHERE event_id IN (SELECT id FROM pending_waste WHERE id=?)""",
+                (*position, event_id),
+            )
+
+    def advance_observation(self, event_id: str, previous: str | None, at: str) -> bool:
+        with closing(self.db.connect()) as db, db:
+            return (
+                db.execute(
+                    """UPDATE reentry_waste SET observed_until=?
+                   WHERE event_id IN (SELECT id FROM pending_waste WHERE id=?)
+                   AND observed_until IS ?""",
+                    (at, event_id, previous),
+                ).rowcount
+                == 1
+            )
+
     def collect(self, event_id: str) -> bool:
         with closing(self.db.connect()) as db, db:
             changed = db.execute(
@@ -109,15 +149,55 @@ class ReentryStore:
                 )
             return changed == 1
 
-    def claim(self, event_id: str, kind: str) -> bool:
+    def claim(
+        self, event_id: str, kind: str, at: str | None = None, clip_id: str | None = None
+    ) -> bool:
         """保存済みの通知キーを再起動後も使う。"""
         with closing(self.db.connect()) as db, db:
             return (
                 db.execute(
-                    """INSERT OR IGNORE INTO reentry_notices SELECT id, ? FROM pending_waste WHERE id=?""",
-                    (kind, event_id),
+                    """INSERT OR IGNORE INTO reentry_notices (event_id, kind, occurred_at, clip_id)
+                       SELECT id, ?, ?, ? FROM pending_waste WHERE id=?""",
+                    (kind, at, clip_id, event_id),
                 ).rowcount
                 == 1
+            )
+
+    def due_notices(
+        self, configuration_id: str, at: str, *, medium: bool = True
+    ) -> list[sqlite3.Row]:
+        with closing(self.db.connect()) as db:
+            return db.execute(
+                """SELECT n.event_id, n.kind, n.occurred_at, n.clip_id
+                   FROM reentry_notices n JOIN pending_waste w ON w.id=n.event_id
+                   WHERE w.configuration_id=? AND n.status='retry' AND n.next_attempt_at<=?
+                     AND (? OR n.kind!='reentry')
+                   ORDER BY n.next_attempt_at LIMIT 1""",
+                (configuration_id, at, medium),
+            ).fetchall()
+
+    def claim_retry(self, event_id: str, kind: str, at: str) -> bool:
+        with closing(self.db.connect()) as db, db:
+            return (
+                db.execute(
+                    """UPDATE reentry_notices
+                   SET status='unknown', attempts=attempts+1, next_attempt_at=NULL
+                   WHERE event_id=? AND kind=? AND status='retry' AND next_attempt_at<=?
+                     AND event_id IN (SELECT id FROM pending_waste)""",
+                    (event_id, kind, at),
+                ).rowcount
+                == 1
+            )
+
+    def finish_notice(self, event_id: str, kind: str, result: Delivery, at: str) -> None:
+        retry_at = (datetime.fromisoformat(at) + timedelta(minutes=1)).isoformat()
+        with closing(self.db.connect()) as db, db:
+            db.execute(
+                """UPDATE reentry_notices
+                   SET status=CASE WHEN ?='retry' AND attempts>=3 THEN 'failed' ELSE ? END,
+                       next_attempt_at=CASE WHEN ?='retry' AND attempts<3 THEN ? END
+                   WHERE event_id=? AND kind=? AND status='unknown'""",
+                (result, result, result, retry_at, event_id, kind),
             )
 
     def start(self, event_id: str, at: str) -> int | None:
@@ -181,12 +261,22 @@ class ReentryMonitor:
     """観測ごとに未回収の候補を確認し、排泄候補単位で再侵入を記録する。"""
 
     def __init__(
-        self, store: ReentryStore, configuration_id: str, presence: Presence, high_distance: float
+        self,
+        store: ReentryStore,
+        configuration_id: str,
+        presence: Presence,
+        high_distance: float,
+        *,
+        high_samples: int = 1,
     ) -> None:
         self.store, self.configuration_id = store, configuration_id
         self.presence, self.high_distance = presence, high_distance
+        self.high_samples = high_samples
+        self.nearby: dict[int, int] = {}
         self.armed: set[str] = set()
         self.visits: dict[str, int] = {}
+        self.coverage: dict[str, str | None] = {}
+        self.last_coverage_tick = float("-inf")
         self.last_known = float("-inf")
         self.store.interrupt_open(configuration_id)
 
@@ -196,6 +286,31 @@ class ReentryMonitor:
         self.visits.clear()
         self.armed.clear()
         self.presence.interrupt()
+        self.nearby.clear()
+        self.coverage = dict.fromkeys(self.coverage)
+
+    def record_coverage(
+        self, rows: dict[str, sqlite3.Row], side: Side | None, tick: float, at: str
+    ) -> None:
+        now = datetime.fromisoformat(at)
+        continues = 0 < tick - self.last_coverage_tick <= self.presence.max_gap
+        self.last_coverage_tick = tick
+        advanced: dict[str, str | None] = {}
+        for event_id, row in rows.items():
+            previous = self.coverage.get(event_id)
+            if event_id in self.coverage and (not continues or previous is None):
+                advanced[event_id] = None
+                continue
+            start = datetime.fromisoformat(previous or row["timestamp"])
+            if (
+                side is not None
+                and 0 <= (now - start).total_seconds() <= self.presence.max_gap
+                and self.store.advance_observation(event_id, previous, at)
+            ):
+                advanced[event_id] = at
+            else:
+                advanced[event_id] = None
+        self.coverage = advanced
 
     def observe(
         self, side: Side | None, point: Position | None, tick: float, at: str
@@ -206,6 +321,7 @@ class ReentryMonitor:
             self.last_known = tick
         change = self.presence.update(side, tick)
         rows = {row["id"]: row for row in self.store.pending(self.configuration_id)}
+        self.record_coverage(rows, side, tick, at)
         for event_id in self.visits.keys() - rows.keys():
             self.store.finish(self.visits.pop(event_id), None)
         self.armed.intersection_update(rows)
@@ -226,13 +342,17 @@ class ReentryMonitor:
                     self.store.set_risk(event_id, "MEDIUM")
                     notices.append((event_id, "reentry", new_visit))
             self.armed.clear()
+        nearby: dict[int, int] = {}
         if side == "inside" and point is not None:
             for event_id, visit in self.visits.items():
                 row = rows[event_id]
                 x, y = row["position_x"], row["position_y"]
                 if x is not None and y is not None:
                     distance = math.hypot(point[0] - x, point[1] - y)
-                    if distance <= self.high_distance and self.store.high(visit, distance):
-                        self.store.set_risk(event_id, "HIGH")
-                        notices.append((event_id, "high", visit))
+                    if distance <= self.high_distance:
+                        nearby[visit] = self.nearby.get(visit, 0) + 1
+                        if nearby[visit] >= self.high_samples and self.store.high(visit, distance):
+                            self.store.set_risk(event_id, "HIGH")
+                            notices.append((event_id, "high", visit))
+        self.nearby = nearby
         return notices

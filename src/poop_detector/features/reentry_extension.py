@@ -12,14 +12,14 @@ import cv2
 import numpy as np
 
 from ..config import Config, ConfigError
-from ..detection.difference import IncrementalDetector
+from ..detection.difference import Detector, IncrementalDetector
 from ..detection.monitoring import DogExtension, FrameView, MonitorExtension, MonitorNotifier
 from ..detection.roi import ROI, AnyROI, MaskedROI, PolygonROI, outline
 from ..errors import InvalidInputError
 from ..frames import Frame, Shape
 from ..records.events import utcnow, validate_times
 from ..video.recording import ClipCollector
-from .reentry import Position, Presence, ReentryMonitor, ReentryStore, dog_position
+from .reentry import Position, Presence, ReentryMonitor, ReentryStore, WasteTrack, dog_position
 
 LAYOUT_FILE = "reentry-layout.json"
 
@@ -113,6 +113,7 @@ class ReentryExtension(MonitorExtension):
         dog: DogExtension,
         notifier: MonitorNotifier,
         collector: ClipCollector,
+        baseline: Frame,
     ) -> None:
         self.config, self.dog, self.notifier, self.collector = config, dog, notifier, collector
         root = Path(config.data_dir)
@@ -123,7 +124,17 @@ class ReentryExtension(MonitorExtension):
             self.layout.id,
             Presence(config.reentry_seconds, 2.5 / config.dog_fps),
             config.reentry_high_distance,
+            high_samples=2,
         )
+        self.baseline = Detector(
+            baseline,
+            config.threshold,
+            config.min_area,
+            config.occupied_ratio,
+            config.color_threshold,
+        )
+        self.track = WasteTrack()
+        self.track_id: str | None = None
         self.last_sample = float("-inf")
 
     def on_event(
@@ -132,20 +143,45 @@ class ReentryExtension(MonitorExtension):
         valid = detector.valid_region(view.crop, view.valid_mask)
         mask = detector.addition_mask(view.crop, valid)
         position = waste_position(mask, self.dog.roi, view.frame.shape, detector.min_area)
-        if position is not None:
-            zone = self.layout.danger or self.layout.toilet
-            if cv2.pointPolygonTest(np.asarray(zone.points, dtype=np.float32), position, False) < 0:
-                position = None
-        self.store.register_in(db, event_id, self.layout.id, position)
+        self.store.register_in(db, event_id, self.layout.id, self.in_zone(position))
+
+    def in_zone(self, position: Position | None) -> Position | None:
+        if position is None:
+            return None
+        zone = self.layout.danger or self.layout.toilet
+        if cv2.pointPolygonTest(np.asarray(zone.points, dtype=np.float32), position, False) < 0:
+            return None
+        return position
+
+    def update_waste(self, view: FrameView) -> None:
+        rows = self.store.pending(self.layout.id)
+        if len(rows) != 1 or rows[0]["position_x"] is None:
+            self.track_id, self.track.previous = None, None
+            return
+        row = rows[0]
+        if self.track_id != row["id"]:
+            self.track_id, self.track.previous = row["id"], None
+        valid = self.baseline.valid_region(view.crop, view.valid_mask)
+        delta = self.baseline.difference_mask(view.crop, valid)
+        position = self.in_zone(
+            waste_position(delta, self.dog.roi, view.frame.shape, self.baseline.min_area)
+        )
+        last = (row["position_x"], row["position_y"])
+        updated = self.track.update(position, last, self.config.reentry_high_distance)
+        if updated is not None and updated != last:
+            self.store.update_position(row["id"], updated)
 
     def on_interrupt(self) -> None:
         self.monitor.interrupt()
+        self.track.previous = None
         self.last_sample = float("-inf")
 
     def on_frame(self, view: FrameView) -> None:
         tick = self.dog.observer.last_inference
         if tick == self.last_sample or tick == float("-inf"):
             return
+        if tick - self.last_sample > self.monitor.presence.max_gap:
+            self.track.previous = None
         self.last_sample = tick
         state = self.dog.state
         side, point = (None, None)
@@ -157,6 +193,10 @@ class ReentryExtension(MonitorExtension):
                 view.frame.shape,
                 self.config.reentry_margin,
             )
+        if side == "outside" and view.observation.kind == "empty":
+            self.update_waste(view)
+        else:
+            self.track.previous = None
         at = utcnow()
         notices = self.monitor.observe(side, point, tick, at)
         clip_id = self.collector.trigger(source="toilet_reentry") if notices else None
@@ -175,14 +215,34 @@ class ReentryExtension(MonitorExtension):
                 if datetime.fromisoformat(row["timestamp"]) <= cutoff:
                     self.notify(row["id"], "uncollected", at, None)
 
+        self.retry_notices(at)
+
+    def retry_notices(self, at: str) -> None:
+        if not self.notice_allowed("high", at):
+            return
+        for row in self.store.due_notices(
+            self.layout.id, at, medium=self.config.reentry_notice == "medium"
+        ):
+            event_id, kind = row["event_id"], row["kind"]
+            if self.store.claim_retry(event_id, kind, at):
+                self.deliver(event_id, kind, row["occurred_at"], row["clip_id"], at)
+
     def notify(self, event_id: str, kind: str, at: str, clip_id: str | None) -> None:
+        if self.notice_allowed(kind, at) and self.store.claim(event_id, kind, at, clip_id):
+            self.deliver(event_id, kind, at, clip_id, at)
+
+    def notice_allowed(self, kind: str, at: str) -> bool:
         if not self.config.notifications or self.config.reentry_notice == "off":
-            return
+            return False
         if kind == "reentry" and self.config.reentry_notice == "high":
-            return
+            return False
         blocked = self.config.reentry_quiet_hours.split(",")
-        local = datetime.fromisoformat(at).astimezone()
-        if str(local.hour) in blocked:
-            return
-        if self.store.claim(event_id, kind):
-            self.notifier.send_reentry(kind, event_id, local, clip_id)
+        return str(datetime.fromisoformat(at).astimezone().hour) not in blocked
+
+    def deliver(
+        self, event_id: str, kind: str, occurred: str, clip_id: str | None, at: str
+    ) -> None:
+        result = self.notifier.send_reentry(
+            kind, event_id, datetime.fromisoformat(occurred).astimezone(), clip_id
+        )
+        self.store.finish_notice(event_id, kind, result, at)

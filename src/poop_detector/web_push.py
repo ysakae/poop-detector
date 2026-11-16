@@ -27,7 +27,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from py_vapid import Vapid02
 
-from .notifications import ToiletNotifier
+from .notifications import Delivery, ToiletNotifier, merge_delivery
 from .records.database import Database
 
 logger = logging.getLogger(__name__)
@@ -249,6 +249,18 @@ class WebPushNotifier(ToiletNotifier):
     def _deliver_assessment(self, message: str, path: str) -> bool:
         return self._push(self.subscriptions.recipients(), self.title(), message, path or self.url)
 
+    def _deliver_reentry(self, message: str, path: str) -> Delivery:
+        recipients = self.subscriptions.recipients()
+        if not recipients:
+            return "skipped"
+        payload = json.dumps(
+            {"title": self.title(), "body": message, "url": path or self.url}, ensure_ascii=False
+        ).encode("utf-8")
+        vapid = self.keys.vapid()
+        return merge_delivery(
+            [self.send_to_result(recipient, payload, vapid) for recipient in recipients]
+        )
+
     def _push(self, recipients: list[Subscription], title: str, message: str, url: str) -> bool:
         if not recipients:
             return False
@@ -274,20 +286,25 @@ class WebPushNotifier(ToiletNotifier):
 
     def send_to(self, subscription: Subscription, payload: bytes, vapid: Vapid02) -> bool:
         """1台に送る。無効になった購読（404・410）は台帳から消す。宛先はログに出さない。"""
+        return self.send_to_result(subscription, payload, vapid) == "sent"
+
+    def send_to_result(
+        self, subscription: Subscription, payload: bytes, vapid: Vapid02
+    ) -> Delivery:
         request = push_request(subscription, payload, vapid, self.subject)
         try:
             with self.opener(request, timeout=SEND_TIMEOUT_SECONDS) as response:
-                return bool(200 <= response.status < 300)
+                return "sent" if 200 <= response.status < 300 else "unknown"
         except urllib.error.HTTPError as error:
             if error.code in GONE:
                 self.subscriptions.expire(subscription.endpoint)
                 logger.info("無効になった Web Push の購読を削除しました")
             else:
                 logger.warning("Web Push を送信できませんでした（状態 %s）", error.code)
-            return False
+            return "retry" if error.code in (429, 503) else "unknown"
         except OSError:
             logger.warning("Web Push を送信できませんでした")
-            return False
+            return "unknown"
 
 
 def push_subject(public_url: str) -> str:

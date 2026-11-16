@@ -270,7 +270,7 @@ def test_monitor_factory_records_candidate_and_reentry_with_shared_inference(tmp
         0,
         record_details=lambda db, event_id: reentry.on_event(db, event_id, view, detector),
     )
-    for tick, box in enumerate([(61, 20, 80, 59)] * 3 + [(19, 25, 36, 59)] * 3):
+    for tick, box in enumerate([(61, 20, 80, 59)] * 3 + [(19, 25, 36, 59)] * 4):
         dog.detector.predict = lambda _frame, box=box: [box]
         dog_extension.observer.update = lambda frame, roi, _now, tick=tick: DogObserver.update(
             dog, frame, roi, tick
@@ -282,3 +282,107 @@ def test_monitor_factory_records_candidate_and_reentry_with_shared_inference(tmp
     assert collector.saved[-1] == "toilet_reentry"
     assert visit["risk"] == "HIGH"
     assert visit["high_clip_id"] == "recorded-clip"
+
+
+def test_waste_tracking_requires_visible_matching_frames():
+    from poop_detector.features.reentry import WasteTrack
+
+    track = WasteTrack()
+    origin = (0.2, 0.4)
+    moved = (0.22, 0.4)
+    assert track.update(moved, origin, 0.04) is None
+    assert track.update(None, origin, 0.04) is None
+    assert track.update(moved, origin, 0.04) is None
+    assert track.update(moved, origin, 0.04) == moved
+    assert track.update((0.8, 0.3), moved, 0.04) is None
+
+
+def test_report_marks_unobserved_windows_unknown(tmp_path):
+    from poop_detector.commands.reentry import report
+
+    events = Store(tmp_path)
+    store = ReentryStore(tmp_path)
+    frame = np.zeros((48, 64, 3), dtype=np.uint8)
+    first = events.record(frame, 0.1, None, 0)
+    second = events.record(frame, 0.1, None, 0)
+    start = "2020-01-01T00:00:00+00:00"
+    for event in (first, second):
+        with events.connect() as db:
+            db.execute("UPDATE events SET timestamp=? WHERE id=?", (start, event))
+        events.classify(event, "feces")
+        store.register(event, "layout", None)
+    store.advance_observation(first, None, "2020-01-01T00:00:01+00:00")
+    store.advance_observation(first, "2020-01-01T00:00:01+00:00", "2020-01-01T00:06:00+00:00")
+    rates = report(store)["layout"]["reentry_rates"]
+    assert rates[5] == {"count": 0, "denominator": 1, "unknown": 1, "rate": 0, "small_sample": True}
+    assert rates[15] == {
+        "count": 0,
+        "denominator": 0,
+        "unknown": 2,
+        "rate": None,
+        "small_sample": True,
+    }
+
+
+def test_notice_retries_only_explicit_failures_and_never_reclaims_a_sent_notice(tmp_path):
+    store = ReentryStore(tmp_path)
+    events = Store(tmp_path)
+    event = events.record(np.zeros((48, 64, 3), np.uint8), 0.1, None, 0)
+    store.register(event, "layout", None)
+    first = "2026-01-01T00:00:00+00:00"
+    due = "2026-01-01T00:01:00+00:00"
+    assert store.claim(event, "high", first, "clip")
+    assert store.due_notices("layout", due) == []
+    store.finish_notice(event, "high", "retry", first)
+    restarted = ReentryStore(tmp_path)
+    assert restarted.due_notices("layout", first) == []
+    retry = restarted.due_notices("layout", due)[0]
+    assert retry["clip_id"] == "clip"
+    assert retry["occurred_at"] == first
+    assert restarted.claim_retry(event, "high", due)
+    assert not store.claim_retry(event, "high", due)
+    restarted.finish_notice(event, "high", "sent", due)
+    assert not store.claim(event, "high")
+    assert store.due_notices("layout", due) == []
+
+
+def test_observation_gap_does_not_resume_a_negative_window(tmp_path):
+    from poop_detector.features.reentry import ReentryMonitor
+
+    events = Store(tmp_path)
+    event = events.record(np.zeros((48, 64, 3), np.uint8), 0.1, None, 0)
+    start = "2020-01-01T00:00:00+00:00"
+    with events.connect() as db:
+        db.execute("UPDATE events SET timestamp=? WHERE id=?", (start, event))
+    store = ReentryStore(tmp_path)
+    store.register(event, "layout", None)
+    monitor = ReentryMonitor(store, "layout", Presence(1, 2), 0.04)
+    for tick, side in enumerate(("outside", "outside", None, "outside", "outside"), 1):
+        monitor.observe(side, None, tick, f"2020-01-01T00:00:0{tick}+00:00")
+    with events.connect() as db:
+        row = db.execute(
+            "SELECT observed_until FROM reentry_waste WHERE event_id=?", (event,)
+        ).fetchone()
+    assert row["observed_until"] == "2020-01-01T00:00:02+00:00"
+
+
+def test_partial_notice_delivery_prevents_retry():
+    from poop_detector.notifications import merge_delivery
+
+    assert merge_delivery(["retry", "skipped"]) == "retry"
+    assert merge_delivery(["retry", "sent"]) == "sent"
+    assert merge_delivery(["unknown", "retry"]) == "unknown"
+
+
+@pytest.mark.parametrize(("code", "expected"), [(429, "retry"), (503, "retry"), (401, "unknown")])
+def test_ntfy_retries_only_explicit_temporary_rejections(code, expected):
+    from datetime import UTC, datetime
+    from urllib.error import HTTPError
+
+    from poop_detector.notifications import NtfyNotifier
+
+    def reject(request, **_kwargs):
+        raise HTTPError(request.full_url, code, "エラー", {}, None)
+
+    notifier = NtfyNotifier(topic="example", opener=reject)
+    assert notifier.send_reentry("high", "event", datetime.now(UTC), None) == expected

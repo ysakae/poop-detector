@@ -359,3 +359,32 @@ def test_version_15_database_accepts_judge_outages_and_keeps_old_ones(tmp_path):
     assert log.begin("monitor", "2026-11-03T00:00:00+00:00")[1] is False
     with sqlite3.connect(path) as db, pytest.raises(sqlite3.IntegrityError):
         db.execute("INSERT INTO outages (kind, started_at) VALUES ('other', '2026-11-03')")
+
+
+def test_reentry_migration_preserves_positions_visits_and_old_notice_reservations(tmp_path):
+    path = tmp_path / "events.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:18]:
+            migration(db)
+        db.execute("PRAGMA user_version=18")
+        db.execute("INSERT INTO events (id,timestamp) VALUES (?,?)", EVENT[1][:2])
+        db.execute(
+            """INSERT INTO reentry_waste (event_id,configuration_id,status,position_x,position_y)
+               VALUES ('e1','layout','uncollected',0.3,0.4)"""
+        )
+        db.execute(
+            "INSERT INTO reentry_visits (event_id,started_at,risk) VALUES ('e1',?,'HIGH')",
+            (EVENT[1][1],),
+        )
+        db.execute("INSERT INTO reentry_notices VALUES ('e1','high')")
+
+    with Database(path).connect() as db:
+        assert tuple(
+            db.execute(
+                "SELECT status,position_x,position_y,observed_until FROM reentry_waste"
+            ).fetchone()
+        ) == ("uncollected", 0.3, 0.4, None)
+        assert db.execute("SELECT risk FROM reentry_visits").fetchone()["risk"] == "HIGH"
+        assert tuple(
+            db.execute("SELECT status,attempts,next_attempt_at FROM reentry_notices").fetchone()
+        ) == ("unknown", 1, None)

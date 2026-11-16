@@ -6,12 +6,24 @@ import re
 import subprocess
 from collections.abc import Callable, Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, TypeAlias
+from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 from .features.outages import format_duration
 from .records.events import EXCRETION_TYPES
+
+Delivery: TypeAlias = Literal["sent", "retry", "unknown", "skipped"]
+
+
+def merge_delivery(results: Sequence[Delivery]) -> Delivery:
+    """部分成功や応答が不明のときは、再送による重複を避ける。"""
+    for status in ("sent", "unknown", "retry"):
+        if status in results:
+            return status
+    return "skipped"
+
 
 DEFAULT_NTFY_SERVER = "https://ntfy.sh"
 logger = logging.getLogger(__name__)
@@ -68,7 +80,7 @@ class ToiletNotifier:
     def _deliver_assessment(self, message: str, path: str) -> bool:  # noqa: ARG002
         return self._display(message)
 
-    def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> bool:
+    def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> Delivery:
         detail, risk = {
             "reentry": ("未回収の排泄候補があるトレーに再侵入", "MEDIUM"),
             "high": ("排泄物を踏んだ可能性が高い", "HIGH"),
@@ -83,7 +95,10 @@ class ToiletNotifier:
             f"{at:%Y-%m-%d %H:%M:%S %Z} [{risk}] {detail}。"
             f"映像とトレーを確認し、必要に応じて片付けてください。記録ID: {event_id}"
         )
-        return self.enabled and self._deliver_assessment(message, path)
+        return self._deliver_reentry(message, path) if self.enabled else "skipped"
+
+    def _deliver_reentry(self, message: str, path: str) -> Delivery:
+        return "sent" if self._deliver_assessment(message, path) else "unknown"
 
     def send_outage(self, kind: str, since: datetime) -> bool:
         """監視の停止（monitor）、カメラの不調（camera）、判定器の停止（judge）を知らせる。
@@ -163,6 +178,15 @@ class FanOutNotifier(ToiletNotifier):
             for notifier in self.notifiers
         ]
         return any(results)
+
+    def _deliver_reentry(self, message: str, path: str) -> Delivery:
+        return merge_delivery(
+            [
+                notifier._deliver_reentry(message, path)
+                for notifier in self.notifiers
+                if notifier.enabled
+            ]
+        )
 
 
 def applescript_string(value: str) -> str:
@@ -258,7 +282,14 @@ class NtfyNotifier(ToiletNotifier):
         link = self.public_url + path if self.public_url and path else ""
         return self._publish(message, early_alert=False, link=link)
 
+    def _deliver_reentry(self, message: str, path: str) -> Delivery:
+        link = self.public_url + path if self.public_url and path else ""
+        return self._publish_result(message, early_alert=False, link=link)
+
     def _publish(self, message: str, *, early_alert: bool, link: str = "") -> bool:
+        return self._publish_result(message, early_alert=early_alert, link=link) == "sent"
+
+    def _publish_result(self, message: str, *, early_alert: bool, link: str = "") -> Delivery:
         separate = early_alert and bool(self.early_topic)
         topic = self.early_topic if separate else self.topic
         data = {"topic": topic, "title": self.title(early_alert=separate), "message": message}
@@ -274,7 +305,10 @@ class NtfyNotifier(ToiletNotifier):
         )
         try:
             with self.opener(request, timeout=5) as response:
-                return bool(200 <= response.status < 300)
+                return "sent" if 200 <= response.status < 300 else "unknown"
+        except HTTPError as error:
+            logger.warning("ntfyに通知を送信できませんでした（状態 %s）", error.code)
+            return "retry" if error.code in (429, 503) else "unknown"
         except OSError:
             logger.warning("ntfyに通知を送信できませんでした")
-            return False
+            return "unknown"

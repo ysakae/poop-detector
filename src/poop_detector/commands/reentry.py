@@ -183,7 +183,7 @@ def _describe(events: list[dict[str, Any]], now: str, zone: tzinfo | None) -> di
     first: list[float] = []
     durations: list[float] = []
     accident_count = dangerous = 0
-    followup: list[tuple[float, float | None, bool]] = []
+    followup: list[tuple[float, float | None, bool, float]] = []
     for event in events:
         at = event["actual_start"] or event["timestamp"]
         local = datetime.fromisoformat(at).astimezone(zone)
@@ -198,25 +198,39 @@ def _describe(events: list[dict[str, Any]], now: str, zone: tzinfo | None) -> di
         if waits:
             first.append(min(waits))
             waiting.extend(waits)
+        began = event["actual_end"] or at
+        observed_until = event["observed_until"]
+        coverage = (
+            _seconds(began, observed_until)
+            if observed_until and _seconds(event["timestamp"], began) >= 0
+            else -1.0
+        )
         followup.append(
             (
                 max(0.0, _seconds(event["actual_end"] or at, event["collected_at"] or now)),
                 min(waits) if waits else None,
                 bool(event["collected_at"]),
+                coverage,
             )
         )
 
     rates = {}
     for minutes in (5, 15, 30):
         limit = minutes * 60
-        count = sum(first_seen is not None and first_seen <= limit for _, first_seen, _ in followup)
+        count = sum(
+            first_seen is not None and first_seen <= limit for _, first_seen, _, _ in followup
+        )
+        # 窓内の再侵入を確認できた場合は、欠落があっても結果を確定できる。
         denominator = sum(
-            age >= limit or collected or (seen is not None and seen <= limit)
-            for age, seen, collected in followup
+            (seen is not None and seen <= limit)
+            or coverage >= (min(age, limit) if collected else limit)
+            for age, seen, collected, coverage in followup
         )
         rates[minutes] = {
             "count": count,
             "denominator": denominator,
+            "unknown": len(events) - denominator,
+            "small_sample": denominator < 20,
             "rate": count / denominator if denominator else None,
         }
     return {
@@ -224,7 +238,7 @@ def _describe(events: list[dict[str, Any]], now: str, zone: tzinfo | None) -> di
         "daily_counts": dict(sorted(daily.items())),
         "hourly_counts": dict(sorted(hourly.items())),
         "reentry_rates": rates,
-        "rate_note": "観測できた再侵入の割合。映像断・画角外・犬の未検出で過小になるため、配置間の因果比較はできません。",
+        "rate_note": "再侵入の有無が分かった記録で集計。観測欠落で不明の記録は分母から除外しています。",
         "first_reentry_seconds": first,
         "all_reentry_seconds": waiting,
         "stay_seconds": durations,
@@ -235,7 +249,7 @@ def _describe(events: list[dict[str, Any]], now: str, zone: tzinfo | None) -> di
             "rate": dangerous / len(events) if events else None,
         },
         "uncollected_seconds": [
-            {"seconds": age, "still_pending": not collected} for age, _, collected in followup
+            {"seconds": age, "still_pending": not collected} for age, _, collected, _ in followup
         ],
         "confirmed_accidents": accident_count,
         "small_sample": len(events) < 20,
