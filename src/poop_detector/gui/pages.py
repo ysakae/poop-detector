@@ -101,6 +101,13 @@ FILTERS = {
     "false": "誤検知",
     "missed": "見逃し",
 }
+# 検知の画像の確認で、1回押して保存するボタン（値・文言・アイコン）。
+EVENT_QUICK_LABELS: tuple[tuple[str, str, str], ...] = (
+    ("feces", "排便", "feces"),
+    ("urine", "排尿", "urine"),
+    ("both", "両方", "paw"),
+    ("false", "誤検知", "none"),
+)
 KIND_SUFFIXES = {"MISSED": "（見逃し）", "MANUAL": "（手動）", "VIDEO": "（映像）"}
 SOURCES = {"MANUAL": "手動", "MISSED": "見逃し", "SUSPECTED": "検知を確認", "VIDEO": "映像で確認"}
 
@@ -136,10 +143,41 @@ def label_text(row: EventRow) -> str:
     return label + KIND_SUFFIXES.get(row["kind"], "")
 
 
+def event_item(row: EventRow, mode: str, active: bool) -> dict[str, Any]:
+    """検知の一覧の1行。動画の一覧と同じく、サムネイル・時刻・状態のラベルで見せる。"""
+    # 画像のない記録（手動・見逃し）は、種類のアイコンで見せる。
+    icon = RECORD_ICONS.get(row["excretion_type"], "paw") if row["feedback"] == 1 else "camera"
+    return {
+        "active": active,
+        "url": f"{EVENTS_PAGE}?" + urlencode({"filter": mode, "id": row["id"]}),
+        "id": row["id"],
+        "image": bool(row["image"]),
+        "icon": icon,
+        "time": local_time(row["timestamp"]),
+        "label": label_text(row),
+        "state": "warn" if row["feedback"] is None else "ok",
+    }
+
+
 def selected_label(row: EventRow) -> str:
     if row["feedback"] == 1:
         return row["excretion_type"]
     return "false" if row["feedback"] == 0 else "unknown"
+
+
+def event_quick_buttons(row: EventRow, allowed: Sequence[str]) -> list[dict[str, str]]:
+    """まだラベルのない検知に出す、1回押して保存するボタン（動画の quick_form と同じ形）。
+
+    ボタンは /save に label の値を送るだけで、日時・メモ・場所は既存の値を保つ。
+    この記録で選べない種類（動画からの記録の誤検知）のボタンは出さない。
+    """
+    if row["feedback"] is not None:
+        return []
+    return [
+        {"value": value, "text": text, "icon": icon}
+        for value, text, icon in EVENT_QUICK_LABELS
+        if value in allowed
+    ]
 
 
 def event_detail(row: EventRow) -> dict[str, Any]:
@@ -152,11 +190,13 @@ def event_detail(row: EventRow) -> dict[str, Any]:
         choices += [("false", "誤検知"), ("unknown", "保留・未ラベル")]
     elif row["kind"] == "VIDEO":
         choices += [("unknown", "保留・未ラベル")]
+    editable = row["kind"] in ("SUSPECTED", "MANUAL", "MISSED", "VIDEO")
     return {
         "id": row["id"],
         "time": local_time(row["timestamp"]),
         "image": row["image"],
-        "editable": row["kind"] in ("SUSPECTED", "MANUAL", "MISSED", "VIDEO"),
+        "editable": editable,
+        "quick": event_quick_buttons(row, [value for value, _ in choices]) if editable else [],
         "choices": choices,
         "selected_label": selected_label(row),
         "location": row["location"],
@@ -188,15 +228,7 @@ def render_events(
     selected = query.get("id", [""])[0]
     row = next((r for r in rows if r["id"] == selected), rows[0] if rows else None)
     metrics = store.metrics()
-    items = [
-        {
-            "active": row is not None and row["id"] == item["id"],
-            "url": f"{EVENTS_PAGE}?" + urlencode({"filter": mode, "id": item["id"]}),
-            "time": local_time(item["timestamp"]),
-            "label": label_text(item),
-        }
-        for item in rows
-    ]
+    items = [event_item(item, mode, row is not None and row["id"] == item["id"]) for item in rows]
     return render_template(
         "events.html",
         title=title or APP_TITLE,
