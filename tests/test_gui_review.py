@@ -238,13 +238,20 @@ def test_review_list_shows_thumbnails_and_what_was_found(gui):
             location="tray",
         ),
     )
-    html = page(server, "/review", login(server, role="member"))
+    cookie = login(server, role="member")
+    html = page(server, "/review", cookie)
+    library = page(server, "/clips", cookie)
     assert f'<img src="/clip-thumbnail?id={clip_id}" alt=""' in html
     assert f'<img src="/image?id={event_id}" alt=""' in html
     assert "トイレ見守りの動画" in html
-    assert '<span class="chip chip-warn">自動判定の候補 ／ 排便 ／ トレー内</span>' in html
+    assessment = '<span class="clip-assessment">自動判定：排便の候補 ／ トレー内</span>'
+    assert assessment in html
+    assert assessment in library
     row = re.search(rf'<li><a href="/clips\?id={plain}.*?</li>', html, re.S)[0]
-    assert '<span class="chip chip-warn">未ラベル</span>' in row
+    missing = 'title="自動判定の結果なし"'
+    assert missing in row
+    assert missing in library
+    assert "未ラベル" not in row
 
 
 def test_stay_clips_require_an_excretion_candidate(gui):

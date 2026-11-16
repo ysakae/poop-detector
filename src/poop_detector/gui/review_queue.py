@@ -34,6 +34,7 @@ class ReviewItem:
     event_id: str | None = None
     location: str | None = None
     image: bool = False
+    review_failed: bool = False
 
     @property
     def key(self) -> str:
@@ -91,6 +92,7 @@ def pending_items(
                 clip["review_label"],
                 event_id if event_id in known else None,
                 _optional(clip, "review_location"),
+                review_failed=bool(_optional(clip, "review_error")),
             )
         )
     items += [

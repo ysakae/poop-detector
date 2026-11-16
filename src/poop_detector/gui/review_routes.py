@@ -7,9 +7,7 @@
 
 from typing import TYPE_CHECKING
 
-from ..records.events import EXCRETION_LOCATIONS
-from ..video.clips import CLIP_LABELS
-from .clip_pages import SOURCES
+from .clip_pages import SOURCES, clip_assessment_summary
 from .pages import Query, local_time
 from .review_queue import NEXT_PAGE, ReviewItem, item_time, next_item, review_items
 from .routes import first, get
@@ -33,15 +31,11 @@ def _entry(item: ReviewItem) -> dict[str, str]:
             else f"{SOURCES.get(item.source, '保存要求')}の動画"
         )
         thumbnail = f"/clip-thumbnail?id={item.id}"
-    label = "未ラベル"
-    if item.review_label:
-        label = "自動判定の候補 ／ " + CLIP_LABELS[item.review_label]
-        if item.location:
-            label += " ／ " + EXCRETION_LOCATIONS.get(item.location, "場所不明")
     return {
         "time": local_time(item.at),
         "what": what,
-        "label": label,
+        "kind": item.kind,
+        "assessment": clip_assessment_summary(item.review_label, item.location, item.review_failed),
         "thumbnail": thumbnail,
         "icon": "camera" if item.kind == "event" else "video",
         "url": item.url,
