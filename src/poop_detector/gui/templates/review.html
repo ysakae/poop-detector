@@ -1,6 +1,6 @@
 {#- 確認待ち。未ラベルの検知イベントと、排泄に関わる動画の一覧。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import chip, empty_state, icon %}
+{% from "_macros.html" import chip, clip_assessment, empty_state, icon %}
 {% block content %}
 <h2>確認待ち {{ entries|length }}件</h2>
 {% if done %}<p class="message" role="status">すべて確認しました。</p>{% endif %}
@@ -10,7 +10,7 @@
 <p><a class="button" href="{{ next_url }}">確認を始める</a></p>
 <ul class="review-list">
 {%- for entry in entries -%}
-<li><a href="{{ entry.url }}"><span class="clip-thumb">{% if entry.thumbnail %}<img src="{{ entry.thumbnail }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon(entry.icon) }}{% endif %}</span><span class="clip-text">{{ entry.time }}<small>{{ entry.what }}</small>{{ chip(entry.label, "warn") }}</span><span class="review-go">{{ icon("next") }}</span></a></li>
+<li><a href="{{ entry.url }}"><span class="clip-thumb">{% if entry.thumbnail %}<img src="{{ entry.thumbnail }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon(entry.icon) }}{% endif %}</span><span class="clip-text">{{ entry.time }}<small>{{ entry.what }}</small>{% if entry.kind == "clip" %}{{ clip_assessment(entry.assessment) }}{% else %}{{ chip("未ラベル", "warn") }}{% endif %}</span><span class="review-go">{{ icon("next") }}</span></a></li>
 {%- endfor -%}
 </ul>
 <p class="note">動画のある検知は、動画で確かめる1件にまとめています。動画で「排泄なし」とすると、検知も誤検知として記録します。犬の出入りや滞在の動画は、自動判定が排泄の候補としたものだけを並べます。</p>

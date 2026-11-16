@@ -53,8 +53,8 @@ SOURCES = {
 # 一覧の絞り込み（?show=）。値は、動画の行がその条件に入るかを返す。
 CLIP_FILTERS: dict[str, tuple[str, Callable[[Mapping[str, Any]], bool]]] = {
     "all": ("すべて", lambda _row: True),
-    "unlabeled": ("人のラベルなし", lambda row: row["label"] is None),
-    "labeled": ("人のラベルあり", lambda row: row["label"] is not None),
+    "unlabeled": ("未ラベル", lambda row: row["label"] is None),
+    "labeled": ("ラベル済み", lambda row: row["label"] is not None),
 }
 
 
@@ -76,6 +76,18 @@ def clip_filters(rows: Sequence[Mapping[str, Any]], mode: str) -> list[dict[str,
     ]
 
 
+def clip_assessment_summary(label: str | None, location: str | None, error: bool) -> str:
+    """動画一覧と確認待ちで使う自動判定の短い結果。"""
+    if label is None:
+        return "失敗" if error else ""
+    result = CLIP_LABELS[label]
+    if label in EXCRETION_TYPES:
+        result += "の候補"
+    if location:
+        result += " ／ " + EXCRETION_LOCATIONS.get(location, "場所不明")
+    return result
+
+
 def clip_list_item(
     item: Mapping[str, Any],
     selected: str | None,
@@ -84,26 +96,9 @@ def clip_list_item(
 ) -> dict[str, Any]:
     from .pages import local_time
 
-    if item["label"] is not None:
-        label = "人のラベル：" + CLIP_LABELS[item["label"]]
-        if item["location"]:
-            label += " ／ " + EXCRETION_LOCATIONS.get(item["location"], "場所不明")
-        state = "ok"
-    else:
-        label = "人のラベルなし"
-        state = "warn" if item["status"] == "ready" else "off"
-
-    review_label = item["review_label"]
-    assessment = "自動判定：失敗" if item["review_error"] else "自動判定：結果なし"
-    if review_label:
-        result = CLIP_LABELS[review_label]
-        assessment = "自動判定：" + result
-        if review_label in EXCRETION_TYPES:
-            assessment += "の候補"
-        if item["review_location"]:
-            assessment += " ／ " + EXCRETION_LOCATIONS.get(item["review_location"], "場所不明")
-    if candidate is not None and candidate.state is not None:
-        label += " ／ " + CANDIDATE_STATES[candidate.state]
+    label = CLIP_LABELS.get(item["label"], "")
+    if label and item["location"]:
+        label += " ／ " + EXCRETION_LOCATIONS.get(item["location"], "場所不明")
     return {
         "id": item["id"],
         "url": _clips_url(mode, item["id"]),
@@ -111,8 +106,12 @@ def clip_list_item(
         "time": local_time(item["requested_at"]),
         "status": STATES.get(item["status"], item["status"]),
         "label": label,
-        "state": state,
-        "assessment": assessment,
+        "assessment": clip_assessment_summary(
+            item["review_label"], item["review_location"], bool(item["review_error"])
+        ),
+        "candidate": CANDIDATE_STATES[candidate.state]
+        if candidate is not None and candidate.state is not None
+        else "",
         "thumbnail": item["status"] == "ready" and bool(item["path"]),
         **pending_marks(item["status"]),
     }

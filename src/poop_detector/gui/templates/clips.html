@@ -1,10 +1,10 @@
 {#- 動画の一覧と、選んだ動画の再生・ラベル入力欄。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import capacity_panel, chip, csrf_field, icon, location_field %}
+{% from "_macros.html" import capacity_panel, chip, clip_assessment, csrf_field, icon, location_field %}
 {% block content %}
 {% include "_review_bar.html" %}
 {% if not focused %}
-<h2>動画</h2><p class="note">保存した動画を探して見返します。</p>{% if waiting and not review %}<p class="message message-info" role="status">確認待ちが{{ waiting }}件あります。<a href="/review">確認待ちを開く</a></p>{% endif %}
+<h2>動画</h2><p class="note">✓ は人が付けたラベルです。</p>{% if waiting and not review %}<p class="message message-info" role="status">確認待ちが{{ waiting }}件あります。<a href="/review">確認待ちを開く</a></p>{% endif %}
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
 {#- 保存の操作と録画容量は、一覧を先に見せるためにたたむ（Issue #187）。保存できない理由は見出しにも出す。 -#}
 <details class="clip-tools"><summary>動画を保存する・録画容量{% if tools_alert %} {{ chip(tools_alert, "warn") }}{% endif %}</summary>
@@ -13,7 +13,7 @@
 {{ capacity_panel(capacity) }}{% if viewer_admin %}<p><a href="/manage/storage">録画容量と古い動画の整理</a></p>{% endif %}
 </details>
 {% endif %}
-{% if not focused %}<nav class="filter-menu" aria-label="表示する動画"><ul>
+{% if not focused %}<nav class="filter-menu" aria-label="人のラベルで動画を絞り込む"><ul>
 {%- for filter in filters -%}
 <li><a href="{{ filter.url }}"{% if filter.current %} aria-current="true"{% endif %}>{{ filter.text }}</a></li>
 {%- endfor -%}
@@ -21,7 +21,7 @@
 {% if has_pending %}<p class="note" id="clip-pending" role="status">録画・変換中の動画があります。終わると自動で更新します（変わらないときは<a href="{{ refresh_url }}">更新</a>してください）。</p>{% endif %}
 <div class="workspace{% if focused %} reviewing{% endif %}">{% if not focused %}<nav id="clip-list" aria-label="動画一覧">
 {%- for item in items -%}
-<a class="{% if item.active %}active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="true"{% endif %}{% if item.pending %} data-pending-clip="{{ item.id }}" data-clip-status="{{ item.status_key }}"{% endif %}><span class="clip-thumb">{% if item.thumbnail %}<img src="/clip-thumbnail?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon("video") }}{% endif %}</span><span class="clip-text">{{ item.time }}<small>{{ item.status }}</small><span class="clip-labels">{{ chip(item.label, item.state) }}{{ chip(item.assessment, "off") }}</span></span></a>
+<a class="{% if item.active %}active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="true"{% endif %}{% if item.pending %} data-pending-clip="{{ item.id }}" data-clip-status="{{ item.status_key }}"{% endif %}><span class="clip-thumb">{% if item.thumbnail %}<img src="/clip-thumbnail?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon("video") }}{% endif %}</span><span class="clip-text">{{ item.time }}<small>{{ item.status }}</small><span class="clip-labels">{% if item.label %}<span class="clip-human-label"><span aria-hidden="true">✓</span> <span class="sr-only">人のラベル：</span>{{ item.label }}</span>{% endif %}{{ clip_assessment(item.assessment) }}{% if item.candidate %}{{ chip(item.candidate) }}{% endif %}</span></span></a>
 {%- endfor -%}
 </nav>{% endif %}<article id="clip-detail"{% if clip and clip.pending %} data-pending-clip="{{ clip.id }}" data-clip-status="{{ clip.status_key }}"{% endif %}>
 {% if clip is none %}

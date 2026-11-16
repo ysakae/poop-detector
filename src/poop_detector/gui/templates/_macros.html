@@ -35,6 +35,14 @@
 <span class="chip chip-{{ state }}">{{ text }}</span>
 {%- endmacro %}
 
+{% macro clip_assessment(result) -%}
+{%- if result -%}
+<span class="clip-assessment">自動判定：{{ result }}</span>
+{%- else -%}
+<span class="clip-assessment" title="自動判定の結果なし">自動判定：<span aria-hidden="true">—</span><span class="sr-only">結果なし</span></span>
+{%- endif -%}
+{%- endmacro %}
+
 {#- 空の状態。記録がないときに、次の一歩を案内する。 -#}
 {% macro empty_state(title, body, href="", action="", kind="") -%}
 <div class="empty-state"><img src="/assets/dog.svg" alt="" width="96" height="96"><h3>{{ title }}</h3><p>{{ body }}</p>{% if href %}<p><a class="button{% if kind %} {{ kind }}{% endif %}" href="{{ href }}">{{ action }}</a></p>{% endif %}</div>
