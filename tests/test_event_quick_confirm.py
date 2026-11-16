@@ -17,7 +17,7 @@ def quick_form(html: str) -> str | None:
 
 
 def event_list(html: str) -> str:
-    return html.split('aria-label="イベント一覧">', 1)[1].split("</nav>", 1)[0]
+    return html.split('aria-label="検知の一覧">', 1)[1].split("</nav>", 1)[0]
 
 
 def post_save(server, fields: dict[str, str], page: str = "/records/events"):

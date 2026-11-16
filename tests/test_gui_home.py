@@ -60,7 +60,7 @@ def test_home_lists_recent_records(gui):
 def test_home_without_records_says_so(gui):
     server, _, _ = gui
     html = page(server, "/", login(server, role="member"))
-    assert "確定した記録はまだありません" in html
+    assert "確定記録はまだありません" in html
 
 
 def test_event_list_moved_under_records(gui):

@@ -78,7 +78,7 @@ def test_unlabeled_clip_offers_one_tap_buttons_without_a_notification(gui):
     assert form.count('class="secondary"') == 4
     # 細かい入力は、たたんでおく。
     assert '<details class="clip-more">' in html
-    assert "動画ラベルのみ保存" in html
+    assert "ラベルを保存" in html
 
 
 def test_suggested_label_is_the_only_filled_button(gui):

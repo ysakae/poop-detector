@@ -31,7 +31,7 @@
 <li>{{ icon(record.icon) }}<span class="timeline-what">{{ record.type }}<small>{{ record.location }}</small></span><a href="{{ record.url }}">{{ when(record.when) }}</a></li>
 {%- endfor -%}
 </ul>
-{% else %}{{ empty_state("確定した記録はまだありません", "排泄を見かけたら、ここから記録できます。", "/records/new", "排泄を記録する", "secondary") }}{% endif %}
+{% else %}{{ empty_state("確定記録はまだありません", "排泄を見かけたら、ここから記録できます。", "/records/new", "排泄を記録", "secondary") }}{% endif %}
 <p class="note"><a href="/records/events">検知の一覧</a></p>
 </section>
 {% if manual_only %}
