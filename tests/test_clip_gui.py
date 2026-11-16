@@ -194,3 +194,55 @@ def test_invalid_confirmation_leaves_video_label_and_records_intact(gui):
         assert submit(server, "/clips/confirm", {"id": clip, **fields})[0] == 400
         assert clips.get(clip)["label"] is None
         assert store.records() == []
+
+
+def test_clip_list_can_be_narrowed_by_label_state(gui):
+    """動画の一覧は探す場所。未ラベル・ラベル済みで絞り込める。"""
+    from poop_detector.video.clips import ClipStore
+
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    labeled, waiting = ready_clip(clips), ready_clip(clips)
+    clips.labels.save(labeled, ClipLabel("none", None, None, "other", "", None))
+
+    everything = request(server, "GET", "/clips")[1].decode()
+    assert '<a href="/clips" aria-current="true">すべて 2</a>' in everything
+    assert '<a href="/clips?show=unlabeled">未ラベル 1</a>' in everything
+    assert '<a href="/clips?show=labeled">ラベル済み 1</a>' in everything
+
+    narrowed = request(server, "GET", "/clips?show=labeled")[1].decode()
+    assert '<a href="/clips?show=labeled" aria-current="true">ラベル済み 1</a>' in narrowed
+    # 絞り込んだ一覧の先頭を開き、行のリンクは絞り込みを保つ。
+    assert f'class="active" href="/clips?id={labeled}&amp;show=labeled"' in narrowed
+    assert f"/clips?id={waiting}" not in narrowed
+
+    # 一覧にない動画を ID で開いても、その動画は見られる。
+    other = request(server, "GET", f"/clips?id={waiting}&show=labeled")[1].decode()
+    assert f'name="id" value="{waiting}"' in other
+    # 知らない値は「すべて」として扱う。
+    assert 'aria-current="true">すべて 2</a>' in request(server, "GET", "/clips?show=x")[1].decode()
+
+
+def test_empty_filter_says_so_instead_of_no_clips_yet(gui):
+    from poop_detector.video.clips import ClipStore
+
+    server, store, _ = gui
+    ready_clip(ClipStore(store.root))
+    page = request(server, "GET", "/clips?show=labeled")[1].decode()
+    assert "この条件の動画はありません" in page
+    assert "動画はまだありません" not in page
+
+
+def test_clip_page_points_to_the_review_when_something_waits(gui):
+    """ラベル付けの入口は確認待ち。動画の画面には、残っているときだけ入口を1つ出す。"""
+    from poop_detector.video.clips import ClipStore
+
+    server, store, event_id = gui
+    page = request(server, "GET", "/clips")[1].decode()
+    assert "保存した動画を探して見返します" in page
+    assert '確認待ちが1件あります。<a href="/review">確認待ちを開く</a>' in page
+
+    store.classify(event_id, "false")
+    clips = ClipStore(store.root)
+    clips.labels.save(ready_clip(clips), ClipLabel("none", None, None, "other", "", None))
+    assert "確認待ちが" not in request(server, "GET", "/clips")[1].decode()
