@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 import numpy as np
 from support import exchange, login
 
+from poop_detector.video.clip_labels import ClipLabel
 from poop_detector.video.clip_reviews import Assessment
 
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -83,8 +84,9 @@ def test_editors_opened_from_review_show_the_review_bar(gui):
     assert "確認待ち 残り2件" in html
     assert f'href="/review/next?after=clip:{clip_id}"' in html
     assert 'name="from" value="review"' in html
-    # 確認待ちから開いていなければ出さない。
-    assert "確認待ち 残り" not in page(server, f"/clips?id={clip_id}", cookie)
+    # 検知の一覧は、確認待ちから開いていなければ出さない（動画は列にあれば出す）。
+    events = page(server, f"/records/events?filter=unlabeled&id={event_id}", cookie)
+    assert "確認待ち 残り" not in events
 
 
 def test_saving_an_event_from_review_moves_to_the_next(gui):
@@ -111,15 +113,47 @@ def test_saving_a_clip_from_review_moves_to_the_next(gui):
 
 
 def test_saving_outside_review_stays_on_the_editor(gui):
+    """確認待ちの列にない動画（ラベル済み）と、検知の一覧からの保存は、同じ画面に残る。"""
     server, _, event_id = gui
     clip_id = ready_clip(server, source="manual")
     cookie = login(server, role="member")
+    server.app.clips.labels.save(clip_id, ClipLabel("none", None, None, "other", "", None))
+    html = page(server, f"/clips?id={clip_id}", cookie)
+    assert 'name="from" value="review"' not in html
+    assert "確認待ち 残り" not in html
     fields = {"id": clip_id, "label": "none", "activity": "other"}
     _, headers, _ = post(server, cookie, "/clips/label", fields, f"/clips?id={clip_id}")
     assert headers["Location"] == f"/clips?id={clip_id}&saved=1"
     fields = {"id": event_id, "label": "false", "filter": "unlabeled"}
     _, headers, _ = post(server, cookie, "/save", fields, "/records/events")
     assert headers["Location"].startswith("/records/events?")
+
+
+def test_waiting_clip_opened_from_the_clip_list_joins_the_review(gui):
+    """確認待ちの列にある動画は、動画の一覧から開いても、保存すると次の件へ進む。"""
+    server, _, _ = gui
+    clip_id = ready_clip(server, source="manual")
+    cookie = login(server, role="member")
+    for path in (f"/clips?id={clip_id}", "/clips"):
+        html = page(server, path, cookie)
+        assert "確認待ち 残り2件" in html
+        assert f'href="/review/next?after=clip:{clip_id}"' in html
+        # ラベルを保存する3つのフォーム（1回押す・くわしく入力・確定）が、次の件へ進む。
+        assert html.count('name="from" value="review"') >= 2
+        # 動画の一覧から開いたので、一覧と保存のボタンは残す。
+        assert 'id="clip-list"' in html
+        assert "今の前後の動画を保存" in html
+    focused = page(server, f"/clips?id={clip_id}&from=review", cookie)
+    assert 'id="clip-list"' not in focused
+
+
+def test_clip_outside_the_queue_does_not_join_the_review(gui):
+    """犬の出入りの動画（排泄の候補でない）は、確認待ちに並ばないので、帯を出さない。"""
+    server, _, _ = gui
+    clip_id = ready_clip(server, source="dog_enter")
+    html = page(server, f"/clips?id={clip_id}", login(server, role="member"))
+    assert "確認待ち 残り" not in html
+    assert 'name="from" value="review"' not in html
 
 
 def test_home_links_to_the_review(gui):

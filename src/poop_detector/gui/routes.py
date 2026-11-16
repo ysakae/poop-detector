@@ -196,8 +196,15 @@ def activity_page(handler: "Handler", query: Query) -> None:
 @get("/clips")
 def clips_page(handler: "Handler", query: Query) -> None:
     app = handler.app
-    review = _review_bar(handler, query, f"clip:{first(query, 'id')}")
-    page = render_clips(app.root, handler.csrf, query, app.disk_mb, title=app.title, review=review)
+    page = render_clips(
+        app.root,
+        handler.csrf,
+        query,
+        app.disk_mb,
+        title=app.title,
+        queue=review_items(app.store, app.clips),
+        focused=first(query, "from") == "review",
+    )
     handler.respond(200, page)
 
 
