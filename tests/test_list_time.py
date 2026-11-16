@@ -111,5 +111,5 @@ def test_home_and_event_list_name_the_day_in_each_row(gui):
     home = page(server, "/", cookie)
     assert re.search(r'<time datetime="[^"]+" title="[^"]+">今日 \d\d:\d\d</time>', home)
     events = page(server, "/records/events", cookie)
-    nav = re.search(r'aria-label="イベント一覧".*?</nav>', events, re.S)[0]
+    nav = re.search(r'aria-label="検知の一覧".*?</nav>', events, re.S)[0]
     assert re.search(r">今日 \d\d:\d\d</time>", nav)

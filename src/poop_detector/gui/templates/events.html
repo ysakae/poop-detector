@@ -1,4 +1,4 @@
-{#- 検知の一覧（記録の下）。イベントの一覧と、選んだイベントのラベル入力欄。 -#}
+{#- 検知の一覧（記録の下）。検知の一覧と、選んだ検知のラベル入力欄。 -#}
 {% extends "base.html" %}
 {% from "_macros.html" import chip, csrf_field, icon, location_field, when %}
 {% block content %}
@@ -14,7 +14,7 @@
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
 <p class="note">自動検知は排泄の疑いです。便・尿の種類は確認して記録してください。尿跡が残っていても追加の変化を監視します。同じ跡は再通知しません。検知されなかった排泄は<a href="/records/new">排泄を記録</a>から足せます。</p>
 {% endif %}
-<div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav class="event-list" aria-label="イベント一覧">
+<div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav class="event-list" aria-label="検知の一覧">
 {%- for item in items -%}
 <a class="{% if item.active %}active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="true"{% endif %}><span class="clip-thumb">{% if item.image %}<img src="/image?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon(item.icon) }}{% endif %}</span><span class="clip-text">{{ when(item.when) }}{{ chip(item.label, item.state) }}</span></a>
 {%- endfor -%}

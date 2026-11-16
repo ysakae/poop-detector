@@ -207,9 +207,9 @@ def test_review_shows_only_the_item(gui):
     assert 'id="clip-list"' not in html
     assert "今の前後の動画を保存" not in html
     html = page(server, f"/records/events?filter=unlabeled&id={event_id}&from=review", cookie)
-    assert 'aria-label="イベント一覧"' not in html
+    assert 'aria-label="検知の一覧"' not in html
     assert "目視で確認した排便・排尿を記録する" not in html
-    assert 'aria-label="イベント一覧"' in page(server, "/records/events", cookie)
+    assert 'aria-label="検知の一覧"' in page(server, "/records/events", cookie)
 
 
 def test_menu_marks_review_while_reviewing(gui):
