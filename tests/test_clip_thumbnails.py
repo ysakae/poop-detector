@@ -100,7 +100,8 @@ def test_list_shows_thumbnails_and_a_state_label(gui):
 
     assert f'<img src="/clip-thumbnail?id={clip_id}" alt=""' in page
     assert f"/clip-thumbnail?id={waiting}" not in page
-    assert '<span class="chip chip-warn">未ラベル</span>' in page
+    assert '<span class="chip chip-warn">人のラベルなし</span>' in page
+    assert '<span class="chip chip-off">自動判定：結果なし</span>' in page
 
 
 def test_cleanup_removes_the_thumbnail_with_the_video(tmp_path):

@@ -197,21 +197,34 @@ def test_invalid_confirmation_leaves_video_label_and_records_intact(gui):
 
 
 def test_clip_list_can_be_narrowed_by_label_state(gui):
-    """動画の一覧は探す場所。未ラベル・ラベル済みで絞り込める。"""
+    """自動判定の結果があっても、人のラベルだけで一覧を絞り込める。"""
     from poop_detector.video.clips import ClipStore
 
     server, store, _ = gui
     clips = ClipStore(store.root)
     labeled, waiting = ready_clip(clips), ready_clip(clips)
+    assert clips.assessments.save(
+        labeled, Assessment("feces", "excreting", 1, 2, "人工データ", "tray")
+    )
     clips.labels.save(labeled, ClipLabel("none", None, None, "other", "", None))
+    assert clips.assessments.save(waiting, Assessment(label="none", activity="other"))
 
     everything = request(server, "GET", "/clips")[1].decode()
     assert '<a href="/clips" aria-current="true">すべて 2</a>' in everything
-    assert '<a href="/clips?show=unlabeled">未ラベル 1</a>' in everything
-    assert '<a href="/clips?show=labeled">ラベル済み 1</a>' in everything
+    assert '<a href="/clips?show=unlabeled">人のラベルなし 1</a>' in everything
+    assert '<a href="/clips?show=labeled">人のラベルあり 1</a>' in everything
+
+    unlabelled = request(server, "GET", "/clips?show=unlabeled")[1].decode()
+    rows = unlabelled.split('id="clip-list"', 1)[1].split("</nav>", 1)[0]
+    assert "人のラベルなし</span>" in rows
+    assert "自動判定：排泄なし</span>" in rows
+    assert f"/clips?id={labeled}" not in rows
 
     narrowed = request(server, "GET", "/clips?show=labeled")[1].decode()
-    assert '<a href="/clips?show=labeled" aria-current="true">ラベル済み 1</a>' in narrowed
+    assert '<a href="/clips?show=labeled" aria-current="true">人のラベルあり 1</a>' in narrowed
+    rows = narrowed.split('id="clip-list"', 1)[1].split("</nav>", 1)[0]
+    assert "人のラベル：排泄なし</span>" in rows
+    assert "自動判定：排便の候補 ／ トレー内</span>" in rows
     # 絞り込んだ一覧の先頭を開き、行のリンクは絞り込みを保つ。
     assert f'class="active" href="/clips?id={labeled}&amp;show=labeled"' in narrowed
     assert f"/clips?id={waiting}" not in narrowed

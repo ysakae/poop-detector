@@ -21,7 +21,7 @@
 {% if has_pending %}<p class="note" id="clip-pending" role="status">録画・変換中の動画があります。終わると自動で更新します（変わらないときは<a href="{{ refresh_url }}">更新</a>してください）。</p>{% endif %}
 <div class="workspace{% if focused %} reviewing{% endif %}">{% if not focused %}<nav id="clip-list" aria-label="動画一覧">
 {%- for item in items -%}
-<a class="{% if item.active %}active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="true"{% endif %}{% if item.pending %} data-pending-clip="{{ item.id }}" data-clip-status="{{ item.status_key }}"{% endif %}><span class="clip-thumb">{% if item.thumbnail %}<img src="/clip-thumbnail?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon("video") }}{% endif %}</span><span class="clip-text">{{ item.time }}<small>{{ item.status }}</small>{{ chip(item.label, item.state) }}</span></a>
+<a class="{% if item.active %}active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="true"{% endif %}{% if item.pending %} data-pending-clip="{{ item.id }}" data-clip-status="{{ item.status_key }}"{% endif %}><span class="clip-thumb">{% if item.thumbnail %}<img src="/clip-thumbnail?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon("video") }}{% endif %}</span><span class="clip-text">{{ item.time }}<small>{{ item.status }}</small><span class="clip-labels">{{ chip(item.label, item.state) }}{{ chip(item.assessment, "off") }}</span></span></a>
 {%- endfor -%}
 </nav>{% endif %}<article id="clip-detail"{% if clip and clip.pending %} data-pending-clip="{{ clip.id }}" data-clip-status="{{ clip.status_key }}"{% endif %}>
 {% if clip is none %}
