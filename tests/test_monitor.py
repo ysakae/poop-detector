@@ -16,7 +16,7 @@ def test_offline_pipeline_records_one_event(tmp_path, review_notifications):
     baseline, changed = spot_scene()
 
     class Notifier:
-        def send(self):
+        def send(self, *, clip_id=None):
             assert not review_notifications
             return True
 

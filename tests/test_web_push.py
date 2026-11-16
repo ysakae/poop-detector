@@ -133,11 +133,14 @@ def notifier(push, send):
     )
 
 
-def test_notification_is_encrypted_and_signed_for_each_subscriber(push):
+@pytest.mark.parametrize(
+    ("clip_id", "url"), [(None, "/review"), ("clip-id", "/clips?id=clip-id&notice=1")]
+)
+def test_notification_is_encrypted_and_signed_for_each_subscriber(push, clip_id, url):
     receiver = Receiver()
     subscribe(push, "家族A", receiver)
     send = opener()
-    assert notifier(push, send).send()
+    assert notifier(push, send).send(clip_id=clip_id)
     ((request, timeout),) = send.requests
     assert request.full_url == ENDPOINT
     assert timeout <= 10
@@ -150,7 +153,7 @@ def test_notification_is_encrypted_and_signed_for_each_subscriber(push):
     assert payload == {
         "title": "ポチのトイレ",
         "body": "ポチのトイレに変化を検出しました。排便・排尿の可能性があります。",
-        "url": "/review",
+        "url": url,
     }
 
 
@@ -163,8 +166,9 @@ def test_early_alerts_go_only_to_those_who_want_them(push):
     push.users.create("管理者", "admin")
     push.users.disable(gone)
     send = opener()
-    assert notifier(push, send).send_early_alert()
+    assert notifier(push, send).send_early_alert(clip_id="stay-clip")
     assert [request.full_url for request, _ in send.requests] == [early.endpoint]
+    assert early.decrypt(send.requests[0][0].data)["url"] == "/clips?id=stay-clip&notice=1"
     send = opener()
     notifier(push, send).send()
     assert {request.full_url for request, _ in send.requests} == {alerts.endpoint, early.endpoint}
@@ -211,7 +215,7 @@ class Recording(ToiletNotifier):
         self.result = result
         self.messages = []
 
-    def _deliver(self, message, *, early_alert):
+    def _deliver(self, message, *, early_alert, path=""):
         self.messages.append((message, early_alert))
         return self.result
 

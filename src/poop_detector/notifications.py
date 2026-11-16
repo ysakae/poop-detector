@@ -29,6 +29,10 @@ DEFAULT_NTFY_SERVER = "https://ntfy.sh"
 logger = logging.getLogger(__name__)
 
 
+def _clip_notice_path(clip_id: str | None) -> str:
+    return "/clips?" + urlencode({"id": clip_id, "notice": "1"}) if clip_id else ""
+
+
 class ToiletNotifier:
     """通知の文面を組み立てる。送信方法はサブクラスの _deliver が担う。"""
 
@@ -46,15 +50,17 @@ class ToiletNotifier:
         kind = "見守り" if early_alert else "トイレ"
         return self._display(f"{self.owner}{kind}の通知テストです。", early_alert=early_alert)
 
-    def send(self) -> bool:
+    def send(self, *, clip_id: str | None = None) -> bool:
         return self._display(
-            f"{self.owner}トイレに変化を検出しました。排便・排尿の可能性があります。"
+            f"{self.owner}トイレに変化を検出しました。排便・排尿の可能性があります。",
+            path=_clip_notice_path(clip_id),
         )
 
-    def send_early_alert(self) -> bool:
+    def send_early_alert(self, *, clip_id: str | None = None) -> bool:
         return self._display(
             f"トイレで同じ場所にとどまっています。{self.owner}様子を確認してください。",
             early_alert=True,
+            path=_clip_notice_path(clip_id),
         )
 
     def send_assessment(
@@ -74,11 +80,8 @@ class ToiletNotifier:
             else "動画を確認できます。"
         )
         message = f"動画の自動判定で{place}{EXCRETION_TYPES[label]}の候補が見つかりました。{detail}"
-        path = "/clips?" + urlencode({"id": clip_id, "notice": "1"}) if clip_id else ""
-        return self.enabled and self._deliver_assessment(message, path)
-
-    def _deliver_assessment(self, message: str, path: str) -> bool:  # noqa: ARG002
-        return self._display(message)
+        path = _clip_notice_path(clip_id)
+        return self._display(message, path=path)
 
     def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> Delivery:
         detail, risk = {
@@ -98,7 +101,7 @@ class ToiletNotifier:
         return self._deliver_reentry(message, path) if self.enabled else "skipped"
 
     def _deliver_reentry(self, message: str, path: str) -> Delivery:
-        return "sent" if self._deliver_assessment(message, path) else "unknown"
+        return "sent" if self._display(message, path=path) else "unknown"
 
     def send_outage(self, kind: str, since: datetime) -> bool:
         """監視の停止（monitor）、カメラの不調（camera）、判定器の停止（judge）を知らせる。
@@ -138,14 +141,14 @@ class ToiletNotifier:
             message = f"カメラの映像が戻りました。{duration}届いていませんでした。"
         return self.enabled and self._deliver_watchdog(message)
 
-    def _display(self, message: str, *, early_alert: bool = False) -> bool:
-        return self.enabled and self._deliver(message, early_alert=early_alert)
+    def _display(self, message: str, *, early_alert: bool = False, path: str = "") -> bool:
+        return self.enabled and self._deliver(message, early_alert=early_alert, path=path)
 
     def _deliver_watchdog(self, message: str) -> bool:
         """監視の見張りの通知を送る。既定ではトイレの通知と同じ送り先へ送る。"""
         return self._deliver(message, early_alert=False)
 
-    def _deliver(self, message: str, *, early_alert: bool) -> bool:
+    def _deliver(self, message: str, *, early_alert: bool, path: str = "") -> bool:
         """通知を1件送り、受け付けられたら True を返す。"""
         raise NotImplementedError
 
@@ -160,22 +163,16 @@ class FanOutNotifier(ToiletNotifier):
         super().__init__(any(notifier.enabled for notifier in notifiers))
         self.notifiers = tuple(notifiers)
 
-    def _deliver(self, message: str, *, early_alert: bool) -> bool:
+    def _deliver(self, message: str, *, early_alert: bool, path: str = "") -> bool:
         results = [
-            notifier._display(message, early_alert=early_alert) for notifier in self.notifiers
+            notifier._display(message, early_alert=early_alert, path=path)
+            for notifier in self.notifiers
         ]
         return any(results)
 
     def _deliver_watchdog(self, message: str) -> bool:
         results = [
             notifier.enabled and notifier._deliver_watchdog(message) for notifier in self.notifiers
-        ]
-        return any(results)
-
-    def _deliver_assessment(self, message: str, path: str) -> bool:
-        results = [
-            notifier.enabled and notifier._deliver_assessment(message, path)
-            for notifier in self.notifiers
         ]
         return any(results)
 
@@ -208,7 +205,7 @@ class MacNotifier(ToiletNotifier):
         self.runner = runner
 
     # macOS の通知は見守り用の送り先を分けられないため、early_alert は使わない。
-    def _deliver(self, message: str, *, early_alert: bool) -> bool:  # noqa: ARG002
+    def _deliver(self, message: str, *, early_alert: bool, path: str = "") -> bool:  # noqa: ARG002
         script = (
             f'display notification "{applescript_string(message)}" '
             f'with title "{applescript_string(self.title())}"'
@@ -275,12 +272,9 @@ class NtfyNotifier(ToiletNotifier):
         self.public_url = public_url.rstrip("/")
         self.opener: Callable[..., Any] = urlopen if opener is None else opener
 
-    def _deliver(self, message: str, *, early_alert: bool) -> bool:
-        return self._publish(message, early_alert=early_alert)
-
-    def _deliver_assessment(self, message: str, path: str) -> bool:
+    def _deliver(self, message: str, *, early_alert: bool, path: str = "") -> bool:
         link = self.public_url + path if self.public_url and path else ""
-        return self._publish(message, early_alert=False, link=link)
+        return self._publish(message, early_alert=early_alert, link=link)
 
     def _deliver_reentry(self, message: str, path: str) -> Delivery:
         link = self.public_url + path if self.public_url and path else ""

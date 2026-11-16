@@ -102,3 +102,21 @@ def test_cli_can_test_early_topic_without_sending_to_the_main_topic(tmp_path, mo
     assert main(command) == 0
     assert [payload["topic"] for payload in sent] == ["watch"]
     assert "テスト" in sent[0]["message"]
+
+
+def test_ntfy_detection_and_early_alert_link_to_the_requested_clip():
+    sent = []
+
+    def open_request(request, *, timeout):
+        sent.append(json.loads(request.data))
+        return nullcontext(SimpleNamespace(status=200))
+
+    notifier = NtfyNotifier(
+        "family", early_topic="watch", opener=open_request, public_url="https://gui.example/"
+    )
+    assert notifier.send(clip_id="detection")
+    assert notifier.send_early_alert(clip_id="stay")
+    assert [(payload["topic"], payload["click"]) for payload in sent] == [
+        ("family", "https://gui.example/clips?id=detection&notice=1"),
+        ("watch", "https://gui.example/clips?id=stay&notice=1"),
+    ]

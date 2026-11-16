@@ -237,17 +237,16 @@ class WebPushNotifier(ToiletNotifier):
         self.url = url
         self.opener: Callable[..., Any] = urlopen if opener is None else opener
 
-    def _deliver(self, message: str, *, early_alert: bool) -> bool:
+    def _deliver(self, message: str, *, early_alert: bool, path: str = "") -> bool:
         recipients = self.subscriptions.recipients(early_alert=early_alert)
-        return self._push(recipients, self.title(early_alert=early_alert), message, self.url)
+        return self._push(
+            recipients, self.title(early_alert=early_alert), message, path or self.url
+        )
 
     def _deliver_watchdog(self, message: str) -> bool:
         """監視の異常は管理者だけに送り、開くと管理の稼働状況に移る。"""
         recipients = self.subscriptions.recipients(watchdog=True)
         return self._push(recipients, self.title(), message, WATCHDOG_URL)
-
-    def _deliver_assessment(self, message: str, path: str) -> bool:
-        return self._push(self.subscriptions.recipients(), self.title(), message, path or self.url)
 
     def _deliver_reentry(self, message: str, path: str) -> Delivery:
         recipients = self.subscriptions.recipients()

@@ -115,7 +115,7 @@ def test_monitor_pauses_and_resumes_early_alert(tmp_path, monkeypatch):
             return next(self.frames)
 
     class Notifier:
-        def send_early_alert(self):
+        def send_early_alert(self, *, clip_id=None):
             notices.append("early")
             return True
 

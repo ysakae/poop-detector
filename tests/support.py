@@ -47,7 +47,7 @@ class SilentNotifier:
     def __init__(self):
         self.sent = 0
 
-    def send(self):
+    def send(self, *, clip_id=None):
         self.sent += 1
         return False
 

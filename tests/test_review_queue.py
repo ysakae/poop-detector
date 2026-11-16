@@ -54,8 +54,6 @@ def test_only_excretion_related_clips_wait_for_review():
     ]
     assert keys(pending_items([], clips)) == [
         "clip:flagged",
-        "clip:outside",
-        "clip:alert",
         "clip:manual",
         "clip:detected",
     ]

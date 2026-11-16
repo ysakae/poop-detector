@@ -276,7 +276,7 @@ class Recording(ToiletNotifier):
         super().__init__(enabled, pet_name)
         self.messages = []
 
-    def _deliver(self, message, *, early_alert):
+    def _deliver(self, message, *, early_alert, path=""):
         self.messages.append(message)
         return True
 

@@ -13,8 +13,8 @@ if TYPE_CHECKING:
     from ..records.events import Store
     from ..video.clips import ClipStore
 
-# 排泄に関わる動画の発生元。犬の出入りの動画は、自動判定が排泄の候補としたものだけを入れる。
-REVIEW_SOURCES = frozenset({"detected", "manual", "early_alert", "outside_stay"})
+# 排泄に関わる動画の発生元。犬の出入りや滞在の動画は、自動判定が排泄の候補としたものだけを入れる。
+REVIEW_SOURCES = frozenset({"detected", "manual"})
 EXCRETION_LABELS = frozenset({"feces", "urine", "both"})
 NEXT_PAGE = "/review/next"
 
