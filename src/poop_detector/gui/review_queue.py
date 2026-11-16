@@ -21,7 +21,10 @@ NEXT_PAGE = "/review/next"
 
 @dataclass(frozen=True)
 class ReviewItem:
-    """確認待ちの1件。at は UTC の ISO 8601。event_id は動画にまとめた検知。"""
+    """確認待ちの1件。at は UTC の ISO 8601。event_id は動画にまとめた検知。
+
+    review_label・location は自動判定の候補（動画だけ）、image は検知の画像があるか（検知だけ）。
+    """
 
     kind: Literal["event", "clip"]
     id: str
@@ -29,6 +32,8 @@ class ReviewItem:
     source: str
     review_label: str | None = None
     event_id: str | None = None
+    location: str | None = None
+    image: bool = False
 
     @property
     def key(self) -> str:
@@ -42,6 +47,11 @@ class ReviewItem:
         return "/records/events?" + urlencode(
             {"filter": "unlabeled", "id": self.id, "from": "review"}
         )
+
+
+def _optional(row: Mapping[str, Any], key: str) -> Any:
+    """行にあれば、その列の値（自動判定を付けずに読んだ行には、判定の列がない）。"""
+    return row[key] if key in row.keys() else None  # noqa: SIM118 sqlite3.Row は in で列名を調べられない
 
 
 def _waiting_clip(clip: Mapping[str, Any]) -> bool:
@@ -80,10 +90,13 @@ def pending_items(
                 clip["source"],
                 clip["review_label"],
                 event_id if event_id in known else None,
+                _optional(clip, "review_location"),
             )
         )
     items += [
-        ReviewItem("event", row["id"], row["timestamp"], "event")
+        ReviewItem(
+            "event", row["id"], row["timestamp"], "event", image=bool(_optional(row, "image"))
+        )
         for row in events
         if row["id"] in unlabeled and row["id"] not in represented | finished
     ]
