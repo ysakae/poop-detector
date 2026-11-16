@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urlencode
 
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES
 from ..video.benchmark_candidates import CONDITION_TAGS, EVALUATED_LABELS, Candidate
@@ -49,10 +50,37 @@ SOURCES = {
     "toilet_reentry": "排泄後の再侵入",
     "outside_stay": "トレー外での滞在",
 }
+# 一覧の絞り込み（?show=）。値は、動画の行がその条件に入るかを返す。
+CLIP_FILTERS: dict[str, tuple[str, Callable[[Mapping[str, Any]], bool]]] = {
+    "all": ("すべて", lambda _row: True),
+    "unlabeled": ("未ラベル", lambda row: row["label"] is None),
+    "labeled": ("ラベル済み", lambda row: row["label"] is not None),
+}
+
+
+def _clips_url(mode: str, clip_id: str | None = None) -> str:
+    """動画の画面の URL。絞り込みが「すべて」のときは付けない。"""
+    values = ({"id": clip_id} if clip_id else {}) | ({"show": mode} if mode != "all" else {})
+    return "/clips" + ("?" + urlencode(values) if values else "")
+
+
+def clip_filters(rows: Sequence[Mapping[str, Any]], mode: str) -> list[dict[str, Any]]:
+    """絞り込みのボタン。それぞれの条件に入る本数を添える。"""
+    return [
+        {
+            "text": f"{text} {sum(1 for row in rows if shown(row))}",
+            "url": _clips_url(value),
+            "current": value == mode,
+        }
+        for value, (text, shown) in CLIP_FILTERS.items()
+    ]
 
 
 def clip_list_item(
-    item: Mapping[str, Any], selected: str | None, candidate: Candidate | None = None
+    item: Mapping[str, Any],
+    selected: str | None,
+    candidate: Candidate | None = None,
+    mode: str = "all",
 ) -> dict[str, Any]:
     from .pages import local_time
 
@@ -72,6 +100,7 @@ def clip_list_item(
         label += " ／ " + CANDIDATE_STATES[candidate.state]
     return {
         "id": item["id"],
+        "url": _clips_url(mode, item["id"]),
         "active": item["id"] == selected,
         "time": local_time(item["requested_at"]),
         "status": STATES.get(item["status"], item["status"]),
@@ -255,7 +284,14 @@ def render_clips(
     rows = store.list(include_assessments=True)
     selected = query.get("id", [""])[0]
     notice = bool(query.get("notice")) and bool(selected)
-    row = next((r for r in rows if r["id"] == selected), rows[0] if rows and not notice else None)
+    mode = query.get("show", ["all"])[0]
+    if mode not in CLIP_FILTERS:
+        mode = "all"
+    listed = [r for r in rows if CLIP_FILTERS[mode][1](r)]
+    # ID で指定した動画は、絞り込みの外でも開く。指定がなければ、絞り込んだ一覧の先頭。
+    row = next(
+        (r for r in rows if r["id"] == selected), listed[0] if listed and not notice else None
+    )
     raw_assessment = store.assessments.get(row["id"]) if row else None
     context: dict[str, Any] = {
         "clip": None,
@@ -302,9 +338,12 @@ def render_clips(
         saved=bool(query.get("saved")),
         benchmark_saved=bool(query.get("benchmark_saved")),
         items=[
-            clip_list_item(item, row["id"] if row else None, candidates.get(item["id"]))
-            for item in rows
+            clip_list_item(item, row["id"] if row else None, candidates.get(item["id"]), mode)
+            for item in listed
         ],
+        filters=clip_filters(rows, mode),
+        any_clips=bool(rows),
+        waiting=len(queue),
         clip_labels=list(CLIP_LABELS.items()),
         activities=list(ACTIVITIES.items()),
         locations=list(EXCRETION_LOCATIONS.items()),
