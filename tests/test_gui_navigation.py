@@ -140,10 +140,11 @@ def test_logout_page_points_to_the_login_screen(gui):
 
 
 # スマートフォンの幅で画面の下に出すタブ（#141）。主な4つを並べ、ほかは「その他」にまとめる。
-TABS = {"/": "ホーム", "/review": "確認待ち", "/records": "記録", "/clips": "動画"}
+# 動画は、ラベル付けの入口を確認待ちに寄せたので「その他」に置く（#180）。
+TABS = {"/": "ホーム", "/review": "確認待ち", "/records": "記録", "/care": "お世話"}
 MORE = {
-    "/care": "お世話",
     "/weight": "体重",
+    "/clips": "動画",
     "/activity": "行動マップ",
     "/account": "自分の設定",
     "/logout": "ログアウト",
@@ -168,9 +169,9 @@ def test_tab_bar_shows_four_places_and_gathers_the_rest(gui):
 
 def test_tab_bar_marks_more_when_the_place_is_inside_it(gui):
     server, _, _ = gui
-    tabs = nav_of(page(server, "/care", login(server, role="member")), "タブ")
+    tabs = nav_of(page(server, "/clips", login(server, role="member")), "タブ")
     assert 'class="tab-more current"' in tabs
-    assert re.search(r'<a href="/care" aria-current="page">', tabs)
+    assert re.search(r'<a href="/clips" aria-current="page">', tabs)
     assert tabs.count('aria-current="page"') == 1
 
 
@@ -203,8 +204,8 @@ def test_every_menu_icon_exists():
     items = (*frame.tabs, *frame.more)
     assert [item.text for item in frame.tabs] == list(TABS.values())
     assert [item.text for item in frame.more] == [
-        "お世話",
         "体重",
+        "動画",
         "行動マップ",
         "管理",
         "自分の設定",
