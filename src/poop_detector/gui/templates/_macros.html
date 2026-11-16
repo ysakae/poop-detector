@@ -7,6 +7,11 @@
 </select></label>
 {%- endmacro %}
 
+{#- 動画の一覧の絞り込みを、保存のあとも保つための欄（「すべて」なら出さない）。 -#}
+{% macro show_field(show) -%}
+{% if show != "all" %}<input type="hidden" name="show" value="{{ show }}">{% endif %}
+{%- endmacro %}
+
 {% macro csrf_field(token) -%}
 <input type="hidden" name="csrf" value="{{ token }}">
 {%- endmacro %}
