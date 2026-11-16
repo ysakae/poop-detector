@@ -1,7 +1,7 @@
 """ローカル動画の再生と、動作学習用ラベルの入力画面。"""
 
 import re
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -22,7 +22,7 @@ from ..video.clip_storage import (
     retention_days,
 )
 from ..video.clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
-from .review_queue import NEXT_PAGE
+from .review_queue import NEXT_PAGE, ReviewItem, review_bar
 from .templating import render_template
 
 if TYPE_CHECKING:
@@ -241,9 +241,14 @@ def render_clips(
     disk_mb: float = DEFAULT_DISK_MIB,
     *,
     title: str | None = None,
-    review: Mapping[str, Any] | None = None,
+    queue: Sequence[ReviewItem] = (),
+    focused: bool = False,
 ) -> str:
-    """動画の一覧と、選んだ動画の再生・ラベル入力欄。review は確認待ちから開いたときの帯。"""
+    """動画の一覧と、選んだ動画の再生・ラベル入力欄。
+
+    queue は確認待ちの列。選んだ動画が列にあれば、どこから開いても残りの件数の帯を出し、
+    保存すると次の件へ進む。focused は確認待ちから開いたとき（一覧を出さず、その件だけを見せる）。
+    """
     from .pages import APP_TITLE, local_time
 
     store = ClipStore(root)
@@ -262,6 +267,8 @@ def render_clips(
         "quick": None,
     }
     candidates = store.benchmark.all()
+    key = f"clip:{row['id'] if row else selected}"
+    review = review_bar(queue, key) if focused or any(item.key == key for item in queue) else None
     if row is not None:
         form = label_form(row, cast("Mapping[str, Any] | None", raw_assessment))
         context.update(
@@ -302,6 +309,7 @@ def render_clips(
         activities=list(ACTIVITIES.items()),
         locations=list(EXCRETION_LOCATIONS.items()),
         review=review,
+        focused=focused,
         notice=notice,
         seek=seek,
         **context,

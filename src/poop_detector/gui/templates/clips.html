@@ -3,12 +3,12 @@
 {% from "_macros.html" import capacity_panel, chip, csrf_field, icon, location_field %}
 {% block content %}
 {% include "_review_bar.html" %}
-{% if not review %}
+{% if not focused %}
 <h2>動画</h2><p class="note">動画を見て、排泄があったかを確かめます。排泄のない動画にも「排泄なし」を付けてください。</p><form method="post" action="/clips/request" class="toolbar">{{ csrf_field(token) }}<button class="secondary">{{ icon("video") }} 今の前後の動画を保存</button><a class="button ghost" href="/clips">更新</a></form><p class="note">監視が動いているときに使えます。既定では前後30秒ずつを保存します。変換が終わったら「更新」を押してください。</p>{{ capacity_panel(capacity) }}{% if viewer_admin %}<p><a href="/manage/storage">録画容量と古い動画の整理</a></p>{% endif %}
 {% if not live %}<div class="message message-warn" role="status">動画収集のカメラ接続を確認できません。監視を起動し、カメラ接続を確認してください。</div>{% endif %}
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
 {% endif %}
-<div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav id="clip-list" aria-label="動画一覧">
+<div class="workspace{% if focused %} reviewing{% endif %}">{% if not focused %}<nav id="clip-list" aria-label="動画一覧">
 {%- for item in items -%}
 <a class="{% if item.active %}active{% endif %}" href="/clips?id={{ item.id }}"{% if item.active %} aria-current="true"{% endif %}><span class="clip-thumb">{% if item.thumbnail %}<img src="/clip-thumbnail?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon("video") }}{% endif %}</span><span class="clip-text">{{ item.time }}<small>{{ item.status }}</small>{{ chip(item.label, item.state) }}</span></a>
 {%- endfor -%}
