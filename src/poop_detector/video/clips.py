@@ -3,6 +3,7 @@
 import logging
 import sqlite3
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict, cast, get_args
 from uuid import uuid4
@@ -45,6 +46,8 @@ ClipSource: TypeAlias = RequestSource | Literal["dog_visit"]
 ClipStatus: TypeAlias = Literal[
     "queued", "recording", "encoding", "ready", "failed", "removing", "removed"
 ]
+# 録画と変換が終わるのを待っている状態。終われば ready か failed に移る。
+PENDING_STATUSES: frozenset[str] = frozenset({"queued", "recording", "encoding"})
 
 
 class ClipRow(TypedDict):
@@ -203,6 +206,18 @@ class ClipStore:
                 ORDER BY c.requested_at DESC"""
         with self.connect() as db:
             return [dict(row) for row in db.execute(query)]
+
+    def statuses(self, clip_ids: Sequence[str]) -> dict[str, str]:
+        """指定した動画の ID と状態だけを返す。台帳にない ID は含めない。"""
+        unique = list(dict.fromkeys(clip_ids))
+        if not unique:
+            return {}
+        marks = ",".join("?" * len(unique))
+        with self.connect() as db:
+            # 文字列に足すのはプレースホルダーの「?」だけで、ID の値はプレースホルダーで渡す。
+            query = f"SELECT id,status FROM clips WHERE id IN ({marks})"  # noqa: S608
+            rows = db.execute(query, unique)
+            return {row["id"]: row["status"] for row in rows}
 
     def get(self, clip_id: str) -> ClipRow | None:
         with self.connect() as db:
