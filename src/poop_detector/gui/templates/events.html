@@ -1,6 +1,6 @@
 {#- 検知の一覧（記録の下）。イベントの一覧と、選んだイベントのラベル入力欄。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import chip, csrf_field, icon, location_field %}
+{% from "_macros.html" import chip, csrf_field, icon, location_field, when %}
 {% block content %}
 {% include "_review_bar.html" %}
 {% if not review %}
@@ -16,7 +16,7 @@
 {% endif %}
 <div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav class="event-list" aria-label="イベント一覧">
 {%- for item in items -%}
-<a class="{% if item.active %}active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="true"{% endif %}><span class="clip-thumb">{% if item.image %}<img src="/image?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon(item.icon) }}{% endif %}</span><span class="clip-text">{{ item.time }}{{ chip(item.label, item.state) }}</span></a>
+<a class="{% if item.active %}active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="true"{% endif %}><span class="clip-thumb">{% if item.image %}<img src="/image?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon(item.icon) }}{% endif %}</span><span class="clip-text">{{ when(item.when) }}{{ chip(item.label, item.state) }}</span></a>
 {%- endfor -%}
 </nav>{% endif %}<article>
 {% if row %}

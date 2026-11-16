@@ -1,6 +1,6 @@
 {#- 動画の一覧と、選んだ動画の再生・ラベル入力欄。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import capacity_panel, chip, clip_assessment, csrf_field, icon, location_field %}
+{% from "_macros.html" import capacity_panel, chip, clip_assessment, csrf_field, icon, location_field, show_field, when %}
 {% block content %}
 {% include "_review_bar.html" %}
 {% if not focused %}
@@ -20,8 +20,11 @@
 </ul></nav>{% endif %}
 {% if has_pending %}<p class="note" id="clip-pending" role="status">録画・変換中の動画があります。終わると自動で更新します（変わらないときは<a href="{{ refresh_url }}">更新</a>してください）。</p>{% endif %}
 <div class="workspace{% if focused %} reviewing{% endif %}">{% if not focused %}<nav id="clip-list" aria-label="動画一覧">
-{%- for item in items -%}
-<a class="{% if item.active %}active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="true"{% endif %}{% if item.pending %} data-pending-clip="{{ item.id }}" data-clip-status="{{ item.status_key }}"{% endif %}><span class="clip-thumb">{% if item.thumbnail %}<img src="/clip-thumbnail?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon("video") }}{% endif %}</span><span class="clip-text">{{ item.time }}<small>{{ item.status }}</small><span class="clip-labels">{% if item.label %}<span class="clip-human-label"><span aria-hidden="true">✓</span> <span class="sr-only">人のラベル：</span>{{ item.label }}</span>{% endif %}{{ clip_assessment(item.assessment) }}{% if item.candidate %}{{ chip(item.candidate) }}{% endif %}</span></span></a>
+{%- for group in groups -%}
+<h3 class="day-heading">{{ group.day }}</h3>
+{%- for item in group.rows -%}
+<a class="{% if item.active %}active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="true"{% endif %}{% if item.pending %} data-pending-clip="{{ item.id }}" data-clip-status="{{ item.status_key }}"{% endif %}><span class="clip-thumb">{% if item.thumbnail %}<img src="/clip-thumbnail?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon("video") }}{% endif %}</span><span class="clip-text">{{ when(item.when, clock=true) }}<small>{{ item.status }}</small><span class="clip-labels">{% if item.label %}<span class="clip-human-label"><span aria-hidden="true">✓</span> <span class="sr-only">人のラベル：</span>{{ item.label }}</span>{% endif %}{{ clip_assessment(item.assessment) }}{% if item.candidate %}{{ chip(item.candidate) }}{% endif %}</span></span></a>
+{%- endfor -%}
 {%- endfor -%}
 </nav>{% endif %}<article id="clip-detail"{% if clip and clip.pending %} data-pending-clip="{{ clip.id }}" data-clip-status="{{ clip.status_key }}"{% endif %}>
 {% if clip is none %}
@@ -53,7 +56,7 @@
 {% endif %}
 {% if quick %}
 <form method="post" action="/clips/quick" class="quick-confirm">{{ csrf_field(token) }}
-<input type="hidden" name="id" value="{{ clip.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}
+<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}{% if review %}<input type="hidden" name="from" value="review">{% endif %}
 <h4>排便・排尿の確認</h4>
 <div class="quick-buttons">
 {%- for button in quick.buttons -%}
@@ -69,7 +72,7 @@
 </form>
 {% endif %}
 <details class="clip-more"{% if not quick %} open{% endif %}><summary>くわしく入力（動作・開始と完了・メモ）</summary>
-<form method="post" action="/clips/label">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>動画の内容</legend><div class="choices">
+<form method="post" action="/clips/label">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>動画の内容</legend><div class="choices">
 {%- for value, text in clip_labels -%}
 <label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == form.label %}checked{% endif %}>{{ text }}</label>
 {%- endfor -%}
@@ -84,7 +87,7 @@
 </div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000">{{ clip.note }}</textarea></label></p><button class="secondary">動画ラベルのみ保存</button>{% include "_confirmation.html" %}</form>
 </details>
 <details class="clip-more"><summary>そのほかの操作（保護・評価の候補）</summary>
-{% if not clip.pinned %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary" name="protected" value="1">この動画を保護</button></form>{% elif viewer_admin %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary" name="protected" value="0">保護指定を解除</button></form>{% else %}<p class="note">保護中の動画です（解除は管理者が行います）。</p>{% endif %}
+{% if not clip.pinned %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}<button class="secondary" name="protected" value="1">この動画を保護</button></form>{% elif viewer_admin %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}<button class="secondary" name="protected" value="0">保護指定を解除</button></form>{% else %}<p class="note">保護中の動画です（解除は管理者が行います）。</p>{% endif %}
 {% include "_benchmark_candidate.html" %}
 </details>
 {% if clip.event_id %}<p><a href="/records/events?filter=all&amp;id={{ clip.event_id }}">対応するイベント画像を確認</a></p>{% endif %}
