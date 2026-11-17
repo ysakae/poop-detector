@@ -440,6 +440,13 @@ def migrate_to_v20(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v21(db: sqlite3.Connection) -> None:
+    """再侵入の足元の観測回数と品質を追加する。以前の訪問は標本数 0（不明）とする。"""
+    db.execute("ALTER TABLE reentry_visits ADD COLUMN foot_samples INTEGER NOT NULL DEFAULT 0")
+    db.execute("ALTER TABLE reentry_visits ADD COLUMN low_foot_samples INTEGER NOT NULL DEFAULT 0")
+    db.execute("ALTER TABLE reentry_visits ADD COLUMN high_foot_quality TEXT")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -462,6 +469,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v18,
     migrate_to_v19,
     migrate_to_v20,
+    migrate_to_v21,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

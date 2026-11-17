@@ -386,3 +386,164 @@ def test_ntfy_retries_only_explicit_temporary_rejections(code, expected):
 
     notifier = NtfyNotifier(topic="example", opener=reject)
     assert notifier.send_reentry("high", "event", datetime.now(UTC), None) == expected
+
+
+def _reentry_extension(tmp_path):
+    """人工の配置で、犬検出を偽物にした再侵入の拡張を作る。"""
+    import json
+    from dataclasses import replace
+
+    from poop_detector.config import Config, check_monitor_features
+    from poop_detector.detection.monitoring import SystemClock, standard_extensions
+    from poop_detector.features.dog import DogObserver
+    from poop_detector.notifications import ToiletNotifier
+
+    profile = {
+        "configuration_id": "first",
+        "installed_at": "2026-11-16T00:00:00+09:00",
+        "description": "仕切りなし",
+        "toilet_zone": [[0.1, 0.2], [0.5, 0.2], [0.5, 0.85], [0.1, 0.85]],
+        "living_zone": [[0.5, 0.1], [0.99, 0.1], [0.99, 0.9], [0.5, 0.9]],
+    }
+    (tmp_path / "reentry-layout.json").write_text(json.dumps(profile))
+    config = check_monitor_features(
+        replace(Config(), data_dir=str(tmp_path), clip_enabled=True, reentry_enabled=True)
+    )
+    roi = MaskedROI(profile["toilet_zone"])
+    empty = np.full((101, 101, 3), 200, np.uint8)
+
+    class Detector:
+        def predict(self, _frame):
+            return []
+
+    class Collector:
+        def trigger(self, *, source):
+            return None
+
+    _, reentry = standard_extensions(
+        roi,
+        roi.crop(empty),
+        config,
+        ToiletNotifier(enabled=False),
+        SystemClock(),
+        dog_observer=DogObserver(Detector()),
+        collector=Collector(),
+    )
+    return reentry, roi, empty
+
+
+def _view(roi, frame):
+    from poop_detector.detection.difference import Observation
+    from poop_detector.detection.monitoring import FrameView
+
+    # 通知済み状態との比較は空、犬は生活エリアにいる前提で、位置の更新だけを確かめる。
+    return FrameView(
+        frame, frame, roi.crop(frame), roi.valid_mask(frame.shape), Observation("empty", 0.0), 0
+    )
+
+
+def _spot(empty, left, top=55, size=10, brighten=0):
+    import cv2
+
+    frame = np.clip(empty.astype(np.int16) + brighten, 0, 255).astype(np.uint8)
+    cv2.rectangle(frame, (left, top), (left + size - 1, top + size - 1), (15, 15, 15), -1)
+    return frame
+
+
+@pytest.mark.parametrize(
+    ("description", "start", "frames"),
+    [
+        # 照明が一斉に変わった映像は、基準画像との比較が unstable になる。
+        ("照明変化", (0.275, 0.595), lambda empty: _spot(empty, 25, brighten=60)),
+        # 監視範囲の縁にかかる差分は、犬の体や影による遮蔽として扱う。
+        ("縁の遮蔽", (0.15, 0.595), lambda empty: _spot(empty, 10)),
+        # 排泄物が見えなくなっても、片付けたとは判断しない。
+        ("一時的な消失", (0.275, 0.595), lambda empty: empty.copy()),
+    ],
+)
+def test_waste_position_and_status_are_kept_while_unobservable(
+    tmp_path, description, start, frames
+):
+    reentry, roi, empty = _reentry_extension(tmp_path)
+    event_id = Store(tmp_path).record(empty, 0.1, None, 0)
+    reentry.store.register(event_id, "first", start)
+    for _ in range(5):
+        reentry.update_waste(_view(roi, frames(empty)))
+    rows = reentry.store.pending("first")
+    assert [(row["id"], row["position_x"], row["position_y"]) for row in rows] == [
+        (event_id, *start)
+    ], description
+    with reentry.store.db.connect() as db:
+        status = db.execute(
+            "SELECT status FROM reentry_waste WHERE event_id=?", (event_id,)
+        ).fetchone()
+    assert status["status"] == "uncollected"
+
+
+def test_waste_position_follows_a_small_visible_move(tmp_path):
+    reentry, roi, empty = _reentry_extension(tmp_path)
+    event_id = Store(tmp_path).record(empty, 0.1, None, 0)
+    reentry.store.register(event_id, "first", (0.275, 0.595))
+    moved = _view(roi, _spot(empty, 25))
+    reentry.update_waste(moved)
+    assert reentry.store.pending("first")[0]["position_x"] == 0.275
+    reentry.update_waste(moved)
+    assert reentry.store.pending("first")[0]["position_x"] == pytest.approx(0.295)
+
+
+def test_temporary_loss_and_interruption_never_mark_waste_collected(tmp_path):
+    from poop_detector.features.reentry import ReentryMonitor
+    from poop_detector.records.events import utcnow
+
+    event = Store(tmp_path).record(np.zeros((48, 64, 3), np.uint8), 0.1, None, 0)
+    store = ReentryStore(tmp_path)
+    store.register(event, "first", (0.2, 0.4))
+    monitor = ReentryMonitor(store, "first", Presence(1, 2), 0.05)
+    for tick, side in enumerate(("outside", "outside", "inside", "inside", None, None)):
+        monitor.observe(side, None, tick, utcnow())
+    monitor.observe(None, None, 20, utcnow())
+    monitor.interrupt()
+    assert [(row["id"], row["position_x"]) for row in store.pending("first")] == [(event, 0.2)]
+
+
+@pytest.mark.parametrize(
+    ("box", "expected"),
+    [
+        ((30, 30, 60, 70), "good"),
+        # 画面端の近くでは、検出枠の下辺が切れている恐れがある。
+        ((30, 30, 60, 98), "low"),
+        ((1, 30, 40, 70), "low"),
+        # 遠くて小さい検出枠は、下辺中央と足元のずれが相対的に大きい。
+        ((40, 40, 48, 48), "low"),
+    ],
+)
+def test_foot_quality_marks_uncertain_foot_points(box, expected):
+    from poop_detector.features.reentry import foot_quality
+
+    assert foot_quality(box, (101, 101, 3), 0.02) == expected
+
+
+def test_visits_record_foot_quality_without_changing_risk(tmp_path):
+    from poop_detector.features.reentry import ReentryMonitor
+    from poop_detector.records.events import utcnow
+
+    event = Store(tmp_path).record(np.zeros((48, 64, 3), np.uint8), 0.1, None, 0)
+    store = ReentryStore(tmp_path)
+    store.register(event, "first", (0.2, 0.4))
+    monitor = ReentryMonitor(store, "first", Presence(1, 2), 0.05, high_samples=2)
+    samples = [
+        ("outside", None, "good"),
+        ("outside", None, "good"),
+        ("inside", (0.6, 0.6), "good"),
+        ("inside", (0.6, 0.6), "low"),
+        ("inside", (0.2, 0.41), "low"),
+        ("inside", (0.2, 0.4), "good"),
+    ]
+    for tick, (side, point, quality) in enumerate(samples):
+        monitor.observe(side, point, tick, utcnow(), quality=quality)
+    with store.db.connect() as db:
+        visit = db.execute(
+            "SELECT risk,foot_samples,low_foot_samples,high_foot_quality FROM reentry_visits"
+        ).fetchone()
+    # 入場の確定後の3回を数える。品質が低い足元も、いまは HIGH の根拠に数える。
+    assert tuple(visit) == ("HIGH", 3, 2, "low")

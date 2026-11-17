@@ -388,3 +388,27 @@ def test_reentry_migration_preserves_positions_visits_and_old_notice_reservation
         assert tuple(
             db.execute("SELECT status,attempts,next_attempt_at FROM reentry_notices").fetchone()
         ) == ("unknown", 1, None)
+
+
+def test_version_20_visits_gain_foot_quality_counts_without_losing_risk(tmp_path):
+    path = tmp_path / "events.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:20]:
+            migration(db)
+        db.execute("PRAGMA user_version=20")
+        db.execute("INSERT INTO events (id,timestamp) VALUES (?,?)", EVENT[1][:2])
+        db.execute(
+            """INSERT INTO reentry_waste (event_id,configuration_id,status)
+               VALUES ('e1','layout','uncollected')"""
+        )
+        db.execute(
+            "INSERT INTO reentry_visits (event_id,started_at,risk,distance) VALUES ('e1',?,'HIGH',0.01)",
+            (EVENT[1][1],),
+        )
+
+    with Database(path).connect() as db:
+        row = db.execute(
+            "SELECT risk,distance,foot_samples,low_foot_samples,high_foot_quality FROM reentry_visits"
+        ).fetchone()
+    # 品質を記録する前の訪問は、標本数 0（不明）として残す。
+    assert tuple(row) == ("HIGH", 0.01, 0, 0, None)

@@ -19,7 +19,16 @@ from ..errors import InvalidInputError
 from ..frames import Frame, Shape
 from ..records.events import utcnow, validate_times
 from ..video.recording import ClipCollector
-from .reentry import Position, Presence, ReentryMonitor, ReentryStore, WasteTrack, dog_position
+from .reentry import (
+    FootQuality,
+    Position,
+    Presence,
+    ReentryMonitor,
+    ReentryStore,
+    WasteTrack,
+    dog_position,
+    foot_quality,
+)
 
 LAYOUT_FILE = "reentry-layout.json"
 
@@ -161,6 +170,10 @@ class ReentryExtension(MonitorExtension):
         row = rows[0]
         if self.track_id != row["id"]:
             self.track_id, self.track.previous = row["id"], None
+        # 照明変化（unstable）、縁の遮蔽（occupied）、消失（empty）の間は最後の位置を保つ。
+        if self.baseline.analyze(view.crop, view.valid_mask).kind != "candidate":
+            self.track.previous = None
+            return
         valid = self.baseline.valid_region(view.crop, view.valid_mask)
         delta = self.baseline.difference_mask(view.crop, valid)
         position = self.in_zone(
@@ -185,6 +198,7 @@ class ReentryExtension(MonitorExtension):
         self.last_sample = tick
         state = self.dog.state
         side, point = (None, None)
+        quality: FootQuality = "good"
         if state is not None and not state.error and len(state.boxes) == 1:
             side, point = dog_position(
                 state.boxes[0],
@@ -193,12 +207,13 @@ class ReentryExtension(MonitorExtension):
                 view.frame.shape,
                 self.config.reentry_margin,
             )
+            quality = foot_quality(state.boxes[0], view.frame.shape, self.config.reentry_margin)
         if side == "outside" and view.observation.kind == "empty":
             self.update_waste(view)
         else:
             self.track.previous = None
         at = utcnow()
-        notices = self.monitor.observe(side, point, tick, at)
+        notices = self.monitor.observe(side, point, tick, at, quality=quality)
         clip_id = self.collector.trigger(source="toilet_reentry") if notices else None
         # このフレームで上がったすべてのリスクは、同じ時刻の動画を共有する。
         high_visits = {visit for _, kind, visit in notices if kind == "high"}
