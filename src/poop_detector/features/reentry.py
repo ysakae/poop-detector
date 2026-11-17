@@ -18,6 +18,10 @@ from .dog import Box, overlaps_roi
 
 Position = tuple[float, float]
 Side = Literal["inside", "outside"]
+FootQuality = Literal["good", "low"]
+
+# 画像の面積に対してこれより小さい検出枠は、下辺中央と足元のずれが大きいとみなす。
+SMALL_BOX_RATIO = 0.01
 
 
 class Presence:
@@ -67,8 +71,22 @@ def dog_position(
     return None, None
 
 
+def foot_quality(box: Box, shape: Shape, margin: float) -> FootQuality:
+    """下辺中央を足元とみなす近似が崩れやすい検出枠を low とする。判定には使わない。"""
+    x1, y1, x2, y2 = box
+    height, width = shape[:2]
+    band = min(width, height) * margin
+    near_edge = min(x1, y1, width - 1 - x2, height - 1 - y2) <= band
+    small = (x2 - x1) * (y2 - y1) < width * height * SMALL_BOX_RATIO
+    return "low" if near_edge or small else "good"
+
+
 class WasteTrack:
-    """同じ候補とみなせる局所差分が二度続くときだけ位置を更新する。"""
+    """同じ候補とみなせる局所差分が二度続くときだけ位置を更新する。
+
+    呼び出し側は、犬が生活エリアにいて、基準画像との比較が candidate のときだけ渡す。
+    照明変化・縁の遮蔽・消失の間は呼ばずに最後の位置を保ち、片付けたとは判断しない。
+    """
 
     def __init__(self) -> None:
         self.previous: Position | None = None
@@ -217,16 +235,26 @@ class ReentryStore:
                 (at, int(at is None), visit),
             )
 
-    def high(self, visit: int, distance: float) -> bool:
+    def high(self, visit: int, distance: float, quality: FootQuality = "good") -> bool:
         with closing(self.db.connect()) as db, db:
             return (
                 db.execute(
-                    """UPDATE reentry_visits SET risk='HIGH', distance=?
+                    """UPDATE reentry_visits SET risk='HIGH', distance=?, high_foot_quality=?
                    WHERE id=? AND risk='MEDIUM' AND interrupted=0 AND ended_at IS NULL
                    AND event_id IN (SELECT id FROM pending_waste)""",
-                    (distance, visit),
+                    (distance, quality, visit),
                 ).rowcount
                 == 1
+            )
+
+    def count_foot(self, visit: int, quality: FootQuality) -> None:
+        """訪問中に足元を観測した回数と、そのうち品質が低い回数を数える。"""
+        with closing(self.db.connect()) as db, db:
+            db.execute(
+                """UPDATE reentry_visits SET foot_samples=foot_samples+1,
+                       low_foot_samples=low_foot_samples+?
+                   WHERE id=? AND interrupted=0 AND ended_at IS NULL""",
+                (int(quality == "low"), visit),
             )
 
     def attach_clip(self, visit: int, clip_id: str, *, high: bool) -> None:
@@ -273,6 +301,7 @@ class ReentryMonitor:
         self.presence, self.high_distance = presence, high_distance
         self.high_samples = high_samples
         self.nearby: dict[int, int] = {}
+        self.nearby_low: dict[int, bool] = {}
         self.armed: set[str] = set()
         self.visits: dict[str, int] = {}
         self.coverage: dict[str, str | None] = {}
@@ -287,6 +316,7 @@ class ReentryMonitor:
         self.armed.clear()
         self.presence.interrupt()
         self.nearby.clear()
+        self.nearby_low.clear()
         self.coverage = dict.fromkeys(self.coverage)
 
     def record_coverage(
@@ -313,7 +343,13 @@ class ReentryMonitor:
         self.coverage = advanced
 
     def observe(
-        self, side: Side | None, point: Position | None, tick: float, at: str
+        self,
+        side: Side | None,
+        point: Position | None,
+        tick: float,
+        at: str,
+        *,
+        quality: FootQuality = "good",
     ) -> list[tuple[str, str, int]]:
         if tick - self.last_known > self.presence.max_gap:
             self.interrupt()
@@ -342,17 +378,35 @@ class ReentryMonitor:
                     self.store.set_risk(event_id, "MEDIUM")
                     notices.append((event_id, "reentry", new_visit))
             self.armed.clear()
+        notices.extend(self.near_waste(rows, side, point, quality))
+        return notices
+
+    def near_waste(
+        self,
+        rows: dict[str, sqlite3.Row],
+        side: Side | None,
+        point: Position | None,
+        quality: FootQuality,
+    ) -> list[tuple[str, str, int]]:
+        """足元が推定位置に続けて近いと HIGH にする。品質は記録するが判定には使わない。"""
+        notices: list[tuple[str, str, int]] = []
         nearby: dict[int, int] = {}
+        nearby_low: dict[int, bool] = {}
         if side == "inside" and point is not None:
             for event_id, visit in self.visits.items():
+                self.store.count_foot(visit, quality)
                 row = rows[event_id]
                 x, y = row["position_x"], row["position_y"]
-                if x is not None and y is not None:
-                    distance = math.hypot(point[0] - x, point[1] - y)
-                    if distance <= self.high_distance:
-                        nearby[visit] = self.nearby.get(visit, 0) + 1
-                        if nearby[visit] >= self.high_samples and self.store.high(visit, distance):
-                            self.store.set_risk(event_id, "HIGH")
-                            notices.append((event_id, "high", visit))
-        self.nearby = nearby
+                if x is None or y is None:
+                    continue
+                distance = math.hypot(point[0] - x, point[1] - y)
+                if distance > self.high_distance:
+                    continue
+                nearby[visit] = self.nearby.get(visit, 0) + 1
+                nearby_low[visit] = self.nearby_low.get(visit, False) or quality == "low"
+                streak: FootQuality = "low" if nearby_low[visit] else "good"
+                if nearby[visit] >= self.high_samples and self.store.high(visit, distance, streak):
+                    self.store.set_risk(event_id, "HIGH")
+                    notices.append((event_id, "high", visit))
+        self.nearby, self.nearby_low = nearby, nearby_low
         return notices
