@@ -102,7 +102,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 変換が終わると、操作・検知の位置の1コマを小さな JPEG にして、動画と同じ名前の `.jpg` で `clips/` に置きます（`video/thumbnails.py`）。動画の一覧は `/clip-thumbnail` で受け取り、まだない動画はそこで作ります。録画の整理（`clip_storage.remove_video`）は動画と一緒に消します。動画から作り直せるので、バックアップの `ALLOWED` には入れていません。
 
-`--video-review` では `video.review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を判定器（`video.review.VideoJudge`）に渡して JSON スキーマに沿った判定を受け取ります。判定器は差し替えられる作りで、既定の実装は Codex CLI（`video.codex_cli.CodexCliJudge`）です。このモードでは差分だけの通知を抑え、判定器が根拠を確認した場合にだけ通知します。`video-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
+`--video-review` では `video.review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を判定器（`video.review.VideoJudge`）に渡して JSON スキーマに沿った判定を受け取ります。判定器は差し替えられる作りで、既定の実装は Codex CLI（`video.codex_cli.CodexCliJudge`）です。このモードでは差分だけの通知を抑え、判定器が根拠を確認した場合にだけ通知します。シートを作るときに、トレー内の動画では前後の差分の指標（`review.endpoint_change`。最後の3コマのうち、最初の3コマの中央値との差が4階調を超える画素の割合が最も小さい値）も測り、判定と一緒に `video_assessments.endpoint_change` に残します。判定器を呼ぶ前のふるい分け（#152）の採否を、人のラベルがたまってから確かめるための記録で、判定と通知には使いません。`video-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
 
 判定器の比較（`video-benchmark`）は、人が確認した録画の評価セット（`video/benchmark_sets.py`）を使います。`benchmark-dataset create` が台帳から下書きを作り（同じイベント・確定記録・30秒以内に重なる録画は1本にまとめる）、動画の画面で人が選んだ評価の候補と条件のタグ（`video/benchmark_candidates.py`）を反映し、`freeze` が版の番号と内容の SHA-256 を付け、録画を保護します。評価セットは録画ごとに撮影時の画角の署名を持ち、署名ごとの ROI・基準画像の場所（データの保存先と `tray-scenes/` の下の過去の登録、`--scene`）を記録します。比較は録画ごとに画像を一度だけ切り出し、同じ画像と指示をすべての判定器に渡します。結果には評価セットの版、指定したモデル、CLI の版（`video/cli_versions.py`）、画像と指示のハッシュ、抽出時刻を残し、運用の記録・ラベル・自動判定は書き換えません。
 

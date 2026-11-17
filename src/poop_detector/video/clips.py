@@ -94,6 +94,7 @@ class AssessmentRow(TypedDict):
     location: str | None
     provider: str
     model: str | None
+    endpoint_change: float | None
 
 
 class ClipStore:

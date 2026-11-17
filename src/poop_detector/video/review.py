@@ -12,7 +12,7 @@ import tempfile
 import threading
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
@@ -20,6 +20,7 @@ from typing import Any, Protocol, Self, cast
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 
 from ..detection.roi import AnyROI, MaskedROI, full_mask, outline
 from ..errors import AlreadyRunningError
@@ -168,6 +169,19 @@ class SheetOptions:
 DEFAULT_SHEET = SheetOptions()
 
 
+# 前後の差分の指標で比べるコマ数と、変化とみなす明るさの差（256階調）。
+ENDPOINT_FRAMES = 3
+ENDPOINT_LEVELS = 4
+
+
+@dataclass(frozen=True)
+class Sheets:
+    """シートに使った各コマの秒数と、前後の差分の指標。"""
+
+    timestamps: list[float]
+    endpoint_change: float | None
+
+
 class TrayNotVisibleError(ValueError):
     """動画の中でトレーの位置を確かめられるフレームが足りない。"""
 
@@ -188,30 +202,61 @@ def save_sheet(destination: Path, tiles: Sequence[Frame], timestamps: Sequence[f
         raise OSError("自動判定用の画像を保存できません")
 
 
-def save_difference_sheet(
-    destination: Path, tiles: Sequence[Frame], timestamps: Sequence[float], mask: Mask
-) -> None:
-    """最初の3コマの中央値との差を強調した比較画像を保存する。"""
+def _deltas(
+    tiles: Sequence[Frame], mask: Mask
+) -> tuple[list[NDArray[np.float32]], NDArray[np.bool_]] | None:
+    """最初の3コマの中央値との明るさの差を、ぼかして全体の明るさの変化を除いて返す。"""
     # 網目の細かな模様をぼかし、ROI外との境界のにじみを除く。
     sigma = max(1, min(mask.shape) / 70)
     margin = math.ceil(2 * sigma)
     kernel = np.ones((2 * margin + 1, 2 * margin + 1), np.uint8)
     interior = cv2.erode(mask, kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0) > 0
     if not np.any(interior):
-        return
+        return None
     smoothed = [
         cv2.GaussianBlur(cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY).astype(np.float32), (0, 0), sigma)
         for tile in tiles
     ]
     reference = np.median(smoothed[:3], axis=0)
-    differences: list[Frame] = []
+    deltas: list[NDArray[np.float32]] = []
     for gray in smoothed:
         delta = gray - reference
-        delta -= np.median(delta[interior])
+        deltas.append(delta - np.median(delta[interior]))
+    return deltas, interior
+
+
+def save_difference_sheet(
+    destination: Path, tiles: Sequence[Frame], timestamps: Sequence[float], mask: Mask
+) -> None:
+    """最初の3コマの中央値との差を強調した比較画像を保存する。"""
+    measured = _deltas(tiles, mask)
+    if measured is None:
+        return
+    deltas, interior = measured
+    differences: list[Frame] = []
+    for delta in deltas:
         tile = np.clip(128 + 8 * delta, 0, 255).astype(np.uint8)
         tile[~interior] = 0
         differences.append(cv2.cvtColor(tile, cv2.COLOR_GRAY2BGR))
     save_sheet(destination, differences, timestamps)
+
+
+def endpoint_change(tiles: Sequence[Frame], mask: Mask) -> float | None:
+    """最後の3コマで、最初の3コマとの差が閾値を超える画素の割合の最小値を返す。
+
+    犬が去ったあとも残る跡の大きさの目安で、判定器を呼ぶ前のふるい分けを検証するために
+    記録する（#152）。判定には使わない。最初と最後の3コマが重なるほど短い動画は None。
+    """
+    if len(tiles) < 2 * ENDPOINT_FRAMES:
+        return None
+    measured = _deltas(tiles, mask)
+    if measured is None:
+        return None
+    deltas, interior = measured
+    return min(
+        float(np.mean(np.abs(delta[interior]) > ENDPOINT_LEVELS))
+        for delta in deltas[-ENDPOINT_FRAMES:]
+    )
 
 
 def write_sheet(
@@ -226,6 +271,30 @@ def write_sheet(
     sheet: SheetOptions = DEFAULT_SHEET,
 ) -> list[float]:
     """動画から最大24コマ（sheet で減らせる）を取り出してシートにし、各コマの秒数を返す。"""
+    return write_sheets(
+        path,
+        destination,
+        roi,
+        duration,
+        tray_tracker=tray_tracker,
+        outside_roi=outside_roi,
+        difference_path=difference_path,
+        sheet=sheet,
+    ).timestamps
+
+
+def write_sheets(
+    path: Path,
+    destination: Path,
+    roi: AnyROI,
+    duration: float,
+    *,
+    tray_tracker: TrayTracker | None = None,
+    outside_roi: AnyROI | None = None,
+    difference_path: Path | None = None,
+    sheet: SheetOptions = DEFAULT_SHEET,
+) -> Sheets:
+    """シートを保存し、各コマの秒数とトレー内の前後の差分の指標を返す。"""
     capture = cv2.VideoCapture(str(path))
     tiles: list[Frame] = []
     timestamps: list[float] = []
@@ -267,7 +336,7 @@ def write_sheet(
             scale = min(sheet.tile_width / crop.shape[1], sheet.tile_height / crop.shape[0])
             height, width = crop.shape[:2]
             tile = cv2.resize(crop, (max(1, round(width * scale)), max(1, round(height * scale))))
-            if compare and mask is None:
+            if outside_roi is None and mask is None:
                 mask = np.full(tile.shape[:2], 255, np.uint8)
                 if isinstance(roi, MaskedROI):
                     mask = cv2.resize(
@@ -282,7 +351,7 @@ def write_sheet(
     save_sheet(destination, tiles, timestamps)
     if compare and len(tiles) >= 4 and difference_path is not None and mask is not None:
         save_difference_sheet(difference_path, tiles, timestamps, mask)
-    return timestamps
+    return Sheets(timestamps, None if mask is None else endpoint_change(tiles, mask))
 
 
 @dataclass(frozen=True)
@@ -298,8 +367,12 @@ class PreparedClip:
     include_location: bool
     require_sample_time: bool
     outside_stay: bool
+    endpoint_change: float | None = None
 
     def inspect(self, judge: "VideoJudge") -> Assessment:
+        return replace(self._verdict(judge), endpoint_change=self.endpoint_change)
+
+    def _verdict(self, judge: "VideoJudge") -> Assessment:
         output = judge.judge(self.folder, self.prompt, self.images, self.schema)
         assessment = parse_assessment(output, self.duration, include_location=self.include_location)
         if (
@@ -337,7 +410,7 @@ def prepare_clip(
         folder = Path(temporary)
         difference_path = folder / "differences.jpg"
         try:
-            timestamps = write_sheet(
+            sheets = write_sheets(
                 path,
                 folder / "frames.jpg",
                 roi,
@@ -374,11 +447,12 @@ def prepare_clip(
             prompt,
             tuple(images),
             schema,
-            tuple(timestamps),
+            tuple(sheets.timestamps),
             row["duration"] or 0,
             outside_roi is not None,
             tray_tracker is not None or outside_roi is not None,
             outside_stay,
+            sheets.endpoint_change,
         )
 
 
