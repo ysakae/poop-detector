@@ -447,6 +447,11 @@ def migrate_to_v21(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE reentry_visits ADD COLUMN high_foot_quality TEXT")
 
 
+def migrate_to_v22(db: sqlite3.Connection) -> None:
+    """動画の自動判定に、前後の差分の指標を追加する。以前の判定は未計測（NULL）とする。"""
+    db.execute("ALTER TABLE video_assessments ADD COLUMN endpoint_change REAL")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -470,6 +475,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v19,
     migrate_to_v20,
     migrate_to_v21,
+    migrate_to_v22,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

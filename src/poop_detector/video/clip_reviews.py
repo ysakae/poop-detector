@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from ..records.database import Database
@@ -30,6 +30,8 @@ class Assessment:
     end_seconds: float | None = None
     reason: str | None = None
     location: str | None = None
+    # 判定器の答えではなく、判定に使った画像の前後の差分の指標（#152）。判定の比較には含めない。
+    endpoint_change: float | None = field(default=None, compare=False)
 
 
 class AssessmentStore:
@@ -145,13 +147,14 @@ class AssessmentStore:
             return (
                 db.execute(
                     """INSERT INTO video_assessments
-                (clip_id,label,activity,start_seconds,end_seconds,reason,observed_at,error,assessed_at,location,provider,model)
-                SELECT id,?,?,?,?,?,?,?,?,?,?,? FROM clips WHERE id=? AND label IS NULL AND status='ready'
+                (clip_id,label,activity,start_seconds,end_seconds,reason,observed_at,error,assessed_at,location,provider,model,endpoint_change)
+                SELECT id,?,?,?,?,?,?,?,?,?,?,?,? FROM clips WHERE id=? AND label IS NULL AND status='ready'
                 ON CONFLICT(clip_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,
                 start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds,
                 reason=excluded.reason,observed_at=excluded.observed_at,error=excluded.error,
                 assessed_at=excluded.assessed_at,location=excluded.location,
-                provider=excluded.provider,model=excluded.model WHERE video_assessments.error IS NOT NULL""",
+                provider=excluded.provider,model=excluded.model,
+                endpoint_change=excluded.endpoint_change WHERE video_assessments.error IS NOT NULL""",
                     (
                         label,
                         activity,
@@ -164,6 +167,7 @@ class AssessmentStore:
                         location,
                         provider,
                         model,
+                        values.endpoint_change,
                         clip_id,
                     ),
                 ).rowcount

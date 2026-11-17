@@ -111,7 +111,7 @@ def test_new_database_is_created_at_the_latest_version(tmp_path):
     assert version(path) == LATEST_VERSION
     renamed = {"codex_assessments": "video_assessments"}
     for table, expected in TABLES_V1.items():
-        extra = ["provider", "model"] if table == "codex_assessments" else []
+        extra = ["provider", "model", "endpoint_change"] if table == "codex_assessments" else []
         assert columns(path, renamed.get(table, table)) == [name for name, _ in expected] + extra
 
 
@@ -412,3 +412,24 @@ def test_version_20_visits_gain_foot_quality_counts_without_losing_risk(tmp_path
         ).fetchone()
     # 品質を記録する前の訪問は、標本数 0（不明）として残す。
     assert tuple(row) == ("HIGH", 0.01, 0, 0, None)
+
+
+def test_version_21_assessments_gain_the_endpoint_change_without_losing_labels(tmp_path):
+    path = tmp_path / "events.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:21]:
+            migration(db)
+        db.execute("PRAGMA user_version=21")
+        db.execute(
+            "INSERT INTO clips (id,status,requested_at,start_at,duration) VALUES ('c1','ready',?,?,40)",
+            ("2026-11-15T00:00:00+00:00", "2026-11-15T00:00:00+00:00"),
+        )
+        db.execute(
+            "INSERT INTO video_assessments (clip_id,label,assessed_at) VALUES ('c1','urine',?)",
+            ("2026-11-15T00:01:00+00:00",),
+        )
+
+    with Database(path).connect() as db:
+        row = db.execute("SELECT label,endpoint_change FROM video_assessments").fetchone()
+    # 指標を記録する前の判定は、値なし（未計測）として残す。
+    assert tuple(row) == ("urine", None)
