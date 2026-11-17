@@ -45,6 +45,11 @@ Issues = "https://github.com/ysakae/poop-detector/issues"
 Changelog = "https://github.com/ysakae/poop-detector/blob/main/CHANGELOG.md"
 [project.scripts]
 poop-detector = "poop_detector.main:main"
+# 行動分類の比較（circling-compare）だけで使う。監視には要らない。
+[project.optional-dependencies]
+analysis = [
+    "scikit-learn>=1.5,<2",
+]
 [build-system]
 # license-files（PEP 639）に対応した版
 requires = ["hatchling>=1.27"]
@@ -55,6 +60,7 @@ dev = [
     "pytest>=8,<10",
     "pytest-cov>=6,<8",
     "ruff>=0.9,<1",
+    "scikit-learn>=1.5,<2",
     "types-psutil>=6,<8",
     "types-pyyaml>=6,<7",
 ]
@@ -81,7 +87,7 @@ no_implicit_reexport = true
 
 [[tool.mypy.overrides]]
 # Web Push の暗号化と署名のライブラリは、型の情報を同梱していない。
-module = ["py_vapid", "http_ece"]
+module = ["py_vapid", "http_ece", "sklearn", "sklearn.*"]
 ignore_missing_imports = true
 
 [tool.ruff]

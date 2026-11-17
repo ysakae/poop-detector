@@ -11,6 +11,7 @@ import cv2
 from .commands import (
     backup,
     benchmark,
+    circling,
     datasets,
     diagnose,
     dog_model,
@@ -45,6 +46,7 @@ HANDLERS: dict[str, Handler] = {
     "video-benchmark": benchmark.video_benchmark,
     "benchmark-dataset": datasets.benchmark_dataset,
     "circling-review": review.circling_review,
+    "circling-compare": circling.circling_compare,
     "feedback": records.feedback,
     "acknowledge": records.acknowledge,
     "missed": records.missed,
@@ -215,6 +217,13 @@ def parser() -> argparse.ArgumentParser:
     circling.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
     circling.add_argument("--clip", help="分析する動画のID。指定した動画は再分析できます")
     circling.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
+    compare = commands.add_parser(
+        "circling-compare", help="旋回の規則と軌跡の決定木を、確認済みの動画で比較（通知なし）"
+    )
+    compare.add_argument("--limit", type=int, default=200, help="比べる動画の上限（1〜500件）")
+    compare.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
+    compare.add_argument("--features", help="保存した特徴量のJSON。犬の検出をやり直さずに比べる")
+    compare.add_argument("--output", help="特徴量と結果を書き出すJSONファイル")
     feedback = commands.add_parser("feedback", help="実際に排泄だったかと種類を記録")
     feedback.add_argument("event_id")
     feedback.add_argument("label", choices=["true", "false"])

@@ -243,6 +243,17 @@ class CirclingReviews:
             )
             return [cast(ClipRow, dict(row)) for row in rows]
 
+    def labeled(self, scene_signature: str, labels: Sequence[str], limit: int) -> list[ClipRow]:
+        """人がラベルを付けた、いまの画角の動画。新しい順に limit 本まで。"""
+        with self.connect() as db:
+            rows = db.execute(
+                """SELECT * FROM clips WHERE status='ready' AND interrupted=0
+                AND scene_signature=? AND label IN (SELECT value FROM json_each(?))
+                ORDER BY requested_at DESC LIMIT ?""",
+                (scene_signature, json.dumps(list(labels)), limit),
+            )
+            return [cast(ClipRow, dict(row)) for row in rows]
+
     def get(self, clip_id: str) -> dict[str, Any] | None:
         with self.connect() as db:
             row = db.execute(
