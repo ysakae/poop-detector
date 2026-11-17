@@ -2,6 +2,8 @@
 
 import math
 from collections import deque
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -20,13 +22,16 @@ WINDOW_SECONDS = 8  # 旋回を探す軌跡の長さ（秒）
 MAX_GAP_SECONDS = 1  # これより長く見失ったら軌跡を切る（秒）
 MIN_POINTS = 7  # 旋回とみなすのに必要な位置の数
 
+# 犬の位置の1件。(秒数, x, y, 犬の大きさ)。座標と大きさは画素。
+Sample = tuple[float, float, float, float]
+
 
 class CirclingDetector:
     """犬の位置の軌跡から、その場で回る動き（排泄の前兆候補）を見つける。"""
 
     def __init__(self) -> None:
         # (時刻, x, y, 犬の大きさ)
-        self.path: deque[tuple[float, float, float, float]] = deque()
+        self.path: deque[Sample] = deque()
         self.last_seen: float | None = None
 
     def update(self, stamp: float, x: float, y: float, size: float) -> tuple[float, float] | None:
@@ -73,18 +78,37 @@ def is_loop(samples: NDArray[Any]) -> bool:
     )
 
 
-def inspect_circling(
+@dataclass(frozen=True)
+class DogTrack:
+    """動画から取り出した犬の位置の列と、調べたコマ数・位置が分かったコマ数。"""
+
+    samples: tuple[Sample, ...]
+    sampled: int
+    located: int
+
+
+def find_circling(samples: Sequence[Sample]) -> list[tuple[float, float]]:
+    """位置の列に旋回の規則をかけ、旋回候補の開始と終了の秒数を返す。"""
+    detector = CirclingDetector()
+    candidates: list[tuple[float, float]] = []
+    for sample in samples:
+        candidate = detector.update(*sample)
+        if candidate is not None:
+            candidates.append(candidate)
+    return candidates
+
+
+def track_dog(
     path: str | Path,
     predict: Predict,
     roi: AnyROI,
     *,
     tray_tracker: TrayTracker | None = None,
-) -> tuple[list[tuple[float, float]], int, int]:
-    """動画を1/3秒ごとに調べ、(旋回候補, 調べたコマ数, 犬の位置が分かったコマ数) を返す。"""
+) -> DogTrack:
+    """動画を1/3秒ごとに調べ、トレー付近に犬が1頭だけいるコマの位置を集める。"""
     capture = cv2.VideoCapture(str(path))
-    detector = CirclingDetector()
-    candidates: list[tuple[float, float]] = []
-    sampled = located = 0
+    samples: list[Sample] = []
+    sampled = 0
     next_sample = 0.0
     try:
         fps = capture.get(cv2.CAP_PROP_FPS)
@@ -115,10 +139,19 @@ def inspect_circling(
                 if cv2.pointPolygonTest(boundary, (x, y), True) >= -0.25 * size:
                     positions.append((x, y, size))
             if len(positions) == 1:
-                located += 1
-                candidate = detector.update(stamp, *positions[0])
-                if candidate is not None:
-                    candidates.append(candidate)
+                samples.append((stamp, *positions[0]))
     finally:
         capture.release()
-    return candidates, sampled, located
+    return DogTrack(tuple(samples), sampled, len(samples))
+
+
+def inspect_circling(
+    path: str | Path,
+    predict: Predict,
+    roi: AnyROI,
+    *,
+    tray_tracker: TrayTracker | None = None,
+) -> tuple[list[tuple[float, float]], int, int]:
+    """動画を1/3秒ごとに調べ、(旋回候補, 調べたコマ数, 犬の位置が分かったコマ数) を返す。"""
+    track = track_dog(path, predict, roi, tray_tracker=tray_tracker)
+    return find_circling(track.samples), track.sampled, track.located

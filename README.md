@@ -49,7 +49,7 @@
 | 任意 | 排泄後の再侵入・踏みつけリスク | `reentry.enabled` | 固定トレー・動画保存・領域登録が必要。片付けは手動確認 | [再侵入の見守り](docs/reentry.md) |
 | 任意 | サークルの行動マップ | `features.activity_map`、`--activity-map` | 床面の登録と犬の検出が必要 | [犬の検出](docs/dog.md#サークルの行動マップ) |
 | 実験的 | トレー外の排泄候補 | `features.detect_outside`、`--detect-outside` | 動画の自動判定と犬の検出が必要。精度は確かめていない | [犬の検出](docs/dog.md#トレー外の排泄候補を検知する) |
-| 実験的 | 保存動画の旋回候補の分析 | `circling-review` | 保存済みの動画の分析だけで、監視や通知にはつながっていない | [犬の検出](docs/dog.md#保存動画から旋回候補を確認する) |
+| 実験的 | 保存動画の旋回候補の分析 | `circling-review`・`circling-compare` | 保存済みの動画の分析だけで、監視や通知にはつながっていない | [犬の検出](docs/dog.md#保存動画から旋回候補を確認する) |
 
 普段使う機能は `config/config.yaml` の `features` に書いておけば、起動は `poop-detector run` だけで済みます（[初期設定](docs/setup.md#使う機能を設定ファイルで有効にする)）。
 

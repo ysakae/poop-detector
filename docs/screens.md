@@ -246,7 +246,7 @@ Issue #86 の配置の案のうち、まだない画面です。足すときは�
 | `restore` | 残す | データの保存先を入れ替える操作。監視と GUI を止め、監視するマシンで実行することを信頼の根拠にする |
 | `diagnose` | 両方 | 管理 › 確認と診断に同じ内容を出す。GUI が動かないときのために CLI も残す |
 | `metrics` | 残す | 精度の集計。管理 › 稼働状況への表示は今後 |
-| `video-review`・`circling-review`・`video-benchmark`・`benchmark-dataset` | 残す | 時間のかかる一括処理。判定は動画の画面、比較の結果は管理 › 判定器とモデルで見られる |
+| `video-review`・`circling-review`・`circling-compare`・`video-benchmark`・`benchmark-dataset` | 残す | 時間のかかる一括処理。判定は動画の画面、比較の結果は管理 › 判定器とモデルで見られる |
 | `setup-dog-model`・`check-dog` | 残す | モデルの取得と性能の確認。状態と `check-dog` の直近の結果は管理 › 判定器とモデルに出す |
 | `events`・`records`・`record`・`feedback`・`acknowledge`・`missed` | 両方 | GUI の確認待ち・記録・動画と同じ操作。スクリプトから使うために残す |
 | `run`・`gui`・`tray-registration` | 残す | 監視と GUI の起動。`tray-registration` は GUI のトレー交換と同じ処理 |

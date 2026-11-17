@@ -13,7 +13,7 @@
 | `records/` | 中核 | 検知イベントと排泄の記録の台帳、集計、CSV の書き出しと期間の集計（`export.py`）、バックアップと復元（`backup.py`）、SQLite の接続とスキーマの版 |
 | `video/` | 中核・任意 | 動画の台帳・録画・保持（中核）、動画の自動判定と判定器（任意） |
 | `features/` | 任意 | 犬の検出、見守り通知、トレー追従、行動マップ |
-| `experimental/` | 実験的 | トレー外検知（`outside.py`）、旋回分析（`circling.py`） |
+| `experimental/` | 実験的 | トレー外検知（`outside.py`）、旋回分析（`circling.py`）、軌跡の特徴量（`trajectory.py`）と旋回の比較（`circling_compare.py`） |
 | `commands/`・`gui/` | — | CLI のサブコマンドと、GUI |
 
 最上位には、設定（`config.py`）、通知（`notifications.py`）、画像の型（`frames.py`）、時刻（`timezones.py`）、対応 OS の判定（`platform_support.py`）、CLI の入口（`main.py`）を置いています。監視ループの本体（`detection.monitoring.Monitor`）は、任意・実験的な機能に依存しません。それらは `MonitorExtension` として差し込み、設定から拡張を組み立てる `standard_extensions` だけが各機能を読み込みます。
@@ -55,6 +55,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `commands/backup.py` | `backup`、`restore` |
 | `commands/users.py` | `users`（GUI のユーザーの一覧、招待、役割の変更、復旧、無効化） |
 | `commands/review.py` | `video-review`、`circling-review` |
+| `commands/circling.py` | `circling-compare` |
 | `commands/benchmark.py`・`commands/datasets.py` | `video-benchmark`、`benchmark-dataset` |
 | `commands/dog_model.py` | `setup-dog-model`、`check-dog` |
 
@@ -106,7 +107,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 判定器の比較（`video-benchmark`）は、人が確認した録画の評価セット（`video/benchmark_sets.py`）を使います。`benchmark-dataset create` が台帳から下書きを作り（同じイベント・確定記録・30秒以内に重なる録画は1本にまとめる）、動画の画面で人が選んだ評価の候補と条件のタグ（`video/benchmark_candidates.py`）を反映し、`freeze` が版の番号と内容の SHA-256 を付け、録画を保護します。評価セットは録画ごとに撮影時の画角の署名を持ち、署名ごとの ROI・基準画像の場所（データの保存先と `tray-scenes/` の下の過去の登録、`--scene`）を記録します。比較は録画ごとに画像を一度だけ切り出し、同じ画像と指示をすべての判定器に渡します。結果には評価セットの版、指定したモデル、CLI の版（`video/cli_versions.py`）、画像と指示のハッシュ、抽出時刻を残し、運用の記録・ラベル・自動判定は書き換えません。
 
-`circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`experimental/circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。
+`circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`experimental/circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。`circling-compare` は、人がラベルを付けた動画で、この規則と軌跡の特徴量による決定木（任意の依存の scikit-learn）を日ごとの交差検証で比べます（#127）。
 
 ### 判定器を呼ぶ回数の上限
 
