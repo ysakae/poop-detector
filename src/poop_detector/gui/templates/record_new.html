@@ -3,13 +3,21 @@
 {% from "_macros.html" import csrf_field, icon, location_field %}
 {% block content %}
 <h2>排泄を記録</h2>
+{% if manual_only %}
+<p class="note">目で見て確かめた排便・排尿を記録します。</p>
+{% else %}
 <p class="note">目で見て確かめた排便・排尿を記録します。通知の画像や動画がある排泄は、<a href="/review">確認待ち</a>でラベルを付けてください（同じ排泄を二重に記録しないため）。</p>
+{% endif %}
 <form method="post" action="/save" class="card">{{ csrf_field(token) }}
+{% if manual_only %}
+<input type="hidden" name="action" value="manual">
+{% else %}
 <fieldset><legend>通知は来ましたか？</legend><div class="choices">
 {%- for value, text in kinds -%}
 <label class="choice"><input type="radio" name="action" value="{{ value }}"{% if loop.first %} checked{% endif %}>{{ text }}</label>
 {%- endfor -%}
 </div></fieldset>
+{% endif %}
 <div class="times"><label>開始（{{ timezone }}）<input type="datetime-local" name="start" value="{{ now }}" required></label>{{ location_field(locations, None) }}</div>
 <details class="clip-more"><summary>くわしく入力（完了・メモ）</summary><div class="times"><label>完了（任意）<input type="datetime-local" name="end"></label></div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000"></textarea></label></p></details>
 <div class="quick-confirm"><h4>種類を選ぶと記録します</h4><div class="quick-buttons">

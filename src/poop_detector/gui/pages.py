@@ -258,13 +258,14 @@ def render_events(
     )
 
 
-def render_new_record(token: str, *, title: str | None = None) -> str:
+def render_new_record(token: str, *, title: str | None = None, manual_only: bool = False) -> str:
     """目視で確認した排泄（通常の手動記録と、通知されなかった見逃し）を記録する画面。
 
     見かけてすぐ記録できるよう、開始にはいまの時刻を入れておき、種類のボタンを押すと保存する。
     """
     return render_template(
         "record_new.html",
+        manual_only=manual_only,
         title=title or APP_TITLE,
         token=token,
         locations=list(EXCRETION_LOCATIONS.items()),
