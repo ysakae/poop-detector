@@ -24,6 +24,15 @@
 <a href="{{ href }}">{{ icon(name) }}{{ text }}</a>
 {%- endfor -%}
 </nav>
+<section class="card" aria-labelledby="last-care-title">
+<h2 id="last-care-title">最後のお世話</h2>
+<ul class="timeline day-list">
+{%- for label, name, stamp, amount in last_care -%}
+<li>{{ icon(name) }}<span class="timeline-what">{{ label }}{% if amount %}<small>{{ amount }}</small>{% endif %}</span>
+<span class="timeline-time">{% if stamp %}{{ when(stamp) }}{% else %}まだ記録がありません{% endif %}</span></li>
+{%- endfor -%}
+</ul>
+</section>
 <section class="card" aria-labelledby="recent-title">
 <h2 id="recent-title">最近の確定記録</h2>
 {% if recent %}<ul class="timeline">

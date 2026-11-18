@@ -200,3 +200,47 @@ def test_maximized_live_image_is_not_capped_by_the_figure_height():
     rule = re.search(r"\.live-view\.live-maximized img\{([^}]*)\}", style)
     assert rule, "最大化した映像のスタイルがありません"
     assert "max-height:none" in rule[1]
+
+
+def test_home_shows_latest_care_by_occurrence_time(gui):
+    from datetime import timedelta
+
+    from poop_detector.records.care import CareEntry, save_entry
+    from poop_detector.timezones import local_now
+
+    server, store, _ = gui
+    cookie = login(server, role="member")
+    yesterday = (local_now() - timedelta(days=1)).replace(hour=23, minute=20, second=0)
+    old = yesterday.replace(hour=19)
+    database = store.database
+    save_entry(database, CareEntry("", yesterday, "feeding", "家族A", "", "", 250))
+    save_entry(database, CareEntry("", old, "feeding", "家族B", "", "", 100))
+    save_entry(database, CareEntry("", yesterday, "sheet", "家族B", ""))
+    store.add_excretion("both", yesterday.isoformat())
+    store.add_excretion("feces", old.isoformat())
+
+    latest = re.search(
+        r'aria-labelledby="last-care-title".*?</section>', page(server, "/", cookie), re.S
+    )
+    assert latest is not None
+    html = latest[0]
+    assert html.count("きのう 23:20") == 4
+    assert "25 g" in html
+    assert "10 g" not in html
+
+    newer = yesterday.replace(hour=23, minute=40)
+    save_entry(database, CareEntry("", newer, "feeding", "家族B", ""))
+    latest = re.search(
+        r'aria-labelledby="last-care-title".*?</section>', page(server, "/", cookie), re.S
+    )
+    assert latest is not None
+    assert "きのう 23:40" in latest[0]
+    assert "25 g" not in latest[0]
+
+
+def test_home_shows_care_without_records_as_empty(gui):
+    server, _, _ = gui
+    html = page(server, "/", login(server, role="member"))
+    latest = re.search(r'aria-labelledby="last-care-title".*?</section>', html, re.S)
+    assert latest is not None
+    assert latest[0].count("まだ記録がありません") == 4
