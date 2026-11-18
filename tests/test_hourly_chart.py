@@ -4,6 +4,8 @@ import re
 
 from support import request
 
+from poop_detector.gui import pages
+
 
 def records_page(server, query="date=2026-11-08&days=7"):
     status, body = request(server, "GET", f"/records?{query}")
@@ -57,6 +59,22 @@ def test_busiest_hours_show_when_one_type_has_no_records(gui):
     html = records_page(server)
     assert "<strong>排便が多い時間帯</strong> 記録なし" in html
     assert "<strong>排尿が多い時間帯</strong> 19時台（1件）" in html
+
+
+def test_busiest_hours_render_with_previous_summary_format(gui, monkeypatch):
+    server, store, _ = gui
+    seed(store)
+    current_record_stats = pages.record_stats
+
+    def previous_record_stats(records, query):
+        stats = current_record_stats(records, query)
+        stats["busiest"] = "7時台（3件）、19時台（1件）"
+        return stats
+
+    # 稼働中のプロセスが新しいテンプレートだけを読み直す場合を再現する。
+    monkeypatch.setattr(pages, "record_stats", previous_record_stats)
+    html = records_page(server)
+    assert "多い時間帯：7時台（3件）、19時台（1件）" in html
 
 
 def test_table_is_still_readable_but_folded(gui):
