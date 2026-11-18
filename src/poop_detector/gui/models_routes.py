@@ -117,35 +117,61 @@ def _judges(handler: "Handler") -> list[dict[str, Any]]:
     ]
 
 
-def _window(window: QuotaWindow | None) -> str:
+# 消費の割合がこれ以上なら、グラフの色を注意・警告に変える。
+QUOTA_WARN, QUOTA_HIGH = 70, 90
+
+
+def _remaining(resets_at: datetime, now: datetime) -> str:
+    """次に戻るまでの時間を、大きいほうの2つの単位で示す（日と時間、時間と分、分だけ）。"""
+    minutes = int((resets_at - now).total_seconds() // 60)
+    if minutes <= 0:
+        return "まもなく戻ります"
+    days, rest = divmod(minutes, 24 * 60)
+    hours, minutes = divmod(rest, 60)
+    if days:
+        span = f"{days}日{hours}時間" if hours else f"{days}日"
+    elif hours:
+        span = f"{hours}時間{minutes}分" if minutes else f"{hours}時間"
+    else:
+        span = f"{minutes}分"
+    return f"あと{span}で戻る（{resets_at.astimezone().strftime('%m/%d %H:%M')}）"
+
+
+def quota_view(label: str, window: QuotaWindow | None, now: datetime) -> dict[str, Any]:
+    """1つの制限の窓のグラフの値。制限がなければ percent を None にする。"""
     if window is None:
-        return "―"
-    if window.resets_at is None:
-        return f"{window.used_percent}%"
-    resets = window.resets_at.astimezone().strftime("%Y/%m/%d %H:%M")
-    return f"{window.used_percent}%（{resets} に戻る）"
+        return {"label": label, "percent": None}
+    percent = window.used_percent
+    level = "high" if percent >= QUOTA_HIGH else "warn" if percent >= QUOTA_WARN else "normal"
+    resets = "" if window.resets_at is None else _remaining(window.resets_at, now)
+    return {"label": label, "percent": percent, "level": level, "resets": resets}
 
 
-def _plans(board: PlanUsageBoard) -> dict[str, Any]:
-    """直近に問い合わせたプランの使用量。CLI ごとにまとまりの行を並べる。"""
+def _plans(board: PlanUsageBoard, now: datetime) -> dict[str, Any]:
+    """直近に問い合わせたプランの使用量。CLI ごとに、制限のまとまりと5時間・週間の窓を並べる。"""
     usages = list(board.snapshot().values())
-    rows = []
-    for usage in usages:
-        name = PROVIDER_NAMES.get(usage.provider, usage.provider)
-        if not usage.groups:
-            rows.append({"provider": name, "group": "―", "problem": usage.problem})
-        rows.extend(
-            {
-                "provider": name,
-                "group": group.name,
-                "problem": None,
-                "five_hour": _window(group.five_hour),
-                "weekly": _window(group.weekly),
-            }
-            for group in usage.groups
-        )
+    providers = [
+        {
+            "name": PROVIDER_NAMES.get(usage.provider, usage.provider),
+            "problem": None if usage.groups else usage.problem,
+            "groups": [
+                {
+                    "name": group.name,
+                    "windows": [
+                        quota_view("5時間", group.five_hour, now),
+                        quota_view("週間", group.weekly, now),
+                    ],
+                }
+                for group in usage.groups
+            ],
+        }
+        for usage in usages
+    ]
     checked = max((usage.checked_at for usage in usages), default=None)
-    return {"rows": rows, "checked_at": local_time(checked.isoformat()) if checked else ""}
+    return {
+        "providers": providers,
+        "checked_at": local_time(checked.isoformat()) if checked else "",
+    }
 
 
 ANSWER_NAMES = {**CLIP_LABELS, "uncertain": "判定不能", "error": "エラー"}
@@ -287,7 +313,7 @@ def _render(
             review_status(app.clips, app.outages, current, datetime.now(UTC))
         ),
         judges=_judges(handler),
-        plans=_plans(app.plan_usage),
+        plans=_plans(app.plan_usage, datetime.now(UTC)),
         plan_action=PLAN_USAGE,
         benchmarks=_benchmarks(results, app.clips),
         unreadable=unreadable,
