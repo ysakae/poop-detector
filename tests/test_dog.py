@@ -119,7 +119,7 @@ def test_monitor_does_not_notify_while_dog_occludes_roi(tmp_path):
             return DogState(True, True, None, [], 1)
 
     class Notifier:
-        def send(self, *, clip_id=None):
+        def send(self, *, clip_id=None, detected_at=None):
             raise AssertionError("遮蔽中に通知しました")
 
     monitor(
@@ -171,7 +171,7 @@ def test_monitor_collects_entry_exit_and_detection(tmp_path):
             return "clip-id"
 
     class Notifier:
-        def send(self, *, clip_id=None):
+        def send(self, *, clip_id=None, detected_at=None):
             assert clip_id == "clip-id"
             return False
 

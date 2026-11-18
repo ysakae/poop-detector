@@ -69,8 +69,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["poop_detector"]
 [tool.coverage.report]
-# 2026-11 の監視・保存処理の改修後に全体で 94% を確認した。
-fail_under = 94
+# 2026-11 の便の確認通知を追加した後に全体で 94.10% を確認した。
+precision = 2
+fail_under = 94.05
 show_missing = true
 skip_covered = true
 [tool.mypy]

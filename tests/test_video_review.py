@@ -73,6 +73,182 @@ def test_live_review_preserves_human_labels_and_deduplicates(tmp_path):
     assert len(notified) == 3
 
 
+def test_live_review_notices_existing_stool_once_until_clear_even_after_restart(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime(2026, 11, 19, 6, 40, tzinfo=UTC)
+    first, repeated, cleared, next_stool = [
+        ready(store, when + timedelta(minutes=offset)) for offset in range(4)
+    ]
+
+    def inspect(path, row, judge):
+        observation = (
+            {"stool_clear_seconds": 15} if row["id"] == cleared else {"stool_seen_seconds": 0}
+        )
+        return parse_assessment(
+            {
+                "label": "none",
+                "activity": "other",
+                "evidence": "none",
+                "reason": "トレーの状態を確認しました",
+                **observation,
+            },
+            40,
+        )
+
+    messages = []
+
+    def opener(request, *, timeout):
+        messages.append(json.loads(request.data))
+        return nullcontext(SimpleNamespace(status=200))
+
+    notifier = NtfyNotifier("family", opener=opener, public_url="https://toilet.example.com")
+    for clip_id in (first, repeated, cleared, next_stool):
+        review = Review(store, inspect, notifier.send_assessment)
+        assert review.run(limit=1, since=when.isoformat(), clip_id=clip_id) == (1, 0)
+
+    assert [message["click"] for message in messages] == [
+        f"https://toilet.example.com/clips?id={first}&notice=1",
+        f"https://toilet.example.com/clips?id={next_stool}&notice=1",
+    ]
+    assert "排便時刻は不明" in messages[0]["message"]
+    assert "便を確認" in messages[0]["message"]
+    assert when.astimezone().strftime("%m/%d %H:%M:%S") in messages[0]["message"]
+
+
+def test_existing_stool_does_not_repeat_a_recent_regular_feces_notice(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    first = ready(store, when)
+    second = ready(store, when + timedelta(minutes=2))
+
+    def inspect(path, row, judge):
+        if row["id"] == first:
+            return FECES
+        return parse_assessment(
+            {
+                "label": "none",
+                "activity": "other",
+                "evidence": "none",
+                "reason": "冒頭から便が見えます",
+                "stool_seen_seconds": 0,
+            },
+            40,
+        )
+
+    notifications = []
+    review = Review(store, inspect, lambda label, **kwargs: notifications.append(label) or True)
+    assert review.run(limit=2, since=when.isoformat()) == (2, 0)
+    assert notifications == ["feces"]
+    assert (
+        store.assessments.get(second)["stool_seen_at"] == (when + timedelta(minutes=2)).isoformat()
+    )
+
+
+def test_late_review_of_the_same_feces_keeps_the_urine_notice(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    older = ready(store, when)
+    newer = ready(store, when + timedelta(minutes=1))
+    results = {
+        newer: Assessment("none", "other", stool_seen_seconds=0),
+        older: Assessment("both", "excreting", 10, 15, location="tray"),
+    }
+    notices = []
+    review = Review(
+        store,
+        lambda path, row, judge: results[row["id"]],
+        lambda label, **kwargs: notices.append((label, kwargs["clip_id"])) or True,
+    )
+    for clip_id in (newer, older):
+        assert review.run(limit=1, since=when.isoformat(), clip_id=clip_id) == (1, 0)
+    assert notices == [("feces", newer), ("urine", older)]
+    assert store.assessments.get(older)["notice_label"] == "urine"
+
+
+def test_failed_existing_stool_notice_can_be_sent_on_a_later_clip(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    first = ready(store, when)
+    second = ready(store, when + timedelta(minutes=1))
+    notices = []
+
+    def notify(label, **kwargs):
+        notices.append(kwargs["clip_id"])
+        return len(notices) > 1
+
+    review = Review(store, lambda path, row, judge: Assessment(stool_seen_seconds=0), notify)
+    assert review.run(limit=2, since=when.isoformat()) == (2, 0)
+    assert notices == [first, second]
+    assert store.assessments.get(first)["stool_notified_at"] is None
+    assert store.assessments.get(second)["stool_notified_at"]
+
+
+def test_clear_at_the_same_instant_does_not_split_one_stool_observation(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    first, clear, repeated = [ready(store, when) for _ in range(3)]
+    notices = []
+    review = Review(
+        store,
+        lambda path, row, judge: (
+            Assessment(stool_clear_seconds=0)
+            if row["id"] == clear
+            else Assessment(stool_seen_seconds=0)
+        ),
+        lambda label, **kwargs: notices.append(kwargs["clip_id"]) or True,
+    )
+    for clip in (first, clear, repeated):
+        assert review.run(limit=1, since=when.isoformat(), clip_id=clip) == (1, 0)
+    assert notices == [first]
+
+
+def test_invalid_optional_stool_time_keeps_a_regular_urine_assessment():
+    assessment = parse_assessment(
+        {
+            "label": "urine",
+            "activity": "excreting",
+            "evidence": "new_wet_patch",
+            "start_seconds": 4,
+            "end_seconds": 5,
+            "reason": "濡れ跡が現れました",
+            "stool_seen_seconds": -1,
+        },
+        10,
+    )
+    assert assessment.label == "urine"
+    assert assessment.stool_seen_seconds is None
+
+
+@pytest.mark.parametrize(
+    ("earlier_result", "existing"),
+    [(Assessment("none", stool_seen_seconds=0), True), (FECES, False)],
+)
+def test_late_clear_releases_the_other_stool_notice_without_rejudging(
+    tmp_path, earlier_result, existing
+):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    earlier, cleared, later = [
+        ready(store, when + timedelta(minutes=offset)) for offset in range(3)
+    ]
+    notices = []
+    results = {
+        earlier: earlier_result,
+        cleared: Assessment("none", stool_clear_seconds=10),
+        later: Assessment("none", stool_seen_seconds=0),
+    }
+    review = Review(
+        store,
+        lambda path, row, judge: results[row["id"]],
+        lambda label, **kwargs: (
+            notices.append((kwargs["clip_id"], kwargs["existing_stool"])) or True
+        ),
+    )
+    for clip in (later, earlier, cleared):
+        assert review.run(limit=1, since=when.isoformat(), clip_id=clip) == (1, 0)
+    assert notices == [(later, True), (earlier, existing)]
+
+
 def test_backfill_never_notifies_and_live_skips_feeding(tmp_path):
     store = ClipStore(tmp_path)
     when = datetime.now(UTC)
@@ -133,6 +309,9 @@ def test_live_review_notifies_of_excretion_with_clip_quality(
         assert sent[0]["topic"] == "family"
         assert sent[0]["click"] == f"https://toilet.example.com/clips?id={clip_id}&notice=1"
         assert expected in sent[0]["message"]
+        assert (when + timedelta(seconds=15)).astimezone().strftime("%m/%d %H:%M:%S") in sent[0][
+            "message"
+        ]
         assert ("一部欠落" in sent[0]["message"]) == interrupted
         assert store.assessments.get(clip_id)["notified_at"] is not None
 
@@ -169,7 +348,8 @@ def test_rejects_positive_with_invalid_time_or_missing_evidence():
             parse_assessment(output | overrides, 10)
 
 
-def test_image_and_schema_reach_codex_cli(tmp_path, monkeypatch):
+@pytest.mark.parametrize(("seen", "expected"), [(0, 0), (0.3, None)])
+def test_image_and_schema_reach_codex_cli(tmp_path, monkeypatch, seen, expected):
     store = ClipStore(tmp_path)
     clip_id = ready(store, datetime.now(UTC))
     row = store.get(clip_id)
@@ -187,7 +367,9 @@ def test_image_and_schema_reach_codex_cli(tmp_path, monkeypatch):
         assert (folder / "frames.jpg").is_file()
         assert "POOP_RTSP_URL" not in kwargs["env"]
         assert args[args.index("--sandbox") + 1] == "read-only"
-        assert json.loads((folder / "schema.json").read_text())["additionalProperties"] is False
+        schema = json.loads((folder / "schema.json").read_text())
+        assert schema["additionalProperties"] is False
+        assert {"stool_seen_seconds", "stool_clear_seconds"} <= set(schema["required"])
         (folder / "result.json").write_text(
             json.dumps(
                 {
@@ -197,11 +379,16 @@ def test_image_and_schema_reach_codex_cli(tmp_path, monkeypatch):
                     "end_seconds": None,
                     "evidence": "none",
                     "reason": FEEDING.reason,
+                    "stool_seen_seconds": seen,
+                    "stool_clear_seconds": None,
                 }
             )
         )
 
-    assert inspect_clip(path, row, ROI(0.2, 0.2, 0.5, 0.5), judge=CodexCliJudge(run)) == FEEDING
+    assessment = inspect_clip(path, row, ROI(0.2, 0.2, 0.5, 0.5), judge=CodexCliJudge(run))
+    assert assessment.label == "none"
+    assert assessment.activity == "feeding"
+    assert assessment.stool_seen_seconds == expected
 
 
 def test_tracked_mesh_video_supplies_difference_without_amplifying_existing_marks(tmp_path):

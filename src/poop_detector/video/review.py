@@ -84,6 +84,23 @@ SCHEMA: dict[str, Any] = {
 }
 TRAY_CONTEXT = """犬のトイレの連続画像です。左上から行方向に時刻順で並びます。
 各画像は登録済みのトイレ領域です。"""
+STOOL_PROMPT = """label とは別に、トレーの便と片付けも調べてください。
+stool_seen_seconds は、新たに出る場面が映っていない便を元画像で確認できる最初のコマの秒数です。
+冒頭が遮られていても、後のコマで便が明瞭に見えれば対象にしてください。
+犬、玩具、濡れ跡、影、網目と区別できる便だけを対象とし、後続コマでも同じ便を確認してください。
+動画中に新たに出た便は label で判定し、stool_seen_seconds には含めないでください。
+stool_clear_seconds は、便がないことをトレー全体の遮蔽物のない画像で確かめられた最後のコマの秒数です。
+犬や物で一部が隠れている、暗くて見分けられないなど、確認できない項目には null を入れてください。
+時刻は画像に表示された秒数をそのまま使ってください。"""
+STOOL_FIELDS = ("stool_seen_seconds", "stool_clear_seconds")
+TRAY_SCHEMA = {
+    **SCHEMA,
+    "properties": {
+        **SCHEMA["properties"],
+        **{name: {"type": ["number", "null"]} for name in STOOL_FIELDS},
+    },
+    "required": [*SCHEMA["required"], *STOOL_FIELDS],
+}
 EVIDENCE_PROMPT = """動画中に新たに発生した排泄だけを判定してください。
 排便は前にはなかった便が現れたこと、排尿は尿の流れか新しい濡れ跡が発生したことが
 画像で確認できる場合に限ります。以前からある跡、影、反射、シートのずれは除外してください。
@@ -145,7 +162,26 @@ def parse_assessment(
             raise ValueError("自動判定の時刻が不正です")
     else:
         start = end = None
-    return Assessment(label, activity, start, end, reason.strip()[:1000], location)
+    seen, clear = (
+        _stool_offset(output.get(name), duration) if not include_location else None
+        for name in STOOL_FIELDS
+    )
+    return Assessment(
+        label,
+        activity,
+        start,
+        end,
+        reason.strip()[:1000],
+        location,
+        stool_seen_seconds=seen,
+        stool_clear_seconds=clear,
+    )
+
+
+def _stool_offset(value: object, duration: float) -> float | None:
+    if (type(value) is int or type(value) is float) and 0 <= value <= duration:
+        return value
+    return None
 
 
 @dataclass(frozen=True)
@@ -383,16 +419,23 @@ class PreparedClip:
             and assessment.end_seconds is not None
             and round(assessment.end_seconds, 2) not in self.timestamps
         ):
-            return Assessment(
-                "uncertain",
-                "other",
-                None,
-                None,
-                "トレーの位置を確認できた画像に判定の根拠がありません",
+            assessment = replace(
+                assessment,
+                label="uncertain",
+                activity="other",
+                start_seconds=None,
+                end_seconds=None,
+                reason="トレーの位置を確認できた画像に判定の根拠がありません",
+                location=None,
             )
         if self.outside_stay and assessment.location == "tray":
             return Assessment("none", "other", None, None, "トレー外での排泄は確認できません")
-        return assessment
+        seen, clear = assessment.stool_seen_seconds, assessment.stool_clear_seconds
+        return replace(
+            assessment,
+            stool_seen_seconds=seen if seen in self.timestamps else None,
+            stool_clear_seconds=clear if clear in self.timestamps else None,
+        )
 
 
 @contextmanager
@@ -430,6 +473,8 @@ def prepare_clip(
             return
         context = TRAY_CONTEXT if outside_roi is None else OUTSIDE_CONTEXT
         prompt = context + "\n" + EVIDENCE_PROMPT
+        if outside_roi is None:
+            prompt += "\n" + STOOL_PROMPT
         images = ["frames.jpg"]
         if difference_path.is_file():
             images.append(difference_path.name)
@@ -444,7 +489,7 @@ def prepare_clip(
             prompt += "\n今回はトレー外の排泄だけを判定し、トレー内の排泄は対象外としてください。"
         if tray_tracker is not None or outside_roi is not None:
             prompt += "\nend_seconds には画像に表示された秒数をそのまま記入してください。"
-        schema = SCHEMA if outside_roi is None else OUTSIDE_SCHEMA
+        schema = TRAY_SCHEMA if outside_roi is None else OUTSIDE_SCHEMA
         yield PreparedClip(
             folder,
             prompt,
@@ -513,11 +558,21 @@ class AssessmentNotifier(Protocol):
         location: str | None = None,
         interrupted: bool = False,
         clip_id: str = "",
+        detected_at: str | None = None,
+        existing_stool: bool = False,
     ) -> bool: ...
 
 
 # 動画のパスと行と判定器から判定を返す関数。inspect_clip に ROI などを束ねたもの。
 Inspector = Callable[[Path, ClipRow, VideoJudge], Assessment]
+
+
+def _clip_timestamp(row: ClipRow, offset: float | None) -> str | None:
+    if offset is None:
+        return None
+    return (
+        datetime.fromisoformat(cast(str, row["start_at"])) + timedelta(seconds=offset)
+    ).isoformat()
 
 
 class Review:
@@ -580,14 +635,14 @@ class Review:
                 if path is None:
                     raise OSError("動画ファイルがありません")
                 result = self.inspect(path, row, judge)
-                observed_at = (
-                    (
-                        datetime.fromisoformat(cast(str, row["start_at"]))
-                        + timedelta(seconds=cast(float, result.end_seconds))
-                    ).isoformat()
-                    if result.label in EVIDENCE
-                    else None
+                observed_at = _clip_timestamp(
+                    row, result.end_seconds if result.label in EVIDENCE else None
                 )
+                new_stool = result.label in ("feces", "both") and result.location != "outside"
+                stool_seen_at = (
+                    observed_at if new_stool else _clip_timestamp(row, result.stool_seen_seconds)
+                )
+                stool_clear_at = _clip_timestamp(row, result.stool_clear_seconds)
             except (ValueError, TypeError, OSError, subprocess.SubprocessError, cv2.error):
                 self.store.assessments.save(
                     row["id"],
@@ -604,28 +659,74 @@ class Review:
                 row["id"],
                 result,
                 observed_at=observed_at,
+                stool_seen_at=stool_seen_at,
+                stool_clear_at=stool_clear_at,
                 provider=choice.provider,
                 model=choice.model,
             )
             if not stored:
                 continue
             completed += 1
+            if since is None or self.notify is None:
+                continue
+            label = result.label
             if (
-                since is not None
-                and self.notify is not None
-                and result.label in EXCRETION_TYPES
-                and self.store.assessments.claim_notice(row["id"])
+                new_stool
+                and observed_at
+                and self.store.assessments.has_nearby_stool_notice(row["id"], observed_at)
             ):
+                self.store.assessments.defer_stool_notice(row["id"])
+                label = "urine" if label == "both" else None
+            if label in EXCRETION_TYPES and self.store.assessments.claim_notice(row["id"], label):
                 sent = self.notify(
-                    result.label,
+                    label,
                     location=result.location
                     if row["interrupted"] or result.location == "outside"
                     else None,
                     interrupted=bool(row["interrupted"]),
                     clip_id=row["id"],
+                    detected_at=observed_at,
                 )
                 self.store.assessments.finish_notice(row["id"], sent)
+            if not new_stool and stool_seen_at:
+                self._send_stool_notice(
+                    self.notify,
+                    row["id"],
+                    stool_seen_at,
+                    bool(row["interrupted"]),
+                    existing_stool=True,
+                )
+            if stool_clear_at:
+                for (
+                    candidate,
+                    seen_at,
+                    interrupted,
+                    existing_stool,
+                ) in self.store.assessments.deferred_stool_notices(row["id"], since):
+                    self._send_stool_notice(
+                        self.notify, candidate, seen_at, interrupted, existing_stool=existing_stool
+                    )
         return completed, failures
+
+    def _send_stool_notice(
+        self,
+        notify: AssessmentNotifier,
+        clip_id: str,
+        seen_at: str,
+        interrupted: bool,
+        *,
+        existing_stool: bool,
+    ) -> None:
+        if not self.store.assessments.claim_stool_notice(clip_id):
+            return
+        sent = notify(
+            "feces",
+            interrupted=interrupted,
+            clip_id=clip_id,
+            detected_at=seen_at,
+            existing_stool=existing_stool,
+        )
+        self.store.assessments.finish_stool_notice(clip_id, sent)
 
     def _waiting(self, limit: int, since: str | None, clip_id: str | None) -> Iterator[ClipRow]:
         """判定を待つ動画を順に返す。監視中（since あり）は、1時間あたりの上限を守る。
