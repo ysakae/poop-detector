@@ -10,13 +10,12 @@ from typing import TYPE_CHECKING
 from ..capture.camera import LatestCamera
 from ..capture.live_preview import LivePreview
 from ..config import Config, check_monitor_features, load_connection_settings, with_flags
-from ..detection.monitoring import Monitor, MonitorExtension
+from ..detection.monitoring import Monitor, MonitorExtension, SystemClock
 from ..detection.roi import AnyROI
 from ..detection.scene import scene_signature
 from ..features.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
 from ..features.monitoring import (
     dog_observer_from_config,
-    monitor,
     standard_extensions,
 )
 from ..features.tray_registration import TrayRegistration, TrayScene
@@ -208,6 +207,23 @@ def watch(
         live = stack.enter_context(LatestCamera(open_camera(source, config), on_frame))
         live.wait_ready(config.timeout_ms / 1000 + 1)
 
+        clock = SystemClock()
+
+        def scene_extensions(scene: TrayScene) -> list[MonitorExtension]:
+            extensions = standard_extensions(
+                scene.roi,
+                scene.baseline,
+                config,
+                notifier,
+                clock,
+                collector=collector,
+                dog_observer=dog_observer,
+                early_alert=config.early_alert_enabled,
+                outside_roi=outside_roi,
+                activity_map=activity,
+            )
+            return [*extensions, *watchdog]
+
         def before_align(engine: Monitor, frame: Frame | None) -> bool:
             preview.pulse(engine.camera.healthy)
             phase = registration.status()["phase"]
@@ -217,21 +233,9 @@ def watch(
                 collector.set_maintenance(True)
             scene = registration.poll(frame, engine.roi, track_tray=config.track_tray_enabled)
             if scene is not None:
-                extensions = standard_extensions(
-                    scene.roi,
-                    scene.baseline,
-                    config,
-                    notifier,
-                    engine.clock,
-                    collector=collector,
-                    dog_observer=dog_observer,
-                    early_alert=config.early_alert_enabled,
-                    outside_roi=outside_roi,
-                    activity_map=activity,
-                )
                 scenes[scene_signature(scene.baseline, scene.roi)] = scene
                 engine.replace_scene(
-                    scene.roi, scene.baseline, scene.tracker, [*extensions, *watchdog]
+                    scene.roi, scene.baseline, scene.tracker, scene_extensions(scene)
                 )
             paused = registration.status()["phase"] in (
                 "begin",
@@ -244,24 +248,20 @@ def watch(
                 collector.set_maintenance(paused)
             return paused
 
-        monitor(
+        Monitor(
             live,
             roi,
             baseline,
             config,
             notifier,
-            args.max_frames,
-            collector,
-            dog_observer=dog_observer,
+            collector=collector,
             before_align=before_align,
             review_notifications=config.video_review_enabled,
-            early_alert=config.early_alert_enabled,
             tray_tracker=tray_tracker,
             on_tray_state=preview.set_tray_state,
-            outside_roi=outside_roi,
-            activity_map=activity,
-            extensions=watchdog,
-        )
+            extensions=scene_extensions(initial),
+            clock=clock,
+        ).run(args.max_frames)
         # 自分で終了したことを残し、GUI の見張りが停止として知らせないようにする。
         preview.mark_stopped()
     return 0
