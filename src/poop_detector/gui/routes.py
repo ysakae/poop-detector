@@ -395,7 +395,7 @@ def logout_page(handler: "Handler", _query: Query) -> None:
 @post("/logout")
 def logout(handler: "Handler", _form: Form) -> None:
     """この要求の Cookie のセッションを終え、ブラウザーの Cookie を消す。"""
-    for session_id in session_ids(handler.headers.get("cookie")):
+    for session_id in session_ids(handler.headers.get("cookie"), name=handler.app.cookie_name):
         handler.app.sessions.revoke(session_id)
     page = message_page(
         "ログアウトしました",
@@ -406,7 +406,11 @@ def logout(handler: "Handler", _form: Form) -> None:
         wrap_link=True,
     )
     secure = handler.scheme == "https"
-    handler.respond(200, page, headers={"Set-Cookie": expired_cookie(secure=secure)})
+    handler.respond(
+        200,
+        page,
+        headers={"Set-Cookie": expired_cookie(secure=secure, name=handler.app.cookie_name)},
+    )
 
 
 # --- 画像・動画・スクリプト ---

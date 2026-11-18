@@ -242,7 +242,7 @@ class Admission:
         ユーザーに結び付かないセッション（廃止した起動トークン方式のもの）と、無効にした
         ユーザーのセッションは使えない。データベースを読むのでスレッドで呼ぶ。
         """
-        for value in session_ids(cookie_header):
+        for value in session_ids(cookie_header, name=self.gui.cookie_name):
             session = self.gui.sessions.lookup(value)
             if session is None:
                 continue

@@ -66,7 +66,11 @@ def _logged_in(gui: "GuiApp", request: Request, user_id: str) -> JSONResponse:
     max_age = gui.sessions.policy.max_age_seconds
     return JSONResponse(
         {"redirect": request.state.next_path},
-        headers={"Set-Cookie": session_cookie(session_id, secure=secure, max_age=max_age)},
+        headers={
+            "Set-Cookie": session_cookie(
+                session_id, secure=secure, max_age=max_age, name=gui.cookie_name
+            )
+        },
     )
 
 

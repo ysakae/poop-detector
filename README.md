@@ -9,6 +9,11 @@
 
 > **English summary:** poop-detector watches a dog's toilet tray through an RTSP camera and notifies you when a lasting change suggests the dog has pooped or peed. It compares frames with an empty-tray baseline on your own machine; it does not recognize feces or urine itself. The documentation is in Japanese.
 
+## 使い始める
+
+- **カメラなしで記録から始める**。ごはん・トイレ・体重をブラウザーで記録できます。[Mac の試用版と手動記録の手順](docs/setup.md#カメラなしで手動記録を始める)
+- **カメラでトイレを見守る**。トイレの変化を通知して、画像や動画で確認できます。[カメラを使う手順](#クイックスタート)
+
 ## できること・できないこと
 
 **できること**

@@ -34,6 +34,7 @@ from ..video.clips import ClipStore
 from ..video.plan_usage import PlanUsageBoard
 from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
 from ..web_push import PushKeys, PushSubscriptions
+from .access import COOKIE_NAME
 from .accounts import Accounts
 from .asgi import create_app
 from .pages import page_title
@@ -74,6 +75,7 @@ class GuiApp:
     # 管理 › 設定で書き換える設定ファイル。None なら設定の画面は表示だけ（テストなど）。
     config_path: Path | None = None
     manual_only: bool = False
+    cookie_name: str = COOKIE_NAME
     # 範囲の登録で画面に見せた映像の一時置き場（保存にはその映像を使う）。
     snapshots: Snapshots = field(default_factory=Snapshots)
     # 直近に問い合わせた判定器の CLI のプランの使用量（管理 › 判定器とモデル）。
@@ -175,6 +177,7 @@ def make_server(
     limits: RateLimits = DEFAULT_LIMITS,
     config_path: str | Path | None = None,
     manual_only: bool = False,
+    cookie_name: str = COOKIE_NAME,
 ) -> GuiServer:
     """GUI のサーバーを作る。待ち受けのアドレスと外部の URL は web、ポートは port を使う。
 
@@ -207,6 +210,7 @@ def make_server(
         disk_mb=disk_mb,
         config_path=Path(config_path).resolve() if config_path is not None else None,
         manual_only=manual_only,
+        cookie_name=cookie_name,
         push_subscriptions=PushSubscriptions(database),
         push_keys=PushKeys(root),
         outages=OutageLog(database),
