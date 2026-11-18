@@ -1,8 +1,11 @@
 """スマホからの体重入力と書き出しを検証する。"""
 
 import re
+from datetime import date
 
 from support import request, submit
+
+from poop_detector.records.weights import save_weight
 
 
 def test_family_records_and_corrects_weight(gui):
@@ -64,4 +67,55 @@ def test_weight_invalid_and_export(gui):
     assert "2024-03-01,1850,健診" in data.decode("utf-8-sig")
     status, data = request(server, "GET", "/manage/export/summary?from=2024-03-01&to=2024-03-02")
     assert status == 200
-    assert "健診" in data.decode()
+    html = data.decode()
+    assert "健診" in html
+    assert '<text class="weight-axis-unit"' in html
+    assert re.search(r'<text class="weight-tick weight-date-tick"[^>]+>3/1</text>', html)
+
+
+def test_weight_chart_has_scaled_axes_and_focusable_measurements(gui):
+    server, store, _ = gui
+    for day, grams in (("2024-12-28", 1500), ("2024-12-29", 1630), ("2025-01-06", 1850)):
+        save_weight(store.database, "", date.fromisoformat(day), grams, "")
+
+    status, data = request(server, "GET", "/weight")
+    assert status == 200
+    html = data.decode()
+    assert re.search(r'<text class="weight-axis-unit"[^>]+>g</text>', html)
+    assert re.findall(r'<text class="weight-tick weight-gram-tick"[^>]+>([^<]+)</text>', html) == [
+        "2,000",
+        "1,800",
+        "1,600",
+        "1,400",
+    ]
+    dates = re.findall(r'<text class="weight-tick weight-date-tick"[^>]+>([^<]+)</text>', html)
+    assert dates == ["2024/12/28", "2024/12/31", "2025/1/3", "2025/1/6"]
+    points = re.findall(
+        r'<g class="weight-data-point" transform="translate\((\d+) \d+\)" tabindex="0" '
+        r'role="img" aria-label="([^"]+)">',
+        html,
+    )
+    assert [label for _, label in points] == [
+        "2024-12-28 1,500 g",
+        "2024-12-29 1,630 g",
+        "2025-01-06 1,850 g",
+    ]
+    first, middle, last = (int(x) for x, _ in points)
+    assert first < middle < last
+    assert abs((middle - first) * 9 - (last - first)) <= 5
+    assert html.count('class="weight-tooltip"') == 3
+    assert request(server, "GET", "/assets/weight_chart.js")[0] == 200
+
+
+def test_weight_chart_keeps_equal_measurements_on_the_same_level(gui):
+    server, store, _ = gui
+    for day in (date(2024, 3, 1), date(2024, 3, 2)):
+        save_weight(store.database, "", day, 1, "")
+
+    status, data = request(server, "GET", "/weight")
+    assert status == 200
+    html = data.decode()
+    heights = re.findall(r'<g class="weight-data-point" transform="translate\(\d+ (\d+)\)"', html)
+    assert len(heights) == 2
+    assert heights[0] == heights[1]
+    assert re.search(r'<text class="weight-tick weight-gram-tick"[^>]+>0</text>', html)

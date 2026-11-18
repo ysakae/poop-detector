@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 from ..errors import InvalidInputError
 from ..records.weights import (
-    Weight,
     birth_date,
     parse_day,
     parse_grams,
@@ -16,23 +15,10 @@ from ..timezones import local_today
 from .pages import Query
 from .routes import Form, first, get, post
 from .templating import render_template
+from .weight_chart import weight_chart
 
 if TYPE_CHECKING:
     from .exchange import Exchange as Handler
-
-
-def trend(rows: list[Weight]) -> list[tuple[int, int]]:
-    if not rows:
-        return []
-    days = max(1, (rows[-1].day - rows[0].day).days)
-    low, high = min(row.grams for row in rows), max(row.grams for row in rows)
-    return [
-        (
-            12 + round(296 * (row.day - rows[0].day).days / days),
-            62 if low == high else 110 - round(96 * (row.grams - low) / (high - low)),
-        )
-        for row in rows
-    ]
 
 
 def _render(
@@ -67,8 +53,7 @@ def _render(
         latest=latest,
         age=(latest.day - birth).days // 7 if latest and birth and latest.day >= birth else None,
         change=latest.grams - rows[-2].grams if latest and len(rows) > 1 else None,
-        points=trend(rows),
-        bounds=(rows[0].day, rows[-1].day) if rows else (),
+        chart=weight_chart(rows),
     )
     handler.respond(400 if error else 200, page)
 

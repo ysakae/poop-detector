@@ -19,7 +19,7 @@ from ..timezones import local_now, local_today, timezone_label
 from .pages import Query
 from .routes import Form, audit, first, get, post
 from .templating import render_template
-from .weight_routes import trend
+from .weight_chart import weight_chart
 
 if TYPE_CHECKING:
     from .exchange import Exchange as Handler
@@ -140,8 +140,7 @@ def summary_page(handler: "Handler", query: Query) -> None:
         title=handler.app.title,
         summary=values,
         measurements=measurements,
-        points=trend(measurements),
-        bounds=(measurements[0].day, measurements[-1].day) if measurements else (),
+        chart=weight_chart(measurements),
         printed_at=local_now().strftime("%Y/%m/%d %H:%M"),
         timezone=timezone_label(),
     )

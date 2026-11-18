@@ -144,6 +144,23 @@ main>.card{margin-bottom:16px}.card>h2{font-size:16px;margin:0 0 10px;color:var(
 .day-list .timeline-time{text-align:right;font-variant-numeric:tabular-nums}
 .day-list a{justify-self:end}
 .weight-table td:nth-child(-n+2){white-space:nowrap}.weight-figure{background:none;min-height:0;text-align:left;margin:8px 0 16px}.weight-figure figcaption{padding:4px 0;color:var(--muted)}.weight-chart{display:block;max-width:100%;height:auto}.weight-chart .area{fill:var(--primary-soft)}.weight-chart .axis{stroke:var(--border-strong)}.weight-chart .line{fill:none;stroke:var(--primary);stroke-width:2.5;stroke-linejoin:round}.weight-chart circle{fill:var(--primary);stroke:var(--surface);stroke-width:1.5}
+.weight-chart[data-weight-chart]{width:100%;max-width:620px;font-variant-numeric:tabular-nums}
+.weight-chart .weight-axes{fill:none}
+.weight-grid{stroke:var(--border);stroke-dasharray:3 3}
+.weight-tick,.weight-axis-unit{fill:var(--muted);font-size:12px}
+.weight-axis-unit{font-weight:700}
+.weight-chart .weight-hit{fill:transparent;stroke:none;cursor:pointer}
+.weight-guide,.weight-tooltip{visibility:hidden;pointer-events:none}
+.weight-guide{stroke:var(--muted);stroke-dasharray:3 3}
+.weight-tooltip rect{fill:var(--surface);stroke:var(--border-strong)}
+.weight-tooltip-day{fill:var(--muted);font-size:11px}
+.weight-tooltip-value{fill:var(--text);font-size:14px;font-weight:700}
+.weight-data-point{outline:none;-webkit-tap-highlight-color:transparent}
+.weight-data-point:is(:hover,:focus) .weight-marker{r:5;stroke:var(--text)}
+.weight-data-point:focus-visible .weight-marker{stroke-width:2.5}
+.weight-data-point:is(:hover,:focus):not([data-dismissed]) :is(.weight-guide,.weight-tooltip){visibility:visible}
+.weight-chart:has(.weight-data-point:hover) .weight-data-point:not(:hover) :is(.weight-guide,.weight-tooltip){visibility:hidden}
+@media print{.weight-chart .weight-tooltip,.weight-chart .weight-guide{visibility:hidden!important}}
 meter{height:10px;border-radius:var(--radius-pill)}meter::-webkit-meter-bar{background:var(--surface-2);border:0;border-radius:var(--radius-pill);height:10px}meter::-webkit-meter-optimum-value{background:var(--primary);border-radius:var(--radius-pill)}meter::-moz-meter-bar{background:var(--primary);border-radius:var(--radius-pill)}
 
 /* 設定・確認と診断・アカウント */
