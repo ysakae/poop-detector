@@ -19,6 +19,9 @@ NO_EXCRETION_LABEL = "none"
 # 交差検証の分割の上限と、結果を参考値にとどめる排泄ありの本数（#152 と同じ目安）。
 MAX_FOLDS = 5
 SMALL_SAMPLE = 30
+# 決定木の深さと葉の最小件数。学習側が十数本でも分岐でき、分け方を読める浅さにする。
+TREE_DEPTH = 2
+TREE_MIN_LEAF = 2
 
 
 def case_label(label: str | None) -> bool | None:
@@ -95,13 +98,13 @@ def metrics(truth: Sequence[bool], predicted: Sequence[bool]) -> dict[str, Any]:
 
 def _sklearn() -> tuple[Any, Any]:
     try:
-        from sklearn.ensemble import HistGradientBoostingClassifier
         from sklearn.model_selection import StratifiedGroupKFold
+        from sklearn.tree import DecisionTreeClassifier
     except ImportError:
         raise SetupRequiredError(
             "決定木の比較には scikit-learn が必要です。uv sync --extra analysis を実行してください"
         ) from None
-    return HistGradientBoostingClassifier, StratifiedGroupKFold
+    return DecisionTreeClassifier, StratifiedGroupKFold
 
 
 def _folds(cases: Sequence[Case]) -> int | str:
@@ -127,7 +130,12 @@ def classify_out_of_fold(cases: Sequence[Case], folds: int) -> list[bool]:
             # 学習側に片方しかない分割は、その答えをそのまま返す。
             predicted[test] = y[train][0]
             continue
-        model = classifier(max_depth=3, class_weight="balanced", random_state=0)
+        model = classifier(
+            max_depth=TREE_DEPTH,
+            min_samples_leaf=TREE_MIN_LEAF,
+            class_weight="balanced",
+            random_state=0,
+        )
         predicted[test] = model.fit(x[train], y[train]).predict(x[test])
     return [bool(value) for value in predicted]
 
