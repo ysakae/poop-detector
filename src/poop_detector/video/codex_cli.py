@@ -4,6 +4,8 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
+import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -15,6 +17,55 @@ def codex_environment() -> dict[str, str]:
     """Codex CLI に渡す最小限の環境変数。RTSP の URL などは渡さない。"""
     keys = ("HOME", "PATH", "CODEX_HOME", "TMPDIR", "LANG", "LC_ALL")
     return {key: os.environ[key] for key in keys if key in os.environ}
+
+
+def app_server_request(
+    executable: str,
+    method: str,
+    *,
+    timeout: int,
+    params: dict[str, Any] | None = None,
+    spawn: Callable[..., Any] = subprocess.Popen,
+) -> dict[str, Any]:
+    """app-server に1件だけ読み取りを要求し、応答後または時間切れに終了する。"""
+    requests = (
+        {
+            "id": 1,
+            "method": "initialize",
+            "params": {"clientInfo": {"name": "poop-detector", "version": "0"}},
+        },
+        {"method": "initialized"},
+        {"id": 2, "method": method, **({"params": params} if params is not None else {})},
+    )
+    try:
+        # PATH から解決した CLI を、固定の引数で実行する。
+        process = spawn(
+            [executable, "app-server"],
+            env=codex_environment(),
+            cwd=tempfile.gettempdir(),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        raise ValueError("Codex CLI を起動できません") from None
+    timer = threading.Timer(timeout, process.kill)
+    timer.start()
+    try:
+        process.stdin.write(b"".join(json.dumps(request).encode() + b"\n" for request in requests))
+        process.stdin.flush()
+        while line := process.stdout.readline(1024 * 1024):
+            message = json.loads(line)
+            if isinstance(message, dict) and message.get("id") == 2:
+                return message
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        pass
+    finally:
+        timer.cancel()
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=timeout)
+    raise ValueError("Codex CLI から応答を取得できません")
 
 
 class CodexCliJudge:

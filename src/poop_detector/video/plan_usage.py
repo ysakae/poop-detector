@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from .codex_cli import codex_environment
+from .codex_cli import app_server_request
 from .providers import _cli_environment
 
 TIMEOUT = 20
@@ -247,52 +247,13 @@ def read_antigravity(
     return parse_antigravity(_run(runner, command, _cli_environment()))
 
 
-CODEX_REQUESTS = (
-    {
-        "id": 1,
-        "method": "initialize",
-        "params": {"clientInfo": {"name": "poop-detector", "version": "0"}},
-    },
-    {"method": "initialized"},
-    {"id": 2, "method": "account/rateLimits/read"},
-)
-
-
 def read_codex(
     spawn: Callable[..., Any] = subprocess.Popen, which: Callable[[str], str | None] = shutil.which
 ) -> tuple[QuotaGroup, ...]:
-    """app-server に制限の読み取りだけを要求する。標準入力を閉じると応答前に終わるので開けておく。"""
     executable = _resolve("codex", which)
-    try:
-        # PATH から解決した Codex CLI を、固定の引数で実行する。
-        process = spawn(
-            [executable, "app-server"],
-            env=codex_environment(),
-            cwd=tempfile.gettempdir(),
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-    except OSError:
-        raise ValueError("Codex CLI を起動できません") from None
-    # 応答がなければ時間切れで止め、読み取りを終わらせる。
-    timer = threading.Timer(TIMEOUT, process.kill)
-    timer.start()
-    try:
-        process.stdin.write(b"".join(json.dumps(r).encode() + b"\n" for r in CODEX_REQUESTS))
-        process.stdin.flush()
-        while line := process.stdout.readline(RESPONSE_LIMIT):
-            message = json.loads(line)
-            if isinstance(message, dict) and message.get("id") == 2:
-                return parse_codex(message)
-        raise ValueError("Codex CLI から使用量を取得できません")
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        raise ValueError("Codex CLI から使用量を取得できません") from None
-    finally:
-        timer.cancel()
-        if process.poll() is None:
-            process.kill()
-        process.wait(timeout=TIMEOUT)
+    return parse_codex(
+        app_server_request(executable, "account/rateLimits/read", timeout=TIMEOUT, spawn=spawn)
+    )
 
 
 def read_plan_usage(provider: str, reader: Reader, now: datetime | None = None) -> PlanUsage:

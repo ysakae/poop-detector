@@ -8,6 +8,7 @@
 ルートの表への登録はこのモジュールを読み込んだときに行う（asgi.py が読み込む）。
 """
 
+import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +22,7 @@ from ..video import benchmark_sets
 from ..video.benchmark_results import BenchmarkResult, load_results
 from ..video.benchmark_sets import LABELS, SPLIT_NAMES
 from ..video.clips import CLIP_LABELS, ClipStore
+from ..video.judge_models import UNAVAILABLE, list_models
 from ..video.judge_runs import JudgeRunUsage
 from ..video.plan_usage import PlanUsageBoard, QuotaWindow
 from ..video.providers import PROVIDER_NAMES, build_judge
@@ -34,6 +36,8 @@ if TYPE_CHECKING:
 
 PAGE = "/manage/models"
 PLAN_USAGE = f"{PAGE}/plan-usage"
+CATALOG = f"{PAGE}/catalog"
+CUSTOM_MODEL = ":custom"
 DOG_MODEL_DIR = Path("models") / "dog-yolox"
 
 
@@ -309,6 +313,8 @@ def _render(
         providers=list(PROVIDER_NAMES.items()),
         provider=current.review_provider if provider is None else provider,
         model=current.review_model if model is None else model,
+        custom_model=CUSTOM_MODEL,
+        catalog=CATALOG,
         review_status=_review_status(
             review_status(app.clips, app.outages, current, datetime.now(UTC))
         ),
@@ -354,6 +360,8 @@ def choose_judge(handler: "Handler", form: Form) -> None:
         return
     provider = form.fields.get("provider", "").strip()
     model = form.fields.get("model", "").strip()
+    if model == CUSTOM_MODEL:
+        model = form.fields.get("custom_model", "").strip()
     current = Config.load(path)
     try:
         config = replace(current, review_provider=provider, review_model=model)
@@ -371,6 +379,20 @@ def choose_judge(handler: "Handler", form: Form) -> None:
     summary = "、".join(f"{c.name}: {c.before or '（空）'} → {c.after or '（空）'}" for c in found)
     audit(handler, "judge.select", summary)
     handler.redirect(f"{PAGE}?saved=1")
+
+
+@post(CATALOG, role="admin")
+def model_catalog(handler: "Handler", form: Form) -> None:
+    provider = form.fields.get("provider", "")
+    if provider not in PROVIDER_NAMES:
+        handler.respond(400, "判定器を選んでください")
+        return
+    try:
+        models = list_models(provider)
+    except ValueError:
+        handler.respond(503, UNAVAILABLE)
+        return
+    handler.respond(200, json.dumps({"models": models}), "application/json; charset=utf-8")
 
 
 @post(PLAN_USAGE, role="admin")

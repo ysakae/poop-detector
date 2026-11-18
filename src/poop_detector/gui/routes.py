@@ -420,6 +420,7 @@ def logout(handler: "Handler", _form: Form) -> None:
     "/assets/weight_chart.js",
     "/assets/clip_storage.js",
     "/assets/management.js",
+    "/assets/judge_models.js",
     "/assets/areas.js",
     "/assets/push.js",
     "/assets/passkey.js",

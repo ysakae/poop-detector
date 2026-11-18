@@ -16,6 +16,7 @@ from poop_detector.video.token_usage import TokenUsage
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 PAGE = "/manage/models"
 PLAN = "/manage/models/plan-usage"
+CATALOG = "/manage/models/catalog"
 SECRET_KEY = "sk-ant-secret-key-123"
 
 
@@ -101,7 +102,79 @@ def test_cli_judge_shows_readiness_without_secrets(models_gui):
     assert server.checked == ["Claude Code CLI"]
     assert "使える状態です" in html
     assert SECRET_KEY not in html
-    assert 'name="model" value="model-b"' in html
+    assert '<option value=":custom" selected>' in html
+    assert 'name="custom_model" value="model-b"' in html
+
+
+def test_model_menu_offers_cli_default(models_gui):
+    server, _ = models_gui
+    html = page(server, login(server))
+    menu = re.search(r'<select name="model">(.*?)</select>', html, re.DOTALL)
+    assert menu is not None
+    assert '<option value="" selected>CLI の既定</option>' in menu[1]
+
+
+def test_model_catalog_reads_only_the_selected_cli_without_saving(models_gui, monkeypatch):
+    server, path = models_gui
+    before = path.read_text()
+    asked = []
+
+    def read(provider):
+        asked.append(provider)
+        if provider == "claude":
+            raise ValueError("private CLI output")
+        return ("from-cli",)
+
+    monkeypatch.setattr("poop_detector.gui.models_routes.list_models", read, raising=False)
+    admin = login(server)
+    html = page(server, admin)
+    assert asked == []
+    csrf = re.search(r'name="csrf" value="([^"]+)"', html)[1]
+    body = urlencode({"provider": "gemini", "csrf": csrf})
+    status, _, data = exchange(server, "POST", CATALOG, body, {**FORM, **admin}, auth=False)
+    assert status == 200
+    assert json.loads(data) == {"models": ["from-cli"]}
+    status, _, _ = exchange(
+        server, "POST", CATALOG, "provider=gemini", {**FORM, **admin}, auth=False
+    )
+    assert status == 403
+    member = login(server, role="member")
+    status, _, _ = exchange(server, "POST", CATALOG, body, {**FORM, **member}, auth=False)
+    assert status == 403
+    body = urlencode({"provider": "claude", "csrf": csrf})
+    status, _, data = exchange(server, "POST", CATALOG, body, {**FORM, **admin}, auth=False)
+    assert status == 503
+    assert b"private CLI output" not in data
+    assert asked == ["gemini", "claude"]
+    assert path.read_text() == before
+
+
+def test_model_menu_saves_a_preset_custom_model_and_cli_default(models_gui):
+    server, path = models_gui
+    admin = login(server)
+    for choice, expected in (
+        ({"model": "sonnet", "custom_model": "unused"}, "sonnet"),
+        ({"model": "opus[1m]"}, "opus[1m]"),
+        ({"model": ":custom", "custom_model": "model-b"}, "model-b"),
+        ({"model": "", "custom_model": "unused"}, ""),
+    ):
+        status, _, _ = post(server, admin, {"provider": "claude", **choice})
+        assert status == 303
+        config = Config.load(path)
+        assert (config.review_provider, config.review_model) == ("claude", expected)
+
+
+def test_model_menu_retains_invalid_custom_input_for_correction(models_gui):
+    server, _ = models_gui
+    status, _, html = post(
+        server,
+        login(server),
+        {"provider": "claude", "model": ":custom", "custom_model": "bad model!"},
+    )
+    assert status == 400
+    assert "英数字で始まるモデル名" in html
+    assert '<option value=":custom" selected>' in html
+    assert 'name="custom_model" value="bad model!"' in html
 
 
 def test_judge_counts_by_period_come_from_the_runs(models_gui):

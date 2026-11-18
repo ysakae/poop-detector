@@ -33,6 +33,13 @@ THEME_NAMES = ("professional", "dog")
 logger = logging.getLogger(__name__)
 
 
+def valid_review_model(value: str) -> bool:
+    # Claude Code CLI は長いコンテキストを指定するモデル名に [1m] を付ける。
+    return value == "" or (
+        len(value) <= 128 and bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*(?:\[1m\])?", value))
+    )
+
+
 def load_connection_settings() -> dict[str, str]:
     return load_secret_settings(CONNECTION_KEYS)
 
@@ -319,8 +326,8 @@ SETTINGS: tuple[Setting, ...] = (
         "review",
         "model",
         str,
-        lambda value: value == "" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", value)),
-        "英数字で始まるモデル名（空なら Codex の既定）",
+        valid_review_model,
+        "英数字で始まるモデル名（空なら選んだ CLI の既定）",
     ),
     Setting(
         "review_fallback",
