@@ -6,7 +6,7 @@ from typing import Any, TypeAlias
 from urllib.parse import urlencode
 
 from ..features.outages import OUTAGE_KINDS, Outage, format_duration
-from ..records.care import CareEntry, feeding_text, format_grams, last_feeding
+from ..records.care import CareEntry, feeding_text, format_grams, last_feeding, latest_entries
 from ..records.care import entries as care_entries
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
 from ..records.record_stats import summarize_records
@@ -14,7 +14,7 @@ from ..timezones import local_now, local_today, parse_local, timezone_label, to_
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
 from .clip_pages import capacity_info
-from .list_time import by_day, list_time
+from .list_time import ListTime, by_day, list_time
 from .templating import render_template
 
 # parse_qs で読んだ問い合わせ文字列。同じ名前の値はリストになる。
@@ -297,6 +297,40 @@ def _recorded_notice(entry: CareEntry, day: str) -> dict[str, str]:
     }
 
 
+def _last_care(
+    store: Store, records: Sequence[EventRow], today: date
+) -> list[tuple[str, str, ListTime | None, str]]:
+    """お世話の種類ごとに、ホームに出す最後の実施時刻をそろえる。"""
+    entries = latest_entries(store.database)
+    feeding = entries.get("feeding")
+    sheet = entries.get("sheet")
+    result = [
+        (
+            "ごはん",
+            "food",
+            list_time(feeding.at.isoformat(), today) if feeding else None,
+            feeding_text("", feeding.amount_dg) if feeding else "",
+        ),
+    ]
+    now = local_now()
+    for label, kind in (("うんち", "feces"), ("おしっこ", "urine")):
+        row = next(
+            (
+                row
+                for row in reversed(records)
+                if row["excretion_type"] in (kind, "both")
+                and to_local(row["actual_start"] or row["timestamp"]) <= now
+            ),
+            None,
+        )
+        stamp = (row["actual_start"] or row["timestamp"]) if row else None
+        result.append((label, kind, list_time(stamp, today), ""))
+    result.append(
+        ("シート交換", "sheet", list_time(sheet.at.isoformat(), today) if sheet else None, "")
+    )
+    return result
+
+
 def render_home(
     store: Store,
     disk_mb: float = DEFAULT_DISK_MIB,
@@ -342,6 +376,7 @@ def render_home(
         recorded=_recorded_notice(done, today.isoformat()) if done else None,
         quick=HOME_QUICK,
         recent=recent,
+        last_care=_last_care(store, records, today),
         timezone=timezone_label(),
     )
 

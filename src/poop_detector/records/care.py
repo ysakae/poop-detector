@@ -1,6 +1,7 @@
 """給餌とシート交換を、家族で共有する記録に残す。"""
 
 import re
+import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
@@ -80,18 +81,33 @@ def entries(database: Database, day: date) -> list[CareEntry]:
             "SELECT * FROM care_entries WHERE at >= ? AND at < ? ORDER BY at DESC, rowid DESC",
             (start, end),
         ).fetchall()
-    return [
-        CareEntry(
-            row["id"],
-            to_local(row["at"]),
-            row["kind"],
-            row["actor"],
-            row["note"],
-            row["food"],
-            row["amount_dg"],
-        )
-        for row in rows
-    ]
+    return [_entry(row) for row in rows]
+
+
+def _entry(row: sqlite3.Row) -> CareEntry:
+    return CareEntry(
+        row["id"],
+        to_local(row["at"]),
+        row["kind"],
+        row["actor"],
+        row["note"],
+        row["food"],
+        row["amount_dg"],
+    )
+
+
+def latest_entries(database: Database) -> dict[str, CareEntry]:
+    """ごはんとシート交換について、実施時刻が最新の記録を返す。"""
+    latest = {}
+    with database.connect() as db:
+        for kind in KINDS:
+            row = db.execute(
+                "SELECT * FROM care_entries WHERE kind=? ORDER BY at DESC, rowid DESC LIMIT 1",
+                (kind,),
+            ).fetchone()
+            if row is not None:
+                latest[kind] = _entry(row)
+    return latest
 
 
 def save_entry(database: Database, entry: CareEntry) -> str:
