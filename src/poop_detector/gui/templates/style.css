@@ -54,6 +54,7 @@ ul.message,ul.message-error{padding-left:34px}
 .capacity-warning{background:var(--warn-bg);color:var(--warn-text);padding:12px;border-left:4px solid var(--warn-border);border-radius:var(--radius-small)}
 details{margin-top:24px;padding:20px}summary{cursor:pointer;font-weight:bold}details form{margin-top:18px}.empty{padding:50px 24px;text-align:center}
 table{border-collapse:collapse}th,td{text-align:left;padding:6px 10px}
+form.rename{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-top:8px}form.rename input{width:12em;max-width:100%}form.rename button{white-space:nowrap}
 main table{max-width:100%}main th{font-size:13px;font-weight:600;color:var(--muted)}main thead th{border-bottom:1px solid var(--border-strong)}main td,main tbody th{border-bottom:1px solid var(--border)}main td form{display:flex;flex-wrap:wrap;gap:6px}main td button{padding:6px 14px;font-size:14px}
 .data-table{width:100%;background:var(--surface);border-radius:var(--radius-small)}.data-table th,.data-table td{padding:14px;border-bottom:1px solid var(--border)}.table-scroll{overflow:auto}
 .clip-video{width:100%;background:var(--media-bg);border-radius:var(--radius-small)}

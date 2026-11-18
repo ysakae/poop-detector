@@ -6,7 +6,7 @@
 from typing import TYPE_CHECKING
 
 from ..errors import InvalidInputError
-from .accounts import ENROLLMENT_MINUTES, ROLES, User, role_label
+from .accounts import ENROLLMENT_MINUTES, NAME_MAX_LENGTH, ROLES, User, renamed, role_label
 from .invitation_mail import MailError, invite_by_email, recover_by_email, verify_address
 from .pages import Query, local_time, message_page
 from .routes import Form, audit, first, get, post
@@ -33,7 +33,12 @@ def account_page(handler: "Handler", query: Query) -> None:
 
 
 def _account_page(
-    handler: "Handler", query: Query, *, status: int = 200, email_error: str | None = None
+    handler: "Handler",
+    query: Query,
+    *,
+    status: int = 200,
+    email_error: str | None = None,
+    name_error: str | None = None,
 ) -> None:
     app = handler.app
     user = _signed_in(handler)
@@ -52,6 +57,9 @@ def _account_page(
         title=app.title,
         token=handler.csrf,
         person=user.name,
+        name_max_length=NAME_MAX_LENGTH,
+        name_saved=first(query, "name_saved") == "1",
+        name_error=name_error,
         email=user.email,
         email_sent=first(query, "email_sent") == "1",
         email_verified=first(query, "email_verified") == "1",
@@ -122,6 +130,20 @@ def save_display(handler: "Handler", form: Form) -> None:
         handler.respond(400, page)
         return
     handler.redirect("/account?display_saved=1")
+
+
+@post("/account/name")
+def save_name(handler: "Handler", form: Form) -> None:
+    """自分の表示名を変える。ほかの人にも見える名前なので監査ログに残す。"""
+    user = _signed_in(handler)
+    try:
+        name = handler.app.accounts.users.rename(user.id, form.fields.get("name", ""))
+    except InvalidInputError as error:
+        _account_page(handler, {}, status=400, name_error=str(error))
+        return
+    if name != user.name:
+        audit(handler, "user.rename", renamed(user, name))
+    handler.redirect("/account?name_saved=1")
 
 
 @post("/account/passkeys/add")
@@ -232,6 +254,16 @@ def _invited(email: str, role: str) -> str:
     return f"{email.strip().lower()}（{role_label(role)}）"
 
 
+def _managed(user: User, action: str, form: Form) -> str:
+    """ユーザー管理の操作の監査ログに残す説明。"""
+    target = user.email or user.name
+    if action == "role":
+        return _invited(target, form.fields.get("role", ""))
+    if action == "rename":
+        return renamed(user, form.fields.get("name", "").strip())
+    return target
+
+
 def _users_page(
     handler: "Handler",
     email: str = "",
@@ -254,6 +286,7 @@ def _users_page(
             token=handler.csrf,
             users=entries,
             roles=ROLES,
+            name_max_length=NAME_MAX_LENGTH,
             email=email,
             notice=notice,
             error=error,
@@ -289,10 +322,12 @@ def manage_user(handler: "Handler", form: Form) -> None:
             role = form.fields.get("role", "")
             app.accounts.users.set_role(user.id, role)
             notice = f"役割を「{role_label(role)}」にしました"
+        elif action == "rename":
+            name = app.accounts.users.rename(user.id, form.fields.get("name", ""))
+            notice = f"表示名を「{name}」にしました"
         else:
             raise InvalidInputError("ユーザー管理の操作を確認してください")
-        target = user.email or user.name
-        audit(handler, f"user.{action}", _invited(target, role) if action == "role" else target)
+        audit(handler, f"user.{action}", _managed(user, action, form))
     except InvalidInputError as error:
         _users_page(handler, email, status=400, error=str(error))
     except MailError as error:
