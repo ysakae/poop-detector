@@ -193,7 +193,7 @@ uv run poop-detector tray-registration status
 
 1. [macOS 試用版のビルド](https://github.com/ysakae/poop-detector/actions/workflows/macos-preview.yml)の成功した実行を開き、Artifacts にある `Poop-Detector-mac-arm64` をダウンロードします。GitHub へのログインが必要です。
 2. ZIP を展開して「Poop Detector」を開きます。初めて開いたときは、ブラウザーで「パスキーを登録する」を押し、Mac の画面の案内に従います。
-3. ホームでごはんを記録します。翌日も「Poop Detector」を開き、同じパスキーで続けられます。ブラウザーのタブを閉じただけの場合は、履歴から記録画面を開けます。
+3. ホームでごはんを記録します。翌日も「Poop Detector」を開き、同じパスキーで続けられます。ブラウザーのタブを閉じたら、Poop Detector のウィンドウで「ブラウザーで記録を開く」を押すと開き直せます。Poop Detector のウィンドウを閉じると記録アプリが終了します。
 
 試用版は開発中のビルドです。Apple の公証前のため、通常のダブルクリックで開けるかは配布時の署名・公証を終えてから確認します。記録は Mac のユーザーごとに `~/Library/Application Support/Poop Detector` に保存します。
 
