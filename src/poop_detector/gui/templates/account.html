@@ -8,9 +8,9 @@
 <h3>表示名</h3>
 {% if name_error %}<p class="error" role="alert">{{ name_error }}</p>{% endif %}
 {% if name_saved %}<p class="saved" role="status">表示名を変更しました。</p>{% endif %}
-<form method="post" action="/account/name">{{ csrf_field(token) }}
-<p><label>表示名 <input name="name" value="{{ person }}" maxlength="{{ name_max_length }}" autocomplete="nickname" required></label>
-<button>表示名を変更</button></p></form>
+<form method="post" action="/account/name" class="toolbar field-toolbar">{{ csrf_field(token) }}
+<label>表示名 <input name="name" value="{{ person }}" maxlength="{{ name_max_length }}" autocomplete="nickname" required></label>
+<button>表示名を変更</button></form>
 <h3>表示</h3>
 {% if display_saved %}<p class="saved" role="status">表示を保存しました。</p>{% endif %}
 <form method="post" action="/account/display">{{ csrf_field(token) }}
@@ -41,12 +41,12 @@
 <p>{{ email }}（確認済み）</p>
 {% else %}
 {% if email_sent %}<p class="saved" role="status">確認メールを送信しました。</p>{% endif %}
-<form method="post" action="/account/email">{{ csrf_field(token) }}
-<p><label>メールアドレス <input type="email" name="email" maxlength="254" autocomplete="email" required></label>
-<button>確認メールを送る</button></p></form>
-<form method="post" action="/account/email/confirm">{{ csrf_field(token) }}
-<p><label>確認コード <input name="code" maxlength="100" required></label>
-<button>確認コードを使う</button></p></form>
+<form method="post" action="/account/email" class="toolbar field-toolbar">{{ csrf_field(token) }}
+<label>メールアドレス <input type="email" name="email" maxlength="254" autocomplete="email" required></label>
+<button>確認メールを送る</button></form>
+<form method="post" action="/account/email/confirm" class="toolbar field-toolbar">{{ csrf_field(token) }}
+<label>確認コード <input name="code" maxlength="100" required></label>
+<button>確認コードを使う</button></form>
 {% endif %}
 <h3>パスキー</h3>
 <p class="note">パスキーは、登録したときに開いたドメインでだけ使えます。端末をなくしたときに備えて、2つ以上の端末に登録しておくと安心です。</p>

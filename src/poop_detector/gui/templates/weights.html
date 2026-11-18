@@ -27,7 +27,7 @@
 <section class="settings-section">
 <h3>生年月日（任意）</h3>
 <p>登録すると測定時の週齢が表示されます。</p>
-<form method="post" action="/weight">{{ csrf_field(token) }}
+<form method="post" action="/weight" class="toolbar field-toolbar">{{ csrf_field(token) }}
 <label>生年月日<input type="date" name="birth" value="{{ birth or '' }}" max="{{ today }}"></label>
 <button class="secondary" name="action" value="profile">生年月日を保存</button>
 </form>

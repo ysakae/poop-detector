@@ -4,7 +4,7 @@
 {% block content %}
 <h2>録画容量と古い動画の整理</h2>{{ capacity_panel(capacity) }}
 {%- if result %}<p class="message" role="status">{{ result.removed }}本を整理しました。{{ result.skipped }}本は対象外または再試行が必要です。</p>{% endif -%}
-<form method="get" action="/manage/storage"><label>整理候補の古さ<select name="days">
+<form method="get" action="/manage/storage" class="toolbar field-toolbar"><label>整理候補の古さ<select name="days">
 {%- for day in retention_days -%}
 <option value="{{ day }}"{% if day == days %} selected{% endif %}>{{ day }}日以上前</option>
 {%- endfor -%}

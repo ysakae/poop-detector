@@ -5,9 +5,9 @@
 <h2>ユーザー管理</h2>
 {% if notice %}<p class="saved" role="status">{{ notice }}</p>{% endif %}
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-<form method="get" action="/manage/users">
-<p><label>メールアドレス <input name="email" type="email" maxlength="254" value="{{ email }}"></label>
-<button>検索</button> <a href="/manage/users">全員を表示</a></p>
+<form method="get" action="/manage/users" class="toolbar field-toolbar">
+<label>メールアドレス <input name="email" type="email" maxlength="254" value="{{ email }}"></label>
+<button>検索</button> <a class="button ghost" href="/manage/users">全員を表示</a>
 </form>
 <table><thead><tr><th>表示名</th><th>メールアドレス</th><th>役割</th><th>状態</th><th>操作</th></tr></thead><tbody>
 {% for user in users %}
@@ -28,7 +28,7 @@
 <button name="action" value="enable">有効にする</button>
 {% endif %}
 </form>
-<form method="post" action="/manage/users" class="rename">{{ csrf_field(token) }}
+<form method="post" action="/manage/users" class="toolbar field-toolbar rename">{{ csrf_field(token) }}
 <input type="hidden" name="email" value="{{ user.email }}">
 <label>表示名 <input name="name" value="{{ user.name }}" maxlength="{{ name_max_length }}" required></label>
 <button name="action" value="rename" class="secondary">表示名を変更</button>
