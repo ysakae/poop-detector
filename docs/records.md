@@ -112,9 +112,11 @@ uv run poop-detector users cancel-invite family@example.org
 
 ホームの「排泄」か、「記録」の「排泄を記録」（`/records/new`）から、種類・場所・開始/完了時刻・メモを手動登録できます。開始には画面を開いた時刻が入っているので、見かけてすぐなら種類のボタン（排便・排尿・両方・種類不明）を押すだけで記録できます。保存すると「記録」に戻り、足した記録が一覧に並びます。
 
+カメラの監視範囲外での排泄は、場所に「サークル外」を選びます。サークル外の排便・排尿は、一覧や集計には含まれ、監視の見逃し件数からは除外されます。
+
 ![排泄を記録（スマートフォンの幅、人工のデータ）](images/record-new-mobile.png)
 
-カメラで見守っているときは、「通知は来ましたか？」で「来なかった（見逃しとして数える）」を選ぶと、通知されなかった排泄（見逃し）として記録します。それ以外の記録は見逃し数には加えません。
+監視範囲内の排泄で通知が来なかったときは、「通知は来ましたか？」で「来なかった（監視範囲内の見逃し）」を選びます。
 
 カメラなしの手動記録モードでは、時刻・場所・種類を選んで保存できます。
 通知の画像が既にある場合はその検知にラベルを付け、同じ排泄を手動で重複登録しないでください。
@@ -180,6 +182,7 @@ GUI と同じ記録をコマンドでも行えます。時刻はタイムゾー�
 ```bash
 uv run poop-detector events
 uv run poop-detector record --type urine --start '2026-11-08T23:30:00+09:00' --note '目視で確認'
+uv run poop-detector record --type urine --start '2026-11-08T23:30:00+09:00' --location outside_pen
 uv run poop-detector records
 uv run poop-detector feedback EVENT_ID true --type feces
 uv run poop-detector feedback EVENT_ID true --start '2026-11-01T12:00:00+09:00' --end '2026-11-01T12:00:10+09:00'

@@ -223,6 +223,23 @@ def test_record_commands_store_and_list_excretions(cli_env, capsys):
     assert json.loads(capsys.readouterr().out)["missed"] == 1
 
 
+def test_record_command_accepts_outside_pen(cli_env):
+    assert (
+        cli_env.run(
+            "record",
+            "--type",
+            "urine",
+            "--start",
+            "2026-11-01T11:00:00+09:00",
+            "--location",
+            "outside_pen",
+        )
+        == 0
+    )
+    (saved,) = Store(cli_env.root).records()
+    assert saved["location"] == "outside_pen"
+
+
 def test_record_commands_require_timezone_in_times(cli_env, capsys):
     assert cli_env.run("record", "--type", "feces", "--start", "2026-11-01T11:00:00") == 2
     assert "タイムゾーンが必要です" in capsys.readouterr().err
