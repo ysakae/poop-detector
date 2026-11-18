@@ -10,7 +10,7 @@
 <form method="post" action="/care" class="settings-form">{{ csrf_field(token) }}
 <input type="hidden" name="view_day" value="{{ day }}">
 {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
-<div class="settings-field"><label>実施した日時<input type="datetime-local" name="at" step="1" value="{{ submitted.get('at', at) if retry else at }}" required></label></div>
+<div class="settings-field"><label>実施した日時<input type="datetime-local" name="at" value="{{ submitted.get('at', at) if retry else at }}" required></label></div>
 {% if kind == "feeding" %}
 {% if food_history %}<div class="settings-field" id="feeding-history" hidden>
 <label>銘柄の履歴<select id="feeding-history-select">
