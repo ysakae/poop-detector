@@ -121,7 +121,7 @@ def cli(tmp_path, monkeypatch):
         def handler(_args, _context):
             raise failure
 
-        monkeypatch.setitem(entry.HANDLERS, "events", handler)
+        monkeypatch.setattr(entry.records, "events", handler)
         return entry.main(["--config", "config.yaml", *options, "events"])
 
     return run

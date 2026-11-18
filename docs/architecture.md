@@ -60,7 +60,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `commands/benchmark.py`・`commands/datasets.py` | `video-benchmark`、`benchmark-dataset` |
 | `commands/dog_model.py` | `setup-dog-model`、`check-dog` |
 
-処理は `(args, CommandContext)` を受け取り、終了コードを返します。`CommandContext` は設定とデータの保存先の場所を持ちます。設定（`config.Config`）は不変で、`run` は `--video-review` などのフラグを `config.with_flags` で設定に重ね、機能の依存関係を `config.check_monitor_features` の1か所で確かめます。設定ファイルの各項目（セクション・名前・型・許容範囲）は `config.SETTINGS` の表で定義し、検証のエラーはその表から項目名と範囲を示します。ROI と基準画像の読み込み、通知先の選択、カメラの接続など、複数のコマンドで使う準備は `commands/context.py` にあります。サブコマンドを足すときは、`parser()` に引数を、`HANDLERS` に処理を加えてください。
+処理は `(args, CommandContext)` を受け取り、終了コードを返します。`CommandContext` は設定とデータの保存先の場所を持ちます。設定（`config.Config`）は不変で、`run` は `--video-review` などのフラグを `config.with_flags` で設定に重ね、機能の依存関係を `config.check_monitor_features` の1か所で確かめます。設定ファイルの各項目（セクション・名前・型・許容範囲）は `config.SETTINGS` の表で定義し、検証のエラーはその表から項目名と範囲を示します。ROI と基準画像の読み込み、通知先の選択、カメラの接続など、複数のコマンドで使う準備は `commands/context.py` にあります。サブコマンドを足すときは、用途に対応する登録関数で `CommandGroup.add()` に名前・実行関数・ヘルプを渡し、戻り値のパーサーに引数を追加します。旧名も同じ呼び出しの `aliases` に指定できます。
 
 ## 監視ループ（`detection.monitoring.Monitor`）
 
