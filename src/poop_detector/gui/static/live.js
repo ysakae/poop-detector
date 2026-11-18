@@ -7,6 +7,7 @@ const reason = document.querySelector("#live-reason");
 const judgmentTime = document.querySelector("#live-judgment-time");
 const clipLink = document.querySelector("#live-clip-link");
 const view = document.querySelector("#live-view");
+const controls = document.querySelector("#live-controls");
 const maximizeButton = document.querySelector("#live-maximize");
 const jst = new Intl.DateTimeFormat("ja-JP", {
     dateStyle: "short",
@@ -26,7 +27,11 @@ function isMaximized() {
 function showMaximized(maximized) {
     view.toggleAttribute("data-maximized", maximized);
     maximizeButton.setAttribute("aria-pressed", String(maximized));
-    if (!maximized && image.hidden) maximizeButton.hidden = true;
+    // 動画の操作バーと同じく、アイコンだけのボタンの名前で操作を伝える。
+    const label = maximized ? "全画面を終了" : "全画面表示";
+    maximizeButton.setAttribute("aria-label", label);
+    maximizeButton.title = label;
+    if (!maximized && image.hidden) controls.hidden = true;
 }
 
 function setFallback(maximized) {
@@ -60,13 +65,17 @@ function restore() {
     }
 }
 
-maximizeButton.addEventListener("click", () => {
+function toggleMaximized() {
     if (isMaximized()) {
         restore();
     } else {
         maximize();
     }
-});
+}
+
+maximizeButton.addEventListener("click", toggleMaximized);
+// 動画と同じく、映像のダブルクリックでも全画面を切り替える。
+image.addEventListener("dblclick", toggleMaximized);
 document.addEventListener("fullscreenchange", () => {
     if (document.fullscreenElement === view) {
         // 遅れて全画面になったときは、画面いっぱいに広げた表示を外して全画面に任せる。
@@ -84,7 +93,7 @@ function stopStream() {
     image.removeAttribute("src");
     image.hidden = true;
     // 最大化の間は、映像が途切れても元に戻せるようにボタンを残す。
-    maximizeButton.hidden = !isMaximized();
+    controls.hidden = !isMaximized();
 }
 
 function startStream() {
@@ -123,7 +132,7 @@ async function updateStreamStatus() {
         startStream();
         if (!stamp || !image.hasAttribute("src")) return;
         image.hidden = false;
-        maximizeButton.hidden = false;
+        controls.hidden = false;
         const status = "映像更新 " + jst.format(new Date(stamp));
         if (trayState === "searching") {
             frameStatus.textContent = status + " ／ トレーの位置を確認中・判定保留";

@@ -3,11 +3,17 @@
   <h2 id="live-title">現在のカメラ映像</h2>
   <div class="live-grid">
     <figure class="live-view" id="live-view">
-      <img id="live-frame" alt="現在のカメラ映像" hidden>
-      <button type="button" class="secondary live-maximize" id="live-maximize" aria-pressed="false" hidden>
-        <span class="live-maximize-open">{{ icon("expand") }}映像を最大化</span>
-        <span class="live-maximize-close">{{ icon("shrink") }}元に戻す</span>
-      </button>
+      <div class="live-stage">
+        <img id="live-frame" alt="現在のカメラ映像" hidden>
+        {#- 動画の画面（ブラウザーの標準の操作バー）にそろえ、映像の下端に重ねて右に全画面のボタンを置く。 -#}
+        <div class="live-controls" id="live-controls" hidden>
+          <span class="live-badge">ライブ</span>
+          <button type="button" class="live-maximize" id="live-maximize" aria-label="全画面表示" title="全画面表示" aria-pressed="false">
+            <span class="live-maximize-open">{{ icon("expand") }}</span>
+            <span class="live-maximize-close">{{ icon("shrink") }}</span>
+          </button>
+        </div>
+      </div>
       <figcaption id="live-frame-status">監視からの映像を待っています。</figcaption>
     </figure>
     <div class="live-result">
