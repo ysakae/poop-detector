@@ -228,3 +228,22 @@ def test_quick_record_ignores_a_double_tap_and_unknown_kinds(gui):
     assert quick(server, login(server, name="父", role="member"), "sheet")[0] == 303
     assert len(entries(store.database, local_today())) == 2
     assert quick(server, cookie, "weight")[0] == 400
+
+
+def test_time_field_is_to_the_minute(gui):
+    # お世話の日時は分まででよく、秒の入力欄を出さない。
+    import re
+
+    from support import submit
+
+    server, _, _ = gui
+    page = request(server, "GET", "/care")[1].decode()
+    field = re.search(r'<input type="datetime-local" name="at"[^>]*>', page)[0]
+    assert 'step="1"' not in field
+    assert re.search(r'value="\d{4}-\d\d-\d\dT\d\d:\d\d"', field)
+    fields = {"kind": "feeding", "at": "2024-03-01T08:05", "food": "フード", "grams": "20"}
+    assert submit(server, "/care", fields, page="/care")[0] == 303
+    day_url = "/care?day=2024-03-01"
+    identifier = re.search(rb"amp;id=([a-f0-9]+)", request(server, "GET", day_url)[1])[1].decode()
+    edit = request(server, "GET", f"{day_url}&id={identifier}")[1].decode()
+    assert 'name="at" value="2024-03-01T08:05"' in edit

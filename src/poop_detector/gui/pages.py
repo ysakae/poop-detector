@@ -32,7 +32,7 @@ def local_time(value: str | None, form: bool = False) -> str:
     if not value:
         return ""
     stamp = to_local(value)
-    return stamp.strftime("%Y-%m-%dT%H:%M:%S" if form else "%Y/%m/%d %H:%M:%S")
+    return stamp.strftime("%Y-%m-%dT%H:%M" if form else "%Y/%m/%d %H:%M:%S")
 
 
 def outage_rows(outages: Iterable[Outage]) -> list[dict[str, str]]:

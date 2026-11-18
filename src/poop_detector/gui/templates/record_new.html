@@ -10,8 +10,8 @@
 <label class="choice"><input type="radio" name="action" value="{{ value }}"{% if loop.first %} checked{% endif %}>{{ text }}</label>
 {%- endfor -%}
 </div></fieldset>
-<div class="times"><label>開始（{{ timezone }}）<input type="datetime-local" step="1" name="start" value="{{ now }}" required></label>{{ location_field(locations, None) }}</div>
-<details class="clip-more"><summary>くわしく入力（完了・メモ）</summary><div class="times"><label>完了（任意）<input type="datetime-local" step="1" name="end"></label></div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000"></textarea></label></p></details>
+<div class="times"><label>開始（{{ timezone }}）<input type="datetime-local" name="start" value="{{ now }}" required></label>{{ location_field(locations, None) }}</div>
+<details class="clip-more"><summary>くわしく入力（完了・メモ）</summary><div class="times"><label>完了（任意）<input type="datetime-local" name="end"></label></div><p><label>メモ<br><textarea name="note" rows="2" maxlength="2000"></textarea></label></p></details>
 <div class="quick-confirm"><h4>種類を選ぶと記録します</h4><div class="quick-buttons">
 {%- for value, text, icon_name in buttons -%}
 <button class="secondary" name="type" value="{{ value }}">{{ icon(icon_name) }}{{ text }}</button>

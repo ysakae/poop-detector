@@ -121,7 +121,7 @@ def _render(
         timeline=_timeline(day, rows, weights(store.database, day, day), records),
         edit=edit,
         error=error,
-        at=stamp.strftime("%Y-%m-%dT%H:%M:%S"),
+        at=stamp.strftime("%Y-%m-%dT%H:%M"),
     )
     handler.respond(400 if error else 200, page)
 
