@@ -33,7 +33,7 @@ from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
 from ..video.plan_usage import PlanUsageBoard
 from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
-from ..web_push import PushKeys, PushSubscriptions, WebPushNotifier, push_subject
+from ..web_push import PushKeys, PushSubscriptions
 from .accounts import Accounts
 from .asgi import create_app
 from .feeding_notifications import feeding_reminders
@@ -125,11 +125,9 @@ class GuiServer:
         try:
             with feeding_reminders(
                 self.app.store.database,
-                WebPushNotifier(
-                    self.app.push_subscriptions,
-                    self.app.push_keys,
-                    subject=push_subject(self.site.public_url),
-                ),
+                self.app.push_subscriptions,
+                self.app.push_keys,
+                public_url=self.site.public_url,
             ):
                 self._server.run(sockets=[self.socket])
         finally:

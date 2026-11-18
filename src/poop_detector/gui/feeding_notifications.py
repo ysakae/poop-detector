@@ -11,7 +11,7 @@ from datetime import datetime
 from ..records.database import Database
 from ..records.feeding_plans import claim_due, retry_reminder
 from ..timezones import local_now
-from ..web_push import WebPushNotifier
+from ..web_push import PushKeys, PushSubscriptions, WebPushNotifier, push_subject
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,10 @@ def notify_due(database: Database, notifier: WebPushNotifier, now: datetime) -> 
 
 
 @contextmanager
-def feeding_reminders(database: Database, notifier: WebPushNotifier) -> Iterator[None]:
+def feeding_reminders(
+    database: Database, subscriptions: PushSubscriptions, keys: PushKeys, *, public_url: str
+) -> Iterator[None]:
+    notifier = WebPushNotifier(subscriptions, keys, subject=push_subject(public_url))
     stop = threading.Event()
 
     def run() -> None:
