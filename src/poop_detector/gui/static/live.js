@@ -24,7 +24,32 @@ function isMaximized() {
     return view.hasAttribute("data-maximized");
 }
 
+// 最大化の間は画面を消さない（Screen Wake Lock。iPhone・iPad は iOS 16.4 以降の Safari、
+// ホーム画面に追加した場合は iOS 18.4 以降）。HTTPS か localhost でだけ使え、
+// 使えないブラウザーでは何もしない。画面が隠れるとブラウザーが自動で手放す。
+let wakeLock = null;
+
+async function keepAwake(awake) {
+    if (!("wakeLock" in navigator)) return;
+    if (!awake) {
+        const held = wakeLock;
+        wakeLock = null;
+        if (held) {
+            await held.release().catch((error) => console.warn("画面の点灯を解除できません", error));
+        }
+        return;
+    }
+    if (document.hidden || (wakeLock && !wakeLock.released)) return;
+    try {
+        wakeLock = await navigator.wakeLock.request("screen");
+    } catch (error) {
+        // 省電力モードなどで断られても、映像の表示は続ける。
+        console.warn("画面を点けたままにできません", error);
+    }
+}
+
 function showMaximized(maximized) {
+    keepAwake(maximized);
     view.toggleAttribute("data-maximized", maximized);
     maximizeButton.setAttribute("aria-pressed", String(maximized));
     // 動画の操作バーと同じく、アイコンだけのボタンの名前で操作を伝える。
@@ -113,6 +138,8 @@ document.addEventListener("visibilitychange", () => {
         stopStream();
     } else {
         startStream();
+        // タブやアプリを切り替えて戻ったときは、手放された Wake Lock を取り直す。
+        if (isMaximized()) keepAwake(true);
     }
 });
 window.addEventListener("pagehide", stopStream);
