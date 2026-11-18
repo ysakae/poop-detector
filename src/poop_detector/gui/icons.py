@@ -25,4 +25,6 @@ ICONS: dict[str, str] = {
     "logout": "M14 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4 M10 8l-4 4l4 4 M6 12h9",
     "more": "M5 12h.01 M12 12h.01 M19 12h.01",
     "next": "M9 6l6 6l-6 6",
+    "expand": "M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5",
+    "shrink": "M9 4v5H4 M20 9h-5V4 M15 20v-5h5 M4 15h5v5",
 }

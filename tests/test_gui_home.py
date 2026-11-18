@@ -143,3 +143,28 @@ def test_home_shows_unspecified_records_only_when_they_exist(gui):
     html = page(server, "/", login(server, role="member"))
     today = re.search(r'aria-labelledby="today-title".*?</section>', html, re.S)[0]
     assert stat(today, "種類不明") == ("1", "回")
+
+
+def test_home_live_view_has_a_maximize_button(gui):
+    """ホームのライブ映像は、映像が届くまで隠した最大化のボタンを持つ。"""
+    server, _, _ = gui
+    html = page(server, "/", login(server, role="member"))
+    button = re.search(r'<button [^>]*id="live-maximize"[^>]*>', html)
+    assert button, "最大化のボタンがありません"
+    assert 'type="button"' in button[0]
+    assert "hidden" in button[0]
+    assert 'aria-pressed="false"' in button[0]
+    assert "映像を最大化" in html
+
+
+def test_live_script_supports_fullscreen_and_fallback():
+    """全画面の API がない端末（iPhone の Safari）でも、画面いっぱいに広げられる。"""
+    from pathlib import Path
+
+    import poop_detector.gui as gui_package
+
+    script = (Path(gui_package.__file__).parent / "static" / "live.js").read_text()
+    assert "requestFullscreen" in script
+    assert "fullscreenchange" in script
+    assert "live-maximized" in script
+    assert '"Escape"' in script
