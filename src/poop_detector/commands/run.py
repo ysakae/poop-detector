@@ -167,6 +167,7 @@ def watch(
                     config.clip_max_width,
                     config.clip_memory_mb,
                     config.clip_disk_mb,
+                    auto_cleanup=config.clip_auto_cleanup,
                 )
             )
 

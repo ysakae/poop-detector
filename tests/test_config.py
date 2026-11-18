@@ -28,7 +28,7 @@ pet_name: ポチ
 camera: {fps: 5}
 detection: {verify_seconds: 4, threshold: 25}
 notifications: {enabled: false}
-clips: {enabled: false, disk_mb: 2048}
+clips: {enabled: false, disk_mb: 2048, auto_cleanup: false}
 dog: {enabled: true, fps: 2}
 features: {codex: true, early_alert: true, track_tray: true}
 """,
@@ -38,6 +38,7 @@ features: {codex: true, early_alert: true, track_tray: true}
     assert (config.verify_seconds, config.threshold) == (4, 25)
     assert config.notifications is False
     assert (config.clip_enabled, config.clip_disk_mb) == (False, 2048)
+    assert config.clip_auto_cleanup is False
     assert (config.dog_enabled, config.dog_fps) == (True, 2)
     assert (config.video_review_enabled, config.early_alert_enabled, config.track_tray_enabled) == (
         True,

@@ -68,6 +68,8 @@ clips:
   max_width: 1280
   memory_mb: 128
   disk_mb: 4096
+  # 使用量が上限の90％に達したら、1日より古い確認不要の動画（トレー外の滞在から）を自動で整理する
+  auto_cleanup: true
 
 # 犬の存在・出入りの検出（setup-dog-model でモデルを準備してから有効にする。run --dog でも指定可）
 dog:

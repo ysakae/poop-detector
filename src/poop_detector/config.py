@@ -228,6 +228,7 @@ SETTINGS: tuple[Setting, ...] = (
     ),
     Setting("clip_memory_mb", "clips", "memory_mb", float, _number(8, 4096), "8〜4096 の数（MiB）"),
     Setting("clip_disk_mb", "clips", "disk_mb", float, _number(8), "8 以上の数（MiB）"),
+    Setting("clip_auto_cleanup", "clips", "auto_cleanup", bool, _always, "true または false"),
     Setting("reentry_enabled", "reentry", "enabled", bool, _always, "true または false"),
     Setting("reentry_seconds", "reentry", "seconds", float, _number(0.2, 60), "0.2〜60秒"),
     Setting("reentry_margin", "reentry", "margin", float, _number(0, 0.2), "0〜0.2"),
@@ -476,6 +477,7 @@ class Config:
     clip_max_width: int = 1280
     clip_memory_mb: float = 128
     clip_disk_mb: float = DEFAULT_DISK_MIB
+    clip_auto_cleanup: bool = True
     reentry_enabled: bool = False
     reentry_seconds: float = 2
     reentry_margin: float = 0.02
