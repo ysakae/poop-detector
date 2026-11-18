@@ -86,7 +86,8 @@
 {%- endfor -%}
 </div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000">{{ clip.note }}</textarea></label></p><button class="secondary">ラベルを保存</button>{% include "_confirmation.html" %}</form>
 </details>
-<details class="clip-more"><summary>そのほかの操作（保護・評価の候補）</summary>
+<details class="clip-more"{% if clip.dismissed %} open{% endif %}><summary>そのほかの操作（保護・評価の候補・確認待ち）</summary>
+{% if clip.dismissed %}<p class="note">確認待ちから外しています。</p><form method="post" action="/review/restore">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary">確認待ちに戻す</button></form>{% elif review %}<form method="post" action="/review/dismiss">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><input type="hidden" name="from" value="review"><button class="secondary">確認しない（確認待ちから外す）</button></form>{% endif %}
 {% if not clip.pinned %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}<button class="secondary" name="protected" value="1">この動画を保護</button></form>{% elif viewer_admin %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}<button class="secondary" name="protected" value="0">保護指定を解除</button></form>{% else %}<p class="note">保護中の動画です（解除は管理者が行います）。</p>{% endif %}
 {% include "_benchmark_candidate.html" %}
 </details>

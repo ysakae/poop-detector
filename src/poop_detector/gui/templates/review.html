@@ -1,13 +1,30 @@
 {#- 確認待ち。未ラベルの検知イベントと、排泄に関わる動画の一覧。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import chip, clip_assessment, empty_state, icon, when %}
+{% from "_macros.html" import chip, clip_assessment, csrf_field, empty_state, icon, when %}
 {% block content %}
 <h2>確認待ち {{ count }}件</h2>
 {% if done %}<p class="message" role="status">すべて確認しました。</p>{% endif %}
 {% if end and count %}<p class="message message-warn" role="status">最後まで進みました。飛ばした件が残っています。</p>{% endif %}
+{% if dismissed %}<p class="message" role="status">{{ dismissed }}件を確認待ちから外しました。</p>{% endif %}
+{% if restored %}<p class="message" role="status">{{ restored }}件を確認待ちに戻しました。</p>{% endif %}
 {% if count %}
 <p>新しい順に並んでいます。ラベルを保存すると、次の件が開きます。</p>
 <p><a class="button" href="{{ next_url }}">確認を始める</a></p>
+{%- endif %}
+{% if scenes %}
+<h3>画角ごとの確認待ち</h3>
+<p class="note">カメラの向きやトレーの位置を変える前の動画は、画角ごとにまとめて確認待ちから外せます。ラベルは付けず、あとで戻せます。外した動画は、録画の整理で削除できるようになります。</p>
+<ul class="review-list scene-list">
+{%- for scene in scenes -%}
+<li><span class="clip-thumb">{% if scene.thumbnail %}<img src="{{ scene.thumbnail }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon("video") }}{% endif %}</span><span class="clip-text">{{ when(scene.first) }} 〜 {{ when(scene.last) }}<small>確認待ち {{ scene.waiting }}件{% if scene.dismissed %} ／ 外した動画 {{ scene.dismissed }}件{% endif %}{% if not scene.known %} ／ 画角の記録なし{% endif %}</small>{% if scene.current %}{{ chip("いまの画角", "ok") }}{% endif %}</span><span class="scene-actions">
+{%- if scene.waiting and not scene.current %}<a class="button secondary" href="{{ scene.dismiss_url }}">確認しない</a>{% endif -%}
+{%- if scene.dismissed %}<form method="post" action="{{ restore_url }}">{{ csrf_field(token) }}<input type="hidden" name="scene" value="{{ scene.key }}"><button class="secondary">確認待ちに戻す</button></form>{% endif -%}
+</span></li>
+{%- endfor -%}
+</ul>
+{% endif %}
+{%- if count %}
+{% if scenes %}<h3>確認待ちの一覧</h3>{% endif %}
 {%- for group in groups %}
 <h3 class="day-heading">{{ group.day }}</h3>
 <ul class="review-list">

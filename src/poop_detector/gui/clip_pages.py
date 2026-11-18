@@ -151,6 +151,9 @@ def clip_detail(store: ClipStore, row: Mapping[str, Any]) -> dict[str, Any]:
         "failed": status == "failed",
         "error": row["error"] or "動画を保存できませんでした",
         "pinned": status == "ready" and is_protected(store, row["id"]),
+        "dismissed": status == "ready"
+        and row["label"] is None
+        and bool(row.get("review_dismissed")),
         "duration": row["duration"],
         "trigger_offset": row["trigger_offset"] or 0,
         "start_time": local_time(row["start_at"]),

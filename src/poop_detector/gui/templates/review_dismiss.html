@@ -1,0 +1,12 @@
+{#- 画角の確認待ちの動画を、まとめて確認待ちから外す前の確認。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field, icon, when %}
+{% block content %}
+<h2>確認待ちから外す</h2>
+<div class="card">
+<p class="scene-preview">{% if scene.thumbnail %}<img src="{{ scene.thumbnail }}" alt="この画角の最も新しい動画の1コマ" decoding="async">{% else %}{{ icon("video") }}{% endif %}</p>
+<p>{{ when(scene.first) }} 〜 {{ when(scene.last) }}に撮った、この画角の{{ scene.waiting }}件を確認待ちから外します。</p>
+<p class="note">ラベルや確定記録は付けません。外した動画は確認待ちの画面から戻せます。録画の整理（管理 › 動画の保存）で、ファイルを削除できるようになります。</p>
+<form method="post" action="{{ action }}">{{ csrf_field(token) }}<input type="hidden" name="scene" value="{{ scene.key }}"><button>{{ scene.waiting }}件を確認待ちから外す</button> <a href="/review">やめる</a></form>
+</div>
+{% endblock %}

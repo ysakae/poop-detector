@@ -29,7 +29,8 @@ CANDIDATE_SQL = """
     WHERE c.status IN ('ready', 'removing')
       AND julianday(c.requested_at) <= julianday(?)
       AND c.label IS NULL AND c.event_id IS NULL
-      AND (a.label IS NULL OR a.label NOT IN ('feces', 'urine', 'both'))
+      AND (a.label IS NULL OR a.label NOT IN ('feces', 'urine', 'both')
+           OR EXISTS (SELECT 1 FROM review_dismissals d WHERE d.clip_id=c.id))
       AND NOT EXISTS (SELECT 1 FROM clip_confirmations k WHERE k.clip_id=c.id)
       AND NOT EXISTS (SELECT 1 FROM clip_protections p WHERE p.clip_id=c.id)
       AND NOT EXISTS (SELECT 1 FROM clips other WHERE other.path=c.path AND other.id<>c.id)
