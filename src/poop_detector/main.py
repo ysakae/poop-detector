@@ -71,6 +71,16 @@ def enrollment_minutes(value: str) -> int:
     return minutes
 
 
+def dog_confidence(value: str) -> float:
+    try:
+        confidence = float(value)
+    except ValueError:
+        confidence = float("nan")
+    if not 0 < confidence < 1:
+        raise argparse.ArgumentTypeError("0より大きく1未満の数で指定してください")
+    return confidence
+
+
 def gui_port(value: str) -> int:
     port = int(value)
     if not 0 <= port <= 65535:
@@ -224,6 +234,11 @@ def parser() -> argparse.ArgumentParser:
     compare.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
     compare.add_argument("--features", help="保存した特徴量のJSON。犬の検出をやり直さずに比べる")
     compare.add_argument("--output", help="特徴量と結果を書き出すJSONファイル")
+    compare.add_argument(
+        "--dog-confidence",
+        type=dog_confidence,
+        help="この比較だけで使う犬検出のしきい値（既定は設定の dog.confidence）",
+    )
     feedback = commands.add_parser("feedback", help="実際に排泄だったかと種類を記録")
     feedback.add_argument("event_id")
     feedback.add_argument("label", choices=["true", "false"])

@@ -11,7 +11,7 @@ from poop_detector.video.clip_labels import ClipLabel
 from poop_detector.video.clip_reviews import Assessment
 from poop_detector.video.clip_storage import MIB, cleanup_selected, free_space
 from poop_detector.video.clips import ClipStore
-from poop_detector.video.recording import ClipCollector
+from poop_detector.video.recording import MAX_EXTENSION_SECONDS, ClipCollector
 
 FRAME = np.zeros((40, 40, 3), np.uint8)
 
@@ -43,20 +43,74 @@ def test_short_visit_keeps_prebuffer_and_records_after_exit(tmp_path):
         assert sample_times == list(range(10))
 
 
-def test_long_visit_keeps_separate_entry_and_exit_clips(tmp_path):
-    def encode(samples, path, fps):
-        path.write_bytes(b"mp4")
-        return len(samples) / fps
+def stub_encode(samples, path, fps):
+    path.write_bytes(b"mp4")
+    return len(samples) / fps
 
-    frame = np.zeros((40, 40, 3), np.uint8)
-    with ClipCollector(tmp_path, after=30, encoder=encode) as collector:
-        collector.feed(frame, now=2)
+
+def test_long_visit_merges_entry_and_exit_while_recording(tmp_path):
+    with ClipCollector(tmp_path, after=30, encoder=stub_encode) as collector:
+        collector.feed(FRAME, now=2)
         entry = collector.trigger(source="dog_enter", now=2)
-        collector.feed(frame, now=18)
-        exit_clip = collector.trigger(source="dog_exit", now=18)
-        assert entry
-        assert exit_clip
-        assert exit_clip != entry
+        collector.feed(FRAME, now=18)
+        assert collector.trigger(source="dog_exit", now=18) == entry
+        assert collector.jobs[entry]["source"] == "dog_visit"
+        assert collector.jobs[entry]["end"] == 48
+
+
+def test_overlapping_requests_share_one_clip_with_the_most_urgent_source(tmp_path):
+    with ClipCollector(tmp_path, after=30, encoder=stub_encode) as collector:
+        collector.feed(FRAME, now=0)
+        outside = collector.trigger(source="outside_stay", now=0)
+        collector.feed(FRAME, now=2)
+        assert collector.trigger(source="dog_enter", now=2) == outside
+        assert collector.jobs[outside]["source"] == "dog_enter"
+        collector.feed(FRAME, now=4)
+        assert collector.trigger(source="early_alert", now=4) == outside
+        assert collector.jobs[outside]["source"] == "early_alert"
+        # 優先度の低い要求は、きっかけを上書きしない。
+        collector.feed(FRAME, now=6)
+        assert collector.trigger(source="outside_stay", now=6) == outside
+        assert collector.jobs[outside]["source"] == "early_alert"
+        assert collector.jobs[outside]["end"] == 36
+        for sec in range(7, 40):
+            collector.feed(FRAME, now=sec)
+            collector.poll(now=sec)
+        collector.drain()
+        (clip,) = collector.store.list()
+        assert clip["source"] == "early_alert"
+        assert clip["status"] == "ready"
+
+
+def test_detection_with_event_keeps_its_own_clip(tmp_path):
+    with ClipCollector(tmp_path, after=30, encoder=stub_encode) as collector:
+        collector.feed(FRAME, now=0)
+        visit = collector.trigger(source="dog_enter", now=0)
+        collector.feed(FRAME, now=5)
+        detected = collector.trigger("event-1", now=5)
+        assert detected
+        assert detected != visit
+
+
+def test_merging_stops_after_the_extension_limit(tmp_path):
+    with ClipCollector(tmp_path, after=30, encoder=stub_encode) as collector:
+        collector.feed(FRAME, now=0)
+        first = collector.trigger(source="outside_stay", now=0)
+        for sec in range(20, MAX_EXTENSION_SECONDS + 1, 20):
+            collector.feed(FRAME, now=sec)
+            assert collector.trigger(source="outside_stay", now=sec) == first
+        later = MAX_EXTENSION_SECONDS + 10
+        collector.feed(FRAME, now=later)
+        assert collector.trigger(source="outside_stay", now=later) not in (None, first)
+
+
+def test_interrupted_recording_is_not_extended(tmp_path):
+    with ClipCollector(tmp_path, after=30, encoder=stub_encode) as collector:
+        collector.feed(FRAME, now=0)
+        first = collector.trigger(source="dog_enter", now=0)
+        collector.feed(FRAME, now=20)
+        # カメラの映像が5秒以上届かない間は、録画を延ばさない。
+        assert collector.trigger(source="early_alert", now=26) != first
 
 
 def saved_clip(clips, *, days_ago=10, event_id=None):
