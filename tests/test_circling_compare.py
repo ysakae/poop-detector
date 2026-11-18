@@ -273,3 +273,11 @@ def test_cli_does_not_combine_dog_confidence_with_saved_features(tmp_path, capsy
     command = ["--config", str(config), "circling-compare", "--features", str(features)]
     assert main([*command, "--dog-confidence", "0.3"]) == 2
     assert "--features" in capsys.readouterr().err
+
+
+def test_classifier_splits_even_with_a_dozen_clips_over_two_days():
+    # 実データの序盤のように、2日で十数本でも分岐を作り、分けやすい事例を当てる。
+    result = evaluate(cases(days=2, per_day=6))
+    assert result["classifier"]["folds"] == 2
+    assert result["classifier"]["tp"] == 6
+    assert result["classifier"]["fp"] == 0
