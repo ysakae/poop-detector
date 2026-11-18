@@ -214,3 +214,56 @@ def test_health_log_includes_extension_status(tmp_path, caplog):
     loop.step()
     assert "状態=EMPTY" in caplog.text
     assert "拡張の状態" in caplog.text
+
+
+def test_outside_stay_ignores_dog_on_or_just_off_the_tray():
+    from poop_detector.detection.monitoring import TRAY_GRACE_SECONDS
+
+    class Observer:
+        state = DogState(True, False, None, [], 1)
+
+        def update(self, frame, roi, now):
+            return self.state
+
+        def reset(self):
+            pass
+
+    class Collector:
+        def __init__(self):
+            self.sources = []
+
+        def trigger(self, *, source):
+            self.sources.append(source)
+            return "clip"
+
+    class Watch:
+        """トレー外の滞在の判定。受け取った枠を記録し、枠があれば滞在とみなす。"""
+
+        def __init__(self):
+            self.seen = []
+            self.recorded = False
+
+        def update(self, boxes, shape, now):
+            self.seen.append(bool(boxes))
+            return bool(boxes)
+
+        def reset(self):
+            pass
+
+    box = [(0, 0, 10, 10)]
+    observer, collector, watch, clock = Observer(), Collector(), Watch(), Clock()
+    extension = DogExtension(
+        observer, ROI(0, 0, 1, 1), Config(), clock, collector, outside_watch=watch
+    )
+    # 犬がトレーに重なっている間は、枠の中心がトレーの外でも滞在として数えない。
+    observer.state = DogState(True, True, None, box, 1)
+    extension.on_frame(view())
+    # トレーを離れた直後も、出入りの動きとして数えない。
+    observer.state = DogState(True, False, None, box, 1)
+    clock.now = TRAY_GRACE_SECONDS - 1
+    extension.on_frame(view())
+    assert collector.sources == []
+    clock.now = TRAY_GRACE_SECONDS
+    extension.on_frame(view())
+    assert watch.seen == [False, False, True]
+    assert collector.sources == ["outside_stay"]

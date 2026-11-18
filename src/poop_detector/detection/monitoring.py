@@ -141,6 +141,11 @@ class EarlyAlertExtension(MonitorExtension):
             logger.info("トイレ見守りの早期通知を送りました")
 
 
+# 犬がトレーに重なっている間と、離れてからこの秒数の間は、トレー外の滞在として数えない。
+# トレーへの出入りの途中で立ち止まった場面（犬の入退場の動画に映る）を、別に録画しないため。
+TRAY_GRACE_SECONDS = 10.0
+
+
 class DogExtension(MonitorExtension):
     """犬が ROI に重なる間は判定を保留し、入退場とトレー外の滞在で動画を保存する。"""
 
@@ -160,18 +165,24 @@ class DogExtension(MonitorExtension):
         # トレー外の滞在を最後に録画した時刻と、前の録画と重ねないよう先に延ばした録画の時刻。
         self.outside_clip_at = float("-inf")
         self.outside_due: float | None = None
+        # 犬がトレーに重なっていた最後の時刻。
+        self.tray_seen_at = float("-inf")
 
     def on_interrupt(self) -> None:
         self.observer.reset()
         self.outside_due = None
+        self.tray_seen_at = float("-inf")
         if self.outside_watch is not None:
             self.outside_watch.reset()
 
     def on_frame(self, view: FrameView) -> None:
         now = self.clock.monotonic()
         state = self.state = self.observer.update(view.frame, self.roi, now)
+        if state.on_roi:
+            self.tray_seen_at = now
         if self.outside_watch is not None:
-            boxes = [] if state.error else state.boxes
+            near_tray = now - self.tray_seen_at < TRAY_GRACE_SECONDS
+            boxes = [] if state.error or near_tray else state.boxes
             self._record_outside(self.outside_watch.update(boxes, view.frame.shape, now), now)
         # 推論に失敗した間も、犬がいる可能性があるので判定を保留する。
         if state.error or state.on_roi:

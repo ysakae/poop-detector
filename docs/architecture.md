@@ -80,7 +80,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | 拡張 | オプション | 内容 |
 |---|---|---|
 | `EarlyAlertExtension` | `--early-alert` | 録画を待たない滞在通知 |
-| `DogExtension` | `--dog`、`--detect-outside` | 犬が ROI に重なる間や推論エラーの間は `occupied` に上書きし、入退場とトレー外の滞在で動画を保存する。トレー外の滞在は、前の録画と時間が重ならない時刻まで延ばして録る（`_record_outside`） |
+| `DogExtension` | `--dog`、`--detect-outside` | 犬が ROI に重なる間や推論エラーの間は `occupied` に上書きし、入退場とトレー外の滞在で動画を保存する。トレー外の滞在は、犬がトレーに重なっている間と離れてから `TRAY_GRACE_SECONDS` の間は数えず、前の録画と時間が重ならない時刻まで延ばして録る（`_record_outside`） |
 | `ActivityExtension` | `--activity-map` | 位置合わせ前の映像で犬の位置を記録する。中断は接続の途切れだけで区切る |
 | `CameraWatchdogExtension` | `watchdog.enabled`（既定で有効） | 位置合わせ前の映像が届かない時間を数え、カメラの不調として知らせる（`features/watchdog.py`） |
 
