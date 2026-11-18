@@ -22,6 +22,13 @@ def _local_day(row: dict[str, Any]) -> str:
     return datetime.fromisoformat(stamp).astimezone().date().isoformat()
 
 
+def _confidence(args: argparse.Namespace, context: CommandContext) -> float:
+    """この比較で使う犬検出のしきい値。監視の設定は変えない。"""
+    if args.dog_confidence is None:
+        return context.config.dog_confidence
+    return float(args.dog_confidence)
+
+
 def _measure(args: argparse.Namespace, context: CommandContext) -> list[Any]:
     """いまの画角でラベルのある動画に犬検出をかけ、比べる事例を作る。"""
     from ..experimental.circling import find_circling, track_dog
@@ -37,7 +44,7 @@ def _measure(args: argparse.Namespace, context: CommandContext) -> list[Any]:
     tracker = load_tray_tracker(
         context, baseline, roi, args.track_tray or context.config.track_tray_enabled
     )
-    model = DogDetector(context.dog_model_dir, context.config.dog_confidence)
+    model = DogDetector(context.dog_model_dir, _confidence(args, context))
     cases = []
     for row in rows:
         excretion = case_label(row["label"])
@@ -90,13 +97,17 @@ def circling_compare(args: argparse.Namespace, context: CommandContext) -> int:
 
     if not 1 <= args.limit <= MAX_LIMIT:
         raise CommandError(f"--limitは1〜{MAX_LIMIT}件で指定してください")
+    if args.features and args.dog_confidence is not None:
+        raise CommandError("--features の特徴量は検出済みのため、--dog-confidence と併用できません")
     cases = _load(Path(args.features)) if args.features else _measure(args, context)
     if not cases:
         print("現在の画角で、人が排泄の有無を確かめた動画がありません")
         return 0
     result = evaluate(cases)
     if args.output:
-        report = {"cases": [case.to_data() for case in cases], "result": result}
+        report: dict[str, Any] = {"cases": [case.to_data() for case in cases], "result": result}
+        if not args.features:
+            report["dog_confidence"] = _confidence(args, context)
         Path(args.output).write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )

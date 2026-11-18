@@ -222,3 +222,54 @@ def test_cli_explains_how_to_install_the_optional_dependency(tmp_path, monkeypat
     config.write_text(f"data_dir: {tmp_path}")
     assert main(["--config", str(config), "circling-compare", "--features", str(features)]) == 2
     assert "uv sync --extra analysis" in capsys.readouterr().err
+
+
+def _labeled_scene(root):
+    frame = np.full((76, 100, 3), 150, np.uint8)
+    roi = ROI(0, 0, 1, 1)
+    roi.save(root / "roi.json")
+    save_baseline(root / "baseline/empty.png", frame, roi)
+    write_clip(root, ClipStore(root), frame, roi, "none")
+    config = root / "config.yaml"
+    config.write_text(f"data_dir: {root}\ndog:\n  confidence: 0.4\n")
+    return config
+
+
+@pytest.mark.parametrize(("given", "expected"), [([], 0.4), (["--dog-confidence", "0.25"], 0.25)])
+def test_cli_measures_with_the_given_dog_confidence(tmp_path, monkeypatch, given, expected):
+    config = _labeled_scene(tmp_path)
+    used = []
+
+    class DogDetector:
+        def __init__(self, _directory, confidence):
+            used.append(confidence)
+
+        def predict(self, _frame):
+            return []
+
+    monkeypatch.setattr("poop_detector.features.dog.DogDetector", DogDetector)
+    output = tmp_path / "compare.json"
+    command = ["--config", str(config), "circling-compare", "--output", str(output), *given]
+    assert main(command) == 0
+    # 監視の設定は変えず、この比較の検出だけに使う。結果にも残して比べ直せるようにする。
+    assert used == [expected]
+    assert json.loads(output.read_text())["dog_confidence"] == expected
+
+
+@pytest.mark.parametrize("value", ["0", "1", "abc"])
+def test_cli_rejects_a_dog_confidence_out_of_range(tmp_path, capsys, value):
+    config = _labeled_scene(tmp_path)
+    with pytest.raises(SystemExit) as raised:
+        main(["--config", str(config), "circling-compare", "--dog-confidence", value])
+    assert raised.value.code == 2
+    assert "0より大きく1未満" in capsys.readouterr().err
+
+
+def test_cli_does_not_combine_dog_confidence_with_saved_features(tmp_path, capsys):
+    features = tmp_path / "features.json"
+    features.write_text(json.dumps({"cases": [case.to_data() for case in cases()]}))
+    config = tmp_path / "config.yaml"
+    config.write_text(f"data_dir: {tmp_path}")
+    command = ["--config", str(config), "circling-compare", "--features", str(features)]
+    assert main([*command, "--dog-confidence", "0.3"]) == 2
+    assert "--features" in capsys.readouterr().err
