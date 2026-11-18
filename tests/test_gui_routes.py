@@ -18,6 +18,11 @@ FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 PROTECTED_GET = sorted(path for path in GET_ROUTES if not is_public(path))
 
 
+def test_clip_operations_have_individual_routes():
+    paths = ("/clips/request", "/clips/label", "/clips/confirm", "/clips/protect", "/clips/quick")
+    assert len({POST_ROUTES[path] for path in paths}) == len(paths)
+
+
 def test_only_login_and_enrollment_are_public():
     """ログインしていなくても開ける場所は、ログイン・パスキーの登録・その画面のスクリプトだけ。"""
     assert {path for path in GET_ROUTES if is_public(path)} == PUBLIC_PATHS

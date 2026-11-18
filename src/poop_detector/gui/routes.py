@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from ..detection.roi import ROI, outline
 from ..features.activity_map import ActivityLayout
@@ -27,8 +27,6 @@ from .activity_page import render_activity
 from .auth_api import safe_next
 from .clip_pages import (
     capacity_status,
-    handle_benchmark_post,
-    handle_clip_post,
     render_clips,
     render_storage,
     stream_video,
@@ -610,50 +608,3 @@ def _save_label(handler: "Handler", fields: Mapping[str, str]) -> None:
         fields.get("note", row["note"]),
         location=fields.get("location"),
     )
-
-
-@post("/clips/request", "/clips/label", "/clips/confirm", "/clips/protect", "/clips/quick")
-def clip_form(handler: "Handler", form: Form) -> None:
-    """動画の保存要求・ラベル・確定記録・保護。処理は handler.path で分かれる。
-
-    保護の指定は誰でもできるが、解除（削除の対象に戻す）は管理者だけができる。
-    """
-    unprotect = handler.path == "/clips/protect" and form.fields.get("protected") == "0"
-    if unprotect and not is_admin(handler):
-        handler.respond(403, admin_only_page(handler.app.title))
-        return
-    _clip_post(handler, form)
-    if unprotect and _succeeded(handler):
-        audit(handler, "clip.unprotect", form.fields.get("id", ""))
-
-
-@post("/clips/benchmark")
-def clip_benchmark(handler: "Handler", form: Form) -> None:
-    """評価の候補とタグ。ラベル付けと同じく、ログインした人なら誰でも選べる。"""
-    handle_benchmark_post(
-        handler,
-        handler.app.clips,
-        form.fields,
-        form.values.get("tag", []),
-        title=handler.app.title,
-    )
-
-
-@post("/manage/storage/cleanup", role="admin")
-def clip_cleanup(handler: "Handler", form: Form) -> None:
-    """選んだ古い動画の録画ファイルを消す。"""
-    _clip_post(handler, form)
-    if _succeeded(handler):
-        location = urlsplit(handler.response.headers["location"] if handler.response else "")
-        removed = parse_qs(location.query).get("removed", ["0"])[0]
-        audit(handler, "clip.cleanup", f"{removed}件")
-
-
-def _clip_post(handler: "Handler", form: Form) -> None:
-    handle_clip_post(
-        handler, handler.app.root, form.fields, form.values.get("id", ()), title=handler.app.title
-    )
-
-
-def _succeeded(handler: "Handler") -> bool:
-    return handler.response is not None and handler.response.status_code == 303

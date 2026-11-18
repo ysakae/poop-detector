@@ -9,22 +9,19 @@ from urllib.parse import urlencode
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES
 from ..video.benchmark_candidates import CONDITION_TAGS, EVALUATED_LABELS, Candidate
 from ..video.benchmark_candidates import STATES as CANDIDATE_STATES
-from ..video.clip_labels import ClipLabel
 from ..video.clip_storage import (
     CLEANUP_LIMIT,
     DEFAULT_DISK_MIB,
     MIB,
     RETENTION_DAYS,
     cleanup_candidates,
-    cleanup_selected,
     is_protected,
-    protect,
     recording_usage,
     retention_days,
 )
 from ..video.clips import ACTIVITIES, CLIP_LABELS, PENDING_STATUSES, ClipRow, ClipStore
 from .list_time import by_day, list_time
-from .review_queue import NEXT_PAGE, ReviewItem, review_bar
+from .review_queue import ReviewItem, review_bar
 from .templating import render_template
 
 if TYPE_CHECKING:
@@ -59,7 +56,7 @@ CLIP_FILTERS: dict[str, tuple[str, Callable[[Mapping[str, Any]], bool]]] = {
 }
 
 
-def _clips_url(mode: str, clip_id: str | None = None, **extra: str) -> str:
+def clips_url(mode: str, clip_id: str | None = None, **extra: str) -> str:
     """動画の画面の URL。絞り込みが「すべて」のときは付けない。extra は後ろに足す値。"""
     values = ({"id": clip_id} if clip_id else {}) | ({"show": mode} if mode != "all" else {})
     values |= extra
@@ -77,7 +74,7 @@ def clip_filters(rows: Sequence[Mapping[str, Any]], mode: str) -> list[dict[str,
     return [
         {
             "text": f"{text} {sum(1 for row in rows if shown(row))}",
-            "url": _clips_url(value),
+            "url": clips_url(value),
             "current": value == mode,
         }
         for value, (text, shown) in CLIP_FILTERS.items()
@@ -107,7 +104,7 @@ def clip_list_item(
         label += " ／ " + EXCRETION_LOCATIONS.get(item["location"], "場所不明")
     return {
         "id": item["id"],
-        "url": _clips_url(mode, item["id"]),
+        "url": clips_url(mode, item["id"]),
         "active": item["id"] == selected,
         "when": list_time(item["requested_at"]),
         "status": STATES.get(item["status"], item["status"]),
@@ -378,7 +375,7 @@ def render_clips(
         live=live,
         tools_alert=tools_alert(live, capacity),
         has_pending=has_pending,
-        refresh_url=_clips_url(mode, row["id"] if row else None),
+        refresh_url=clips_url(mode, row["id"] if row else None),
         saved=bool(query.get("saved")),
         benchmark_saved=bool(query.get("benchmark_saved")),
         groups=by_day(items),
@@ -586,114 +583,4 @@ def handle_benchmark_post(
         )
         handler.respond(400, page)
         return
-    handler.redirect(_clips_url(kept_filter(fields), clip_id, benchmark_saved="1"))
-
-
-def handle_clip_post(
-    handler: "Exchange",
-    root: str | Path,
-    fields: Mapping[str, str],
-    selected_ids: Iterable[str] = (),
-    *,
-    title: str | None = None,
-) -> None:
-    """/clips/ 以下のフォームを処理し、成功したら一覧へ戻す。"""
-    store = ClipStore(root)
-    try:
-        if handler.path == "/manage/storage/cleanup":
-            if fields.get("confirm") != "1":
-                raise ValueError("削除の確認欄にチェックを入れてください")
-            days = retention_days(fields.get("days", ""))
-            removed, skipped = cleanup_selected(store, selected_ids, days)
-            handler.redirect(f"/manage/storage?days={days}&removed={removed}&skipped={skipped}")
-            return
-        if handler.path == "/clips/request":
-            clip_id = store.request(require_live=True)
-        elif handler.path == "/clips/protect":
-            clip_id = fields.get("id", "")
-            if fields.get("protected") not in ("0", "1"):
-                raise ValueError("保護の設定を確認してください")
-            protect(store, clip_id, fields["protected"] == "1")
-        elif handler.path == "/clips/quick":
-            clip_id = fields.get("id", "")
-            label = fields.get("label", "")
-            if label not in ("feces", "urine", "both", "none"):
-                raise ValueError("排泄の種類を選んでください")
-            row = store.get(clip_id)
-            if row is None:
-                raise ValueError("動画が見つかりません")
-            linked = store.labels.confirmation(clip_id)
-            if linked or row["label"] is not None:
-                handler.redirect(_clips_url(kept_filter(fields), clip_id, saved="1"))
-                return
-            location = fields.get("location") or None
-            record_id: str | None = fields.get("record_id") or (
-                "new" if not row["event_id"] else ""
-            )
-            store.labels.save(
-                clip_id,
-                ClipLabel(
-                    label, activity="other" if label == "none" else "excreting", location=location
-                ),
-                record_id=None if label == "none" else record_id,
-                only_unlabeled=True,
-            )
-        else:
-            clip_id = fields.get("id", "")
-            start = float(fields["start"]) if fields.get("start") else None
-            end = float(fields["end"]) if fields.get("end") else None
-            clip_label = ClipLabel(
-                fields.get("label", ""),
-                start,
-                end,
-                fields.get("activity", "other"),
-                fields.get("note", ""),
-                fields.get("location"),
-            )
-            record_id = fields.get("record_id", "") if handler.path == "/clips/confirm" else None
-            store.labels.save(clip_id, clip_label, record_id=record_id)
-        if fields.get("from") == "review" and handler.path in (
-            "/clips/label",
-            "/clips/confirm",
-            "/clips/quick",
-        ):
-            # 確認待ちから開いた動画は、保存したら次の件へ進む。
-            handler.redirect(f"{NEXT_PAGE}?after=clip:{clip_id}")
-            return
-        handler.redirect(_clips_url(kept_filter(fields), clip_id, saved="1"))
-    except (ValueError, TypeError) as error:
-        from .pages import message_page
-
-        # ValueError の文言はこのパッケージで書いたもので、テンプレートがエスケープする。
-        if handler.path == "/manage/storage/cleanup":
-            page = message_page(
-                "動画を整理できませんでした",
-                str(error),
-                "/manage/storage",
-                "録画の整理へ戻る",
-                title=title,
-                wrap_link=True,
-            )
-            handler.respond(400, page)
-            return
-        if handler.path in ("/clips/confirm", "/clips/quick"):
-            page = message_page(
-                "確定記録を保存できませんでした",
-                str(error),
-                "/clips",
-                "動画一覧へ戻る",
-                title=title,
-                wrap_link=True,
-            )
-            handler.respond(400, page)
-            return
-        status = 409 if handler.path == "/clips/request" else 400
-        page = message_page(
-            "保存できませんでした",
-            "監視とカメラの接続、保存処理数、動画内の時刻を確認してください。",
-            "/clips",
-            "動画一覧へ戻る",
-            title=title,
-        )
-        handler.respond(status, page)
-        return
+    handler.redirect(clips_url(kept_filter(fields), clip_id, benchmark_saved="1"))
