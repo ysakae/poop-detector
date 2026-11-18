@@ -161,13 +161,15 @@ class PushSubscriptions:
         return [self._subscription(row) for row in rows]
 
     def recipients(
-        self, *, early_alert: bool = False, watchdog: bool = False
+        self, *, early_alert: bool = False, watchdog: bool = False, feeding: bool = False
     ) -> list[Subscription]:
         """通知を受け取る有効な人の購読。見守り通知は、見守りも選んだ人だけ。
 
         watchdog（監視の停止とカメラの不調）は、受け取りを選んだ管理者だけ。
         """
-        if watchdog:
+        if feeding:
+            condition = "u.push_feeding = 1"
+        elif watchdog:
             condition = "u.role = 'admin' AND u.push_watchdog = 1"
         else:
             condition = "u.push_early = 1" if early_alert else "u.push_alerts = 1"
@@ -266,6 +268,15 @@ class WebPushNotifier(ToiletNotifier):
         vapid = self.keys.vapid()
         results = [self.send_to(subscription, payload, vapid) for subscription in recipients]
         return any(results)
+
+    def send_feeding_reminder(self, recipients: list[Subscription], clock: str) -> bool:
+        """ごはんの予定を知らせ、お世話の画面を開く。"""
+        return self._push(
+            recipients,
+            "ごはんの時間",
+            f"{clock} のごはんはまだ記録されていません。",
+            "/care",
+        )
 
     def send_test_to(self, subscriptions: list[Subscription]) -> int:
         """指定の端末にテストの通知を送り、受け付けられた台数を返す。"""

@@ -3,6 +3,27 @@
 {% block content %}
 <h2>お世話の記録</h2>
 {% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+{% if not edit %}
+<details class="settings-section" id="feeding-plans"{% if feeding_plans or error %} open{% endif %}>
+<summary>ごはんの予定</summary>
+<p class="note">毎日同じ時刻の予定を家族で共有できます。<a href="/account#web-push">通知を設定する</a></p>
+{% for plan in feeding_plans %}
+<div class="card">
+<p>{{ plan.clock }} ／ {{ "記録済み" if plan.recorded else "未記録" }}{% if not plan.recorded %} ・ <a href="/care?day={{ day }}&amp;plan={{ plan.id }}#feeding">ごはんを記録</a>{% endif %}</p>
+<details class="clip-more"><summary>予定を変更・停止</summary>
+<form method="post" action="/care/plans" class="toolbar field-toolbar">{{ csrf_field(token) }}
+<input type="hidden" name="plan_id" value="{{ plan.id }}">
+<label>毎日の時刻<input type="time" name="clock" value="{{ plan.clock }}" required></label>
+<button class="secondary">変更を保存</button><button class="secondary" name="stop" value="1" formnovalidate>停止</button>
+</form></details>
+</div>
+{% endfor %}
+<form method="post" action="/care/plans" class="toolbar field-toolbar">{{ csrf_field(token) }}
+<label>毎日の時刻<input type="time" name="clock" required></label>
+<button class="secondary">予定を追加</button>
+</form>
+</details>
+{% endif %}
 {% for kind in form_kinds %}
 {% set retry = submitted.get("kind") == kind %}
 <section class="settings-section" id="{{ kind }}">
@@ -12,6 +33,15 @@
 {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
 <div class="settings-field"><label>実施した日時<input type="datetime-local" name="at" value="{{ submitted.get('at', at) if retry else at }}" required></label></div>
 {% if kind == "feeding" %}
+{% if feeding_plans and not edit %}
+{% set chosen = submitted.get("plan_id", selected_plan) %}
+<div class="settings-field"><label>ごはんの予定<select name="plan_id">
+<option value="">予定外のごはん</option>
+{% for plan in feeding_plans if not plan.recorded %}
+<option value="{{ plan.id }}"{% if plan.id == chosen %} selected{% endif %}>{{ plan.clock }} の予定</option>
+{% endfor %}
+</select></label></div>
+{% endif %}
 {% if food_history %}<div class="settings-field" id="feeding-history" hidden>
 <label>銘柄の履歴<select id="feeding-history-select">
 <option value="">履歴から選ぶ</option>

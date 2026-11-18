@@ -471,3 +471,26 @@ def test_connection_closes_after_commit_or_rollback(tmp_path, fail):
         connection.execute("SELECT 1")
     with database.connect() as db:
         assert db.execute("SELECT COUNT(*) FROM probe").fetchone()[0] == int(not fail)
+
+
+def test_feeding_plan_migration_preserves_care_and_disables_reminders_by_default(tmp_path):
+    path = tmp_path / "feeding-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:23]:
+            migration(db)
+        db.execute("PRAGMA user_version = 23")
+        db.execute(
+            "INSERT INTO care_entries (id, at, kind, actor, note, amount_dg) VALUES "
+            "('meal', '2025-02-01T00:00:00+00:00', 'feeding', '家族', '', 250)"
+        )
+        db.execute(
+            "INSERT INTO users (id, name, role, created_at) VALUES ('owner', '家族', 'admin', '')"
+        )
+    with Database(path).connect() as db:
+        assert tuple(db.execute("SELECT id, amount_dg, plan_id FROM care_entries").fetchone()) == (
+            "meal",
+            250,
+            None,
+        )
+        assert db.execute("SELECT push_feeding FROM users").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM feeding_plans").fetchone()[0] == 0

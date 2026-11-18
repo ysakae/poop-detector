@@ -94,7 +94,7 @@ def entries(database: Database, day: date) -> list[CareEntry]:
     ]
 
 
-def save_entry(database: Database, entry: CareEntry) -> str:
+def save_entry(database: Database, entry: CareEntry, *, plan_id: str | None = None) -> str:
     """記録を足すか訂正し、その ID を返す。"""
     if entry.kind not in KINDS or entry.at > local_now() or len(entry.note) > 500:
         raise InvalidInputError("種類、日時、メモ（500文字以内）を確認してください")
@@ -103,19 +103,61 @@ def save_entry(database: Database, entry: CareEntry) -> str:
     if len(food) > 120:
         raise InvalidInputError("フードの銘柄は120文字以内で入力してください")
     stamp = entry.at.astimezone(UTC).isoformat()
+    plan_day = entry.at.astimezone().date().isoformat()
     with database.connect() as db:
+        if plan_id:
+            if entry.kind != "feeding" or entry.id:
+                raise InvalidInputError("新しいごはんの記録だけを予定に結び付けられます")
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute(
+                "SELECT id FROM care_entries WHERE plan_id=? AND plan_day=?",
+                (plan_id, plan_day),
+            ).fetchone()
+            if existing:
+                return str(existing["id"])
+            if (
+                db.execute(
+                    "SELECT 1 FROM feeding_plans WHERE id=? AND active=1", (plan_id,)
+                ).fetchone()
+                is None
+            ):
+                raise InvalidInputError("選んだごはんの予定はありません")
         if entry.id:
             if not db.execute(
-                "UPDATE care_entries SET at=?, kind=?, note=?, food=?, amount_dg=? WHERE id=?",
-                (stamp, entry.kind, entry.note, food, amount, entry.id),
+                """UPDATE care_entries SET at=?, kind=?, note=?, food=?, amount_dg=?,
+                plan_id=CASE WHEN ?='feeding' AND plan_day=? THEN plan_id END,
+                plan_day=CASE WHEN ?='feeding' AND plan_day=? THEN plan_day END
+                WHERE id=?""",
+                (
+                    stamp,
+                    entry.kind,
+                    entry.note,
+                    food,
+                    amount,
+                    entry.kind,
+                    plan_day,
+                    entry.kind,
+                    plan_day,
+                    entry.id,
+                ),
             ).rowcount:
                 raise InvalidInputError("訂正する記録が見つかりません")
             return entry.id
         identifier = uuid4().hex
         db.execute(
-            """INSERT INTO care_entries (id, at, kind, actor, note, food, amount_dg)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (identifier, stamp, entry.kind, entry.actor, entry.note, food, amount),
+            """INSERT INTO care_entries (id, at, kind, actor, note, food, amount_dg, plan_id, plan_day)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                identifier,
+                stamp,
+                entry.kind,
+                entry.actor,
+                entry.note,
+                food,
+                amount,
+                plan_id,
+                plan_day if plan_id else None,
+            ),
         )
     return identifier
 
@@ -136,7 +178,9 @@ def feeding_text(food: str, amount_dg: int | None) -> str:
     return " ／ ".join(part for part in (food, amount) if part)
 
 
-def quick_entry(database: Database, kind: str, actor: str) -> str | None:
+def quick_entry(
+    database: Database, kind: str, actor: str, *, plan_id: str | None = None
+) -> str | None:
     """ホームから1回押して記録する。前回と同じ給餌か、シート交換を、いまの時刻で足す。
 
     記録の ID を返す。同じ人が同じ種類を DOUBLE_TAP_SECONDS 以内に押したときは、足さずに
@@ -145,10 +189,17 @@ def quick_entry(database: Database, kind: str, actor: str) -> str | None:
     if kind not in KINDS:
         raise InvalidInputError("記録する種類を確認してください")
     now = local_now()
+    if plan_id:
+        if kind != "feeding":
+            raise InvalidInputError("ごはんの予定を指定してください")
+        food, amount = last_feeding(database) or ("", None)
+        return save_entry(
+            database, CareEntry("", now, kind, actor, "", food, amount), plan_id=plan_id
+        )
     since = (now - timedelta(seconds=DOUBLE_TAP_SECONDS)).astimezone(UTC).isoformat()
     with database.connect() as db:
         recent = db.execute(
-            """SELECT id FROM care_entries WHERE kind=? AND actor=? AND at >= ?
+            """SELECT id FROM care_entries WHERE kind=? AND actor=? AND at >= ? AND plan_id IS NULL
             ORDER BY at DESC, rowid DESC LIMIT 1""",
             (kind, actor, since),
         ).fetchone()

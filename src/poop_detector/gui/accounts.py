@@ -97,6 +97,7 @@ class User:
     push_early: bool = False
     # 管理者が Web Push で受け取る、監視の停止とカメラの不調の通知。
     push_watchdog: bool = True
+    push_feeding: bool = False
 
     @property
     def active(self) -> bool:
@@ -157,6 +158,7 @@ class UserStore:
             bool(row["push_alerts"]),
             bool(row["push_early"]),
             bool(row["push_watchdog"]),
+            bool(row["push_feeding"]),
         )
 
     def create(
@@ -211,7 +213,13 @@ class UserStore:
             raise InvalidInputError("ユーザーが見つかりません")
 
     def set_push(
-        self, user_id: str, *, alerts: bool, early: bool, watchdog: bool | None = None
+        self,
+        user_id: str,
+        *,
+        alerts: bool,
+        early: bool,
+        watchdog: bool | None = None,
+        feeding: bool | None = None,
     ) -> None:
         """Web Push で受け取る通知を保存する（その人のすべての端末に効く）。
 
@@ -220,8 +228,9 @@ class UserStore:
         with self.database.connect() as db:
             changed = db.execute(
                 "UPDATE users SET push_alerts = ?, push_early = ?, "
-                "push_watchdog = coalesce(?, push_watchdog) WHERE id = ?",
-                (int(alerts), int(early), None if watchdog is None else int(watchdog), user_id),
+                "push_watchdog = coalesce(?, push_watchdog), "
+                "push_feeding = coalesce(?, push_feeding) WHERE id = ?",
+                (int(alerts), int(early), watchdog, feeding, user_id),
             ).rowcount
         if not changed:
             raise InvalidInputError("ユーザーが見つかりません")

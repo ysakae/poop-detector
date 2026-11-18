@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from ..errors import InvalidInputError
@@ -19,6 +19,7 @@ from ..records.care import (
 )
 from ..records.events import EXCRETION_TYPES
 from ..records.export import in_period
+from ..records.feeding_plans import plans_for_day, save_plan, stop_plan
 from ..records.weights import Weight, parse_day, weights
 from ..timezones import local_now, local_today, to_local
 from .pages import Query, message_page
@@ -92,11 +93,14 @@ def _render(
     selected: str = "",
     error: str = "",
     submitted: dict[str, str] | None = None,
+    selected_plan: str = "",
 ) -> None:
     store = handler.app.store
     rows = entries(store.database, day)
     edit = next((row for row in rows if row.id == selected), None)
     stamp = edit.at if edit else local_now()
+    if selected_plan and day < stamp.date():
+        stamp = datetime.combine(day, stamp.time()).astimezone()
     records = in_period(store.records(), day, day)
     food, grams, food_history = feeding_history(store.database)
     if edit:
@@ -110,6 +114,8 @@ def _render(
         day=day.isoformat(),
         today=local_today().isoformat(),
         rows=rows,
+        feeding_plans=plans_for_day(store.database, day),
+        selected_plan=selected_plan,
         kinds=KINDS,
         form_kinds=kinds,
         food=food,
@@ -134,7 +140,22 @@ def care_page(handler: "Handler", query: Query) -> None:
     except InvalidInputError as error:
         _render(handler, local_today(), error=str(error))
         return
-    _render(handler, day, selected=first(query, "id"))
+    _render(handler, day, selected=first(query, "id"), selected_plan=first(query, "plan"))
+
+
+@post("/care/plans")
+def update_feeding_plan(handler: "Handler", form: Form) -> None:
+    fields = form.fields
+    database = handler.app.store.database
+    try:
+        if fields.get("stop") == "1":
+            stop_plan(database, fields.get("plan_id", ""))
+        else:
+            save_plan(database, fields.get("clock", ""), plan_id=fields.get("plan_id", ""))
+    except InvalidInputError as error:
+        _render(handler, local_today(), error=str(error))
+        return
+    handler.redirect("/care#feeding-plans")
 
 
 @post("/care")
@@ -158,7 +179,7 @@ def save_care(handler: "Handler", form: Form) -> None:
             values.get("food", "") if kind == "feeding" else "",
             parse_amount(values.get("grams", "")) if kind == "feeding" else None,
         )
-        save_entry(handler.app.store.database, entry)
+        save_entry(handler.app.store.database, entry, plan_id=values.get("plan_id") or None)
     except InvalidInputError as error:
         with suppress(InvalidInputError):
             day = parse_day(values.get("view_day", ""))
@@ -175,7 +196,11 @@ def quick_care(handler: "Handler", form: Form) -> None:
         handler.respond(403, "ログインしてください")
         return
     try:
-        identifier = quick_entry(handler.app.store.database, form.fields.get("kind", ""), user.name)
+        plan_id = form.fields.get("plan_id") or None
+        if plan_id and form.fields.get("plan_day") != local_today().isoformat():
+            raise InvalidInputError("ホームを開き直して、今日のごはんの予定を確認してください")
+        kind = "feeding" if plan_id else form.fields.get("kind", "")
+        identifier = quick_entry(handler.app.store.database, kind, user.name, plan_id=plan_id)
     except InvalidInputError as error:
         page = message_page(
             "記録できませんでした", str(error), "/", "ホームへ戻る", title=handler.app.title
