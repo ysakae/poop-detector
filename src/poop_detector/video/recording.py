@@ -26,9 +26,18 @@ from .clips import ClipStore, RequestSource
 from .thumbnails import ensure_thumbnail
 
 logger = logging.getLogger(__name__)
-# 入場からこの秒数以内の退場は、入場の録画を延ばして1本にまとめる（短い出入りで動画を分けない）。
-# 録画の前後の長さ（clips.before_seconds・after_seconds）で実質の長さは調整できるので、設定にはしない。
-SHORT_VISIT_SECONDS = 15
+# 録画中に届いた別の保存要求は、新しい動画を作らずにその録画を延ばして1本にまとめる
+# （犬の入場・トレー外の滞在・見守り通知が数秒おきに重なり、同じ場面の動画が何本もできるため）。
+# 最初の要求からこの秒数を過ぎた要求はまとめず、動画1本の長さとメモリーの使用量を抑える。
+MAX_EXTENSION_SECONDS = 90
+# 動画をまとめたときに残すきっかけの優先度（小さいほど優先）。自動判定の順番
+# （clip_reviews.PRIORITY_ORDER）と同じで、トレーの中を見る判定をトレー外の判定より優先する。
+SOURCE_RANK: dict[str, int] = {
+    "dog_enter": 1,
+    "dog_exit": 1,
+    "dog_visit": 1,
+    "outside_stay": 2,
+}
 # (取得時刻 monotonic, 取得時刻 UTC の ISO 8601, JPEG のバイト列)
 Sample: TypeAlias = tuple[float, str, bytes]
 Encoder: TypeAlias = Callable[[Sequence[Sample], Path, float], float]
@@ -91,6 +100,15 @@ def encode_mp4(samples: Sequence[Sample], path: Path, fps: float) -> float:
             timeout=30,
         )
     return count / fps
+
+
+def merged_source(current: str, incoming: RequestSource) -> str:
+    """まとめた動画のきっかけ。入場と退場は dog_visit にし、ほかは優先度の高いほうを残す。"""
+    if {current, incoming} == {"dog_enter", "dog_exit"}:
+        return "dog_visit"
+    if SOURCE_RANK.get(incoming, 0) < SOURCE_RANK.get(current, 0):
+        return incoming
+    return current
 
 
 class ClipCollector:
@@ -219,19 +237,10 @@ class ClipCollector:
         with self.lock:
             if self.maintenance:
                 return None
-            if source == "dog_exit" and event_id is None:
-                for clip_id, job in reversed(self.jobs.items()):
-                    if (
-                        job["status"] == "recording"
-                        and not job.get("interrupted")
-                        and job["source"] == "dog_enter"
-                        and 0 <= now - job["trigger"] <= SHORT_VISIT_SECONDS
-                        and now <= job["end"]
-                        and now - self.last_frame < 5
-                    ):
-                        job["end"] = now + self.after
-                        job["source"] = "dog_visit"
-                        return clip_id
+            # 検知のイベントにひも付く動画は、検知の時刻を基準にするので別に録る。
+            merged = None if event_id is not None else self._extend(source, now)
+            if merged is not None:
+                return merged
             try:
                 clip_id = self.store.request(source, event_id)
                 self.poll(now=now, force=True)
@@ -239,6 +248,22 @@ class ClipCollector:
             except ValueError:
                 logger.warning("動画保存の同時処理数を超えています")
                 return None
+
+    def _extend(self, source: RequestSource, now: float) -> str | None:
+        """録画中の動画を延ばして要求をまとめ、その ID を返す。まとめられなければ None。"""
+        if now - self.last_frame >= 5:
+            return None
+        for clip_id, job in reversed(self.jobs.items()):
+            if (
+                job["status"] == "recording"
+                and not job.get("interrupted")
+                and 0 <= now - job["trigger"] <= MAX_EXTENSION_SECONDS
+                and now <= job["end"]
+            ):
+                job["end"] = max(job["end"], now + self.after)
+                job["source"] = merged_source(job["source"], source)
+                return clip_id
+        return None
 
     def poll(self, now: float | None = None, force: bool = False) -> None:
         """GUI からの保存要求を拾い、録画の終わった要求を変換に回す。"""
