@@ -9,6 +9,7 @@ from ..features.outages import OUTAGE_KINDS, Outage, format_duration
 from ..records.care import CareEntry, feeding_text, format_grams, last_feeding, latest_entries
 from ..records.care import entries as care_entries
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
+from ..records.feeding_plans import plans_for_day
 from ..records.record_stats import summarize_records
 from ..timezones import local_now, local_today, parse_local, timezone_label, to_local
 from ..video.clip_storage import DEFAULT_DISK_MIB
@@ -375,6 +376,9 @@ def render_home(
         quick_feed=feeding_text(*last) if last else "",
         recorded=_recorded_notice(done, today.isoformat()) if done else None,
         quick=HOME_QUICK,
+        next_feeding=next(
+            (plan for plan in plans_for_day(store.database, today) if not plan.recorded), None
+        ),
         recent=recent,
         last_care=_last_care(store, records, today),
         timezone=timezone_label(),

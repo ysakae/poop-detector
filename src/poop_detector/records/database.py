@@ -463,6 +463,28 @@ def migrate_to_v23(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v24(db: sqlite3.Connection) -> None:
+    """給餌の予定、予定とのひも付け、日ごとの通知の印を追加する。"""
+    db.execute(
+        """CREATE TABLE feeding_plans (
+            id TEXT PRIMARY KEY, clock TEXT NOT NULL, changed_at TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1))
+        )"""
+    )
+    db.execute("CREATE UNIQUE INDEX feeding_plans_clock ON feeding_plans(clock) WHERE active=1")
+    db.execute("ALTER TABLE care_entries ADD COLUMN plan_id TEXT REFERENCES feeding_plans(id)")
+    db.execute("ALTER TABLE care_entries ADD COLUMN plan_day TEXT")
+    db.execute("CREATE UNIQUE INDEX care_plan_day ON care_entries(plan_id, plan_day)")
+    db.execute(
+        """CREATE TABLE feeding_reminders (
+            plan_id TEXT NOT NULL REFERENCES feeding_plans(id), day TEXT NOT NULL,
+            recipient TEXT NOT NULL, next_attempt_at TEXT,
+            PRIMARY KEY (plan_id, day, recipient)
+        )"""
+    )
+    db.execute("ALTER TABLE users ADD COLUMN push_feeding INTEGER NOT NULL DEFAULT 0")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -488,6 +510,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v21,
     migrate_to_v22,
     migrate_to_v23,
+    migrate_to_v24,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

@@ -15,7 +15,11 @@
 <p class="note">{{ today }}（{{ timezone }}）の確定記録です。<a href="/records">記録と集計を見る</a></p>
 </section>
 <form method="post" action="/care/quick" class="quick-record" aria-label="1回押して記録する">{{ csrf_field(token) }}
-{% if quick_feed %}<button class="secondary" name="kind" value="feeding">{{ icon("food") }}<span>前回と同じごはん<small>{{ quick_feed }}</small></span></button>{% endif %}
+{% if next_feeding %}
+<input type="hidden" name="plan_day" value="{{ today }}">
+<button class="secondary" name="plan_id" value="{{ next_feeding.id }}">{{ icon("food") }}<span>{{ next_feeding.clock }} のごはんを記録{% if quick_feed %}<small>{{ quick_feed }}</small>{% endif %}</span></button>
+{% endif %}
+{% if quick_feed %}<button class="secondary" name="kind" value="feeding">{{ icon("food") }}<span>{{ "予定外のごはん" if next_feeding else "前回と同じごはん" }}<small>{{ quick_feed }}</small></span></button>{% endif %}
 <button class="secondary" name="kind" value="sheet">{{ icon("sheet") }}<span>シート交換をした</span></button>
 </form>
 <p class="note quick-note">押すと、いまの時刻で記録します。量や時刻を変えるときは、下から開いてください。</p>

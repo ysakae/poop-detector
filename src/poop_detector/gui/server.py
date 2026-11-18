@@ -37,6 +37,7 @@ from ..web_push import PushKeys, PushSubscriptions
 from .access import COOKIE_NAME
 from .accounts import Accounts
 from .asgi import create_app
+from .feeding_notifications import feeding_reminders
 from .pages import page_title
 from .passkeys import PasskeyAuth
 from .rate_limit import RateLimits
@@ -124,7 +125,13 @@ class GuiServer:
         del poll_interval
         self._started = True
         try:
-            self._server.run(sockets=[self.socket])
+            with feeding_reminders(
+                self.app.store.database,
+                self.app.push_subscriptions,
+                self.app.push_keys,
+                public_url=self.site.public_url,
+            ):
+                self._server.run(sockets=[self.socket])
         finally:
             self._stopped.set()
 

@@ -16,7 +16,7 @@ import time
 import urllib.error
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -161,13 +161,15 @@ class PushSubscriptions:
         return [self._subscription(row) for row in rows]
 
     def recipients(
-        self, *, early_alert: bool = False, watchdog: bool = False
+        self, *, early_alert: bool = False, watchdog: bool = False, feeding: bool = False
     ) -> list[Subscription]:
         """通知を受け取る有効な人の購読。見守り通知は、見守りも選んだ人だけ。
 
         watchdog（監視の停止とカメラの不調）は、受け取りを選んだ管理者だけ。
         """
-        if watchdog:
+        if feeding:
+            condition = "u.push_feeding = 1"
+        elif watchdog:
             condition = "u.role = 'admin' AND u.push_watchdog = 1"
         else:
             condition = "u.push_early = 1" if early_alert else "u.push_alerts = 1"
@@ -266,6 +268,18 @@ class WebPushNotifier(ToiletNotifier):
         vapid = self.keys.vapid()
         results = [self.send_to(subscription, payload, vapid) for subscription in recipients]
         return any(results)
+
+    def send_feeding_reminder(self, subscription: Subscription, clock: str, day: date) -> Delivery:
+        """指定の端末へごはんの予定を知らせ、お世話の画面を開く。"""
+        payload = json.dumps(
+            {
+                "title": "ごはんの時間",
+                "body": f"{clock} のごはんはまだ記録されていません。",
+                "url": f"/care?day={day.isoformat()}",
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        return self.send_to_result(subscription, payload, self.keys.vapid())
 
     def send_test_to(self, subscriptions: list[Subscription]) -> int:
         """指定の端末にテストの通知を送り、受け付けられた台数を返す。"""
