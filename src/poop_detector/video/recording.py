@@ -21,7 +21,7 @@ import cv2
 from ..errors import AlreadyRunningError
 from ..frames import Frame
 from ..records.events import utcnow
-from .clip_storage import DEFAULT_DISK_MIB, MIB, recording_usage
+from .clip_storage import DEFAULT_DISK_MIB, MIB, free_space, over_limit, recording_usage
 from .clips import ClipStore, RequestSource
 from .thumbnails import ensure_thumbnail
 
@@ -106,12 +106,14 @@ class ClipCollector:
         memory_mb: float = 128,
         disk_mb: float = DEFAULT_DISK_MIB,
         encoder: Encoder = encode_mp4,
+        auto_cleanup: bool = True,
     ) -> None:
         self.store = ClipStore(root)
         self.before, self.after, self.fps = before, after, fps
         self.max_width = max_width
         self.memory_limit, self.disk_limit = int(memory_mb * 1024**2), int(disk_mb * MIB)
         self.encoder = encoder
+        self.auto_cleanup = auto_cleanup
         self.buffer: deque[Sample] = deque()
         self.jobs: dict[str, dict[str, Any]] = {}
         self.lock = threading.RLock()
@@ -308,6 +310,15 @@ class ClipCollector:
         job["status"] = "encoding"
         self.queue.put_nowait(clip_id)
 
+    def _free_space(self) -> None:
+        """録画の前に容量の自動整理を行う。整理に失敗しても、録画の保存は続ける。"""
+        if not self.auto_cleanup:
+            return
+        try:
+            free_space(self.store, self.disk_limit)
+        except (OSError, sqlite3.Error):
+            logger.warning("録画容量の自動整理に失敗しました。保存先とDBを確認してください")
+
     def _worker(self) -> None:
         while True:
             clip_id = self.queue.get()
@@ -318,11 +329,12 @@ class ClipCollector:
                 path = self.store.root / "clips" / f"{clip_id}.mp4"
                 temporary = path.with_suffix(".part.mp4")
                 try:
+                    self._free_space()
                     used = recording_usage(self.store.root)
                     if used >= self.disk_limit:
                         raise OSError("動画保存容量上限")
                     duration = self.encoder(job["samples"], temporary, self.fps)
-                    if used + temporary.stat().st_size > self.disk_limit:
+                    if over_limit(used + temporary.stat().st_size, self.disk_limit, job["source"]):
                         raise OSError("動画保存容量上限")
                     temporary.replace(path)
                     self.store.update(

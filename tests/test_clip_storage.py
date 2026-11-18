@@ -9,9 +9,11 @@ from support import request, submit
 from poop_detector.gui.server import make_server
 from poop_detector.video.clip_labels import ClipLabel
 from poop_detector.video.clip_reviews import Assessment
-from poop_detector.video.clip_storage import MIB, cleanup_selected
+from poop_detector.video.clip_storage import MIB, cleanup_selected, free_space
 from poop_detector.video.clips import ClipStore
 from poop_detector.video.recording import ClipCollector
+
+FRAME = np.zeros((40, 40, 3), np.uint8)
 
 
 def test_short_visit_keeps_prebuffer_and_records_after_exit(tmp_path):
@@ -152,3 +154,106 @@ def test_cleanup_can_resume_after_unlink_before_metadata_update(tmp_path):
     assert cleanup_selected(clips, [clip_id], 7) == (1, 0)
     assert clips.get(clip_id)["status"] == "removed"
     assert clips.get(clip_id)["path"] is None
+
+
+def sized_clip(clips, size, *, source="outside_stay", days_ago=3, event_id=None):
+    clip_id, path = saved_clip(clips, days_ago=days_ago, event_id=event_id)
+    path.write_bytes(b"v" * size)
+    with clips.store.connect() as db:
+        db.execute("UPDATE clips SET source=? WHERE id=?", (source, clip_id))
+    return clip_id, path
+
+
+def test_free_space_removes_low_priority_old_videos_until_below_target(tmp_path):
+    clips = ClipStore(tmp_path)
+    old_outside, old_outside_path = sized_clip(clips, 100, days_ago=5)
+    new_outside, new_outside_path = sized_clip(clips, 100, days_ago=2)
+    visit, visit_path = sized_clip(clips, 700, source="dog_visit", days_ago=6)
+    alert, alert_path = sized_clip(clips, 50, source="early_alert", days_ago=7)
+    # 使用量 950 / 上限 1000。目安（80％）を下回るまで、トレー外の古い順に消す。
+    assert free_space(clips, 1000) == 2
+    assert not old_outside_path.exists()
+    assert not new_outside_path.exists()
+    assert visit_path.exists()
+    assert alert_path.exists()
+    statuses = {row["id"]: row["status"] for row in clips.list()}
+    assert statuses[old_outside] == statuses[new_outside] == "removed"
+    assert statuses[visit] == statuses[alert] == "ready"
+
+
+def test_free_space_keeps_protected_recent_and_linked_videos(gui):
+    _, store, event_id = gui
+    clips = ClipStore(store.root)
+    _, recent_path = sized_clip(clips, 400, days_ago=0)
+    _, linked_path = sized_clip(clips, 400, event_id=event_id)
+    labeled, labeled_path = sized_clip(clips, 150)
+    clips.labels.save(labeled, ClipLabel("none"))
+    assert free_space(clips, 1000) == 0
+    assert recent_path.exists()
+    assert linked_path.exists()
+    assert labeled_path.exists()
+
+
+def test_free_space_waits_until_usage_reaches_the_start_ratio(tmp_path):
+    clips = ClipStore(tmp_path)
+    _, path = sized_clip(clips, 800)
+    assert free_space(clips, 1000) == 0
+    assert path.exists()
+
+
+def encode_bytes(size):
+    def encode(samples, path, fps):
+        path.write_bytes(b"m" * size)
+        return len(samples) / fps
+
+    return encode
+
+
+def record_one(collector, source="outside_stay", event_id=None):
+    collector.feed(FRAME, now=0)
+    clip_id = collector.trigger(event_id, source=source, now=0)
+    for sec in (1, 2):
+        collector.feed(FRAME, now=sec)
+        collector.poll(now=sec)
+    collector.drain()
+    return next(row for row in collector.store.list() if row["id"] == clip_id)
+
+
+def test_collector_frees_space_before_saving(tmp_path):
+    clips = ClipStore(tmp_path)
+    _, old_path = sized_clip(clips, 900)
+    disk_mb = 1000 / MIB
+    with ClipCollector(
+        tmp_path, before=1, after=1, fps=1, disk_mb=disk_mb, encoder=encode_bytes(50)
+    ) as collector:
+        clip = record_one(collector)
+    assert clip["status"] == "ready"
+    assert not old_path.exists()
+
+
+def test_collector_without_auto_cleanup_keeps_old_videos(tmp_path):
+    clips = ClipStore(tmp_path)
+    _, old_path = sized_clip(clips, 900)
+    with ClipCollector(
+        tmp_path,
+        before=1,
+        after=1,
+        fps=1,
+        disk_mb=1000 / MIB,
+        auto_cleanup=False,
+        encoder=encode_bytes(120),
+    ) as collector:
+        clip = record_one(collector)
+    assert clip["status"] == "failed"
+    assert old_path.exists()
+
+
+def test_reserve_near_the_limit_is_kept_for_detections(tmp_path):
+    clips = ClipStore(tmp_path)
+    # 消してよい動画がない（直近の動画だけ）まま、上限の95％を超える。
+    sized_clip(clips, 930, days_ago=0)
+    options = {"before": 1, "after": 1, "fps": 1, "disk_mb": 1000 / MIB}
+    with ClipCollector(tmp_path, encoder=encode_bytes(30), **options) as collector:
+        assert record_one(collector)["status"] == "failed"
+    with ClipCollector(tmp_path, encoder=encode_bytes(30), **options) as collector:
+        assert record_one(collector, source="detected", event_id="event-1")["status"] == "ready"
