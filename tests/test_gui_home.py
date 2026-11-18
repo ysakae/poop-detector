@@ -218,6 +218,7 @@ def test_home_shows_latest_care_by_occurrence_time(gui):
     save_entry(database, CareEntry("", yesterday, "sheet", "家族B", ""))
     store.add_excretion("both", yesterday.isoformat())
     store.add_excretion("feces", old.isoformat())
+    store.add_excretion("both", (local_now() + timedelta(days=1)).isoformat())
 
     latest = re.search(
         r'aria-labelledby="last-care-title".*?</section>', page(server, "/", cookie), re.S

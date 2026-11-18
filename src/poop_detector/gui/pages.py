@@ -311,9 +311,16 @@ def _last_care(
             feeding_text("", feeding.amount_dg) if feeding else "",
         ),
     ]
+    now = local_now()
     for label, kind in (("うんち", "feces"), ("おしっこ", "urine")):
         row = next(
-            (row for row in reversed(records) if row["excretion_type"] in (kind, "both")), None
+            (
+                row
+                for row in reversed(records)
+                if row["excretion_type"] in (kind, "both")
+                and to_local(row["actual_start"] or row["timestamp"]) <= now
+            ),
+            None,
         )
         stamp = (row["actual_start"] or row["timestamp"]) if row else None
         result.append((label, kind, list_time(stamp, today), ""))
