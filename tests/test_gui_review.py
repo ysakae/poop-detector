@@ -271,3 +271,71 @@ def test_stay_clips_require_an_excretion_candidate(gui):
     for clip_id in (pending, negative):
         assert f"/clips?id={clip_id}&amp;from=review" not in review
         assert f"/clips?id={clip_id}" in library
+
+
+def scene_clip(server, scene, at):
+    clip_id = ready_clip(server, source="manual")
+    server.app.clips.update(clip_id, scene_signature=scene)
+    with server.app.clips.store.connect() as db:
+        db.execute("UPDATE clips SET requested_at=? WHERE id=?", (at, clip_id))
+    return clip_id
+
+
+def test_review_page_dismisses_an_old_scene_after_confirmation(gui):
+    server, store, event_id = gui
+    store.classify(event_id, "false")
+    old = [scene_clip(server, "a" * 64, f"2026-11-0{day}T01:00:00+00:00") for day in (1, 2)]
+    new = scene_clip(server, "b" * 64, "2026-11-10T01:00:00+00:00")
+    cookie = login(server, role="member")
+
+    html = page(server, "/review", cookie)
+    assert "画角ごとの確認待ち" in html
+    assert "いまの画角" in html
+    assert f'href="/review/dismiss?scene={"a" * 64}"' in html
+    # いまの画角は、まとめて外す入口を出さない。
+    assert f'href="/review/dismiss?scene={"b" * 64}"' not in html
+
+    confirm = page(server, f"/review/dismiss?scene={'a' * 64}", cookie)
+    assert "2件を確認待ちから外します" in confirm
+    status, headers, _ = post(
+        server, cookie, "/review/dismiss", {"scene": "a" * 64}, f"/review/dismiss?scene={'a' * 64}"
+    )
+    assert (status, headers["Location"]) == (303, "/review?dismissed=2")
+    html = page(server, "/review?dismissed=2", cookie)
+    assert "確認待ち 1件" in html
+    assert "2件を確認待ちから外しました" in html
+    assert f'href="/clips?id={new}&amp;from=review"' in html
+    assert all(f"id={clip_id}&amp;from=review" not in html for clip_id in old)
+
+    status, headers, _ = post(server, cookie, "/review/restore", {"scene": "a" * 64}, "/review")
+    assert (status, headers["Location"]) == (303, "/review?restored=2")
+    assert "確認待ち 3件" in page(server, "/review?restored=2", cookie)
+
+
+def test_dismissing_a_clip_from_review_opens_the_next_item(gui):
+    server, _, event_id = gui
+    clip_id = ready_clip(server, source="manual")
+    cookie = login(server, role="member")
+    path = f"/clips?id={clip_id}&from=review"
+    assert "確認待ちから外す" in page(server, path, cookie)
+
+    status, headers, _ = post(
+        server, cookie, "/review/dismiss", {"id": clip_id, "from": "review"}, path
+    )
+    assert status == 303
+    assert headers["Location"] == f"/review/next?after=clip:{clip_id}"
+    html = page(server, f"/clips?id={clip_id}", cookie)
+    assert "確認待ちから外しています" in html
+    status, headers, _ = post(
+        server, cookie, "/review/restore", {"id": clip_id}, f"/clips?id={clip_id}"
+    )
+    assert (status, headers["Location"]) == (303, f"/clips?id={clip_id}")
+    assert "確認待ち 2件" in page(server, "/review", cookie)
+    assert event_id
+
+
+def test_dismiss_rejects_an_unknown_scene(gui):
+    server, _, _ = gui
+    cookie = login(server, role="member")
+    status, _, _ = exchange(server, "GET", "/review/dismiss?scene=zzz", headers=cookie, auth=False)
+    assert status == 404

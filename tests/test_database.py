@@ -433,3 +433,22 @@ def test_version_21_assessments_gain_the_endpoint_change_without_losing_labels(t
         row = db.execute("SELECT label,endpoint_change FROM video_assessments").fetchone()
     # 指標を記録する前の判定は、値なし（未計測）として残す。
     assert tuple(row) == ("urine", None)
+
+
+def test_version_22_gains_review_dismissals_without_losing_clips(tmp_path):
+    path = tmp_path / "events.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:22]:
+            migration(db)
+        db.execute("PRAGMA user_version=22")
+        db.execute(
+            "INSERT INTO clips (id,status,requested_at,duration) VALUES ('c1','ready',?,30)",
+            ("2026-11-15T00:00:00+00:00",),
+        )
+
+    clips = ClipStore(tmp_path)
+    assert version(path) == LATEST_VERSION
+    assert columns(path, "review_dismissals") == ["clip_id", "dismissed_at"]
+    # 外した記録のない動画は、確認待ちから外していないものとして読む。
+    (row,) = clips.list(include_assessments=True)
+    assert (row["id"], row["review_dismissed"]) == ("c1", 0)

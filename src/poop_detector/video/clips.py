@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .clip_labels import ClipLabels
     from .clip_reviews import AssessmentStore, CirclingReviews
     from .judge_runs import JudgeRunLog
+    from .review_dismissals import ReviewDismissals
 
 CLIP_LABELS = {
     "feces": "排便",
@@ -139,6 +140,13 @@ class ClipStore:
         return ClipLabels(self)
 
     @property
+    def dismissals(self) -> "ReviewDismissals":
+        """確認待ちから外した動画（review_dismissals）。"""
+        from .review_dismissals import ReviewDismissals
+
+        return ReviewDismissals(self)
+
+    @property
     def benchmark(self) -> "BenchmarkCandidates":
         """判定器の比較に使う評価の候補と条件のタグ（benchmark_candidates）。"""
         from .benchmark_candidates import BenchmarkCandidates
@@ -202,8 +210,9 @@ class ClipStore:
         query = "SELECT * FROM clips ORDER BY requested_at DESC"
         if include_assessments:
             query = """SELECT c.*, a.label AS review_label, a.error AS review_error,
-                a.location AS review_location
+                a.location AS review_location, d.clip_id IS NOT NULL AS review_dismissed
                 FROM clips c LEFT JOIN video_assessments a ON a.clip_id=c.id
+                LEFT JOIN review_dismissals d ON d.clip_id=c.id
                 ORDER BY c.requested_at DESC"""
         with self.connect() as db:
             return [dict(row) for row in db.execute(query)]

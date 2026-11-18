@@ -452,6 +452,16 @@ def migrate_to_v22(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE video_assessments ADD COLUMN endpoint_change REAL")
 
 
+def migrate_to_v23(db: sqlite3.Connection) -> None:
+    """確認待ちから外した動画を記録する。以前の動画はどれも外していないものとする。"""
+    db.execute(
+        """CREATE TABLE review_dismissals (
+            clip_id TEXT PRIMARY KEY REFERENCES clips(id),
+            dismissed_at TEXT NOT NULL
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -476,6 +486,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v20,
     migrate_to_v21,
     migrate_to_v22,
+    migrate_to_v23,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

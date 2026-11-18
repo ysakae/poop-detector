@@ -29,6 +29,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否だけ）
   - `video.clip_reviews.CirclingReviews`：旋回候補
   - `video.clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
+  - `video.review_dismissals.ReviewDismissals`：確認待ちから外した動画（`review_dismissals`）
   - `video.benchmark_candidates.BenchmarkCandidates`：判定器の比較に使う評価の候補と条件のタグ（`benchmark_candidates`）
   - `features.outages.OutageLog`：監視の停止・カメラの不調・判定器の停止の履歴（`outages`）
   - `video.clip_storage`：保持期間・保護・整理
@@ -154,7 +155,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（ホーム、記録と検知の一覧、動画、行動マップ） |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル（先頭にデザインの変数） |
 | `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`）。見ている人（`VIEWER`）から共通の枠の値を渡す |
-| `gui/review_queue.py`・`gui/review_routes.py` | 確認待ち。未ラベルの検知と排泄に関わる動画を1つの列にまとめ（動画のある検知は1件）、保存後に次の件を開く |
+| `gui/review_queue.py`・`gui/review_routes.py` | 確認待ち。未ラベルの検知と排泄に関わる動画を1つの列にまとめ（動画のある検知は1件）、保存後に次の件を開く。画角を変える前の動画は、撮影時の画角の署名ごとにまとめて確認待ちから外せる（ラベルは付けず、戻せる。外した動画は録画の整理の対象になる） |
 | `gui/settings_routes.py` | 管理 › 設定。`config.SETTINGS` の表から入力欄を並べ、確認してから保存する。保存とコメントの保持、直前の設定への復元は最上位の `settings_file.py` |
 | `gui/checks_routes.py` | 管理 › 確認と診断。通知のテスト送信・カメラの確認・診断情報を、CLI と同じ関数で行う |
 | `gui/models_routes.py` | 管理 › 判定器とモデル。判定器の状態と選び直し（設定の書き換えは `settings_file.py`）、監視中の判定の状況（`video/review_status.py`）、比較の結果（`video/benchmark_results.py`）、犬検出モデルの状態（`features/dog_status.py`） |
