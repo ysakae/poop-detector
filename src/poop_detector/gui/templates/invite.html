@@ -6,16 +6,16 @@
 {% if notice %}<p class="saved" role="status">{{ notice }}</p>{% endif %}
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 <form method="post" action="/manage/invite">{{ csrf_field(token) }}
-<p><label>表示名<br><input name="name" maxlength="40" required></label></p>
-<p><label>メールアドレス<br><input name="email" type="email" maxlength="254" required></label></p>
-<p><label>役割 <select name="role"><option value="member">一般ユーザー</option><option value="admin">管理者</option></select></label></p>
+<div class="settings-field"><label>表示名<input name="name" maxlength="40" required></label></div>
+<div class="settings-field"><label>メールアドレス<input name="email" type="email" maxlength="254" required></label></div>
+<div class="settings-field"><label>役割 <select name="role"><option value="member">一般ユーザー</option><option value="admin">管理者</option></select></label></div>
 <p class="note">登録リンクは発行から{{ minutes|int }}分間有効です。一般ユーザーは閲覧・ラベル付け・記録・動画の保存と保護ができ、設定・登録・動画の削除・ユーザーの管理は管理者だけができます。</p>
 <button name="action" value="invite">招待メールを送る</button>
 </form>
 <h3>招待の再送・取り消し</h3>
 <form method="post" action="/manage/invite">{{ csrf_field(token) }}
-<p><label>招待先のメールアドレス<br><input name="email" type="email" maxlength="254" value="{{ retry_email|default('') }}" required></label></p>
-<button name="action" value="resend">再送する</button>
-<button name="action" value="cancel" class="secondary">招待を取り消す</button>
+<div class="settings-field"><label>招待先のメールアドレス<input name="email" type="email" maxlength="254" value="{{ retry_email|default('') }}" required></label></div>
+<p class="toolbar"><button name="action" value="resend">再送する</button>
+<button name="action" value="cancel" class="secondary">招待を取り消す</button></p>
 </form>
 {% endblock %}

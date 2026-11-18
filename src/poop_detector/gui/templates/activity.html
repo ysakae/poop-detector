@@ -5,7 +5,7 @@
 {% if not registered %}
 <p>行動マップを使うには、先に <code>uv run poop-detector setup-activity-map</code> で床面を登録し、監視に <code>--activity-map</code> を付けて起動してください。</p>
 {% else %}
-<form action="/activity" method="get" class="toolbar"><label>表示<select name="mode"><option value="stay"{% if mode == "stay" %} selected{% endif %}>滞在時間</option><option value="pass"{% if mode == "pass" %} selected{% endif %}>通過回数</option></select></label><label>集計終了日 <input type="date" name="date" value="{{ last_day }}" required></label><label>期間<select name="days">
+<form action="/activity" method="get" class="toolbar field-toolbar"><label>表示<select name="mode"><option value="stay"{% if mode == "stay" %} selected{% endif %}>滞在時間</option><option value="pass"{% if mode == "pass" %} selected{% endif %}>通過回数</option></select></label><label>集計終了日 <input type="date" name="date" value="{{ last_day }}" required></label><label>期間<select name="days">
 {%- for value in periods -%}
 <option value="{{ value }}"{% if value == days %} selected{% endif %}>{{ value }}日間</option>
 {%- endfor -%}

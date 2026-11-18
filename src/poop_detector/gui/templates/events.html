@@ -5,7 +5,7 @@
 {% include "_review_bar.html" %}
 {% if not review %}
 <h2>検知の一覧</h2>{% if waiting %}<p class="message message-info" role="status">確認待ちが{{ waiting }}件あります。<a href="/review">確認待ちを開く</a></p>{% endif %}
-<div class="toolbar"><form method="get" action="/records/events"><label>表示する記録<select name="filter">
+<div class="toolbar field-toolbar"><form method="get" action="/records/events" class="toolbar field-toolbar"><label>表示する記録<select name="filter">
 {%- for value, text in filters -%}
 <option value="{{ value }}" {% if value == mode %}selected{% endif %}>{{ text }}</option>
 {%- endfor -%}

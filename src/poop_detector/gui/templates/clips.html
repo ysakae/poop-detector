@@ -76,11 +76,11 @@
 {%- for value, text in clip_labels -%}
 <label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == form.label %}checked{% endif %}>{{ text }}</label>
 {%- endfor -%}
-</div></fieldset>{{ location_field(locations, form.location) }}<label>動作<select name="activity">
+</div></fieldset><div class="times">{{ location_field(locations, form.location) }}<label>動作<select name="activity">
 {%- for value, text in activities -%}
 <option value="{{ value }}" {% if value == form.activity %}selected{% endif %}>{{ text }}</option>
 {%- endfor -%}
-</select></label><p class="note">再生位置を開始・完了として指定できます。映っていない時刻は空欄にしてください。</p><div class="times">
+</select></label></div><p class="note">再生位置を開始・完了として指定できます。映っていない時刻は空欄にしてください。</p><div class="times">
 {%- for name, text, value, button in form.offsets -%}
 <div><label>{{ text }}<input type="number" min="0" max="{{ clip.duration }}" step="0.01" name="{{ name }}" value="{{ value }}"></label><button class="secondary" type="button" data-video-offset="{{ name }}">ここを{{ button }}にする</button></div>
 {%- endfor -%}
