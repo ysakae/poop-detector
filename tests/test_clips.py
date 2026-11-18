@@ -9,6 +9,18 @@ import pytest
 from poop_detector.video.clip_labels import ClipLabel
 
 
+@pytest.mark.parametrize(
+    ("height", "width", "limit", "expected"),
+    [(7, 11, 20, (6, 10)), (60, 120, 40, (20, 40)), (1, 1, 8, (2, 2))],
+)
+def test_recording_jpeg_dimensions(height, width, limit, expected):
+    from poop_detector.video.recording import encode_frame
+
+    jpeg = encode_frame(np.zeros((height, width, 3), np.uint8), limit)
+    decoded = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+    assert decoded.shape[:2] == expected
+
+
 def test_buffer_and_manual_capture(tmp_path):
     from poop_detector.video.clips import ClipStore
     from poop_detector.video.recording import ClipCollector

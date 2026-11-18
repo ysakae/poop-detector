@@ -43,6 +43,16 @@ Sample: TypeAlias = tuple[float, str, bytes]
 Encoder: TypeAlias = Callable[[Sequence[Sample], Path, float], float]
 
 
+def encode_frame(frame: Frame, max_width: int) -> bytes | None:
+    """録画用に幅を制限し、MP4 に使える偶数寸法の JPEG を返す。"""
+    height, width = frame.shape[:2]
+    scale = min(1, max_width / width)
+    size = (max(2, int(width * scale) // 2 * 2), max(2, int(height * scale) // 2 * 2))
+    resized = cv2.resize(frame, size) if size != (width, height) else frame
+    ok, encoded = cv2.imencode(".jpg", resized, [cv2.IMWRITE_JPEG_QUALITY, 75])
+    return encoded.tobytes() if ok else None
+
+
 def encode_mp4(samples: Sequence[Sample], path: Path, fps: float) -> float:
     """JPEG のサンプルを一定の FPS の MP4 にし、動画の秒数を返す。"""
     if not samples:
@@ -192,14 +202,10 @@ class ClipCollector:
             if now - self.last_sample < 1 / self.fps - 1e-6:
                 return
             self.last_sample = now
-            height, width = frame.shape[:2]
-            scale = min(1, self.max_width / width)
-            size = (max(2, int(width * scale) // 2 * 2), max(2, int(height * scale) // 2 * 2))
-            resized = cv2.resize(frame, size) if size != (width, height) else frame
-            ok, encoded = cv2.imencode(".jpg", resized, [cv2.IMWRITE_JPEG_QUALITY, 75])
-            if not ok:
+            jpeg = encode_frame(frame, self.max_width)
+            if jpeg is None:
                 return
-            sample = (now, utcnow(), encoded.tobytes())
+            sample = (now, utcnow(), jpeg)
             self.buffer.append(sample)
             while self.buffer and (now - self.buffer[0][0] > self.before + 1e-6):
                 self.buffer.popleft()
