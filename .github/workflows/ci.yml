@@ -53,7 +53,8 @@ jobs:
   test:
     name: テスト（Python ${{ matrix.python }}）
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # キャッシュがない初回は FFmpeg の取得に時間がかかることがあるので、余裕を持たせる
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -66,8 +67,30 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: パッケージの一覧を更新
+        id: apt
+        run: |
+          sudo apt-get update
+          # キャッシュの名前に使う FFmpeg の版（7:6.1.1-3ubuntu5 の「:」は使わない）
+          version=$(apt-cache policy ffmpeg | awk '/Candidate:/ {print $2}' | tr ':' '-')
+          echo "ffmpeg=$version" >> "$GITHUB_OUTPUT"
+      # Ubuntu のミラーが遅いと FFmpeg とその依存（約60MB）の取得だけで10分を超え、
+      # ジョブの制限時間で打ち切られる。取得した .deb をキャッシュし、次からは取り直さない。
+      - name: FFmpeg のパッケージをキャッシュから戻す
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/apt-archives
+          key: ffmpeg-debs-${{ runner.os }}-${{ steps.apt.outputs.ffmpeg }}
       - name: FFmpeg を導入
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+        run: |
+          mkdir -p ~/apt-archives/partial
+          sudo apt-get install -y --no-install-recommends \
+            -o Dir::Cache::Archives="$HOME/apt-archives" \
+            -o APT::Keep-Downloaded-Packages=true \
+            ffmpeg
+          # apt が root で作ったファイルを、キャッシュに保存できる持ち主に戻す。
+          sudo rm -f ~/apt-archives/lock
+          sudo chown -R "$(id -u):$(id -g)" ~/apt-archives
       - name: 依存関係を導入
         run: uv sync --frozen
       - name: Python の版を確認
