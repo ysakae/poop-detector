@@ -1,0 +1,41 @@
+# Apple Silicon の Finder から起動する試用版を作る。
+name: macOS 試用版
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/macos-preview.yml'
+      - 'src/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: アプリをビルド
+        run: |
+          uv run --frozen --no-dev --with pyinstaller==6.22.2 pyinstaller \
+            --windowed --name 'Poop Detector' \
+            --osx-bundle-identifier com.github.ysakae.poop-detector \
+            --target-architecture arm64 --collect-data poop_detector \
+            --collect-submodules uvicorn --collect-submodules anyio._backends \
+            src/poop_detector/mac_app.py
+      - name: アプリを検証して圧縮
+        run: |
+          codesign --verify --deep --strict 'dist/Poop Detector.app'
+          ditto -c -k --keepParent 'dist/Poop Detector.app' dist/Poop-Detector-mac-arm64.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Poop-Detector-mac-arm64
+          path: dist/Poop-Detector-mac-arm64.zip
+          if-no-files-found: error
