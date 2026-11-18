@@ -33,8 +33,10 @@ def save_plan(
         with database.connect() as db:
             if plan_id:
                 changed = db.execute(
-                    "UPDATE feeding_plans SET clock=?, changed_at=? WHERE id=? AND active=1",
-                    (clock, stamp, plan_id),
+                    """UPDATE feeding_plans
+                    SET clock=?, changed_at=CASE WHEN clock=? THEN changed_at ELSE ? END
+                    WHERE id=? AND active=1""",
+                    (clock, clock, stamp, plan_id),
                 ).rowcount
                 if not changed:
                     raise InvalidInputError("変更する予定が見つかりません")
@@ -67,28 +69,56 @@ def plans_for_day(database: Database, day: date) -> list[FeedingPlan]:
         return [FeedingPlan(row["id"], row["clock"], row["entry_id"] is not None) for row in rows]
 
 
-def claim_due(database: Database, now: datetime) -> list[str]:
-    """未記録で通知前の時刻を確保する。複数の GUI や再起動でも同じ日に再送しない。"""
+@dataclass(frozen=True)
+class FeedingReminder:
+    """通知する給餌予定の日付と時刻。"""
+
+    plan_id: str
+    day: date
+    clock: str
+
+
+def claim_due(database: Database, now: datetime, recipient: str) -> list[FeedingReminder]:
+    """未記録の予定を端末ごとに確保し、成功した端末には繰り返し送らない。"""
     now = now.astimezone()
-    day = now.date()
+    stamp = now.astimezone(UTC).isoformat()
+    earliest = now.astimezone(UTC) - REMINDER_GRACE
+    days = dict.fromkeys((earliest.astimezone().date(), now.date()))
+    due = []
     with database.connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        rows = db.execute(
-            """SELECT p.id, p.clock, p.changed_at FROM feeding_plans p
-            LEFT JOIN care_entries e ON e.plan_id=p.id AND e.plan_day=?
-            LEFT JOIN feeding_reminders r ON r.plan_id=p.id AND r.day=?
-            WHERE p.active=1 AND e.id IS NULL AND r.plan_id IS NULL ORDER BY p.clock""",
-            (day.isoformat(), day.isoformat()),
-        ).fetchall()
-        due = []
-        for row in rows:
-            planned = datetime.combine(day, time.fromisoformat(row["clock"])).astimezone()
-            change = datetime.fromisoformat(row["changed_at"])
-            if not change <= planned <= now or now - planned > REMINDER_GRACE:
-                continue
-            db.execute(
-                "INSERT INTO feeding_reminders (plan_id, day) VALUES (?, ?)",
-                (row["id"], day.isoformat()),
-            )
-            due.append(row["clock"])
+        for day in days:
+            rows = db.execute(
+                """SELECT p.id, p.clock, p.changed_at FROM feeding_plans p
+                LEFT JOIN care_entries e ON e.plan_id=p.id AND e.plan_day=?
+                LEFT JOIN feeding_reminders r ON r.plan_id=p.id AND r.day=? AND r.recipient=?
+                WHERE p.active=1 AND e.id IS NULL
+                AND (r.plan_id IS NULL OR r.next_attempt_at <= ?) ORDER BY p.clock""",
+                (day.isoformat(), day.isoformat(), recipient, stamp),
+            ).fetchall()
+            for row in rows:
+                planned = datetime.combine(day, time.fromisoformat(row["clock"])).astimezone()
+                change = datetime.fromisoformat(row["changed_at"])
+                if not max(change, earliest) <= planned <= now:
+                    continue
+                db.execute(
+                    """INSERT INTO feeding_reminders (plan_id, day, recipient)
+                    VALUES (?, ?, ?) ON CONFLICT(plan_id, day, recipient)
+                    DO UPDATE SET next_attempt_at=NULL""",
+                    (row["id"], day.isoformat(), recipient),
+                )
+                due.append(FeedingReminder(row["id"], day, row["clock"]))
     return due
+
+
+def retry_reminder(
+    database: Database, reminder: FeedingReminder, recipient: str, now: datetime
+) -> None:
+    """通知サービスが受け付けなかった端末だけを、期限内に再試行する。"""
+    next_attempt = (now.astimezone(UTC) + timedelta(seconds=30)).isoformat()
+    with database.connect() as db:
+        db.execute(
+            """UPDATE feeding_reminders SET next_attempt_at=?
+            WHERE plan_id=? AND day=? AND recipient=?""",
+            (next_attempt, reminder.plan_id, reminder.day.isoformat(), recipient),
+        )

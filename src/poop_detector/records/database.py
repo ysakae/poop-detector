@@ -478,7 +478,8 @@ def migrate_to_v24(db: sqlite3.Connection) -> None:
     db.execute(
         """CREATE TABLE feeding_reminders (
             plan_id TEXT NOT NULL REFERENCES feeding_plans(id), day TEXT NOT NULL,
-            PRIMARY KEY (plan_id, day)
+            recipient TEXT NOT NULL, next_attempt_at TEXT,
+            PRIMARY KEY (plan_id, day, recipient)
         )"""
     )
     db.execute("ALTER TABLE users ADD COLUMN push_feeding INTEGER NOT NULL DEFAULT 0")

@@ -16,7 +16,7 @@ import time
 import urllib.error
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -269,14 +269,17 @@ class WebPushNotifier(ToiletNotifier):
         results = [self.send_to(subscription, payload, vapid) for subscription in recipients]
         return any(results)
 
-    def send_feeding_reminder(self, recipients: list[Subscription], clock: str) -> bool:
-        """ごはんの予定を知らせ、お世話の画面を開く。"""
-        return self._push(
-            recipients,
-            "ごはんの時間",
-            f"{clock} のごはんはまだ記録されていません。",
-            "/care",
-        )
+    def send_feeding_reminder(self, subscription: Subscription, clock: str, day: date) -> Delivery:
+        """指定の端末へごはんの予定を知らせ、お世話の画面を開く。"""
+        payload = json.dumps(
+            {
+                "title": "ごはんの時間",
+                "body": f"{clock} のごはんはまだ記録されていません。",
+                "url": f"/care?day={day.isoformat()}",
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        return self.send_to_result(subscription, payload, self.keys.vapid())
 
     def send_test_to(self, subscriptions: list[Subscription]) -> int:
         """指定の端末にテストの通知を送り、受け付けられた台数を返す。"""

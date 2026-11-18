@@ -13,6 +13,10 @@ from poop_detector.timezones import local_now, parse_local
 from poop_detector.web_push import WebPushNotifier
 
 
+def due_clocks(database, now):
+    return [reminder.clock for reminder in feeding_plans.claim_due(database, now, "端末")]
+
+
 def test_concurrent_feeding_counts_once_and_extra_feeding_stays_separate(gui):
     _, store, _ = gui
     db = store.database
@@ -27,7 +31,7 @@ def test_concurrent_feeding_counts_once_and_extra_feeding_stays_separate(gui):
     assert first == second
     save_entry(db, CareEntry("", now, "feeding", "家族B", "", "", 50))
     assert sum(entry.amount_dg for entry in entries(db, now.date())) == 300
-    assert feeding_plans.claim_due(db, now) == []
+    assert due_clocks(db, now) == []
 
 
 def test_reminder_is_claimed_once_and_old_times_are_skipped(gui):
@@ -41,12 +45,12 @@ def test_reminder_is_claimed_once_and_old_times_are_skipped(gui):
     changed = feeding_plans.save_plan(db, "11:59", now=yesterday)
     feeding_plans.save_plan(db, "12:01", plan_id=changed, now=now)
 
-    assert feeding_plans.claim_due(db, now) == ["12:00"]
-    assert feeding_plans.claim_due(db, now) == []
-    assert feeding_plans.claim_due(db, now + timedelta(minutes=1)) == ["12:01"]
+    assert due_clocks(db, now) == ["12:00"]
+    assert due_clocks(db, now) == []
+    assert due_clocks(db, now + timedelta(minutes=1)) == ["12:01"]
     tomorrow = now + timedelta(days=1)
     assert feeding_plans.plans_for_day(db, tomorrow.date())[0].id == noon
-    assert feeding_plans.claim_due(db, tomorrow) == ["12:00"]
+    assert due_clocks(db, tomorrow) == ["12:00"]
 
 
 def test_feeding_plan_is_available_on_care_page(gui):
@@ -119,9 +123,9 @@ def test_due_notification_uses_web_push_only_once_for_opted_in_family(gui, monke
 
     def deliver(subscription, payload, _vapid):
         sent.append((subscription.user_id, json.loads(payload)))
-        return True
+        return "sent"
 
-    monkeypatch.setattr(notifier, "send_to", deliver)
+    monkeypatch.setattr(notifier, "send_to_result", deliver)
     notify_due(db, notifier, now)
     notify_due(db, notifier, now + timedelta(minutes=1))
     assert sent == [
@@ -130,7 +134,7 @@ def test_due_notification_uses_web_push_only_once_for_opted_in_family(gui, monke
             {
                 "title": "ごはんの時間",
                 "body": "12:00 のごはんはまだ記録されていません。",
-                "url": "/care",
+                "url": "/care?day=2025-05-02",
             },
         )
     ]
@@ -184,3 +188,43 @@ def test_opening_stale_plan_link_keeps_already_recorded_plan_selected(gui):
     status, body = request(server, "GET", link)
     assert status == 400
     assert "このごはんの予定は終了しました" in body.decode()
+
+
+def test_explicit_push_retry_only_retries_the_unsent_device(gui, monkeypatch):
+    server, store, _ = gui
+    now = parse_local("2025-05-02T12:00")
+    db = store.database
+    feeding_plans.save_plan(db, "12:00", now=now - timedelta(days=1))
+    user = server.app.accounts.users.create("通知を受け取る家族", "member")
+    server.app.accounts.users.set_push(user, alerts=False, early=False, feeding=True)
+    notifier = WebPushNotifier(
+        server.app.push_subscriptions, server.app.push_keys, subject="https://example.com"
+    )
+    monkeypatch.setattr("poop_detector.web_push.valid_key", lambda *_: True)
+    first = "https://fcm.googleapis.com/fcm/send/first"
+    second = "https://fcm.googleapis.com/fcm/send/second"
+    for endpoint in (first, second):
+        notifier.subscriptions.add(user, endpoint, "key", "auth")
+    sent = []
+
+    def deliver(subscription, _payload, _vapid):
+        endpoint = subscription.endpoint
+        retry = endpoint == second and endpoint not in sent
+        sent.append(endpoint)
+        return "retry" if retry else "sent"
+
+    monkeypatch.setattr(notifier, "send_to_result", deliver)
+    notify_due(db, notifier, now)
+    notify_due(db, notifier, now + timedelta(minutes=1))
+    notify_due(db, notifier, now + timedelta(minutes=2))
+    assert sent.count(first) == 1
+    assert sent.count(second) == 2
+
+
+def test_reminder_remains_due_after_midnight_within_the_grace_period(gui):
+    _, store, _ = gui
+    db = store.database
+    now = parse_local("2025-05-03T00:03")
+    feeding_plans.save_plan(db, "23:59", now=now - timedelta(days=1))
+    assert due_clocks(db, now) == ["23:59"]
+    assert due_clocks(db, now + timedelta(minutes=1)) == []
