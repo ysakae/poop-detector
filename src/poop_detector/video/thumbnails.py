@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import cv2
 
+from ..atomic_file import write_bytes
 from ..frames import Frame
 
 if TYPE_CHECKING:
@@ -57,10 +58,7 @@ def create_thumbnail(video: Path, seconds: float) -> Path | None:
     if not ok:
         return None
     target = thumbnail_path(video)
-    # 途中まで書いたファイルを見せないよう、別名で書いてから置き換える。
-    temporary = target.with_suffix(".part.jpg")
-    temporary.write_bytes(encoded.tobytes())
-    temporary.replace(target)
+    write_bytes(target, encoded.tobytes())
     return target
 
 

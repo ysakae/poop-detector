@@ -7,9 +7,9 @@ import pytest
 from support import request
 
 from poop_detector.config import Config
-from poop_detector.detection.monitoring import monitor
 from poop_detector.detection.roi import ROI, MaskedROI, PolygonROI
 from poop_detector.features.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
+from poop_detector.features.monitoring import monitor
 from poop_detector.main import main, parser
 
 

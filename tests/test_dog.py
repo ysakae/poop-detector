@@ -99,8 +99,8 @@ def test_visible_dog_outside_roi_enters_when_moving_inside():
 
 def test_monitor_does_not_notify_while_dog_occludes_roi(tmp_path):
     from poop_detector.config import Config
-    from poop_detector.detection.monitoring import monitor
     from poop_detector.features.dog import DogState
+    from poop_detector.features.monitoring import monitor
     from poop_detector.records.events import Store
 
     base = np.full((200, 200, 3), 200, np.uint8)
@@ -136,8 +136,8 @@ def test_monitor_does_not_notify_while_dog_occludes_roi(tmp_path):
 
 def test_monitor_collects_entry_exit_and_detection(tmp_path):
     from poop_detector.config import Config
-    from poop_detector.detection.monitoring import monitor
     from poop_detector.features.dog import DogState
+    from poop_detector.features.monitoring import monitor
     from poop_detector.records.events import Store
 
     base = np.full((200, 200, 3), 200, np.uint8)

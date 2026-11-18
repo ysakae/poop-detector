@@ -7,7 +7,7 @@ import math
 import re
 import sqlite3
 from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from ..atomic_file import write_bytes
 from ..detection.roi import MaskedROI, PolygonROI
 from ..errors import AlreadyRunningError
 from ..frames import Frame, Shape
@@ -87,9 +88,7 @@ class ActivityLayout:
         floor = cv2.resize(floor, (max(1, round(width * scale)), max(1, round(height * scale))))
         if not cv2.imwrite(str(self.background(root)), floor):
             raise OSError("行動マップの背景を保存できません")
-        pending = root / f".activity-{self.id}.json"
-        pending.write_text(json.dumps({"id": self.id, **asdict(self.roi)}))
-        pending.replace(root / LAYOUT_FILE)
+        write_bytes(root / LAYOUT_FILE, json.dumps({"id": self.id, **asdict(self.roi)}).encode())
 
 
 class ActivityStore:
@@ -106,8 +105,10 @@ class ActivityStore:
                     PRIMARY KEY(layout, day, x, y));
             """)
 
-    def connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path, timeout=0.25)
+    @contextmanager
+    def connect(self) -> Iterator[sqlite3.Connection]:
+        with closing(sqlite3.connect(self.path, timeout=0.25)) as db, db:
+            yield db
 
     @contextmanager
     def recording_lock(self) -> Iterator[None]:

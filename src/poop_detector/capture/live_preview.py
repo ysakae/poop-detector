@@ -2,7 +2,6 @@
 
 import logging
 import os
-import tempfile
 import time
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -10,6 +9,7 @@ from pathlib import Path
 
 import cv2
 
+from ..atomic_file import write_bytes
 from ..frames import Frame
 
 logger = logging.getLogger(__name__)
@@ -47,29 +47,16 @@ class LivePreview:
             ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if not ok:
                 return
-            self._write(self.frame_path, jpeg.tobytes())
+            write_bytes(self.frame_path, jpeg.tobytes())
         except FileNotFoundError:
             return
         except (OSError, cv2.error):
             logger.warning("ライブ映像のプレビューを更新できません")
             self.last_attempt = now + REQUEST_MAX_AGE
 
-    def _write(self, path: Path, data: bytes) -> None:
-        """GUI が書きかけのファイルを読まないよう、一時ファイルから置き換える。"""
-        with tempfile.NamedTemporaryFile(
-            dir=self.root, prefix=".live-preview-", delete=False
-        ) as output:
-            temporary = Path(output.name)
-            try:
-                output.write(data)
-                output.flush()
-                temporary.replace(path)
-            finally:
-                temporary.unlink(missing_ok=True)
-
     def set_tray_state(self, state: str) -> None:
         try:
-            self._write(self.tray_state_path, state.encode("ascii"))
+            write_bytes(self.tray_state_path, state.encode("ascii"))
         except OSError:
             logger.warning("トレーの追従状態を保存できません")
 
@@ -86,14 +73,14 @@ class LivePreview:
             return
         self.last_pulse = now
         try:
-            self._write(self.monitor_path, b"connected" if healthy else b"searching")
+            write_bytes(self.monitor_path, b"connected" if healthy else b"searching")
         except OSError:
             logger.warning("監視の稼働状態を保存できません")
 
     def mark_stopped(self) -> None:
         """監視が自分で終了したことを残す。GUI の見張り（features/watchdog.py）は知らせない。"""
         try:
-            self._write(self.monitor_path, b"stopped")
+            write_bytes(self.monitor_path, b"stopped")
         except OSError:
             logger.warning("監視の稼働状態を保存できません")
 

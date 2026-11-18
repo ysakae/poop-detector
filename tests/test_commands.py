@@ -72,10 +72,10 @@ def test_activity_map_and_outside_detection_turn_on_dog_detection():
 
 def test_context_paths_follow_data_dir(tmp_path):
     context = CommandContext(Config(data_dir=str(tmp_path)))
-    assert context.roi_path == tmp_path / "roi.json"
+    assert context.scene.roi_path == tmp_path / "roi.json"
     assert context.outside_roi_path == tmp_path / "outside-roi.json"
-    assert context.baseline_path == tmp_path / "baseline" / "empty.png"
-    assert context.tray_reference_path == tmp_path / "baseline" / "tray-reference.png"
+    assert context.scene.baseline_path == tmp_path / "baseline" / "empty.png"
+    assert context.scene.tray_reference_path == tmp_path / "baseline" / "tray-reference.png"
     assert context.dog_model_dir == tmp_path / "models" / "dog-yolox"
 
 

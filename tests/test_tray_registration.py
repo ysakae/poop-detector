@@ -17,14 +17,14 @@ def test_tray_registration_switches_only_after_a_new_frame_is_validated(tmp_path
     assert registration.status()["phase"] == "paused"
     registration.apply()
     assert registration.poll(frame, roi, track_tray=False) is None
-    assert registration.scene_root() == tmp_path
+    assert registration.active_scene().root == tmp_path
 
     scene = registration.poll(frame.copy(), roi, track_tray=False)
     assert scene is not None
     assert scene.roi == roi
     np.testing.assert_array_equal(scene.baseline, roi.crop(frame))
     assert registration.status()["phase"] == "applied"
-    assert ROI.load(registration.scene_root() / "roi.json") == roi
+    assert ROI.load(registration.active_scene().roi_path) == roi
 
 
 def test_tray_registration_keeps_previous_scene_on_failure_and_cancel(tmp_path):
@@ -37,12 +37,12 @@ def test_tray_registration_keeps_previous_scene_on_failure_and_cancel(tmp_path):
     registration.apply(roi)
     assert registration.poll(frame, roi, track_tray=True) is None
     assert registration.status()["phase"] == "failed"
-    assert registration.scene_root() == tmp_path
+    assert registration.active_scene().root == tmp_path
 
     registration.cancel()
     registration.poll(None, roi, track_tray=True)
     assert registration.status()["phase"] == "cancelled"
-    assert registration.scene_root() == tmp_path
+    assert registration.active_scene().root == tmp_path
 
 
 def test_recording_does_not_include_frames_from_tray_maintenance(tmp_path):
@@ -70,3 +70,19 @@ def test_recording_does_not_include_frames_from_tray_maintenance(tmp_path):
         assert collector.store.get(new)["status"] == "ready"
 
     assert samples == [1, 3, 4]
+
+
+def test_saved_scene_loads_paired_roi_and_baseline_from_its_own_folder(tmp_path):
+    from poop_detector.detection.scene import SceneFiles, save_baseline
+
+    for index in (1, 2):
+        scene = SceneFiles(tmp_path / str(index))
+        roi = ROI(0, 0, 1 / index, 1)
+        frame = np.full((8, 8, 3), index, np.uint8)
+        roi.save(scene.roi_path)
+        save_baseline(scene.baseline_path, roi.crop(frame), roi)
+
+    saved_roi, baseline = SceneFiles(tmp_path / "1").load()
+    assert saved_roi == ROI(0, 0, 1, 1)
+    assert baseline.shape == (8, 8, 3)
+    assert np.all(baseline == 1)

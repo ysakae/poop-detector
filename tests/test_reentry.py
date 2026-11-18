@@ -207,8 +207,9 @@ def test_monitor_factory_records_candidate_and_reentry_with_shared_inference(tmp
 
     from poop_detector.config import Config, check_monitor_features
     from poop_detector.detection.difference import IncrementalDetector
-    from poop_detector.detection.monitoring import FrameView, SystemClock, standard_extensions
+    from poop_detector.detection.monitoring import FrameView, SystemClock
     from poop_detector.features.dog import DogObserver
+    from poop_detector.features.monitoring import standard_extensions
     from poop_detector.notifications import ToiletNotifier
 
     profile = {
@@ -394,8 +395,9 @@ def _reentry_extension(tmp_path):
     from dataclasses import replace
 
     from poop_detector.config import Config, check_monitor_features
-    from poop_detector.detection.monitoring import SystemClock, standard_extensions
+    from poop_detector.detection.monitoring import SystemClock
     from poop_detector.features.dog import DogObserver
+    from poop_detector.features.monitoring import standard_extensions
     from poop_detector.notifications import ToiletNotifier
 
     profile = {

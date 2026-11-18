@@ -135,6 +135,7 @@ def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path,
     from poop_detector.config import Config
     from poop_detector.detection import monitoring
     from poop_detector.features.dog import DogState
+    from poop_detector.features.monitoring import monitor
 
     now = 0
     frame = np.full((100, 100, 3), 80, np.uint8)
@@ -173,7 +174,7 @@ def test_monitor_queues_outside_stay_without_alerting_on_the_dog_alone(tmp_path,
     monkeypatch.setattr(monitoring.time, "sleep", lambda _: None)
     collector = Collector()
     assert (
-        monitoring.monitor(
+        monitor(
             Camera(),
             tray,
             tray.crop(frame),
@@ -221,8 +222,8 @@ class OutsideClips:
 
 def outside_extension(tmp_path):
     from poop_detector.config import Config
-    from poop_detector.detection.monitoring import DogExtension
     from poop_detector.experimental.outside import OutsideWatch
+    from poop_detector.features.monitoring import DogExtension
 
     tray = ROI(0.4, 0.2, 0.4, 0.5)
     scope = ROI(0.1, 0.1, 0.8, 0.8)

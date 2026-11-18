@@ -2,7 +2,6 @@
 
 import json
 import sqlite3
-from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -13,12 +12,13 @@ import numpy as np
 
 from ..config import Config, ConfigError
 from ..detection.difference import Detector, IncrementalDetector
-from ..detection.monitoring import DogExtension, FrameView, MonitorExtension, MonitorNotifier
+from ..detection.monitoring import FrameView, MonitorExtension
 from ..detection.roi import ROI, AnyROI, MaskedROI, PolygonROI, outline
 from ..errors import InvalidInputError
 from ..frames import Frame, Shape
 from ..records.events import utcnow, validate_times
 from ..video.recording import ClipCollector
+from .monitoring import DogExtension, MonitorNotifier
 from .reentry import (
     FootQuality,
     Position,
@@ -71,7 +71,7 @@ class Layout:
         except (OSError, TypeError, ValueError, KeyError) as error:
             raise ConfigError(f"{LAYOUT_FILE} の座標と配置情報を確認してください") from error
         polygon_data = json.dumps(data, sort_keys=True, ensure_ascii=False)
-        with closing(store.db.connect()) as db, db:
+        with store.db.connect() as db:
             db.execute(
                 "INSERT OR IGNORE INTO reentry_configurations VALUES (?, ?, ?, ?)",
                 (layout.id, layout.installed_at, layout.description, polygon_data),

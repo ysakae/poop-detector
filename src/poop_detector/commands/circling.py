@@ -10,7 +10,7 @@ from typing import Any
 import cv2
 
 from ..detection.scene import scene_signature
-from .context import CommandContext, CommandError, load_scene, load_tray_tracker
+from .context import CommandContext, CommandError, load_tray_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +37,12 @@ def _measure(args: argparse.Namespace, context: CommandContext) -> list[Any]:
     from ..features.dog import DogDetector
     from ..video.clips import ClipStore
 
-    roi, baseline = load_scene(context)
+    roi, baseline = context.scene.load()
     store = ClipStore(context.root)
     labels = sorted(EXCRETION_LABELS | {"none"})
     rows = store.circling.labeled(scene_signature(baseline, roi), labels, args.limit)
     tracker = load_tray_tracker(
-        context, baseline, roi, args.track_tray or context.config.track_tray_enabled
+        context.scene, baseline, roi, args.track_tray or context.config.track_tray_enabled
     )
     model = DogDetector(context.dog_model_dir, _confidence(args, context))
     cases = []

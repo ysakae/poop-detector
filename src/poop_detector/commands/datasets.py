@@ -12,15 +12,14 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from ..detection.roi import ROI
-from ..detection.scene import load_baseline, scene_signature
+from ..detection.scene import SceneFiles, scene_signature
 from ..errors import InvalidInputError
-from ..features.tray_tracking import TrayTracker
 from ..video import benchmark_sets
 from ..video.benchmark import Scene
 from ..video.benchmark_sets import LABELS, SPLIT_NAMES, Dataset, Problems
 from ..video.clip_storage import protect
 from ..video.clips import CLIP_LABELS, ClipStore
-from .context import CommandContext, CommandError
+from .context import CommandContext, CommandError, load_tray_tracker
 
 SCENE_ARCHIVE = "tray-scenes"
 
@@ -28,8 +27,8 @@ SCENE_ARCHIVE = "tray-scenes"
 def _signature(folder: Path) -> str | None:
     """ROI と基準画像の署名。読めなければ None。"""
     try:
-        roi = ROI.load(folder / "roi.json")
-        return scene_signature(load_baseline(folder / "baseline" / "empty.png", roi), roi)
+        roi, baseline = SceneFiles(folder).load()
+        return scene_signature(baseline, roi)
     except (OSError, ValueError, KeyError, TypeError):
         return None
 
@@ -71,13 +70,9 @@ def actual_signatures(folders: Mapping[str, Path]) -> dict[str, str | None]:
 
 def load_scene(folder: Path, root: Path, *, track_tray: bool, detect_outside: bool) -> Scene:
     """画角の場所から、録画の切り出しに使う登録情報を読む。"""
-    roi = ROI.load(folder / "roi.json")
-    baseline = load_baseline(folder / "baseline" / "empty.png", roi)
-    tracker = (
-        TrayTracker.from_baseline(folder / "baseline" / "tray-reference.png", baseline, roi)
-        if track_tray
-        else None
-    )
+    files = SceneFiles(folder)
+    roi, baseline = files.load()
+    tracker = load_tray_tracker(files, baseline, roi, track_tray)
     outside_roi = None
     if detect_outside:
         # トレー外の範囲は画面の座標で、トレーの交換では変わらないので、保存先の登録も使う。

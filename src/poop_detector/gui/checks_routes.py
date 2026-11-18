@@ -28,8 +28,8 @@ def first_setup(handler: "Handler", _query: Query) -> None:
     app = handler.app
     context = CommandContext(_config(handler))
     camera_configured = bool(load_connection_settings()["POOP_RTSP_URL"].strip())
-    roi_registered = context.roi_path.is_file()
-    baseline_registered = context.baseline_path.is_file()
+    roi_registered = context.scene.roi_path.is_file()
+    baseline_registered = context.scene.baseline_path.is_file()
     monitor = app.preview.monitor_status()
     done = {
         "camera": camera_configured,

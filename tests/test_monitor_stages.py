@@ -6,17 +6,15 @@ from support import FrameSource, SilentNotifier, spot_scene
 from poop_detector.config import Config
 from poop_detector.detection.difference import Observation
 from poop_detector.detection.monitoring import (
-    ActivityExtension,
-    DogExtension,
     FrameView,
     LoopState,
     Monitor,
     MonitorExtension,
-    monitor,
 )
 from poop_detector.detection.roi import ROI
 from poop_detector.detection.state_machine import Machine
 from poop_detector.features.dog import DogState
+from poop_detector.features.monitoring import ActivityExtension, DogExtension, monitor
 
 EMPTY, STAIN = spot_scene()
 
@@ -217,7 +215,7 @@ def test_health_log_includes_extension_status(tmp_path, caplog):
 
 
 def test_outside_stay_ignores_dog_on_or_just_off_the_tray():
-    from poop_detector.detection.monitoring import TRAY_GRACE_SECONDS
+    from poop_detector.features.monitoring import TRAY_GRACE_SECONDS
 
     class Observer:
         state = DogState(True, False, None, [], 1)

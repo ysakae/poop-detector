@@ -9,9 +9,6 @@
 import hashlib
 import io
 import math
-import os
-import shutil
-import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +18,7 @@ import yaml
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
+from .atomic_file import write_bytes
 from .config import (
     RENAMED,
     SETTINGS,
@@ -126,16 +124,7 @@ def _place(data: CommentedMap, setting: Setting) -> tuple[CommentedMap, str]:
 
 def _write_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    handle, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            stream.write(text)
-        if path.exists():
-            shutil.copymode(path, temporary)
-        os.replace(temporary, path)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
+    write_bytes(path, text.encode("utf-8"), preserve_mode=True)
 
 
 def _check_base(path: Path, base: str) -> None:

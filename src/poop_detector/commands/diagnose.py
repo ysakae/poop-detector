@@ -64,9 +64,9 @@ def connection_summary() -> dict[str, str]:
 
 def registered_summary(context: CommandContext) -> dict[str, bool]:
     return {
-        "roi": context.roi_path.is_file(),
-        "baseline": context.baseline_path.is_file(),
-        "tray_reference": context.tray_reference_path.is_file(),
+        "roi": context.scene.roi_path.is_file(),
+        "baseline": context.scene.baseline_path.is_file(),
+        "tray_reference": context.scene.tray_reference_path.is_file(),
         "outside_roi": context.outside_roi_path.is_file(),
         "activity_map": (context.root / LAYOUT_FILE).is_file(),
         "dog_model": context.dog_model_dir.is_dir() and any(context.dog_model_dir.iterdir()),
