@@ -42,7 +42,7 @@
 {%- endfor -%}
 </div></fieldset>{{ location_field(locations, row.location) }}<p class="note">「種類不明」は排泄を確認したが便・尿の区別が付かない場合に選びます。開始・完了時刻は分かる場合だけ入力してください。{{ timezone }}です。</p><div class="times">
 {%- for name, text, value in row.times -%}
-<label>{{ text }}<input type="datetime-local" step="1" name="{{ name }}" value="{{ value }}"></label>
+<label>{{ text }}<input type="datetime-local" name="{{ name }}" value="{{ value }}"></label>
 {%- endfor -%}
 </div><p><label>メモ（任意）<br><textarea name="note" rows="3" maxlength="2000">{{ row.note }}</textarea></label></p><p class="form-actions"><button{% if row.quick %} class="secondary"{% endif %}>ラベルを保存</button></p></form>
 </details>
