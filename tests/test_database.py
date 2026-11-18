@@ -110,8 +110,18 @@ def test_new_database_is_created_at_the_latest_version(tmp_path):
     path = tmp_path / "events.sqlite3"
     assert version(path) == LATEST_VERSION
     renamed = {"codex_assessments": "video_assessments"}
+    assessment_columns = [
+        "provider",
+        "model",
+        "endpoint_change",
+        "stool_seen_at",
+        "stool_clear_at",
+        "stool_notified_at",
+        "notice_label",
+        "stool_notice_claimed",
+    ]
     for table, expected in TABLES_V1.items():
-        extra = ["provider", "model", "endpoint_change"] if table == "codex_assessments" else []
+        extra = assessment_columns if table == "codex_assessments" else []
         assert columns(path, renamed.get(table, table)) == [name for name, _ in expected] + extra
 
 
@@ -494,3 +504,23 @@ def test_feeding_plan_migration_preserves_care_and_disables_reminders_by_default
         )
         assert db.execute("SELECT push_feeding FROM users").fetchone()[0] == 0
         assert db.execute("SELECT COUNT(*) FROM feeding_plans").fetchone()[0] == 0
+
+
+def test_stool_observation_migration_preserves_existing_notice(tmp_path):
+    path = tmp_path / "stool-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:24]:
+            migration(db)
+        db.execute("PRAGMA user_version = 24")
+        db.execute("INSERT INTO clips (id, requested_at, status) VALUES ('clip', '', 'ready')")
+        db.execute(
+            """INSERT INTO video_assessments (clip_id, label, assessed_at, notified_at, notice_claimed)
+            VALUES ('clip', 'feces', '2026-11-19', '2026-11-19', 1)"""
+        )
+    with Database(path).connect() as db:
+        assert tuple(
+            db.execute(
+                """SELECT label, notified_at, notice_claimed, stool_seen_at, stool_clear_at,
+                stool_notice_claimed FROM video_assessments WHERE clip_id='clip'"""
+            ).fetchone()
+        ) == ("feces", "2026-11-19", 1, None, None, 0)

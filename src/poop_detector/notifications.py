@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 from .features.outages import format_duration
 from .records.events import EXCRETION_TYPES
+from .timezones import to_local
 
 Delivery: TypeAlias = Literal["sent", "retry", "unknown", "skipped"]
 
@@ -33,6 +34,12 @@ def _clip_notice_path(clip_id: str | None) -> str:
     return "/clips?" + urlencode({"id": clip_id, "notice": "1"}) if clip_id else ""
 
 
+def _notice_time(detected_at: str | None) -> str:
+    if detected_at is None:
+        return ""
+    return to_local(detected_at).strftime("%m/%d %H:%M:%S")
+
+
 class ToiletNotifier:
     """通知の文面を組み立てる。送信方法はサブクラスの _deliver が担う。"""
 
@@ -50,15 +57,21 @@ class ToiletNotifier:
         kind = "見守り" if early_alert else "トイレ"
         return self._display(f"{self.owner}{kind}の通知テストです。", early_alert=early_alert)
 
-    def send(self, *, clip_id: str | None = None) -> bool:
+    def send(self, *, clip_id: str | None = None, detected_at: str | None = None) -> bool:
+        time = _notice_time(detected_at)
         return self._display(
-            f"{self.owner}トイレに変化を検出しました。排便・排尿の可能性があります。",
+            f"{self.owner}トイレに変化を検出しました。排便・排尿の可能性があります。"
+            + (f" 検知 {time}" if time else ""),
             path=_clip_notice_path(clip_id),
         )
 
-    def send_early_alert(self, *, clip_id: str | None = None) -> bool:
+    def send_early_alert(
+        self, *, clip_id: str | None = None, detected_at: str | None = None
+    ) -> bool:
+        time = _notice_time(detected_at)
         return self._display(
-            f"トイレで同じ場所にとどまっています。{self.owner}様子を確認してください。",
+            f"トイレで同じ場所にとどまっています。{self.owner}様子を確認してください。"
+            + (f" 検知 {time}" if time else ""),
             early_alert=True,
             path=_clip_notice_path(clip_id),
         )
@@ -70,6 +83,8 @@ class ToiletNotifier:
         location: str | None = None,
         interrupted: bool = False,
         clip_id: str = "",
+        detected_at: str | None = None,
+        existing_stool: bool = False,
     ) -> bool:
         if label not in ("feces", "urine", "both"):
             return False
@@ -79,7 +94,17 @@ class ToiletNotifier:
             if interrupted
             else "動画を確認できます。"
         )
-        message = f"動画の自動判定で{place}{EXCRETION_TYPES[label]}の候補が見つかりました。{detail}"
+        time = _notice_time(detected_at)
+        if existing_stool:
+            message = f"トレーの映像で便を確認しました。排便時刻は不明です。{detail}"
+            if time:
+                message += f" 便を確認 {time}"
+        else:
+            message = (
+                f"動画の自動判定で{place}{EXCRETION_TYPES[label]}の候補が見つかりました。{detail}"
+            )
+            if time:
+                message += f" 検知 {time}"
         path = _clip_notice_path(clip_id)
         return self._display(message, path=path)
 

@@ -485,6 +485,15 @@ def migrate_to_v24(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE users ADD COLUMN push_feeding INTEGER NOT NULL DEFAULT 0")
 
 
+def migrate_to_v25(db: sqlite3.Connection) -> None:
+    """映像上の便の確認・片付けと、それに基づく通知の状態を追加する。"""
+    for column in ("stool_seen_at", "stool_clear_at", "stool_notified_at", "notice_label"):
+        db.execute(f"ALTER TABLE video_assessments ADD COLUMN {column} TEXT")
+    db.execute(
+        "ALTER TABLE video_assessments ADD COLUMN stool_notice_claimed INTEGER NOT NULL DEFAULT 0"
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -511,6 +520,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v22,
     migrate_to_v23,
     migrate_to_v24,
+    migrate_to_v25,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

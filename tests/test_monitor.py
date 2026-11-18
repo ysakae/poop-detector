@@ -14,10 +14,12 @@ from poop_detector.records.events import Store
 @pytest.mark.parametrize("review_notifications", [False, True])
 def test_offline_pipeline_records_one_event(tmp_path, review_notifications):
     baseline, changed = spot_scene()
+    notices = []
 
     class Notifier:
-        def send(self, *, clip_id=None):
+        def send(self, *, clip_id=None, detected_at=None):
             assert not review_notifications
+            notices.append(detected_at)
             return True
 
     config = Config(data_dir=str(tmp_path), fps=100, verify_seconds=0.01)
@@ -33,6 +35,7 @@ def test_offline_pipeline_records_one_event(tmp_path, review_notifications):
     events = Store(tmp_path).list()
     assert len(events) == 1
     assert (events[0]["notified_at"] is None) == review_notifications
+    assert notices == ([] if review_notifications else [events[0]["detection_started"]])
 
 
 def test_real_decoder_to_event_pipeline(tmp_path):
