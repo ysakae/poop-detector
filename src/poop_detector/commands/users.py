@@ -8,7 +8,7 @@
 import argparse
 import json
 
-from ..gui.accounts import Accounts, User, role_label
+from ..gui.accounts import Accounts, User, renamed, role_label
 from ..gui.audit import CLI_ACTOR
 from ..gui.invitation_mail import invite_by_email
 from ..records.database import events_database
@@ -113,6 +113,13 @@ def users(args: argparse.Namespace, context: CommandContext) -> int:
         accounts.users.set_role(user.id, args.role)
         accounts.audit.record(CLI_ACTOR, "user.role", f"{target}（{role_label(args.role)}）")
         print(f"「{user.name}」の役割を「{role_label(args.role)}」にしました")
+        return 0
+    if action == "rename":
+        if not args.name:
+            raise CommandError("変更後の表示名を --name で指定してください")
+        name = accounts.users.rename(user.id, args.name)
+        accounts.audit.record(CLI_ACTOR, "user.rename", renamed(user, name))
+        print(f"「{user.name}」の表示名を「{name}」にしました")
         return 0
     if action == "recover":
         code = accounts.enrollments.issue_recovery(

@@ -47,6 +47,25 @@ def test_users_have_unique_names_and_roles(store):
         users.create("  ", "member")
 
 
+def test_users_can_be_renamed_with_the_same_rules_as_creation(store):
+    users: UserStore = store.accounts.users
+    first = users.create("家族A", "admin")
+    users.create("家族B", "member")
+    assert users.rename(first, "  おとうさん ") == "おとうさん"
+    assert users.get(first).name == "おとうさん"
+    # 同じ名前への変更は、自分の名前と重なっても受け付ける。
+    assert users.rename(first, "おとうさん") == "おとうさん"
+    with pytest.raises(InvalidInputError, match="使われています"):
+        users.rename(first, "家族B")
+    with pytest.raises(InvalidInputError, match="名前"):
+        users.rename(first, "   ")
+    with pytest.raises(InvalidInputError, match="名前"):
+        users.rename(first, "あ" * 41)
+    with pytest.raises(InvalidInputError, match="見つかりません"):
+        users.rename("missing", "家族C")
+    assert users.get(first).name == "おとうさん"
+
+
 def test_last_active_admin_cannot_be_disabled(store):
     users = store.accounts.users
     first = users.create("家族A", "admin")
@@ -355,3 +374,27 @@ def test_v6_database_keeps_users_and_gains_an_empty_audit_log(tmp_path):
     assert accounts.audit.recent() == []
     accounts.audit.record("old", "user.role", "a@example.org（管理者）")
     assert accounts.audit.recent()[0].actor == "家族A"
+
+
+def test_cli_renames_users_and_records_it(cli, capsys):
+    accounts = Accounts(events_database(cli.root))
+    accounts.users.create("家族A", "admin")
+    member = accounts.users.create("家族B", "member", email="b@example.org")
+    assert cli.run("rename", "b@example.org") == 2
+    assert "--name" in capsys.readouterr().err
+    assert cli.run("rename", "b@example.org", "--name", "家族A") == 2
+    assert "使われています" in capsys.readouterr().err
+    assert cli.run("rename", "b@example.org", "--name", " おかあさん ") == 0
+    assert "おかあさん" in capsys.readouterr().out
+    assert accounts.users.get(member).name == "おかあさん"
+    # メール未登録のユーザーは名前で指定する。
+    assert cli.run("rename", "家族A", "--name", "おとうさん") == 0
+    entries = accounts.audit.recent()
+    assert [(entry.action, entry.actor) for entry in entries] == [
+        ("user.rename", "監視するマシンのコマンド"),
+        ("user.rename", "監視するマシンのコマンド"),
+    ]
+    assert [entry.detail for entry in entries] == [
+        "家族A → おとうさん",
+        "b@example.org（家族B → おかあさん）",
+    ]

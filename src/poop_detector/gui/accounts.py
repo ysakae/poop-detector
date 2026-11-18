@@ -72,6 +72,7 @@ def normalize_email(value: str) -> str:
 
 
 def checked_name(name: str) -> str:
+    """表示名の前後の空白を除き、1〜NAME_MAX_LENGTH 文字であることを確かめる。"""
     name = name.strip()
     if not name or len(name) > NAME_MAX_LENGTH:
         raise InvalidInputError(f"名前は1〜{NAME_MAX_LENGTH}文字で指定してください")
@@ -100,6 +101,12 @@ class User:
     @property
     def active(self) -> bool:
         return self.disabled_at is None
+
+
+def renamed(user: User, name: str) -> str:
+    """監査ログに残す表示名の変更（メールアドレスがあれば、だれの変更かを添える）。"""
+    change = f"{user.name} → {name}"
+    return f"{user.email}（{change}）" if user.email else change
 
 
 @dataclass(frozen=True)
@@ -218,6 +225,20 @@ class UserStore:
             ).rowcount
         if not changed:
             raise InvalidInputError("ユーザーが見つかりません")
+
+    def rename(self, user_id: str, name: str) -> str:
+        """表示名を変え、整えた名前を返す。作るときと同じ規則（空・長さ・重複）で確かめる。"""
+        name = checked_name(name)
+        try:
+            with self.database.connect() as db:
+                changed = db.execute(
+                    "UPDATE users SET name = ? WHERE id = ?", (name, user_id)
+                ).rowcount
+        except sqlite3.IntegrityError:
+            raise InvalidInputError(f"「{name}」という名前はすでに使われています") from None
+        if not changed:
+            raise InvalidInputError("ユーザーが見つかりません")
+        return name
 
     def by_name(self, name: str) -> User | None:
         with self.database.connect() as db:

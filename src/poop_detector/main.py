@@ -272,7 +272,8 @@ def parser() -> argparse.ArgumentParser:
         "diagnose", help="不具合の報告に貼る診断情報を表示（URL・トピック名・パスは含まない）"
     )
     accounts = commands.add_parser(
-        "users", help="GUI のユーザーの一覧・招待・役割の変更・復旧・無効化（このマシンで実行）"
+        "users",
+        help="GUI のユーザーの一覧・招待・役割と表示名の変更・復旧・無効化（このマシンで実行）",
     )
     accounts.add_argument(
         "action",
@@ -282,6 +283,7 @@ def parser() -> argparse.ArgumentParser:
             "resend",
             "cancel-invite",
             "set-role",
+            "rename",
             "recover",
             "disable",
             "enable",
@@ -290,7 +292,7 @@ def parser() -> argparse.ArgumentParser:
     accounts.add_argument(
         "identity", nargs="?", help="メールアドレス（初回登録・メール未登録のユーザーは名前）"
     )
-    accounts.add_argument("--name", help="メール招待で使う表示名")
+    accounts.add_argument("--name", help="メール招待で使う表示名、rename の変更後の表示名（必須）")
     accounts.add_argument(
         "--role",
         choices=("admin", "member"),

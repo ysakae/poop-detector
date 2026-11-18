@@ -28,6 +28,11 @@
 <button name="action" value="enable">有効にする</button>
 {% endif %}
 </form>
+<form method="post" action="/manage/users" class="rename">{{ csrf_field(token) }}
+<input type="hidden" name="email" value="{{ user.email }}">
+<label>表示名 <input name="name" value="{{ user.name }}" maxlength="{{ name_max_length }}" required></label>
+<button name="action" value="rename" class="secondary">表示名を変更</button>
+</form>
 {% endif %}
 </td></tr>
 {% else %}

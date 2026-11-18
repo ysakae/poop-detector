@@ -203,3 +203,66 @@ def test_admin_searches_and_disables_by_email(gui):
     assert post(server, member, path, fields)[0] == 403
     assert post(server, admin, path, fields, page=path)[0] == 200
     assert not users.get(target).active
+
+
+def test_i_can_rename_myself(gui):
+    server, _, _ = gui
+    cookie = login(server, "家族A")
+    login(server, "家族B")
+    user = user_of(server, cookie)
+    page = exchange(server, "GET", "/account", headers=cookie, auth=False)[2].decode()
+    assert 'action="/account/name"' in page
+    assert 'value="家族A"' in page
+
+    status, headers, _ = post(server, cookie, "/account/name", {"name": " おとうさん "})
+    assert status == 303
+    assert headers["Location"] == "/account?name_saved=1"
+    assert server.app.accounts.users.get(user).name == "おとうさん"
+    page = exchange(server, "GET", headers["Location"], headers=cookie, auth=False)[2].decode()
+    assert "表示名を変更しました" in page
+    assert "おとうさんさん" in page
+    entry = server.app.accounts.audit.recent()[0]
+    assert (entry.action, entry.actor, entry.detail) == (
+        "user.rename",
+        "おとうさん",
+        "家族A → おとうさん",
+    )
+
+
+@pytest.mark.parametrize(("name", "message"), [("家族B", "使われています"), ("", "名前は1〜40")])
+def test_renaming_myself_rejects_invalid_names(gui, name, message):
+    server, _, _ = gui
+    cookie = login(server, "家族A")
+    login(server, "家族B")
+    status, _, page = post(server, cookie, "/account/name", {"name": name})
+    assert status == 400
+    assert message in page.decode()
+    assert server.app.accounts.users.get(user_of(server, cookie)).name == "家族A"
+    assert all(entry.action != "user.rename" for entry in server.app.accounts.audit.recent())
+
+
+def test_admin_renames_another_user(gui):
+    server, _, _ = gui
+    admin, member = login(server, "管理者"), login(server, "一般", role="member")
+    users = server.app.accounts.users
+    target = users.create("対象", "member", email="target@example.org")
+    path = "/manage/users"
+    page = exchange(server, "GET", path, headers=admin, auth=False)[2].decode()
+    assert 'name="action" value="rename"' in page
+    fields = {"email": "target@example.org", "action": "rename", "name": "<b>新しい名前</b>"}
+    assert post(server, member, path, fields)[0] == 403
+    status, _, page = post(server, admin, path, fields, page=path)
+    assert status == 200
+    text = page.decode()
+    assert "&lt;b&gt;新しい名前&lt;/b&gt;" in text
+    assert "<b>新しい名前</b>" not in text
+    assert users.get(target).name == "<b>新しい名前</b>"
+    entry = server.app.accounts.audit.recent()[0]
+    assert (entry.action, entry.actor) == ("user.rename", "管理者")
+    assert entry.detail == "target@example.org（対象 → <b>新しい名前</b>）"
+
+    fields = {"email": "target@example.org", "action": "rename", "name": "管理者"}
+    status, _, page = post(server, admin, path, fields, page=path)
+    assert status == 400
+    assert "使われています" in page.decode()
+    assert users.get(target).name == "<b>新しい名前</b>"
