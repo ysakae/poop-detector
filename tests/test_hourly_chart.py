@@ -41,11 +41,22 @@ def test_chart_has_a_column_for_every_hour_with_counts_as_text(gui):
     ]
 
 
-def test_busiest_hours_are_named_in_words(gui):
+def test_busiest_hours_are_ranked_separately_for_feces_and_urine(gui):
     server, store, _ = gui
     seed(store)
+    store.add_excretion("both", "2026-11-08T19:20:00+09:00")
+    store.add_excretion("feces", "2026-11-08T21:10:00+09:00")
     html = records_page(server)
-    assert "多い時間帯：7時台（3件）、19時台（1件）" in html
+    assert "<strong>排便が多い時間帯</strong> 7時台（2件）、19時台（1件）" in html
+    assert "<strong>排尿が多い時間帯</strong> 19時台（2件）、7時台（1件）" in html
+
+
+def test_busiest_hours_show_when_one_type_has_no_records(gui):
+    server, store, _ = gui
+    store.add_excretion("urine", "2026-11-08T19:00:00+09:00")
+    html = records_page(server)
+    assert "<strong>排便が多い時間帯</strong> 記録なし" in html
+    assert "<strong>排尿が多い時間帯</strong> 19時台（1件）" in html
 
 
 def test_table_is_still_readable_but_folded(gui):

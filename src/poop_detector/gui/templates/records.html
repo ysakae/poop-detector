@@ -8,7 +8,10 @@
 <option value="{{ value }}"{% if value == stats.period %} selected{% endif %}>{{ value }}日間</option>
 {%- endfor -%}
 </select></label><button class="secondary">集計を表示</button></form><div class="stats">{{ stat("排便", stats.daily.feces, "回", "feces") }}{{ stat("排尿", stats.daily.urine, "回", "urine") }}{{ stat("種類不明", stats.daily.unspecified, "回", "paw") }}</div><p class="note">{{ timezone }}で集計します。開始時刻が不明な記録は記録時刻を使います。「排便・排尿」は各1件です。0件は確定記録が0件だったことを表します。</p><h4 class="hourly-title">時間帯別の排便・排尿</h4><p>{{ stats.start }}〜{{ stats.day }}（{{ stats.length }}日間・記録あり{{ stats.recorded_days }}日）</p>
-{% if stats.busiest %}<p class="hourly-busiest">多い時間帯：{{ stats.busiest }}</p>
+{% if stats.busiest %}
+{%- for kind, hours in stats.busiest.items() %}
+<p class="hourly-busiest"><strong>{{ kind }}が多い時間帯</strong> {{ hours or "記録なし" }}</p>
+{%- endfor %}
 <figure class="hourly-figure"><div class="hourly-legend" aria-hidden="true"><span class="bar-key bar-feces"></span>排便 <span class="bar-key bar-urine"></span>排尿</div><div class="hourly-chart" aria-hidden="true">
 {%- for col in stats.chart -%}
 <div class="hour-col"><div class="hour-bars">

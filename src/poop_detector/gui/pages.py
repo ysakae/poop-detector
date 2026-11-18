@@ -380,13 +380,11 @@ def hourly_chart(hourly: Sequence[Mapping[str, int]], scale: int) -> list[dict[s
     ]
 
 
-def busiest_hours(hourly: Sequence[Mapping[str, int]]) -> str:
-    """排便・排尿の多い時間帯を言葉で示す（例：「7時台（3件）、19時台（1件）」）。"""
-    totals = [
-        (sum(counts[kind] for kind in CHART_KINDS), hour) for hour, counts in enumerate(hourly)
-    ]
-    top = sorted((item for item in totals if item[0] > 0), key=lambda item: (-item[0], item[1]))
-    return "、".join(f"{hour}時台（{total}件）" for total, hour in top[:BUSIEST])
+def busiest_hours(hourly: Sequence[Mapping[str, int]], kind: str) -> str:
+    """指定した種類で件数が多い時間帯を示し、同数なら時刻が早い順に並べる。"""
+    counts = [(hour, row[kind]) for hour, row in enumerate(hourly) if row[kind] > 0]
+    top = sorted(counts, key=lambda item: (-item[1], item[0]))
+    return "、".join(f"{hour}時台（{count}件）" for hour, count in top[:BUSIEST])
 
 
 def record_stats(records: Iterable[EventRow], query: Query) -> dict[str, Any]:
@@ -401,6 +399,7 @@ def record_stats(records: Iterable[EventRow], query: Query) -> dict[str, Any]:
     start = date.fromordinal(max(1, day.toordinal() - int(period) + 1))
     daily, hourly, recorded_days = summarize_records(records, start, day)
     scale = max(1, *(counts[kind] for counts in hourly for kind in CHART_KINDS))
+    busiest = {EXCRETION_TYPES[kind]: busiest_hours(hourly, kind) for kind in CHART_KINDS}
     return {
         "day": day,
         "period": period,
@@ -412,7 +411,7 @@ def record_stats(records: Iterable[EventRow], query: Query) -> dict[str, Any]:
         "recorded_days": recorded_days,
         "scale": scale,
         "chart": hourly_chart(hourly, scale),
-        "busiest": busiest_hours(hourly),
+        "busiest": busiest if any(busiest.values()) else {},
     }
 
 
