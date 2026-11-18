@@ -37,8 +37,8 @@
 {% set chosen = submitted.get("plan_id", selected_plan) %}
 <div class="settings-field"><label>ごはんの予定<select name="plan_id">
 <option value="">予定外のごはん</option>
-{% for plan in feeding_plans if not plan.recorded %}
-<option value="{{ plan.id }}"{% if plan.id == chosen %} selected{% endif %}>{{ plan.clock }} の予定</option>
+{% for plan in feeding_plans if not plan.recorded or plan.id == chosen %}
+<option value="{{ plan.id }}"{% if plan.id == chosen %} selected{% endif %}>{{ plan.clock }} の予定{% if plan.recorded %}（記録済み）{% endif %}</option>
 {% endfor %}
 </select></label></div>
 {% endif %}

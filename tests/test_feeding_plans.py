@@ -158,3 +158,29 @@ def test_recording_a_past_plan_opens_the_selected_day(gui):
     assert status == 200
     assert f'name="at" value="{yesterday}T' in body.decode()
     assert f'value="{plan}" selected' in body.decode()
+
+
+def test_opening_stale_plan_link_keeps_already_recorded_plan_selected(gui):
+    server, store, _ = gui
+    db = store.database
+    now = local_now()
+    plan = feeding_plans.save_plan(db, "08:00")
+    link = f"/care?day={now.date()}&plan={plan}"
+    save_entry(db, CareEntry("", now, "feeding", "家族A", "", "", 250), plan_id=plan)
+
+    status, body = request(server, "GET", link)
+    assert status == 200
+    assert f'value="{plan}" selected>08:00 の予定（記録済み）' in body.decode()
+    fields = {
+        "at": now.strftime("%Y-%m-%dT%H:%M"),
+        "kind": "feeding",
+        "grams": "25",
+        "plan_id": plan,
+    }
+    assert submit(server, "/care", fields, page="/care")[0] == 303
+    assert len(entries(db, now.date())) == 1
+
+    feeding_plans.stop_plan(db, plan)
+    status, body = request(server, "GET", link)
+    assert status == 400
+    assert "このごはんの予定は終了しました" in body.decode()

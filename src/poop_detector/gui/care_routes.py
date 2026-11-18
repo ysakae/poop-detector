@@ -99,8 +99,21 @@ def _render(
     rows = entries(store.database, day)
     edit = next((row for row in rows if row.id == selected), None)
     stamp = edit.at if edit else local_now()
-    if selected_plan and day < stamp.date():
+    if not edit and day < stamp.date():
         stamp = datetime.combine(day, stamp.time()).astimezone()
+    plans = plans_for_day(store.database, day)
+    if selected_plan and all(plan.id != selected_plan for plan in plans):
+        handler.respond(
+            400,
+            message_page(
+                "このごはんの予定は終了しました",
+                "お世話の画面で今の予定を確認してください。",
+                f"/care?day={day.isoformat()}#feeding-plans",
+                "今の予定を見る",
+                title=handler.app.title,
+            ),
+        )
+        return
     records = in_period(store.records(), day, day)
     food, grams, food_history = feeding_history(store.database)
     if edit:
@@ -114,7 +127,7 @@ def _render(
         day=day.isoformat(),
         today=local_today().isoformat(),
         rows=rows,
-        feeding_plans=plans_for_day(store.database, day),
+        feeding_plans=plans,
         selected_plan=selected_plan,
         kinds=KINDS,
         form_kinds=kinds,
@@ -179,7 +192,11 @@ def save_care(handler: "Handler", form: Form) -> None:
             values.get("food", "") if kind == "feeding" else "",
             parse_amount(values.get("grams", "")) if kind == "feeding" else None,
         )
-        save_entry(handler.app.store.database, entry, plan_id=values.get("plan_id") or None)
+        plan_id = values.get("plan_id") or None
+        view_day = values.get("view_day")
+        if plan_id and view_day and stamp.astimezone().date().isoformat() != view_day:
+            raise InvalidInputError("ごはんの予定と実施の日付をそろえてください")
+        save_entry(handler.app.store.database, entry, plan_id=plan_id)
     except InvalidInputError as error:
         with suppress(InvalidInputError):
             day = parse_day(values.get("view_day", ""))
