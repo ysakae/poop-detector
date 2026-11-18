@@ -18,6 +18,7 @@ from poop_detector.video.clips import ClipStore
 from poop_detector.video.codex_cli import CodexCliJudge
 from poop_detector.video.judge_source import FixedJudge, JudgeChoice, ReloadingJudge
 from poop_detector.video.review import (
+    RESUME_WINDOW,
     Assessment,
     Review,
     inspect_clip,
@@ -610,6 +611,24 @@ def test_worker_reports_judge_failures_to_the_watchdog(tmp_path):
     judge.down = False
     worker.poll_once()
     assert seen == [1, 2, 0]
+
+
+def test_worker_picks_up_clips_left_unjudged_before_a_restart(tmp_path):
+    # 監視を起動し直しても、前の監視が判定しきれなかった動画を取り残さない（直近1日まで）。
+    store = ClipStore(tmp_path)
+    now = datetime.now(UTC)
+    left = ready(store, now - timedelta(hours=3))
+    ready(store, now - RESUME_WINDOW - timedelta(minutes=1))
+    seen = []
+
+    def inspect(path, row, judge):
+        seen.append(row["id"])
+        return FEEDING
+
+    worker = Review(store, inspect).watch()
+    worker.poll_once()
+    worker.poll_once()
+    assert seen == [left]
 
 
 def sourced(store, when, *sources):

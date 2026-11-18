@@ -12,7 +12,7 @@ from ..features.outages import OutageLog
 from .clip_reviews import PRIORITY_NAMES
 from .clips import ClipStore
 from .providers import PROVIDER_NAMES
-from .review import allowed_priority
+from .review import RESUME_WINDOW, allowed_priority
 
 
 @dataclass(frozen=True)
@@ -43,7 +43,7 @@ def review_status(
     used = clips.judge_runs.count_since(now - timedelta(hours=1))
     cap = config.review_max_per_hour
     priority = allowed_priority(used, cap) if cap else len(PRIORITY_NAMES) - 1
-    counts, failed = clips.assessments.waiting_counts((now - timedelta(days=1)).isoformat())
+    counts, failed = clips.assessments.waiting_counts((now - RESUME_WINDOW).isoformat())
     outage = outages.current("judge")
     return ReviewStatus(
         used=used,

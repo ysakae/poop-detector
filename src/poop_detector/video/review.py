@@ -26,7 +26,7 @@ from ..detection.roi import AnyROI, MaskedROI, full_mask, outline
 from ..errors import AlreadyRunningError
 from ..features.tray_tracking import TrayTracker
 from ..frames import Frame, Mask
-from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, utcnow
+from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES
 from .clip_reviews import Assessment
 from .clip_storage import REVIEW_LOCK
 from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
@@ -45,6 +45,9 @@ FAILURE_WAIT = 20
 # 使ってよい割合。犬の出入りは4分の3、トレー外の滞在は半分までで後回しにし、
 # 検知と滞在の通知のために枠を残す。
 PRIORITY_SHARES = (1.0, 0.75, 0.5)
+# 監視の起動時に、これより前までさかのぼって未判定の動画を拾う。監視を起動し直しても、
+# 前の監視が判定しきれなかった動画を取り残さない。管理 › 判定器とモデルの判定待ちの数と同じ範囲。
+RESUME_WINDOW = timedelta(days=1)
 MAX_WAIT = 30 * 60
 
 
@@ -707,7 +710,7 @@ class ReviewWorker:
     def __init__(self, review: Review, watchdog: JudgeObserver | None = None) -> None:
         self.review = review
         self.watchdog = watchdog
-        self.since = utcnow()
+        self.since = (datetime.now(UTC) - RESUME_WINDOW).isoformat()
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._poll, daemon=True)
 

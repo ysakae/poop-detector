@@ -116,7 +116,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 ### 判定器を呼ぶ回数の上限
 
-監視中（`Review.run` に `since` を渡したとき）は、`review.max_per_hour` を守ります。`Review._waiting` が動画を1本選ぶたびに、直近1時間の呼び出しの回数（`JudgeRunLog.count_since`）を数え直し、`PRIORITY_SHARES` の割合を超えた優先度の動画を後回しにします（`AssessmentStore.pending` の `max_priority`）。後回しにした動画は未判定のまま残り、回数に余裕が戻ると選ばれます。`video-review` と `video-benchmark` には上限をかけませんが、その呼び出しも回数に数えます。
+監視中（`Review.run` に `since` を渡したとき）は、`review.max_per_hour` を守ります。`ReviewWorker` は起動の `RESUME_WINDOW`（1日）前からの未判定の動画を対象にするので、監視を起動し直しても、前の監視が判定しきれなかった動画を取り残しません（管理 › 判定器とモデルの判定待ちの数も同じ範囲で数えます）。`Review._waiting` が動画を1本選ぶたびに、直近1時間の呼び出しの回数（`JudgeRunLog.count_since`）を数え直し、`PRIORITY_SHARES` の割合を超えた優先度の動画を後回しにします（`AssessmentStore.pending` の `max_priority`）。後回しにした動画は未判定のまま残り、回数に余裕が戻ると選ばれます。`video-review` と `video-benchmark` には上限をかけませんが、その呼び出しも回数に数えます。
 
 ### 判定器が止まったとき
 
