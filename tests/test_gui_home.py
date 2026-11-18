@@ -177,6 +177,23 @@ def test_live_script_supports_fullscreen_and_fallback():
     assert "全画面を終了" in script
 
 
+def test_live_script_keeps_the_screen_awake_while_maximized():
+    """最大化の間は Screen Wake Lock で画面を消さず、タブに戻ったら取り直し、戻したら手放す。"""
+    script = (GUI_DIR / "static" / "live.js").read_text()
+    assert 'navigator.wakeLock.request("screen")' in script
+    # Wake Lock のないブラウザーでも動くよう、使う前に確かめる。
+    assert '"wakeLock" in navigator' in script
+    assert ".release()" in script
+    # 画面が隠れるとブラウザーが自動で手放すので、見える状態に戻ったら取り直す。
+    visibility = re.search(r'"visibilitychange", \(\) => \{(.*?)\n\}\);', script, re.S)
+    assert visibility, "visibilitychange の処理がありません"
+    assert "keepAwake" in visibility[1]
+    # 最大化の表示を切り替える1か所で、取得と解放を決める。
+    shown = re.search(r"function showMaximized\(maximized\) \{(.*?)\n\}", script, re.S)
+    assert shown, "showMaximized がありません"
+    assert "keepAwake(maximized)" in shown[1]
+
+
 def test_maximized_live_image_is_not_capped_by_the_figure_height():
     """最大化の間は、figure の画像の高さの上限（62vh）を外して画面いっぱいに広げる。"""
     style = (GUI_DIR / "templates" / "style.css").read_text()
