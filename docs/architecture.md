@@ -102,6 +102,8 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 `ClipCollector` が JPEG 圧縮したフレームをメモリー上限付きで保持し、トリガー前後を切り出して作業スレッドで MP4 に変換します。クリップの `source`（`detected`、`manual`、`dog_enter`、`dog_exit`、`early_alert`、`outside_stay`）で後段の扱いが変わります。
 
+録画中に届いた保存要求は、`ClipCollector.trigger` が新しい行を作らずに録画を延ばしてまとめます（最初の要求から `MAX_EXTENSION_SECONDS` まで）。きっかけは `merged_source` が決め、入場と退場は `dog_visit`、ほかは `SOURCE_RANK` の優先度の高いほうを残します（`clip_reviews.PRIORITY_ORDER` と同じ順で、トレー外の滞在の動画をトレーの中の判定で見直せるようにする）。`event_id` を持つ要求（差分検知）は検知の時刻を基準にするので、まとめません。GUI からの保存要求（`poll` が拾う `queued` 行）もまとめません。
+
 変換が終わると、操作・検知の位置の1コマを小さな JPEG にして、動画と同じ名前の `.jpg` で `clips/` に置きます（`video/thumbnails.py`）。動画の一覧は `/clip-thumbnail` で受け取り、まだない動画はそこで作ります。録画の整理（`clip_storage.remove_video`）は動画と一緒に消します。動画から作り直せるので、バックアップの `ALLOWED` には入れていません。
 
 `--video-review` では `video.review.Review` が別スレッドで変換済みクリップを監視し、時系列のコンタクトシート画像を判定器（`video.review.VideoJudge`）に渡して JSON スキーマに沿った判定を受け取ります。判定器は差し替えられる作りで、既定の実装は Codex CLI（`video.codex_cli.CodexCliJudge`）です。このモードでは差分だけの通知を抑え、判定器が根拠を確認した場合にだけ通知します。シートを作るときに、トレー内の動画では前後の差分の指標（`review.endpoint_change`。最後の3コマのうち、最初の3コマの中央値との差が4階調を超える画素の割合が最も小さい値）も測り、判定と一緒に `video_assessments.endpoint_change` に残します。判定器を呼ぶ前のふるい分け（#152）の採否を、人のラベルがたまってから確かめるための記録で、判定と通知には使いません。`video-review` サブコマンドは同じ処理を保存済み動画に通知なしで適用します。
