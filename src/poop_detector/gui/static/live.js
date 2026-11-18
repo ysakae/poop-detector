@@ -6,6 +6,8 @@ const judgment = document.querySelector("#live-judgment");
 const reason = document.querySelector("#live-reason");
 const judgmentTime = document.querySelector("#live-judgment-time");
 const clipLink = document.querySelector("#live-clip-link");
+const view = document.querySelector("#live-view");
+const maximizeButton = document.querySelector("#live-maximize");
 const jst = new Intl.DateTimeFormat("ja-JP", {
     dateStyle: "short",
     timeStyle: "medium",
@@ -15,9 +17,74 @@ const waiting = "監視からの映像を待っています。";
 let retryAt = 0;
 let startedAt = 0;
 
+// 映像の最大化。全画面の API があればそれを使い、ない端末（iPhone の Safari）では
+// 画面いっぱいに固定して広げる。
+function isMaximized() {
+    return view.hasAttribute("data-maximized");
+}
+
+function showMaximized(maximized) {
+    view.toggleAttribute("data-maximized", maximized);
+    maximizeButton.setAttribute("aria-pressed", String(maximized));
+    if (!maximized && image.hidden) maximizeButton.hidden = true;
+}
+
+function setFallback(maximized) {
+    view.classList.toggle("live-maximized", maximized);
+    document.body.classList.toggle("live-locked", maximized);
+    showMaximized(maximized);
+}
+
+// 埋め込みのブラウザーには、全画面の要求に応えないものがある。この時間で全画面に
+// ならなければ、画面いっぱいに広げる方法へ切り替える。
+const fullscreenWaitMs = 800;
+
+async function maximize() {
+    if (view.requestFullscreen && document.fullscreenEnabled) {
+        const timeout = new Promise((resolve) => window.setTimeout(resolve, fullscreenWaitMs));
+        try {
+            await Promise.race([view.requestFullscreen(), timeout]);
+        } catch {
+            // 全画面を断られたときは、下で画面いっぱいに広げる方法へ切り替える。
+        }
+        if (document.fullscreenElement === view) return;
+    }
+    setFallback(true);
+}
+
+function restore() {
+    if (document.fullscreenElement === view) {
+        document.exitFullscreen();
+    } else {
+        setFallback(false);
+    }
+}
+
+maximizeButton.addEventListener("click", () => {
+    if (isMaximized()) {
+        restore();
+    } else {
+        maximize();
+    }
+});
+document.addEventListener("fullscreenchange", () => {
+    if (document.fullscreenElement === view) {
+        // 遅れて全画面になったときは、画面いっぱいに広げた表示を外して全画面に任せる。
+        setFallback(false);
+        showMaximized(true);
+    } else if (!view.classList.contains("live-maximized")) {
+        showMaximized(false);
+    }
+});
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && view.classList.contains("live-maximized")) setFallback(false);
+});
+
 function stopStream() {
     image.removeAttribute("src");
     image.hidden = true;
+    // 最大化の間は、映像が途切れても元に戻せるようにボタンを残す。
+    maximizeButton.hidden = !isMaximized();
 }
 
 function startStream() {
@@ -56,6 +123,7 @@ async function updateStreamStatus() {
         startStream();
         if (!stamp || !image.hasAttribute("src")) return;
         image.hidden = false;
+        maximizeButton.hidden = false;
         const status = "映像更新 " + jst.format(new Date(stamp));
         if (trayState === "searching") {
             frameStatus.textContent = status + " ／ トレーの位置を確認中・判定保留";

@@ -1,8 +1,13 @@
+{%- from "_macros.html" import icon -%}
 <section class="live-panel" aria-labelledby="live-title">
   <h2 id="live-title">現在のカメラ映像</h2>
   <div class="live-grid">
-    <figure class="live-view">
+    <figure class="live-view" id="live-view">
       <img id="live-frame" alt="現在のカメラ映像" hidden>
+      <button type="button" class="secondary live-maximize" id="live-maximize" aria-pressed="false" hidden>
+        <span class="live-maximize-open">{{ icon("expand") }}映像を最大化</span>
+        <span class="live-maximize-close">{{ icon("shrink") }}元に戻す</span>
+      </button>
       <figcaption id="live-frame-status">監視からの映像を待っています。</figcaption>
     </figure>
     <div class="live-result">
