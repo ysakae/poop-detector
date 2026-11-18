@@ -3,7 +3,7 @@
 import json
 import re
 import threading
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlencode
 
 import pytest
@@ -139,7 +139,7 @@ def test_plan_usage_is_asked_only_when_requested(models_gui):
 
     def codex():
         asked.append("codex")
-        resets = datetime(2026, 11, 14, 15, 39, tzinfo=UTC)
+        resets = datetime.now(UTC) + timedelta(hours=2, minutes=10, seconds=30)
         return (QuotaGroup("Codex", QuotaWindow(30, resets), QuotaWindow(93, None)),)
 
     def claude():
@@ -162,10 +162,14 @@ def test_plan_usage_is_asked_only_when_requested(models_gui):
     assert headers["Location"] == PAGE
     assert asked == ["codex"]
     html = page(server, cookie)
-    assert re.search(
-        r"<td>Codex CLI</td><td>Codex</td><td>30%（2026/11/15 00:39 に戻る）</td><td>93%</td>", html
-    )
-    assert "<td>Claude Code CLI</td>" in html
+    # 制限ごとに、消費の割合を横棒のグラフで示す（数値と戻るまでの時間も添える）。
+    assert 'role="meter" aria-label="Codex CLI Codex 5時間" aria-valuenow="30"' in html
+    assert 'class="quota-fill quota-normal" style="width:30%"' in html
+    assert 'class="quota-fill quota-high" style="width:93%"' in html
+    assert "30% 使用" in html
+    assert "93% 使用" in html
+    assert "あと2時間10分で戻る" in html
+    assert "Claude Code CLI" in html
     assert "不明（CLI のログインと版を確認してください）" in html
     assert "secret-output" not in html
 
@@ -383,3 +387,21 @@ def test_review_status_shows_the_cap_postponed_clips_and_judge_failures(models_g
     runs.record("codex", None, "review", failed=False)
     html = page(server, login(server))
     assert "上限に達したため、枠が空くまで判定を待っています" in html
+
+
+def test_quota_window_view_levels_and_reset_time():
+    from poop_detector.gui.models_routes import quota_view
+
+    now = datetime(2026, 11, 18, 3, 0, tzinfo=UTC)
+    view = quota_view("5時間", QuotaWindow(75, now + timedelta(days=2, hours=3, minutes=5)), now)
+    assert (view["percent"], view["level"]) == (75, "warn")
+    assert view["resets"].startswith("あと2日3時間で戻る（")
+    assert quota_view("週間", QuotaWindow(10, now + timedelta(minutes=4)), now)["resets"] == (
+        "あと4分で戻る（11/18 12:04）"
+    )
+    assert quota_view("週間", QuotaWindow(10, now - timedelta(minutes=1)), now)["resets"] == (
+        "まもなく戻ります"
+    )
+    assert quota_view("週間", QuotaWindow(100, None), now)["level"] == "high"
+    assert quota_view("週間", QuotaWindow(69, None), now)["resets"] == ""
+    assert quota_view("週間", None, now) == {"label": "週間", "percent": None}

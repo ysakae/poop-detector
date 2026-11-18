@@ -134,6 +134,11 @@ meter{height:10px;border-radius:var(--radius-pill)}meter::-webkit-meter-bar{back
 
 /* 設定・確認と診断・アカウント */
 .settings-section{background:var(--surface);border:0;border-radius:var(--radius);padding:16px 20px;margin:0 0 16px;box-shadow:var(--shadow)}.settings-section legend{float:left;width:100%;padding:0}.settings-section legend h3,.settings-section>h3{margin:0 0 8px}
+/* プランの使用量（5時間・週間の消費割合）の横棒のグラフ */
+.quota-provider{padding:12px 0;border-bottom:1px solid var(--border)}.quota-provider h4{margin:0 0 8px;font-size:15px}.quota-group{margin:10px 0 2px;font-size:13px;font-weight:600;color:var(--muted)}
+.quota-row{display:grid;grid-template-columns:4em minmax(0,1fr) 6.5em;align-items:center;gap:4px 12px;margin:8px 0}.quota-label{font-size:14px}.quota-value{font-size:13px;text-align:right;font-variant-numeric:tabular-nums}.quota-none{grid-column:2/4;font-size:13px;color:var(--muted)}
+.quota-bar{height:8px;background:var(--surface-2);border-radius:var(--radius-pill);overflow:hidden}.quota-fill{height:100%;border-radius:var(--radius-pill);background:var(--ok)}.quota-warn{background:var(--warn)}.quota-high{background:var(--error-border)}
+.quota-reset{grid-column:2/4;margin:0}
 .settings-field{clear:both;padding:10px 0;border-top:1px solid var(--border)}.settings-field label{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}.settings-field input,.settings-field select{margin-top:0;min-width:12em}.settings-field input[type=checkbox]{min-width:0}.settings-field small{color:var(--muted)}
 /* 判定器とモデルなどの状態。文字の色は変えず、前に色の点だけを付ける。 */
 .state::before{content:"● "}.state-ok::before{color:var(--ok)}.state-warn::before{color:var(--warn-border)}
