@@ -13,10 +13,10 @@ from poop_detector.commands.context import (
     check_limit,
     load_outside_roi,
 )
-from poop_detector.commands.records import require_timezones
+from poop_detector.commands.records import events, require_timezones
 from poop_detector.config import Config, ConfigError, check_monitor_features, with_flags
 from poop_detector.detection.roi import ROI
-from poop_detector.main import ALIASES, HANDLERS, parser
+from poop_detector.main import parser
 from poop_detector.notifications import MacNotifier, NtfyNotifier
 
 SETTINGS = {
@@ -31,9 +31,8 @@ def test_every_subcommand_has_a_handler():
     commands = next(
         action for action in parser()._actions if isinstance(action, argparse._SubParsersAction)
     )
-    assert set(commands.choices) == set(HANDLERS) | set(ALIASES)
-    for name, sub in commands.choices.items():
-        assert sub.get_default("handler") is HANDLERS[ALIASES.get(name, name)]
+    for sub in commands.choices.values():
+        assert callable(sub.get_default("handler"))
 
 
 def test_flags_add_features_without_changing_the_config():
@@ -134,3 +133,16 @@ def test_record_times_need_a_timezone():
         require_timezones(argparse.Namespace(start="2026-11-01T09:00:00", end=None))
     # 時刻の引数がないコマンドでも呼べる。
     require_timezones(argparse.Namespace())
+
+
+def test_registered_command_and_alias_share_handler_and_arguments():
+    from poop_detector.commands.registration import CommandGroup
+
+    root = argparse.ArgumentParser()
+    group = CommandGroup(root.add_subparsers(dest="command", required=True))
+    command = group.add("example", events, help="例", aliases=("previous",))
+    command.add_argument("--limit", type=int, default=5)
+
+    for name in ("example", "previous"):
+        args = root.parse_args([name, "--limit", "3"])
+        assert (args.command, args.handler, args.limit) == (name, events, 3)

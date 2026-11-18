@@ -25,43 +25,11 @@ from .commands import (
     users,
 )
 from .commands.context import CommandContext, Handler
+from .commands.registration import CommandGroup
 from .config import Config, apply_timezone
 from .errors import UserError
 from .records.events import EXCRETION_TYPES
 from .redaction import RedactingFormatter, install_log_redaction, redact
-
-# 以前の名前のサブコマンド。引き続き使える。
-ALIASES = {"codex-review": "video-review"}
-HANDLERS: dict[str, Handler] = {
-    "check-camera": setup.check_camera,
-    "setup-roi": setup.setup_roi,
-    "setup-activity-map": setup.setup_activity_map,
-    "capture-baseline": setup.capture_baseline,
-    "tray-registration": setup.tray_registration,
-    "run": run.run,
-    "events": records.events,
-    "metrics": records.metrics,
-    "test-notification": notify.test_notification,
-    "video-review": review.video_review,
-    "video-benchmark": benchmark.video_benchmark,
-    "benchmark-dataset": datasets.benchmark_dataset,
-    "circling-review": review.circling_review,
-    "circling-compare": circling.circling_compare,
-    "feedback": records.feedback,
-    "acknowledge": records.acknowledge,
-    "missed": records.missed,
-    "records": records.records,
-    "reentry": reentry.run,
-    "record": records.record,
-    "gui": records.gui,
-    "setup-dog-model": dog_model.setup_dog_model,
-    "check-dog": dog_model.check_dog,
-    "show-config": show_config.show_config,
-    "users": users.users,
-    "diagnose": diagnose.diagnose,
-    "backup": backup.backup,
-    "restore": backup.restore,
-}
 
 
 def enrollment_minutes(value: str) -> int:
@@ -97,83 +65,110 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="詳細なログと、失敗したときのトレースバックを表示（URL の認証情報は伏せる）",
     )
-    commands = result.add_subparsers(dest="command", required=True)
-    for name, description in [
-        ("check-camera", "映像を1フレーム取得"),
-        ("setup-roi", "監視領域を選択"),
-        ("setup-activity-map", "行動マップ用にサークルの床を多角形で登録"),
-        ("capture-baseline", "空のトイレの基準を登録"),
-        ("run", "監視開始"),
-        ("events", "イベント一覧"),
-        ("metrics", "手動ラベルによる指標集計"),
-        ("test-notification", "通知テスト"),
-    ]:
-        sub = commands.add_parser(name, help=description)
-        if name in ("setup-roi", "setup-activity-map", "capture-baseline"):
-            sub.add_argument("--replace", action="store_true", help="既存設定を明示的に更新")
-        if name in ("capture-baseline", "run"):
-            sub.add_argument(
-                "--track-tray",
-                action="store_true",
-                help="トレーの縁による位置追従（features.track_tray と同じ）",
-            )
-        if name == "setup-roi":
-            sub.add_argument("--outside", action="store_true", help="トレーと周囲の床を囲む")
-            sub.add_argument(
-                "--polygon", action="store_true", help="3点以上をクリックして多角形のROIを設定"
-            )
-        if name == "run":
-            sub.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
-            sub.add_argument("--gui", action="store_true", help="監視と一緒にGUIを起動")
-            sub.add_argument(
-                "--gui-port", type=gui_port, help="GUIのポート（既定は設定の gui.port）"
-            )
-            sub.add_argument(
-                "--no-browser", action="store_true", help="GUIをブラウザーで自動で開かない"
-            )
-            sub.add_argument(
-                "--dog",
-                action="store_true",
-                help="犬の存在・出入り検出を有効化（dog.enabled と同じ）",
-            )
-            sub.add_argument(
-                "--activity-map",
-                action="store_true",
-                help="サークル内の滞在・通過を集計（features.activity_map と同じ）",
-            )
-            sub.add_argument(
-                "--video-review",
-                "--codex",
-                dest="video_review",
-                action="store_true",
-                help="保存した動画を自動判定し、根拠が見えたら通知（features.video_review と同じ）",
-            )
-            sub.add_argument(
-                "--detect-outside",
-                action="store_true",
-                help="トレー外の排泄候補も検知（features.detect_outside と同じ）",
-            )
-            sub.add_argument(
-                "--early-alert",
-                action="store_true",
-                help="トイレ滞在の見守りを録画完了前に通知（features.early_alert と同じ）",
-            )
-        if name == "test-notification":
-            sub.add_argument(
-                "--early-alert", action="store_true", help="見守り専用のntfyトピックをテスト"
-            )
-    registration = commands.add_parser("tray-registration", help="監視を止めずにトレーを登録")
+    commands = CommandGroup(result.add_subparsers(dest="command", required=True))
+    _monitor_commands(commands)
+    _review_commands(commands)
+    _record_commands(commands)
+    _management_commands(commands)
+    return result
+
+
+def _monitor_commands(commands: CommandGroup) -> None:
+    commands.add("check-camera", setup.check_camera, help="映像を1フレーム取得")
+    roi = commands.add("setup-roi", setup.setup_roi, help="監視領域を選択")
+    roi.add_argument("--replace", action="store_true", help="既存設定を明示的に更新")
+    roi.add_argument("--outside", action="store_true", help="トレーと周囲の床を囲む")
+    roi.add_argument(
+        "--polygon", action="store_true", help="3点以上をクリックして多角形のROIを設定"
+    )
+    activity_map = commands.add(
+        "setup-activity-map",
+        setup.setup_activity_map,
+        help="行動マップ用にサークルの床を多角形で登録",
+    )
+    activity_map.add_argument("--replace", action="store_true", help="既存設定を明示的に更新")
+    baseline = commands.add(
+        "capture-baseline", setup.capture_baseline, help="空のトイレの基準を登録"
+    )
+    baseline.add_argument("--replace", action="store_true", help="既存設定を明示的に更新")
+    baseline.add_argument(
+        "--track-tray",
+        action="store_true",
+        help="トレーの縁による位置追従（features.track_tray と同じ）",
+    )
+    run_command = commands.add("run", run.run, help="監視開始")
+    run_command.add_argument(
+        "--track-tray",
+        action="store_true",
+        help="トレーの縁による位置追従（features.track_tray と同じ）",
+    )
+    run_command.add_argument("--max-frames", type=int, default=0, help="0なら無制限")
+    run_command.add_argument("--gui", action="store_true", help="監視と一緒にGUIを起動")
+    run_command.add_argument(
+        "--gui-port", type=gui_port, help="GUIのポート（既定は設定の gui.port）"
+    )
+    run_command.add_argument(
+        "--no-browser", action="store_true", help="GUIをブラウザーで自動で開かない"
+    )
+    run_command.add_argument(
+        "--dog",
+        action="store_true",
+        help="犬の存在・出入り検出を有効化（dog.enabled と同じ）",
+    )
+    run_command.add_argument(
+        "--activity-map",
+        action="store_true",
+        help="サークル内の滞在・通過を集計（features.activity_map と同じ）",
+    )
+    run_command.add_argument(
+        "--video-review",
+        "--codex",
+        dest="video_review",
+        action="store_true",
+        help="保存した動画を自動判定し、根拠が見えたら通知（features.video_review と同じ）",
+    )
+    run_command.add_argument(
+        "--detect-outside",
+        action="store_true",
+        help="トレー外の排泄候補も検知（features.detect_outside と同じ）",
+    )
+    run_command.add_argument(
+        "--early-alert",
+        action="store_true",
+        help="トイレ滞在の見守りを録画完了前に通知（features.early_alert と同じ）",
+    )
+    commands.add("events", records.events, help="イベント一覧")
+    commands.add("metrics", records.metrics, help="手動ラベルによる指標集計")
+    notification = commands.add("test-notification", notify.test_notification, help="通知テスト")
+    notification.add_argument(
+        "--early-alert", action="store_true", help="見守り専用のntfyトピックをテスト"
+    )
+    registration = commands.add(
+        "tray-registration", setup.tray_registration, help="監視を止めずにトレーを登録"
+    )
     registration.add_argument("action", choices=("begin", "apply", "cancel", "status"))
     registration.add_argument("--polygon", action="store_true", help="apply 時に映像から範囲を選択")
     registration.add_argument("--roi", help="apply 時に読み込む ROI の JSON ファイル")
-    review = commands.add_parser(
-        "video-review", aliases=["codex-review"], help="保存済み動画を自動判定（通知なし）"
+
+
+def _review_commands(commands: CommandGroup) -> None:
+    video_review = commands.add(
+        "video-review",
+        review.video_review,
+        aliases=["codex-review"],
+        help="保存済み動画を自動判定（通知なし）",
     )
-    review.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
-    review.add_argument("--clip", help="判定する未ラベル動画のID")
-    review.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
-    review.add_argument("--detect-outside", action="store_true", help="登録した周辺範囲も判定")
-    compare = commands.add_parser("video-benchmark", help="ラベル付き動画で判定器・モデルを比較")
+    video_review.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
+    video_review.add_argument("--clip", help="判定する未ラベル動画のID")
+    video_review.add_argument(
+        "--track-tray", action="store_true", help="動画内でトレーの位置に追従"
+    )
+    video_review.add_argument(
+        "--detect-outside", action="store_true", help="登録した周辺範囲も判定"
+    )
+    compare = commands.add(
+        "video-benchmark", benchmark.video_benchmark, help="ラベル付き動画で判定器・モデルを比較"
+    )
     compare.add_argument("--dataset", required=True, help="評価する録画IDとタグを指定したJSON")
     compare.add_argument(
         "--judge",
@@ -199,8 +194,10 @@ def parser() -> argparse.ArgumentParser:
     compare.add_argument(
         "--send-images", action="store_true", help="選んだ判定器への評価画像の送信を許可"
     )
-    sets = commands.add_parser(
-        "benchmark-dataset", help="判定器の比較に使う評価セットを作成・確認・固定（送信なし）"
+    sets = commands.add(
+        "benchmark-dataset",
+        datasets.benchmark_dataset,
+        help="判定器の比較に使う評価セットを作成・確認・固定（送信なし）",
     )
     sets.add_argument("action", choices=("create", "check", "freeze"))
     sets.add_argument("dataset", nargs="?", help="check・freeze する評価セットのJSON")
@@ -223,12 +220,18 @@ def parser() -> argparse.ArgumentParser:
     sets.add_argument(
         "--output", help="書き出す新しいJSONファイル（既定は data/benchmarks/datasets/）"
     )
-    circling = commands.add_parser("circling-review", help="保存動画の旋回候補を分析（通知なし）")
-    circling.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
-    circling.add_argument("--clip", help="分析する動画のID。指定した動画は再分析できます")
-    circling.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
-    compare = commands.add_parser(
-        "circling-compare", help="旋回の規則と軌跡の決定木を、確認済みの動画で比較（通知なし）"
+    circling_review = commands.add(
+        "circling-review", review.circling_review, help="保存動画の旋回候補を分析（通知なし）"
+    )
+    circling_review.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
+    circling_review.add_argument("--clip", help="分析する動画のID。指定した動画は再分析できます")
+    circling_review.add_argument(
+        "--track-tray", action="store_true", help="動画内でトレーの位置に追従"
+    )
+    compare = commands.add(
+        "circling-compare",
+        circling.circling_compare,
+        help="旋回の規則と軌跡の決定木を、確認済みの動画で比較（通知なし）",
     )
     compare.add_argument("--limit", type=int, default=200, help="比べる動画の上限（1〜500件）")
     compare.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
@@ -239,40 +242,57 @@ def parser() -> argparse.ArgumentParser:
         type=dog_confidence,
         help="この比較だけで使う犬検出のしきい値（既定は設定の dog.confidence）",
     )
-    feedback = commands.add_parser("feedback", help="実際に排泄だったかと種類を記録")
+
+
+def _record_commands(commands: CommandGroup) -> None:
+    feedback = commands.add("feedback", records.feedback, help="実際に排泄だったかと種類を記録")
     feedback.add_argument("event_id")
     feedback.add_argument("label", choices=["true", "false"])
     feedback.add_argument("--start", help="実際の開始時刻（タイムゾーン付きISO8601）")
     feedback.add_argument("--end", help="実際の完了時刻（タイムゾーン付きISO8601）")
     feedback.add_argument("--type", choices=EXCRETION_TYPES, help="排泄の種類")
     feedback.add_argument("--note", help="記録のメモ")
-    ack = commands.add_parser("acknowledge", help="飼い主の確認済みを記録")
+    ack = commands.add("acknowledge", records.acknowledge, help="飼い主の確認済みを記録")
     ack.add_argument("event_id")
-    missed = commands.add_parser("missed", help="見逃した排便・排尿を記録")
+    missed = commands.add("missed", records.missed, help="見逃した排便・排尿を記録")
     missed.add_argument("--start", required=True)
     missed.add_argument("--end")
     missed.add_argument("--type", choices=EXCRETION_TYPES, default="unspecified")
     reentry.add_parser(commands)
-    commands.add_parser("records", help="確認済みの排便・排尿記録")
-    record = commands.add_parser("record", help="目視で確認した排便・排尿を記録")
+    commands.add("records", records.records, help="確認済みの排便・排尿記録")
+    record = commands.add("record", records.record, help="目視で確認した排便・排尿を記録")
     record.add_argument("--type", required=True, choices=EXCRETION_TYPES)
     record.add_argument("--start", required=True)
     record.add_argument("--end")
     record.add_argument("--note", default="")
-    gui = commands.add_parser("gui", help="記録・ラベル付け・管理のGUIを起動")
+
+
+def _management_commands(commands: CommandGroup) -> None:
+    gui = commands.add("gui", records.gui, help="記録・ラベル付け・管理のGUIを起動")
     gui.add_argument("--port", type=gui_port, help="GUIのポート（既定は設定の gui.port）")
     gui.add_argument("--no-browser", action="store_true", help="ブラウザを自動で開かない")
     gui.add_argument("--manual-only", action="store_true", help="カメラなしで手動記録の画面を開く")
-    commands.add_parser("setup-dog-model", help="犬検出モデルを固定版・ハッシュ確認付きで取得")
-    dog_check = commands.add_parser("check-dog", help="静止画で犬検出と処理負荷を確認")
+    commands.add(
+        "setup-dog-model",
+        dog_model.setup_dog_model,
+        help="犬検出モデルを固定版・ハッシュ確認付きで取得",
+    )
+    dog_check = commands.add(
+        "check-dog", dog_model.check_dog, help="静止画で犬検出と処理負荷を確認"
+    )
     dog_check.add_argument("--image", required=True)
     dog_check.add_argument("--repeat", type=int, default=10)
-    commands.add_parser("show-config", help="設定ファイルから読んだ有効な設定を表示")
-    commands.add_parser(
-        "diagnose", help="不具合の報告に貼る診断情報を表示（URL・トピック名・パスは含まない）"
+    commands.add(
+        "show-config", show_config.show_config, help="設定ファイルから読んだ有効な設定を表示"
     )
-    accounts = commands.add_parser(
+    commands.add(
+        "diagnose",
+        diagnose.diagnose,
+        help="不具合の報告に貼る診断情報を表示（URL・トピック名・パスは含まない）",
+    )
+    accounts = commands.add(
         "users",
+        users.users,
         help="GUI のユーザーの一覧・招待・役割と表示名の変更・復旧・無効化（このマシンで実行）",
     )
     accounts.add_argument(
@@ -301,19 +321,20 @@ def parser() -> argparse.ArgumentParser:
     accounts.add_argument(
         "--minutes", type=enrollment_minutes, default=30, help="登録用 URL の有効時間（5〜1440分）"
     )
-    archive = commands.add_parser(
-        "backup", help="記録と登録情報のバックアップ（ZIP）を作る（秘密の値は含めない）"
+    archive = commands.add(
+        "backup",
+        backup.backup,
+        help="記録と登録情報のバックアップ（ZIP）を作る（秘密の値は含めない）",
     )
     archive.add_argument("output", help="書き出す ZIP ファイル（既にあれば断る）")
     archive.add_argument("--clips", action="store_true", help="動画も含める")
-    recover = commands.add_parser(
-        "restore", help="バックアップから戻す（元のデータは名前を変えて残す。監視を止めて実行）"
+    recover = commands.add(
+        "restore",
+        backup.restore,
+        help="バックアップから戻す（元のデータは名前を変えて残す。監視を止めて実行）",
     )
     recover.add_argument("archive", help="backup や GUI で作った ZIP ファイル")
     recover.add_argument("--yes", action="store_true", help="確認を求めずに復元する")
-    for name, sub in commands.choices.items():
-        sub.set_defaults(handler=HANDLERS[ALIASES.get(name, name)])
-    return result
 
 
 def configure_logging(verbose: bool) -> None:

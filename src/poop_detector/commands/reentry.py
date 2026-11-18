@@ -10,10 +10,11 @@ from ..errors import InvalidInputError
 from ..features.reentry import ReentryStore
 from ..records.events import EXCRETION_TYPES, Store
 from .context import CommandContext
+from .registration import CommandGroup
 
 
-def add_parser(commands: Any) -> None:
-    command = commands.add_parser("reentry", help="排泄後の再侵入と片付けの記録")
+def add_parser(commands: CommandGroup) -> None:
+    command = commands.add("reentry", run, help="排泄後の再侵入と片付けの記録")
     actions = command.add_subparsers(dest="action", required=True)
     actions.add_parser("list", help="候補、片付け状態、再侵入の詳細")
     actions.add_parser("report", help="配置ごとの再侵入と排便の集計")
