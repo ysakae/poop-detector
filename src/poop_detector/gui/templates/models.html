@@ -27,13 +27,18 @@
 </section>
 <section class="settings-section" aria-labelledby="choose-title"><h3 id="choose-title">判定器とモデルを選び直す</h3>
 {% if editable %}
-<form method="post" action="{{ page }}" class="settings-form">{{ csrf_field(token) }}<input type="hidden" name="base" value="{{ base }}">
+<form method="post" action="{{ page }}" class="settings-form" id="judge-model-form" data-catalog="{{ catalog }}">{{ csrf_field(token) }}<input type="hidden" name="base" value="{{ base }}">
 <div class="settings-field"><label><code>review.provider</code><select name="provider">
 {%- for value, name in providers -%}<option value="{{ value }}"{% if value == provider %} selected{% endif %}>{{ value }}（{{ name }}）</option>{%- endfor -%}
 </select></label></div>
-<div class="settings-field"><label><code>review.model</code><input name="model" value="{{ model }}"></label><small>英数字で始まるモデル名。空なら選んだ CLI の既定</small></div>
+<div class="settings-field"><label><code>review.model</code><select name="model">
+<option value=""{% if not model %} selected{% endif %}>CLI の既定</option>
+<option value="{{ custom_model }}"{% if model %} selected{% endif %}>モデル名を入力</option>
+</select></label><small id="judge-model-status" role="status"></small></div>
+<div class="settings-field" id="judge-custom-model"><label>モデル名<input name="custom_model" value="{{ model }}" maxlength="128"></label></div>
 <p><button>保存</button></p>
 </form>
+<script defer src="/assets/judge_models.js"></script>
 <p class="note">設定ファイルの review の値だけを書き換えます。動いている監視（run）は、次の動画の判定から反映します。新しい判定器を使えない（未ログインなど）ときは、前の判定器のまま続けます。</p>
 {% else %}<p class="message message-warn">設定ファイルの場所が分からないため、表示だけです。</p>{% endif %}
 </section>
