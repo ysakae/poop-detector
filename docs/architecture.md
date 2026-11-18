@@ -16,7 +16,7 @@
 | `experimental/` | 実験的 | トレー外検知（`outside.py`）、旋回分析（`circling.py`）、軌跡の特徴量（`trajectory.py`）と旋回の比較（`circling_compare.py`） |
 | `commands/`・`gui/` | — | CLI のサブコマンドと、GUI |
 
-最上位には、設定（`config.py`）、通知（`notifications.py`）、画像の型（`frames.py`）、時刻（`timezones.py`）、対応 OS の判定（`platform_support.py`）、CLI の入口（`main.py`）を置いています。監視ループの本体（`detection.monitoring.Monitor`）は、任意・実験的な機能に依存しません。それらは `MonitorExtension` として差し込み、設定から拡張を組み立てる `standard_extensions` だけが各機能を読み込みます。
+最上位には、設定（`config.py`）、通知（`notifications.py`）、画像の型（`frames.py`）、時刻（`timezones.py`）、対応 OS の判定（`platform_support.py`）、CLI の入口（`main.py`）を置いています。監視ループの本体（`detection.monitoring.Monitor`）は、任意・実験的な機能に依存しません。それらは `MonitorExtension` として差し込み、`features/monitoring.py` の `standard_extensions` が設定に応じて組み立てます。検知ループ自身が通知先に求めるのは、差分検知を伝える `send` だけです。
 
 ## 2つのプロセスが `data/` を介して連携する
 
@@ -91,6 +91,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 - 差分検知は排泄物の識別ではなく「変化の候補」です。`score` は差分画素率で確率ではありません。画像差分だけで CONFIRMED にはしません。
 - `IncrementalDetector` は「空の基準」と「通知済み状態（reference）」の2つを持ち、通知済みの跡からの追加分だけを評価します。基準へ戻る方向の変化（清掃・乾燥）は追加として扱いません。
 - 通知済み状態は `scene_signature`（基準画像と ROI の SHA256）をキーに SQLite へ保存し、再起動時に復元します。ROI か基準が変われば旧状態は使いません。
+- 監視範囲・差分の基準画像・トレー追従の基準画像の配置は `detection.scene.SceneFiles` が定義します。GUI、監視、録画評価は同じ登録先からこれらを読みます。
 - 空の基準画像は自動更新しません。`setup-roi` と `capture-baseline` は `--replace` を明示したときだけ上書きします。`load_baseline` は保存時の ROI と一致しない基準を拒否します。
 - ROI の端に接する差分は、面積が小さくても遮蔽（`occupied`）として保留します。
 

@@ -2,7 +2,6 @@
 
 import math
 import sqlite3
-from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -110,7 +109,7 @@ class ReentryStore:
         self.db = events_database(root)
 
     def register(self, event_id: str, configuration_id: str, position: Position | None) -> None:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             self.register_in(db, event_id, configuration_id, position)
 
     @staticmethod
@@ -126,14 +125,14 @@ class ReentryStore:
         )
 
     def pending(self, configuration_id: str) -> list[sqlite3.Row]:
-        with closing(self.db.connect()) as db:
+        with self.db.connect() as db:
             return db.execute(
                 "SELECT * FROM pending_waste WHERE configuration_id=?",
                 (configuration_id,),
             ).fetchall()
 
     def update_position(self, event_id: str, position: Position) -> None:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             db.execute(
                 """UPDATE reentry_waste SET position_x=?, position_y=?
                    WHERE event_id IN (SELECT id FROM pending_waste WHERE id=?)""",
@@ -141,7 +140,7 @@ class ReentryStore:
             )
 
     def advance_observation(self, event_id: str, previous: str | None, at: str) -> bool:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             return (
                 db.execute(
                     """UPDATE reentry_waste SET observed_until=?
@@ -153,7 +152,7 @@ class ReentryStore:
             )
 
     def collect(self, event_id: str) -> bool:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             changed = db.execute(
                 """UPDATE reentry_waste SET status='collected', collected_at=?, current_risk=NULL
                    WHERE event_id=? AND status!='collected'""",
@@ -171,7 +170,7 @@ class ReentryStore:
         self, event_id: str, kind: str, at: str | None = None, clip_id: str | None = None
     ) -> bool:
         """保存済みの通知キーを再起動後も使う。"""
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             return (
                 db.execute(
                     """INSERT OR IGNORE INTO reentry_notices (event_id, kind, occurred_at, clip_id)
@@ -184,7 +183,7 @@ class ReentryStore:
     def due_notices(
         self, configuration_id: str, at: str, *, medium: bool = True
     ) -> list[sqlite3.Row]:
-        with closing(self.db.connect()) as db:
+        with self.db.connect() as db:
             return db.execute(
                 """SELECT n.event_id, n.kind, n.occurred_at, n.clip_id
                    FROM reentry_notices n JOIN pending_waste w ON w.id=n.event_id
@@ -195,7 +194,7 @@ class ReentryStore:
             ).fetchall()
 
     def claim_retry(self, event_id: str, kind: str, at: str) -> bool:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             return (
                 db.execute(
                     """UPDATE reentry_notices
@@ -209,7 +208,7 @@ class ReentryStore:
 
     def finish_notice(self, event_id: str, kind: str, result: Delivery, at: str) -> None:
         retry_at = (datetime.fromisoformat(at) + timedelta(minutes=1)).isoformat()
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             db.execute(
                 """UPDATE reentry_notices
                    SET status=CASE WHEN ?='retry' AND attempts>=3 THEN 'failed' ELSE ? END,
@@ -219,7 +218,7 @@ class ReentryStore:
             )
 
     def start(self, event_id: str, at: str) -> int | None:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             cursor = db.execute(
                 """INSERT INTO reentry_visits (event_id, started_at, risk)
                    SELECT id, ?, 'MEDIUM' FROM pending_waste WHERE id=?""",
@@ -228,7 +227,7 @@ class ReentryStore:
             return cursor.lastrowid if cursor.rowcount else None
 
     def finish(self, visit: int, at: str | None) -> None:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             db.execute(
                 """UPDATE reentry_visits SET ended_at=?, interrupted=?
                    WHERE id=? AND ended_at IS NULL AND interrupted=0""",
@@ -236,7 +235,7 @@ class ReentryStore:
             )
 
     def high(self, visit: int, distance: float, quality: FootQuality = "good") -> bool:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             return (
                 db.execute(
                     """UPDATE reentry_visits SET risk='HIGH', distance=?, high_foot_quality=?
@@ -249,7 +248,7 @@ class ReentryStore:
 
     def count_foot(self, visit: int, quality: FootQuality) -> None:
         """訪問中に足元を観測した回数と、そのうち品質が低い回数を数える。"""
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             db.execute(
                 """UPDATE reentry_visits SET foot_samples=foot_samples+1,
                        low_foot_samples=low_foot_samples+?
@@ -258,14 +257,14 @@ class ReentryStore:
             )
 
     def attach_clip(self, visit: int, clip_id: str, *, high: bool) -> None:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             if high:
                 db.execute("UPDATE reentry_visits SET high_clip_id=? WHERE id=?", (clip_id, visit))
             else:
                 db.execute("UPDATE reentry_visits SET clip_id=? WHERE id=?", (clip_id, visit))
 
     def set_risk(self, event_id: str, risk: str | None) -> None:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             db.execute(
                 """UPDATE reentry_waste SET current_risk=?
                    WHERE event_id=? AND status!='collected' AND current_risk IS NOT ?""",
@@ -273,7 +272,7 @@ class ReentryStore:
             )
 
     def interrupt_open(self, configuration_id: str) -> None:
-        with closing(self.db.connect()) as db, db:
+        with self.db.connect() as db:
             db.execute(
                 "UPDATE reentry_waste SET current_risk=NULL WHERE configuration_id=? AND current_risk IS NOT NULL",
                 (configuration_id,),

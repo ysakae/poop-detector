@@ -4,6 +4,7 @@ import logging
 import sqlite3
 import time
 from collections.abc import Sequence
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict, cast, get_args
 from uuid import uuid4
@@ -106,7 +107,7 @@ class ClipStore:
         self.root = Path(root)
         (self.root / "clips").mkdir(parents=True, exist_ok=True)
 
-    def connect(self) -> sqlite3.Connection:
+    def connect(self) -> AbstractContextManager[sqlite3.Connection]:
         """events.sqlite3 への接続（スキーマは Store を作ったときに最新になっている）。"""
         return self.store.connect()
 

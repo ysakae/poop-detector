@@ -3,7 +3,6 @@
 import argparse
 import json
 from collections import Counter, defaultdict
-from contextlib import closing
 from datetime import UTC, datetime, tzinfo
 from typing import Any
 
@@ -52,7 +51,7 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
         return 0
     if args.note is not None and len(args.note) > 2000:
         raise InvalidInputError("メモは2000文字以内にしてください")
-    with closing(store.db.connect()) as db, db:
+    with store.db.connect() as db:
         if args.action == "event-feedback":
             if (
                 db.execute(
@@ -91,7 +90,7 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
 
 def _visit_rows(store: ReentryStore) -> dict[str, list[dict[str, Any]]]:
     visits: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    with closing(store.db.connect()) as db:
+    with store.db.connect() as db:
         for row in db.execute("SELECT * FROM reentry_visits ORDER BY started_at, id"):
             visits[row["event_id"]].append(dict(row))
     return visits
@@ -103,7 +102,7 @@ def _seconds(start: str, end: str) -> float:
 
 def list_records(store: ReentryStore) -> list[dict[str, Any]]:
     visits = _visit_rows(store)
-    with closing(store.db.connect()) as db:
+    with store.db.connect() as db:
         rows = db.execute(
             """SELECT w.*, e.timestamp, e.actual_start, e.actual_end, e.score, e.image, e.feedback,
                       e.location, l.excretion_type
@@ -128,7 +127,7 @@ def list_records(store: ReentryStore) -> list[dict[str, Any]]:
 def report(store: ReentryStore, zone: tzinfo | None = None) -> dict[str, Any]:
     tracked = list_records(store)
     now = datetime.now(UTC).isoformat()
-    with closing(store.db.connect()) as db:
+    with store.db.connect() as db:
         layouts = db.execute("SELECT * FROM reentry_configurations").fetchall()
         reviewed = db.execute(
             """SELECT COALESCE(e.actual_start,e.timestamp) AS at, e.location

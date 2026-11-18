@@ -11,8 +11,7 @@ from typing import Any
 
 from ..config import Config, ConfigError
 from ..detection.roi import ROI
-from ..detection.scene import load_baseline, scene_signature
-from ..features.tray_tracking import TrayTracker
+from ..detection.scene import SceneFiles, scene_signature
 from ..video import benchmark_sets
 from ..video.benchmark import Case, Scene, dataset_cases, evaluate, read_cases
 from ..video.benchmark_results import REPORT_VERSION, default_output
@@ -22,7 +21,7 @@ from ..video.clips import ClipStore
 from ..video.judge_runs import JudgeRunLog, RecordingJudge
 from ..video.providers import EFFORTS
 from ..video.review import SheetOptions, VideoJudge
-from .context import CommandContext, CommandError, load_outside_roi, load_scene, load_tray_tracker
+from .context import CommandContext, CommandError, load_outside_roi, load_tray_tracker
 from .datasets import check_dataset, print_problems, resolve
 from .datasets import load_scene as load_scene_folder
 
@@ -129,20 +128,14 @@ def _legacy_cases(
     config = context.config
     track_tray = args.track_tray or config.track_tray_enabled
     detect_outside = args.detect_outside or config.detect_outside_enabled
-    if args.scene:
-        scene = Path(args.scene)
-        roi = ROI.load(scene / "roi.json")
-        baseline = load_baseline(scene / "baseline" / "empty.png", roi)
-        tracker = (
-            TrayTracker.from_baseline(scene / "baseline" / "tray-reference.png", baseline, roi)
-            if track_tray
-            else None
+    files = SceneFiles(Path(args.scene)) if args.scene else context.scene
+    roi, baseline = files.load()
+    tracker = load_tray_tracker(files, baseline, roi, track_tray)
+    outside_roi = None
+    if detect_outside:
+        outside_roi = (
+            ROI.load(files.root / "outside-roi.json") if args.scene else load_outside_roi(context)
         )
-        outside_roi = ROI.load(scene / "outside-roi.json") if detect_outside else None
-    else:
-        roi, baseline = load_scene(context)
-        tracker = load_tray_tracker(context, baseline, roi, track_tray)
-        outside_roi = load_outside_roi(context) if detect_outside else None
     signature = scene_signature(baseline, roi)
     cases, excluded = read_cases(manifest, ClipStore(context.root), signature)
     return cases, excluded, {signature: Scene(roi, tracker, outside_roi)}

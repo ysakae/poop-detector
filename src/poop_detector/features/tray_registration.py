@@ -2,7 +2,6 @@
 
 import fcntl
 import json
-import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
@@ -12,8 +11,9 @@ from uuid import UUID, uuid4
 
 import cv2
 
+from ..atomic_file import write_bytes
 from ..detection.roi import ROI, AnyROI
-from ..detection.scene import save_baseline
+from ..detection.scene import SceneFiles, save_baseline
 from ..errors import InvalidInputError
 from ..frames import Frame
 from .tray_tracking import TrayTracker
@@ -66,9 +66,11 @@ class TrayRegistration:
         except FileNotFoundError:
             return {"phase": "idle", "active": None, "request": None, "roi": None, "error": None}
 
-    def scene_root(self) -> Path:
+    def active_scene(self) -> SceneFiles:
         active = self.status()["active"]
-        return self.root if active is None else self.root / "tray-scenes" / UUID(active).hex
+        return SceneFiles(
+            self.root if active is None else self.root / "tray-scenes" / UUID(active).hex
+        )
 
     @contextmanager
     def _locked(self) -> Iterator[None]:
@@ -78,14 +80,7 @@ class TrayRegistration:
             yield
 
     def _write(self, state: RegistrationStatus) -> None:
-        with tempfile.NamedTemporaryFile(mode="w", dir=self.root, delete=False) as file:
-            path = Path(file.name)
-            try:
-                json.dump(state, file, ensure_ascii=False)
-                file.flush()
-                path.replace(self.path)
-            finally:
-                path.unlink(missing_ok=True)
+        write_bytes(self.path, json.dumps(state, ensure_ascii=False).encode("utf-8"))
 
     def begin(self) -> None:
         with self._locked():
@@ -163,9 +158,10 @@ class TrayRegistration:
             scene.tracker is not None and scene.tracker.align(frame) is None
         ):
             raise InvalidInputError("後続の映像で新しい基準を確認できません")
-        scene.roi.save(folder / "roi.json")
-        save_baseline(folder / "baseline" / "empty.png", scene.baseline, scene.roi)
-        if not cv2.imwrite(str(folder / "baseline" / "tray-reference.png"), reference):
+        files = SceneFiles(folder)
+        scene.roi.save(files.roi_path)
+        save_baseline(files.baseline_path, scene.baseline, scene.roi)
+        if not cv2.imwrite(str(files.tray_reference_path), reference):
             raise OSError("追従用の基準画像を保存できません")
         self._write(
             {

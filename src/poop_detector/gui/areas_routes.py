@@ -59,7 +59,7 @@ def _monitoring(handler: "Handler") -> bool:
 
 def _paths(context: CommandContext) -> dict[str, Any]:
     return {
-        "roi": context.roi_path,
+        "roi": context.scene.roi_path,
         "outside": context.outside_roi_path,
         "floor": context.root / LAYOUT_FILE,
     }
@@ -164,18 +164,18 @@ def _polygon(value: str) -> MaskedROI:
 
 def _save_scene(context: CommandContext, roi: MaskedROI, frame: Frame) -> None:
     """監視範囲と空のトレーの基準画像を、同じ映像から保存する（capture-baseline と同じ形）。"""
-    if context.scene_root != context.root:
+    if context.scene.root != context.root:
         raise RegistrationRefusedError(
             "トレー交換で登録した基準を使っています。監視を起動し、トレー交換で登録し直してください"
         )
     if context.config.track_tray_enabled:
         # トレーの縁を確認できない画像は、追従の基準にしない（TrayReferenceError）。
         TrayTracker(frame, roi)
-        context.tray_reference_path.parent.mkdir(parents=True, exist_ok=True)
-        if not cv2.imwrite(str(context.tray_reference_path), frame):
+        context.scene.tray_reference_path.parent.mkdir(parents=True, exist_ok=True)
+        if not cv2.imwrite(str(context.scene.tray_reference_path), frame):
             raise OSError("トレー追従用の基準画像を保存できません")
-    roi.save(context.roi_path)
-    save_baseline(context.baseline_path, roi.crop(frame), roi)
+    roi.save(context.scene.roi_path)
+    save_baseline(context.scene.baseline_path, roi.crop(frame), roi)
 
 
 def _register(handler: "Handler", form: Form, kind: str, snapshot: Snapshot) -> None:

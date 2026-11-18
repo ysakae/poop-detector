@@ -597,7 +597,7 @@ def test_run_switches_tray_in_the_same_camera_session(cli_env, monkeypatch, caps
     assert cli_env.run("tray-registration", "status") == 0
     assert "反映しました" in capsys.readouterr().out
     context_after = context.CommandContext(Config(data_dir=str(cli_env.root)))
-    roi, image = context.load_scene(context_after)
+    roi, image = context_after.scene.load()
     assert roi == new_roi
     assert (image == new_roi.crop(new_baseline)).all()
     assert Store(cli_env.root).list() == []

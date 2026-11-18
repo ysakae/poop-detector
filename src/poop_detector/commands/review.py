@@ -13,7 +13,6 @@ from .context import (
     CommandError,
     check_limit,
     load_outside_roi,
-    load_scene,
     load_tray_tracker,
 )
 
@@ -46,9 +45,9 @@ def video_review(args: argparse.Namespace, context: CommandContext) -> int:
     outside_roi = load_outside_roi(context) if detect_outside else None
     judge = ready_judge(context.config)
     check_limit(args.limit)
-    roi, baseline = load_scene(context)
+    roi, baseline = context.scene.load()
     track_tray = args.track_tray or context.config.track_tray_enabled
-    tray_tracker = load_tray_tracker(context, baseline, roi, track_tray)
+    tray_tracker = load_tray_tracker(context.scene, baseline, roi, track_tray)
     review = Review(
         ClipStore(context.root),
         lambda path, row, chosen: inspect_clip(
@@ -75,14 +74,14 @@ def circling_review(args: argparse.Namespace, context: CommandContext) -> int:
     from ..video.clips import ClipStore
 
     check_limit(args.limit)
-    roi, baseline = load_scene(context)
+    roi, baseline = context.scene.load()
     store = ClipStore(context.root)
     rows = store.circling.targets(scene_signature(baseline, roi), args.limit, args.clip)
     if not rows:
         print("現在の画角で分析できる保存済み動画がありません")
         return 2 if args.clip else 0
     track_tray = args.track_tray or context.config.track_tray_enabled
-    tracker = load_tray_tracker(context, baseline, roi, track_tray)
+    tracker = load_tray_tracker(context.scene, baseline, roi, track_tray)
     model = DogDetector(context.dog_model_dir, context.config.dog_confidence)
     failed = 0
     for row in rows:

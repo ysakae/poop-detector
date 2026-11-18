@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from py_vapid import Vapid02
 
+from .atomic_file import write_bytes
 from .notifications import Delivery, ToiletNotifier, merge_delivery
 from .records.database import Database
 
@@ -98,11 +99,7 @@ class PushKeys:
                 serialization.PrivateFormat.PKCS8,
                 serialization.NoEncryption(),
             )
-            pending = self.root / f".{KEY_FILE}.tmp"
-            descriptor = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(descriptor, "wb") as stream:
-                stream.write(pem)
-            pending.replace(self.path)
+            write_bytes(self.path, pem)
 
     def public_key(self) -> str:
         """ブラウザーの購読に渡す公開鍵（applicationServerKey、base64url）。"""

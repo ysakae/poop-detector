@@ -452,3 +452,22 @@ def test_version_22_gains_review_dismissals_without_losing_clips(tmp_path):
     # 外した記録のない動画は、確認待ちから外していないものとして読む。
     (row,) = clips.list(include_assessments=True)
     assert (row["id"], row["review_dismissed"]) == ("c1", 0)
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_connection_closes_after_commit_or_rollback(tmp_path, fail):
+    database = Database(tmp_path / "test.sqlite3")
+    with database.connect() as db:
+        db.execute("CREATE TABLE probe(value INTEGER)")
+    try:
+        with database.connect() as connection:
+            connection.execute("INSERT INTO probe VALUES (1)")
+            if fail:
+                raise ValueError("書き込み中断")
+    except ValueError:
+        assert fail
+
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("SELECT 1")
+    with database.connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM probe").fetchone()[0] == int(not fail)

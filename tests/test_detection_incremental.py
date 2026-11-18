@@ -51,7 +51,7 @@ def test_addition_on_existing_stain_and_occlusion():
 
 
 def run_frames(root, frames):
-    from poop_detector.detection.monitoring import monitor
+    from poop_detector.features.monitoring import monitor
 
     clean, _, _ = scenes()
 

@@ -283,7 +283,7 @@ def management_status(handler: "Handler") -> dict[str, Any]:
 def render_management(handler: "Handler", error: str | None = None) -> str:
     app = handler.app
     try:
-        roi = ROI.load(TrayRegistration(app.root).scene_root() / "roi.json")
+        roi = ROI.load(TrayRegistration(app.root).active_scene().roi_path)
         points = (outline(roi, (1001, 1001, 3)) / 1000).tolist()
     except (OSError, ValueError, TypeError):
         points = []

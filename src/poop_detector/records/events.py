@@ -3,6 +3,7 @@
 import builtins
 import sqlite3
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, TypeAlias, TypedDict, cast
@@ -99,7 +100,7 @@ class Store:
                 "INSERT OR REPLACE INTO detection_reference VALUES (1,?,?)", (signature, image)
             )
 
-    def connect(self) -> sqlite3.Connection:
+    def connect(self) -> AbstractContextManager[sqlite3.Connection]:
         return self.database.connect()
 
     def record(

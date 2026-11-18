@@ -9,7 +9,8 @@
 """
 
 import sqlite3
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 from ..errors import IncompatibleDataError
@@ -526,17 +527,16 @@ class Database:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        db = self.connect()
-        try:
+        with self.connect() as db:
             if schema_version(db) != LATEST_VERSION:
                 migrate(db)
-        finally:
-            db.close()
 
-    def connect(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self.path)
-        db.row_factory = sqlite3.Row
-        return db
+    @contextmanager
+    def connect(self) -> Iterator[sqlite3.Connection]:
+        """正常終了なら確定し、例外なら取り消す。どちらの場合も接続を閉じる。"""
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.row_factory = sqlite3.Row
+            yield db
 
 
 def events_database(root: str | Path) -> Database:

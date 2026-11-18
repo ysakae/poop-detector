@@ -7,11 +7,11 @@
 import hashlib
 import json
 import math
-import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from ..atomic_file import write_bytes
 from .dog import MODEL_FILES
 
 CHECK_FILE = "check-dog.json"
@@ -84,10 +84,7 @@ def save_check(directory: str | Path, measured: dict[str, Any], *, repeat: int, 
     )
     path = Path(directory) / CHECK_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
-    pending = path.with_name(f".{CHECK_FILE}.tmp")
-    with pending.open("w", encoding="utf-8") as stream:
-        json.dump(asdict(result), stream, ensure_ascii=False)
-    os.replace(pending, path)
+    write_bytes(path, json.dumps(asdict(result), ensure_ascii=False).encode("utf-8"))
 
 
 def _number(value: object) -> float:

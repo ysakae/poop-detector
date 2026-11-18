@@ -10,16 +10,15 @@ from typing import TYPE_CHECKING
 from ..capture.camera import LatestCamera
 from ..capture.live_preview import LivePreview
 from ..config import Config, check_monitor_features, load_connection_settings, with_flags
-from ..detection.monitoring import (
-    Monitor,
-    MonitorExtension,
+from ..detection.monitoring import Monitor, MonitorExtension
+from ..detection.roi import AnyROI
+from ..detection.scene import scene_signature
+from ..features.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
+from ..features.monitoring import (
     dog_observer_from_config,
     monitor,
     standard_extensions,
 )
-from ..detection.roi import AnyROI
-from ..detection.scene import scene_signature
-from ..features.activity_map import ActivityLayout, ActivityRecorder, ActivityStore
 from ..features.tray_registration import TrayRegistration, TrayScene
 from ..frames import Frame
 from ..gui.server import background_gui
@@ -31,7 +30,6 @@ from .context import (
     build_notifier,
     camera_source,
     load_outside_roi,
-    load_scene,
     load_tray_tracker,
     monitor_watchdog,
     open_camera,
@@ -72,8 +70,8 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
     # ntfy・macOS の通知に加えて、GUI で購読した人の端末へ Web Push でも送る。
     notifier = with_web_push(primary, context)
     source = camera_source(settings)
-    roi, baseline = load_scene(context)
-    tray_tracker = load_tray_tracker(context, baseline, roi, config.track_tray_enabled)
+    roi, baseline = context.scene.load()
+    tray_tracker = load_tray_tracker(context.scene, baseline, roi, config.track_tray_enabled)
     activity = load_activity_recorder(context) if config.activity_map_enabled else None
     logger.info("有効な機能: %s", "、".join(config.enabled_features()) or "なし")
     return watch(

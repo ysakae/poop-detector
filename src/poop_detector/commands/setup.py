@@ -48,9 +48,9 @@ def check_camera(_args: argparse.Namespace, context: CommandContext) -> int:
 
 def setup_roi(args: argparse.Namespace, context: CommandContext) -> int:
     require_display()
-    if not args.outside and context.scene_root != context.root:
+    if not args.outside and context.scene.root != context.root:
         raise CommandError("監視中のトレー登録を使ってください（tray-registration）")
-    path = context.outside_roi_path if args.outside else context.roi_path
+    path = context.outside_roi_path if args.outside else context.scene.roi_path
     # 先に接続情報を確かめてから、登録済みかどうかを確かめる（以前からの順序）。
     camera_source(load_connection_settings())
     if path.exists() and not args.replace:
@@ -83,21 +83,21 @@ def setup_activity_map(args: argparse.Namespace, context: CommandContext) -> int
 
 
 def capture_baseline(args: argparse.Namespace, context: CommandContext) -> int:
-    if context.scene_root != context.root:
+    if context.scene.root != context.root:
         raise CommandError("監視中のトレー登録を使ってください（tray-registration）")
     camera_source(load_connection_settings())
-    if context.baseline_path.exists() and not args.replace:
+    if context.scene.baseline_path.exists() and not args.replace:
         raise CommandError("基準は登録済みです。更新する場合は--replaceを指定してください")
     frame = capture_frame(context)
-    roi = ROI.load(context.roi_path)
+    roi = ROI.load(context.scene.roi_path)
     if args.track_tray or context.config.track_tray_enabled:
         # トレーの縁を確認できない画像は、追従の基準にしない（TrayReferenceError）。
         TrayTracker(frame, roi)
-        path = context.tray_reference_path
+        path = context.scene.tray_reference_path
         path.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(path), frame):
             raise OSError("トレー追従用の基準画像を保存できません")
-    save_baseline(context.baseline_path, roi.crop(frame), roi)
+    save_baseline(context.scene.baseline_path, roi.crop(frame), roi)
     print("基準画像を保存しました")
     return 0
 

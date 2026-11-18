@@ -10,9 +10,9 @@ import pytest
 from support import SilentNotifier, spot_scene
 
 from poop_detector.config import Config
-from poop_detector.detection import monitoring
 from poop_detector.detection.roi import ROI
 from poop_detector.detection.scene import scene_signature
+from poop_detector.features.monitoring import monitor
 from poop_detector.records.events import Store
 
 ROI_ALL = ROI(0, 0, 1, 1)
@@ -72,7 +72,7 @@ def run(tmp_path):
 
     def run_steps(steps, *, max_frames=None, **kwargs):
         frames = sum(step.frame is not None for step in steps)
-        monitoring.monitor(
+        monitor(
             ScriptedCamera(steps, clock),
             ROI_ALL,
             EMPTY,

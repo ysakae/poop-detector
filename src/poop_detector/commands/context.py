@@ -13,8 +13,8 @@ from ..capture.camera import Camera
 from ..capture.live_preview import LivePreview
 from ..config import Config
 from ..detection.roi import ROI, AnyROI
-from ..detection.scene import load_baseline
-from ..errors import SetupRequiredError, UserError
+from ..detection.scene import SceneFiles
+from ..errors import UserError
 from ..features.outages import OutageKind, OutageLog, OutageTracker
 from ..features.tray_registration import TrayRegistration
 from ..features.tray_tracking import TrayTracker
@@ -50,24 +50,12 @@ class CommandContext:
         return Path(self.config.data_dir)
 
     @cached_property
-    def scene_root(self) -> Path:
-        return TrayRegistration(self.root).scene_root()
-
-    @property
-    def roi_path(self) -> Path:
-        return self.scene_root / "roi.json"
+    def scene(self) -> SceneFiles:
+        return TrayRegistration(self.root).active_scene()
 
     @property
     def outside_roi_path(self) -> Path:
         return self.root / "outside-roi.json"
-
-    @property
-    def baseline_path(self) -> Path:
-        return self.scene_root / "baseline" / "empty.png"
-
-    @property
-    def tray_reference_path(self) -> Path:
-        return self.scene_root / "baseline" / "tray-reference.png"
 
     @property
     def dog_model_dir(self) -> Path:
@@ -78,21 +66,13 @@ class CommandContext:
 Handler = Callable[[argparse.Namespace, CommandContext], int]
 
 
-def load_scene(context: CommandContext) -> tuple[AnyROI, Frame]:
-    """登録済みの ROI と、空のトイレの基準画像を読む。"""
-    if not context.roi_path.is_file():
-        raise SetupRequiredError("監視範囲がありません。先に setup-roi で登録してください")
-    roi = ROI.load(context.roi_path)
-    return roi, load_baseline(context.baseline_path, roi)
-
-
 def load_tray_tracker(
-    context: CommandContext, baseline: Frame, roi: AnyROI, enabled: bool
+    scene: SceneFiles, baseline: Frame, roi: AnyROI, enabled: bool
 ) -> TrayTracker | None:
     """--track-tray のときだけ、登録済みのトレーの画像から追従を準備する。"""
     if not enabled:
         return None
-    return TrayTracker.from_baseline(context.tray_reference_path, baseline, roi)
+    return TrayTracker.from_baseline(scene.tray_reference_path, baseline, roi)
 
 
 def load_outside_roi(context: CommandContext) -> AnyROI:
