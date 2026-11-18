@@ -53,7 +53,7 @@ class SessionStore:
     def __init__(
         self,
         database: Database,
-        policy: SessionPolicy = SessionPolicy(),  # noqa: B008  不変のデータクラスの既定値
+        policy: SessionPolicy = SessionPolicy(),
         *,
         clock: Callable[[], float] = time.time,
     ) -> None:
