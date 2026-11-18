@@ -1,6 +1,7 @@
 """ホーム（ダッシュボード）と、検知の一覧を記録の下へ移したこと（#86）を検証する。"""
 
 import re
+from pathlib import Path
 
 from support import exchange, login
 
@@ -145,26 +146,40 @@ def test_home_shows_unspecified_records_only_when_they_exist(gui):
     assert stat(today, "種類不明") == ("1", "回")
 
 
-def test_home_live_view_has_a_maximize_button(gui):
-    """ホームのライブ映像は、映像が届くまで隠した最大化のボタンを持つ。"""
+GUI_DIR = Path(__file__).resolve().parents[1] / "src" / "poop_detector" / "gui"
+
+
+def test_home_live_view_has_video_like_controls(gui):
+    """ライブ映像は、動画の画面と同じく映像の下端の操作バーの右に全画面のボタンを持つ。"""
     server, _, _ = gui
     html = page(server, "/", login(server, role="member"))
-    button = re.search(r'<button [^>]*id="live-maximize"[^>]*>', html)
-    assert button, "最大化のボタンがありません"
+    controls = re.search(r'<div class="live-controls"[^>]*>(.*?)</div>', html, re.S)
+    assert controls, "映像の操作バーがありません"
+    button = re.search(r'<button [^>]*id="live-maximize"[^>]*>', controls[1])
+    assert button, "全画面のボタンがありません"
     assert 'type="button"' in button[0]
-    assert "hidden" in button[0]
+    assert 'aria-label="全画面表示"' in button[0]
     assert 'aria-pressed="false"' in button[0]
-    assert "映像を最大化" in html
+    # 文字のボタンではなく、動画の操作バーと同じくアイコンだけにする。
+    assert "映像を最大化" not in html
+    assert re.search(r'<div class="live-controls"[^>]*\bhidden\b', html)
 
 
 def test_live_script_supports_fullscreen_and_fallback():
     """全画面の API がない端末（iPhone の Safari）でも、画面いっぱいに広げられる。"""
-    from pathlib import Path
-
-    import poop_detector.gui as gui_package
-
-    script = (Path(gui_package.__file__).parent / "static" / "live.js").read_text()
+    script = (GUI_DIR / "static" / "live.js").read_text()
     assert "requestFullscreen" in script
     assert "fullscreenchange" in script
     assert "live-maximized" in script
     assert '"Escape"' in script
+    # 動画と同じく、映像のダブルクリックでも全画面を切り替える。
+    assert '"dblclick"' in script
+    assert "全画面を終了" in script
+
+
+def test_maximized_live_image_is_not_capped_by_the_figure_height():
+    """最大化の間は、figure の画像の高さの上限（62vh）を外して画面いっぱいに広げる。"""
+    style = (GUI_DIR / "templates" / "style.css").read_text()
+    rule = re.search(r"\.live-view\.live-maximized img\{([^}]*)\}", style)
+    assert rule, "最大化した映像のスタイルがありません"
+    assert "max-height:none" in rule[1]
