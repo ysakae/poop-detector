@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 from ..features.outages import OUTAGE_KINDS, Outage, format_duration
 from ..records.care import CareEntry, feeding_text, format_grams, last_feeding, latest_entries
 from ..records.care import entries as care_entries
-from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, Store
+from ..records.events import EXCRETION_TYPES, RECORD_LOCATIONS, EventRow, Store
 from ..records.feeding_plans import plans_for_day
 from ..records.record_stats import summarize_records
 from ..timezones import local_now, local_today, parse_local, timezone_label, to_local
@@ -118,7 +118,7 @@ NEW_RECORD_BUTTONS: tuple[tuple[str, str, str], ...] = (
 # 「通知は来ましたか？」の答え。(action の値, 名前)。保存する値は従来の manual・missed。
 NEW_RECORD_KINDS: tuple[tuple[str, str], ...] = (
     ("manual", "来た、または通知とは関係なく記録する"),
-    ("missed", "来なかった（見逃しとして数える）"),
+    ("missed", "来なかった（監視範囲内の見逃し）"),
 )
 KIND_SUFFIXES = {"MISSED": "（見逃し）", "MANUAL": "（手動）", "VIDEO": "（映像）"}
 SOURCES = {"MANUAL": "手動", "MISSED": "見逃し", "SUSPECTED": "検知を確認", "VIDEO": "映像で確認"}
@@ -252,7 +252,7 @@ def render_events(
         saved=bool(query.get("saved")),
         items=items,
         row=event_detail(row) if row else None,
-        locations=list(EXCRETION_LOCATIONS.items()),
+        locations=list(store.editable_locations(row).items()),
         timezone=timezone_label(),
         review=review,
         waiting=waiting,
@@ -269,7 +269,7 @@ def render_new_record(token: str, *, title: str | None = None, manual_only: bool
         manual_only=manual_only,
         title=title or APP_TITLE,
         token=token,
-        locations=list(EXCRETION_LOCATIONS.items()),
+        locations=list(RECORD_LOCATIONS.items()),
         buttons=NEW_RECORD_BUTTONS,
         kinds=NEW_RECORD_KINDS,
         now=local_now().strftime("%Y-%m-%dT%H:%M"),
@@ -358,7 +358,7 @@ def render_home(
             "when": list_time(row["actual_start"] or row["timestamp"]),
             "type": EXCRETION_TYPES[row["excretion_type"]],
             "icon": RECORD_ICONS.get(row["excretion_type"], "paw"),
-            "location": EXCRETION_LOCATIONS.get(row["location"] or "", "場所不明"),
+            "location": RECORD_LOCATIONS.get(row["location"] or "", "場所不明"),
             "url": event_url(row["id"]),
         }
         for row in reversed(records[-RECENT_RECORDS:])
@@ -460,7 +460,7 @@ def record_row(row: EventRow, videos: Sequence[str]) -> dict[str, Any]:
     end = list_time(row["actual_end"])
     return {
         "type": EXCRETION_TYPES[row["excretion_type"]],
-        "location": EXCRETION_LOCATIONS.get(row["location"] or "", "場所不明"),
+        "location": RECORD_LOCATIONS.get(row["location"] or "", "場所不明"),
         "source": SOURCES[row["kind"]],
         "note": row["note"],
         "icon": RECORD_ICONS.get(row["excretion_type"], "paw"),

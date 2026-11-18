@@ -5,7 +5,13 @@ import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
-from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow, validate_location
+from ..records.events import (
+    EXCRETION_LOCATIONS,
+    EXCRETION_TYPES,
+    OUTSIDE_PEN,
+    EventRow,
+    validate_location,
+)
 from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
 
 
@@ -47,6 +53,7 @@ class ClipLabels:
         return [
             record
             for record in self.store.list()
+            if record["location"] != OUTSIDE_PEN
             if record["id"] == clip["event_id"]
             or (
                 (record["feedback"] == 1 or record["kind"] == "SUSPECTED")
@@ -209,6 +216,8 @@ class ClipLabels:
         if record is None:
             raise ValueError("保存先の記録を選んでください")
         known_location = record["location"]
+        if known_location == OUTSIDE_PEN:
+            raise ValueError("サークル外の記録には監視動画を関連付けられません")
         if record["kind"] == "SUSPECTED" and known_location is None:
             known_location = "tray"
         location = clip_label.location

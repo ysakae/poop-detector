@@ -15,7 +15,7 @@ from typing import Any
 
 from ..errors import InvalidInputError
 from ..timezones import to_local
-from .events import EXCRETION_LOCATIONS, EXCRETION_TYPES
+from .events import EXCRETION_TYPES, RECORD_LOCATIONS
 from .weights import Weight
 
 CSV_HEADER: tuple[str, ...] = (
@@ -132,7 +132,7 @@ def _row(row: Mapping[str, Any]) -> list[str]:
         "" if end is None else end.isoformat(),
         seconds,
         EXCRETION_TYPES.get(row["excretion_type"], row["excretion_type"]),
-        EXCRETION_LOCATIONS.get(row["location"] or "", ""),
+        RECORD_LOCATIONS.get(row["location"] or "", ""),
         _cell(row["note"] or ""),
         KIND_LABELS.get(row["kind"], row["kind"]),
         row["id"],
@@ -169,7 +169,7 @@ def summarize_period(
         day = daily.setdefault(started.date(), Counter())
         day.update(found)
         day["total"] += 1
-        locations[EXCRETION_LOCATIONS.get(row["location"] or "", NO_LOCATION)] += 1
+        locations[RECORD_LOCATIONS.get(row["location"] or "", NO_LOCATION)] += 1
     days = [first_day + timedelta(days=offset) for offset in range((last_day - first_day).days + 1)]
     return PeriodSummary(
         first_day=first_day,

@@ -72,7 +72,7 @@ def missed(args: argparse.Namespace, context: CommandContext) -> int:
 def record(args: argparse.Namespace, context: CommandContext) -> int:
     store = Store(context.root)
     require_timezones(args)
-    store.add_excretion(args.type, args.start, args.end, args.note)
+    store.add_excretion(args.type, args.start, args.end, args.note, location=args.location)
     return 0
 
 
