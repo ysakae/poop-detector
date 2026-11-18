@@ -1,11 +1,13 @@
 """カメラを使わないときも同じデータに排泄を記録できる。"""
 
+import pytest
 from support import request, submit
 
 from poop_detector.gui.server import make_server
 
 
-def test_manual_home_hides_live_view_and_links_to_manual_entry(gui):
+@pytest.mark.parametrize("submitted_action", ["manual", "missed"])
+def test_manual_home_hides_live_view_and_links_to_manual_entry(gui, submitted_action):
     server, store, _ = gui
     with make_server(store.root, 0, manual_only=True) as manual:
         from threading import Thread
@@ -21,17 +23,33 @@ def test_manual_home_hides_live_view_and_links_to_manual_entry(gui):
             assert 'href="/records/new"' in html
             status, page = request(manual, "GET", "/records/new")
             assert status == 200
-            assert "排泄を記録".encode() in page
+            html = page.decode()
+            assert "排泄を記録" in html
+            assert "通知は来ましたか？" not in html
+            assert (
+                'href="/review"'
+                not in html.split('<form method="post"', 1)[0].split("<h2>排泄を記録</h2>", 1)[1]
+            )
+            assert '<input type="hidden" name="action" value="manual">' in html
             assert (
                 submit(
                     manual,
                     "/save",
-                    {"action": "manual", "type": "urine", "start": "2024-01-01T08:00"},
+                    {"action": submitted_action, "type": "urine", "start": "2024-01-01T08:00"},
                 )[0]
                 == 303
             )
-            assert any(row["excretion_type"] == "urine" for row in store.records())
+            assert [row["excretion_type"] for row in store.records()] == ["urine"]
+            assert store.metrics()["missed"] == 0
         finally:
             manual.shutdown()
             thread.join()
     assert "現在のカメラ映像" in request(server, "GET", "/")[1].decode()
+
+
+def test_camera_record_still_offers_missed_option(gui):
+    server, _, _ = gui
+    status, page = request(server, "GET", "/records/new")
+    assert status == 200
+    assert "通知は来ましたか？" in page.decode()
+    assert 'value="missed"' in page.decode()

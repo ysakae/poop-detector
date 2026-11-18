@@ -190,7 +190,12 @@ def events_page(handler: "Handler", query: Query) -> None:
 
 @get(NEW_RECORD_PAGE)
 def new_record_page(handler: "Handler", _query: Query) -> None:
-    handler.respond(200, render_new_record(handler.csrf, title=handler.app.title))
+    handler.respond(
+        200,
+        render_new_record(
+            handler.csrf, title=handler.app.title, manual_only=handler.app.manual_only
+        ),
+    )
 
 
 @get("/records")
@@ -585,7 +590,7 @@ def _save_label(handler: "Handler", fields: Mapping[str, str]) -> None:
             start,
             end,
             fields.get("note", ""),
-            missed=fields["action"] == "missed",
+            missed=fields["action"] == "missed" and not handler.app.manual_only,
             location=fields.get("location"),
         )
         return
