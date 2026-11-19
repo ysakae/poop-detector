@@ -8,7 +8,7 @@ from typing import Any
 
 from ..errors import InvalidInputError
 from ..features.reentry import ReentryStore
-from ..records.events import EXCRETION_TYPES, Store
+from ..records.events import EXCRETION_TYPES
 from .context import CommandContext
 from .registration import CommandGroup
 
@@ -33,10 +33,6 @@ def add_parser(commands: CommandGroup) -> None:
     visit.add_argument("--note")
 
 
-def _binary(value: str | None) -> int | None:
-    return {"yes": 1, "no": 0}.get(value or "")
-
-
 def run(args: argparse.Namespace, context: CommandContext) -> int:
     store = ReentryStore(context.root)
     if args.action == "report":
@@ -50,41 +46,18 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
     if args.action == "list":
         print(json.dumps(list_records(store), ensure_ascii=False, indent=2))
         return 0
-    if args.note is not None and len(args.note) > 2000:
-        raise InvalidInputError("メモは2000文字以内にしてください")
-    with store.db.connect() as db:
-        if args.action == "event-feedback":
-            if (
-                db.execute(
-                    "SELECT 1 FROM reentry_waste WHERE event_id=?", (args.event_id,)
-                ).fetchone()
-                is None
-            ):
-                raise InvalidInputError("排泄候補が見つかりません")
-            if args.label:
-                Store._classify(db, args.event_id, args.label, location=args.location)
-            elif args.location:
-                raise InvalidInputError("--location は --label と一緒に指定してください")
-            db.execute(
-                """UPDATE reentry_waste SET stool=COALESCE(?,stool), note=COALESCE(?,note)
-                   WHERE event_id=?""",
-                (args.stool, args.note, args.event_id),
-            )
-        elif not db.execute(
-            """UPDATE reentry_visits
-               SET correct=CASE WHEN ? THEN ? ELSE correct END,
-                   stepped=CASE WHEN ? THEN ? ELSE stepped END, note=COALESCE(?,note)
-               WHERE id=?""",
-            (
-                args.correct is not None,
-                _binary(args.correct),
-                args.stepped is not None,
-                _binary(args.stepped),
-                args.note,
-                args.visit_id,
-            ),
-        ).rowcount:
-            raise InvalidInputError("再侵入の記録が見つかりません")
+    if args.action == "event-feedback":
+        store.save_event_feedback(
+            args.event_id,
+            label=args.label,
+            location=args.location,
+            stool=args.stool,
+            note=args.note,
+        )
+    else:
+        store.save_visit_feedback(
+            args.visit_id, correct=args.correct, stepped=args.stepped, note=args.note
+        )
     print("フィードバックを記録しました")
     return 0
 

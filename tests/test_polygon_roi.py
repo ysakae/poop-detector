@@ -96,3 +96,23 @@ def test_cli_accepts_polygon_option():
     args = parser().parse_args(["setup-roi", "--polygon", "--replace"])
     assert args.polygon
     assert args.replace
+
+
+def test_polygon_selection_can_restart_after_an_invalid_polygon():
+    from poop_detector.detection.roi import _PolygonSelection
+
+    selection = _PolygonSelection(101, 101)
+    for x, y in [(10, 10), (90, 90), (10, 90), (90, 10), (101, 10)]:
+        selection.add(x, y)
+    with pytest.raises(ValueError, match=r"交差|面積"):
+        selection.confirm()
+    assert len(selection.points) == 4
+
+    selection.reset()
+    for x, y in [(10, 10), (90, 10), (90, 90), (10, 90), (50, 50)]:
+        selection.add(x, y)
+    selection.undo()
+
+    np.testing.assert_allclose(
+        selection.confirm().points, ((0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9))
+    )

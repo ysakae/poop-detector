@@ -130,7 +130,7 @@ class ClipLabels:
         """動画で排泄なしと確かめた検知を、誤検知にする。ラベル済みの検知は変えない。"""
         event = db.execute("SELECT kind, feedback FROM events WHERE id=?", (event_id,)).fetchone()
         if event is not None and event["kind"] == "SUSPECTED" and event["feedback"] is None:
-            self.store._classify(db, event_id, "false")
+            self.store.classify_in(db, event_id, "false")
 
     def _confirm(
         self, db: sqlite3.Connection, clip: sqlite3.Row, record_id: str, clip_label: ClipLabel
@@ -232,7 +232,7 @@ class ClipLabels:
                 db.execute("UPDATE events SET location=? WHERE id=?", (location, record_id))
             return location
         _, start_at, end_at = times
-        self.store._classify(
+        self.store.classify_in(
             db,
             record_id,
             clip_label.label,

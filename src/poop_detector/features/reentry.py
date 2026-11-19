@@ -2,6 +2,7 @@
 
 import math
 import sqlite3
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -9,10 +10,11 @@ from typing import Literal
 import cv2
 
 from ..detection.roi import AnyROI, outline
+from ..errors import InvalidInputError
 from ..frames import Shape
 from ..notifications import Delivery
 from ..records.database import events_database
-from ..records.events import utcnow
+from ..records.events import Store, utcnow
 from .dog import Box, overlaps_roi
 
 Position = tuple[float, float]
@@ -102,11 +104,73 @@ class WasteTrack:
         return None
 
 
+def _validate_feedback_note(note: str | None) -> None:
+    if note is not None and len(note) > 2000:
+        raise InvalidInputError("メモは2000文字以内にしてください")
+
+
 class ReentryStore:
     """既存の events.sqlite3 に片付け状態と再侵入をひも付ける。"""
 
     def __init__(self, root: Path) -> None:
         self.db = events_database(root)
+
+    def save_event_feedback(
+        self,
+        event_id: str,
+        *,
+        label: str | None = None,
+        location: str | None = None,
+        stool: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        """排泄の分類と片付け候補の補足情報を同時に確定する。"""
+        _validate_feedback_note(note)
+        with self.db.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            candidate = db.execute(
+                "SELECT 1 FROM reentry_waste WHERE event_id=?", (event_id,)
+            ).fetchone()
+            if candidate is None:
+                raise InvalidInputError("排泄候補が見つかりません")
+            if label:
+                Store.classify_in(db, event_id, label, location=location)
+            elif location:
+                raise InvalidInputError("--location は --label と一緒に指定してください")
+            db.execute(
+                """UPDATE reentry_waste SET stool=COALESCE(?,stool), note=COALESCE(?,note)
+                   WHERE event_id=?""",
+                (stool, note, event_id),
+            )
+
+    def save_visit_feedback(
+        self,
+        visit_id: int,
+        *,
+        correct: str | None = None,
+        stepped: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        """省略した項目は維持し、unknown は判定なしとして保存する。"""
+        _validate_feedback_note(note)
+        answers = {"yes": 1, "no": 0, "unknown": None}
+        with self.db.connect() as db:
+            changed = db.execute(
+                """UPDATE reentry_visits
+                   SET correct=CASE WHEN ? THEN ? ELSE correct END,
+                       stepped=CASE WHEN ? THEN ? ELSE stepped END, note=COALESCE(?,note)
+                   WHERE id=?""",
+                (
+                    correct is not None,
+                    answers.get(correct or ""),
+                    stepped is not None,
+                    answers.get(stepped or ""),
+                    note,
+                    visit_id,
+                ),
+            ).rowcount
+            if not changed:
+                raise InvalidInputError("再侵入の記録が見つかりません")
 
     def register(self, event_id: str, configuration_id: str, position: Position | None) -> None:
         with self.db.connect() as db:
@@ -357,27 +421,33 @@ class ReentryMonitor:
         change = self.presence.update(side, tick)
         rows = {row["id"]: row for row in self.store.pending(self.configuration_id)}
         self.record_coverage(rows, side, tick, at)
-        for event_id in self.visits.keys() - rows.keys():
-            self.store.finish(self.visits.pop(event_id), None)
+        self._finish_visits(self.visits.keys() - rows.keys(), None)
         self.armed.intersection_update(rows)
         if change == "outside":
-            for visit in self.visits.values():
-                self.store.finish(visit, at)
-            self.visits.clear()
+            self._finish_visits(list(self.visits), at)
         if side == self.presence.side == "outside":
             for event_id in rows.keys() - self.armed:
                 self.store.set_risk(event_id, "LOW")
             self.armed.update(rows)
-        notices: list[tuple[str, str, int]] = []
-        if change == "inside":
-            for event_id in sorted(self.armed):
-                new_visit = self.store.start(event_id, at)
-                if new_visit is not None:
-                    self.visits[event_id] = new_visit
-                    self.store.set_risk(event_id, "MEDIUM")
-                    notices.append((event_id, "reentry", new_visit))
-            self.armed.clear()
+        notices = self._start_visits(at) if change == "inside" else []
         notices.extend(self.near_waste(rows, side, point, quality))
+        return notices
+
+    def _finish_visits(self, events: Iterable[str], at: str | None) -> None:
+        """退出を観測できなかった訪問には終了時刻を付けない。"""
+        for event_id in events:
+            self.store.finish(self.visits[event_id], at)
+            del self.visits[event_id]
+
+    def _start_visits(self, at: str) -> list[tuple[str, str, int]]:
+        notices: list[tuple[str, str, int]] = []
+        for event_id in sorted(self.armed):
+            visit = self.store.start(event_id, at)
+            if visit is not None:
+                self.visits[event_id] = visit
+                self.store.set_risk(event_id, "MEDIUM")
+                notices.append((event_id, "reentry", visit))
+        self.armed.clear()
         return notices
 
     def near_waste(

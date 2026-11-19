@@ -189,10 +189,10 @@ class Store:
         """目視の判定を保存する。start・end・note を省くと既存の値を保ち、location の空文字は消去。"""
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            self._classify(db, event_id, label, start, end, note, location=location)
+            self.classify_in(db, event_id, label, start, end, note, location=location)
 
     @staticmethod
-    def _classify(
+    def classify_in(
         db: sqlite3.Connection,
         event_id: str,
         label: str,
@@ -202,6 +202,7 @@ class Store:
         *,
         location: str | None = None,
     ) -> None:
+        """呼び出し側のトランザクション内で目視の判定を保存する。"""
         if label not in (*EXCRETION_TYPES, "false", "unknown"):
             raise InvalidInputError("種類が不正です")
         row = db.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
