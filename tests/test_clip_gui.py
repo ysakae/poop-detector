@@ -1,5 +1,9 @@
 """動画の再生・ラベル付けと手動保存要求のHTTP確認。"""
 
+import re
+from datetime import UTC, datetime, timedelta
+
+import pytest
 from support import ready_clip, request, submit
 
 from poop_detector.video.clip_labels import ClipLabel
@@ -236,6 +240,47 @@ def test_clip_list_can_be_narrowed_by_label_state(gui):
     assert f'name="id" value="{waiting}"' in other
     # 知らない値は「すべて」として扱う。
     assert 'aria-current="true">すべて 2</a>' in request(server, "GET", "/clips?show=x")[1].decode()
+
+
+@pytest.mark.parametrize("gui", [True, False], indirect=True)
+def test_clip_list_marks_only_videos_waiting_for_automatic_review(gui, request):
+    """自動判定を待つ動画だけにバッジが付き、判定後の表示では結果に切り替わる。"""
+    from support import request as http_request
+
+    from poop_detector.video.clips import ClipStore
+
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    waiting, failed, judged, labeled, excluded, old = (ready_clip(clips) for _ in range(6))
+    recording = clips.request()
+    clips.update(recording, status="recording")
+    assert clips.assessments.save(failed, error="判定器を呼び出せませんでした")
+    assert clips.assessments.save(judged, Assessment(label="none"))
+    clips.labels.save(labeled, ClipLabel("none", None, None, "other", "", None))
+    clips.update(excluded, source="toilet_reentry")
+    with clips.store.connect() as db:
+        db.execute(
+            "UPDATE clips SET requested_at=? WHERE id=?",
+            ((datetime.now(UTC) - timedelta(days=2)).isoformat(), old),
+        )
+
+    def rows():
+        page = http_request(server, "GET", "/clips")[1].decode()
+        return dict(re.findall(r'href="/clips\?id=([a-f0-9]+)"[^>]*>(.*?)</a>', page))
+
+    before = rows()
+    assert ("判定待ち" in before[waiting]) == request.node.callspec.params["gui"]
+    assert all(
+        "判定待ち" not in before[item]
+        for item in (failed, judged, labeled, excluded, old, recording)
+    )
+    assert "自動判定：失敗" in before[failed]
+    assert "自動判定：排泄なし" in before[judged]
+
+    assert clips.assessments.save(waiting, Assessment(label="none"))
+    after = rows()
+    assert "判定待ち" not in after[waiting]
+    assert "自動判定：排泄なし" in after[waiting]
 
 
 def test_empty_filter_says_so_instead_of_no_clips_yet(gui):

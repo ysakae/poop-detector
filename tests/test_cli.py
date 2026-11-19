@@ -253,6 +253,7 @@ def test_gui_passes_settings_to_the_server(cli_env, monkeypatch):
     )
     (cli_env.path / "config.yaml").write_text(
         f"data_dir: {cli_env.root}\npet_name: ポチ\nclip_disk_mb: 64\n"
+        "features: {video_review: true}\n"
     )
     assert cli_env.run("gui", "--port", "0", "--no-browser") == 0
     assert calls == [
@@ -265,6 +266,7 @@ def test_gui_passes_settings_to_the_server(cli_env, monkeypatch):
                 # 管理 › 設定が書き換える設定ファイル（--config の値）。
                 "config_path": "config.yaml",
                 "manual_only": False,
+                "review_enabled": True,
             },
         )
     ]

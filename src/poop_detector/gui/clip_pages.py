@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlencode
@@ -20,6 +21,7 @@ from ..video.clip_storage import (
     retention_days,
 )
 from ..video.clips import ACTIVITIES, CLIP_LABELS, PENDING_STATUSES, ClipRow, ClipStore
+from ..video.review import RESUME_WINDOW
 from .list_time import by_day, list_time
 from .review_queue import ReviewItem, review_bar
 from .templating import render_template
@@ -98,6 +100,8 @@ def clip_list_item(
     selected: str | None,
     candidate: Candidate | None = None,
     mode: str = "all",
+    *,
+    review_waiting: bool = False,
 ) -> dict[str, Any]:
     label = CLIP_LABELS.get(item["label"], "")
     if label and item["location"]:
@@ -112,6 +116,7 @@ def clip_list_item(
         "assessment": clip_assessment_summary(
             item["review_label"], item["review_location"], bool(item["review_error"])
         ),
+        "review_waiting": review_waiting,
         "candidate": CANDIDATE_STATES[candidate.state]
         if candidate is not None and candidate.state is not None
         else "",
@@ -299,6 +304,7 @@ def render_clips(
     title: str | None = None,
     queue: Sequence[ReviewItem] = (),
     focused: bool = False,
+    review_enabled: bool = False,
 ) -> str:
     """動画の一覧と、選んだ動画の再生・ラベル入力欄。
 
@@ -360,8 +366,24 @@ def render_clips(
     )
     capacity = capacity_info(store.root, disk_mb)
     live = store.live()
+    review_waiting = (
+        {
+            clip["id"]
+            for clip in store.assessments.pending(
+                len(rows), since=(datetime.now(UTC) - RESUME_WINDOW).isoformat()
+            )
+        }
+        if review_enabled and listed and not focused
+        else set()
+    )
     items = [
-        clip_list_item(item, row["id"] if row else None, candidates.get(item["id"]), mode)
+        clip_list_item(
+            item,
+            row["id"] if row else None,
+            candidates.get(item["id"]),
+            mode,
+            review_waiting=item["id"] in review_waiting,
+        )
         for item in listed
     ]
     has_pending = any(item["pending"] for item in items) or bool(
