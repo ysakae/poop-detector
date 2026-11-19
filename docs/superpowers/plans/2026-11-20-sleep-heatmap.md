@@ -55,10 +55,13 @@
 def test_write_and_read_minutes(tmp_path):
     store = SleepStore(events_database(tmp_path))
     at = datetime(2026, 11, 20, 3, 0, tzinfo=UTC)
-    store.write_minutes([MinuteRecord(at, "asleep", 60), MinuteRecord(at + timedelta(minutes=1), "absent", 45)])
+    store.write_minutes(
+        [MinuteRecord(at, "asleep", 60), MinuteRecord(at + timedelta(minutes=1), "absent", 45)]
+    )
     store.write_minutes([MinuteRecord(at, "awake", 50)])
     rows = store.minutes(at, at + timedelta(hours=1))
     assert [(r.state, r.observed_seconds) for r in rows] == [("awake", 50), ("absent", 45)]
+
 
 def test_detection_hours_accumulate(tmp_path):
     store = SleepStore(events_database(tmp_path))
@@ -106,18 +109,31 @@ observed_seconds は unknown 以外の秒数。
 - [ ] **Step 1: 失敗するテストを書く**（`still_seconds=300, stir_seconds=10`、秒ごとに `observe` を呼ぶ補助を `tests/test_sleep.py` 内に置く）
 
 ```python
-def test_still_for_five_minutes_becomes_asleep_from_start(): ...
+def test_still_for_five_minutes_becomes_asleep_from_start():
+    ...
     # 0:00:00 から 6分 still → 0:00〜0:05 の5分が asleep、observed_seconds == 60
-def test_short_stillness_is_awake(): ...
+
+
+def test_short_stillness_is_awake():
+    ...
     # 4分 still → 1分 moving → 4分 awake, 1分 awake
-def test_stir_within_ten_seconds_keeps_sleeping(): ...
+
+
+def test_stir_within_ten_seconds_keeps_sleeping():
+    ...
     # 3分 still, 8秒 moving, 3分 still → 6分すべて asleep 側（moving の8秒を含む分も asleep）
+
+
 def test_stir_longer_than_ten_seconds_breaks_stillness(): ...
 def test_left_is_absent(): ...
 def test_less_than_thirty_observed_seconds_is_unknown(): ...
-def test_interrupt_discards_stillness(): ...
+def test_interrupt_discards_stillness():
+    ...
     # 3分 still → interrupt → 3分 still → すべて awake
-def test_close_returns_pending_minutes_as_awake(): ...
+
+
+def test_close_returns_pending_minutes_as_awake():
+    ...
     # 2分 still のあと close → 2分 awake
 ```
 
@@ -210,12 +226,16 @@ def test_detection_ratio_is_recorded(tmp_path): ...
 ```python
 def test_daytime_accepts_default():
     assert parse_daytime("09:00-18:00") == (time(9), time(18))
+
+
 @pytest.mark.parametrize("value", ["22:00-06:00", "9-18", "25:00-26:00", ""])
 def test_daytime_rejects_invalid(value): ...  # 設定の読み込みで ConfigError
 def test_sleep_requires_dog(): ...  # check_monitor_features が dog_enabled=True を補う
 def test_shared_predict_runs_once_per_frame(): ...  # 同じフレームで2回呼んでも predict は1回
 def test_standard_extensions_adds_sleep(): ...  # 行動マップと睡眠の両方で SharedPredict を共有
-def test_run_with_sleep_records_minutes(tmp_path, monkeypatch): ...  # test_cli.py の偽カメラで run --sleep
+def test_run_with_sleep_records_minutes(
+    tmp_path, monkeypatch
+): ...  # test_cli.py の偽カメラで run --sleep
 ```
 
 - [ ] **Step 2: 失敗を確認** — `uv run pytest tests/test_config.py tests/test_monitor_stages.py tests/test_commands.py tests/test_cli.py -k "sleep or daytime or shared_predict" -v`
@@ -248,7 +268,9 @@ def test_levels_by_asleep_minutes(tmp_path): ...  # 0, 10, 20, 40, 50 分 → 0,
 def test_hour_with_mostly_unknown_is_no_record(tmp_path): ...  # level is None
 def test_daytime_minutes_counted(tmp_path): ...  # 9〜18時の asleep だけ daytime_minutes
 def test_unreliable_day_excluded_from_trend(tmp_path): ...
-def test_sleep_across_midnight_splits_into_days(tmp_path): ...  # 23:30〜0:30 → 前日23時30分・翌日0時30分
+def test_sleep_across_midnight_splits_into_days(
+    tmp_path,
+): ...  # 23:30〜0:30 → 前日23時30分・翌日0時30分
 def test_empty_period_renders(tmp_path): ...  # すべて level None、trend の値は None
 ```
 
