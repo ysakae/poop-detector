@@ -2,8 +2,9 @@
 
 import argparse
 import logging
+from collections.abc import Callable
 from contextlib import ExitStack
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -130,6 +131,36 @@ def review_watcher(
     )
 
 
+_EXCHANGE_PHASES = ("begin", "paused", "apply", "failed", "cancel")
+
+
+@dataclass
+class _TrayExchange:
+    """監視のフレーム境界で、新しいシーンを反映してから録画を再開する。"""
+
+    registration: TrayRegistration
+    scenes: dict[str, TrayScene]
+    scene_extensions: Callable[[TrayScene], list[MonitorExtension]]
+    collector: ClipCollector | None
+    track_tray: bool
+
+    def before_align(self, engine: Monitor, frame: Frame | None) -> bool:
+        if self.registration.status()["phase"] not in _EXCHANGE_PHASES:
+            return False
+        if self.collector is not None:
+            self.collector.set_maintenance(True)
+        scene = self.registration.poll(frame, engine.roi, track_tray=self.track_tray)
+        if scene is not None:
+            self.scenes[scene_signature(scene.baseline, scene.roi)] = scene
+            engine.replace_scene(
+                scene.roi, scene.baseline, scene.tracker, self.scene_extensions(scene)
+            )
+        paused = self.registration.status()["phase"] in _EXCHANGE_PHASES
+        if self.collector is not None:
+            self.collector.set_maintenance(paused)
+        return paused
+
+
 def watch(
     args: argparse.Namespace,
     context: CommandContext,
@@ -224,29 +255,13 @@ def watch(
             )
             return [*extensions, *watchdog]
 
+        exchange = _TrayExchange(
+            registration, scenes, scene_extensions, collector, config.track_tray_enabled
+        )
+
         def before_align(engine: Monitor, frame: Frame | None) -> bool:
             preview.pulse(engine.camera.healthy)
-            phase = registration.status()["phase"]
-            if phase not in ("begin", "paused", "apply", "failed", "cancel"):
-                return False
-            if collector is not None:
-                collector.set_maintenance(True)
-            scene = registration.poll(frame, engine.roi, track_tray=config.track_tray_enabled)
-            if scene is not None:
-                scenes[scene_signature(scene.baseline, scene.roi)] = scene
-                engine.replace_scene(
-                    scene.roi, scene.baseline, scene.tracker, scene_extensions(scene)
-                )
-            paused = registration.status()["phase"] in (
-                "begin",
-                "paused",
-                "apply",
-                "failed",
-                "cancel",
-            )
-            if collector is not None:
-                collector.set_maintenance(paused)
-            return paused
+            return exchange.before_align(engine, frame)
 
         Monitor(
             live,
