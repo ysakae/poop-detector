@@ -12,6 +12,10 @@ Presence = Literal["still", "moving", "left", "unknown"]
 MIN_OBSERVED_SECONDS = 30
 # 秒数が同じ状態が並んだときに採る順。睡眠を多く数えすぎないよう、起きている側を先にする。
 TIE_ORDER: tuple[SleepState, ...] = ("awake", "absent", "asleep")
+# 身じろぎの枠（stir_seconds）を戻すのに必要な、最後の動きからの連続した静止の秒数。
+# still の1秒ごとに枠を戻すと、短い静止をはさんで動き続ける犬も静止の継続とみなしてしまう。
+# 枠が戻るまでの動きは合算し、stir_seconds を超えたら静止を途切れさせる。
+STIR_RECOVERY_SECONDS = 60
 
 # 静止が続いているあいだ、asleep か awake かがまだ決まっていない秒。
 _Second = tuple[datetime, SleepState | None]
@@ -34,8 +38,10 @@ class SleepJudge:
     """秒ごとの観測を受け取り、確定した分の状態を返す状態機械。
 
     observe は1回で1秒分と数える（呼び出し側がおよそ毎秒呼ぶ）。静止が still_seconds 続くと、
-    静止の始まりまでさかのぼって asleep にする。静止の途中の stir_seconds 以内の動きは静止の秒
-    として数え、超えたら静止を途切れさせる。left・unknown・interrupt も静止を途切れさせる。
+    静止の始まりまでさかのぼって asleep にする。asleep にするかは still の秒を受け取ったときだけ
+    判定する。静止の途中の動きは、STIR_RECOVERY_SECONDS の連続した静止で枠が戻るまで合算し、
+    stir_seconds 以内なら静止の秒として数え、超えたら静止を途切れさせる。left・unknown・
+    interrupt も静止を途切れさせる。
     分は、その分の秒がすべて確定し、かつ後の分が始まった（または close した）ときに返す。
     """
 
@@ -51,6 +57,7 @@ class SleepJudge:
         self._pending = 0
         self._run_length = 0
         self._stir = 0
+        self._calm = 0
         self._asleep = False
         self._minute: datetime | None = None
 
@@ -83,7 +90,9 @@ class SleepJudge:
         return records
 
     def _observe_still(self, minute: datetime) -> None:
-        self._stir = 0
+        self._calm += 1
+        if self._calm >= STIR_RECOVERY_SECONDS:
+            self._stir = 0
         self._run_length += 1
         self._append_pending(minute)
         if self._asleep or self._run_length >= self.still_seconds:
@@ -93,6 +102,7 @@ class SleepJudge:
     def _observe_moving(self, minute: datetime) -> None:
         if self._run_length > 0 and self._stir + 1 <= self.stir_seconds:
             self._stir += 1
+            self._calm = 0
             self._run_length += 1
             self._append_pending(minute)
             return
@@ -119,6 +129,7 @@ class SleepJudge:
         self._resolve("awake")
         self._run_length = 0
         self._stir = 0
+        self._calm = 0
         self._asleep = False
 
     def _emit(self, *, final: bool) -> list[MinuteRecord]:

@@ -194,3 +194,57 @@ def test_minutes_are_split_in_utc():
 def test_rejects_invalid_thresholds(still, stir):
     with pytest.raises(ValueError, match="秒"):
         SleepJudge(still_seconds=still, stir_seconds=stir)
+
+
+def test_alternating_short_still_and_stir_never_sleeps():
+    feeder = Feeder(judge())
+    for _ in range(600 // 11 + 1):
+        feeder.feed("still", 1)
+        feeder.feed("moving", 10)
+    feeder.close()
+    assert feeder.records
+    assert all(r.state != "asleep" for r in feeder.records)
+
+
+def test_stirs_separated_by_a_minute_of_stillness_keep_sleeping():
+    feeder = Feeder(judge())
+    feeder.feed("still", 5 * 60)
+    feeder.feed("moving", 8)
+    feeder.feed("still", 60)
+    feeder.feed("moving", 8)
+    feeder.feed("still", 44)
+    feeder.close()
+    assert summary(feeder.records) == [(m, "asleep", 60) for m in range(7)]
+
+
+def test_stirs_close_together_add_up_and_break_stillness():
+    feeder = Feeder(judge())
+    feeder.feed("still", 3 * 60)
+    feeder.feed("moving", 6)
+    feeder.feed("still", 20)
+    feeder.feed("moving", 6)
+    feeder.feed("still", 88)
+    feeder.close()
+    # 20秒の静止では身じろぎの枠が戻らず、6秒+6秒が10秒を超えて静止が途切れる
+    assert summary(feeder.records) == [(m, "awake", 60) for m in range(5)]
+
+
+def test_interrupt_after_sleep_keeps_earlier_sleep():
+    feeder = Feeder(judge())
+    feeder.feed("still", 6 * 60)
+    feeder.judge.interrupt()
+    feeder.feed("still", 60)
+    feeder.close()
+    assert summary(feeder.records) == [(m, "asleep", 60) for m in range(6)] + [(6, "awake", 60)]
+
+
+def test_unknown_after_sleep_keeps_earlier_sleep():
+    feeder = Feeder(judge())
+    feeder.feed("still", 5 * 60)
+    feeder.feed("unknown", 60)
+    feeder.feed("still", 60)
+    feeder.close()
+    assert summary(feeder.records) == [(m, "asleep", 60) for m in range(5)] + [
+        (5, "unknown", 0),
+        (6, "awake", 60),
+    ]
