@@ -599,3 +599,24 @@ def test_event_feedback_rolls_back_classification_when_detail_cannot_be_saved(tm
     with store.db.connect() as db:
         row = db.execute("SELECT stool, note FROM reentry_waste").fetchone()
         assert tuple(row) == (None, "")
+
+
+@pytest.mark.parametrize("ended_at", [None, "2026-11-19T00:00:05+00:00"])
+def test_finish_visits_distinguishes_uncertain_and_observed_exit(tmp_path, ended_at):
+    from poop_detector.features.reentry import ReentryMonitor
+
+    events = Store(tmp_path)
+    event_id = events.record(np.zeros((8, 8, 3), np.uint8), 0.1, None, 0)
+    store = ReentryStore(tmp_path)
+    store.register(event_id, "first", None)
+    monitor = ReentryMonitor(store, "first", Presence(1, 2), 0.1)
+    visit = store.start(event_id, "2026-11-19T00:00:00+00:00")
+    assert visit is not None
+    monitor.visits[event_id] = visit
+
+    monitor._finish_visits({event_id}, ended_at)
+
+    assert not monitor.visits
+    with store.db.connect() as db:
+        row = db.execute("SELECT ended_at, interrupted FROM reentry_visits").fetchone()
+        assert tuple(row) == (ended_at, int(ended_at is None))

@@ -2,6 +2,7 @@
 
 import math
 import sqlite3
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -420,27 +421,33 @@ class ReentryMonitor:
         change = self.presence.update(side, tick)
         rows = {row["id"]: row for row in self.store.pending(self.configuration_id)}
         self.record_coverage(rows, side, tick, at)
-        for event_id in self.visits.keys() - rows.keys():
-            self.store.finish(self.visits.pop(event_id), None)
+        self._finish_visits(self.visits.keys() - rows.keys(), None)
         self.armed.intersection_update(rows)
         if change == "outside":
-            for visit in self.visits.values():
-                self.store.finish(visit, at)
-            self.visits.clear()
+            self._finish_visits(list(self.visits), at)
         if side == self.presence.side == "outside":
             for event_id in rows.keys() - self.armed:
                 self.store.set_risk(event_id, "LOW")
             self.armed.update(rows)
-        notices: list[tuple[str, str, int]] = []
-        if change == "inside":
-            for event_id in sorted(self.armed):
-                new_visit = self.store.start(event_id, at)
-                if new_visit is not None:
-                    self.visits[event_id] = new_visit
-                    self.store.set_risk(event_id, "MEDIUM")
-                    notices.append((event_id, "reentry", new_visit))
-            self.armed.clear()
+        notices = self._start_visits(at) if change == "inside" else []
         notices.extend(self.near_waste(rows, side, point, quality))
+        return notices
+
+    def _finish_visits(self, events: Iterable[str], at: str | None) -> None:
+        """退出を観測できなかった訪問には終了時刻を付けない。"""
+        for event_id in events:
+            self.store.finish(self.visits[event_id], at)
+            del self.visits[event_id]
+
+    def _start_visits(self, at: str) -> list[tuple[str, str, int]]:
+        notices: list[tuple[str, str, int]] = []
+        for event_id in sorted(self.armed):
+            visit = self.store.start(event_id, at)
+            if visit is not None:
+                self.visits[event_id] = visit
+                self.store.set_risk(event_id, "MEDIUM")
+                notices.append((event_id, "reentry", visit))
+        self.armed.clear()
         return notices
 
     def near_waste(
