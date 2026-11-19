@@ -255,16 +255,6 @@ def _invited(email: str, role: str) -> str:
     return f"{email.strip().lower()}（{role_label(role)}）"
 
 
-def _managed(user: User, action: str, form: Form) -> str:
-    """ユーザー管理の操作の監査ログに残す説明。"""
-    target = user.email or user.name
-    if action == "role":
-        return _invited(target, form.fields.get("role", ""))
-    if action == "rename":
-        return renamed(user, form.fields.get("name", "").strip())
-    return target
-
-
 def _users_page(
     handler: "Handler",
     email: str = "",
@@ -312,23 +302,23 @@ def manage_user(handler: "Handler", form: Form) -> None:
         action = form.fields.get("action", "")
         if action == "recover":
             recover_by_email(app.accounts.enrollments, app.site.public_base, user, actor=admin.id)
+            audit(handler, "user.recover", user.email or user.name)
             notice = "パスキー復旧メールを送信しました"
         elif action == "disable":
-            app.accounts.users.disable(user.id)
+            app.accounts.set_user_active(user, False, actor=admin.id)
             notice = "ユーザーを無効にしました"
         elif action == "enable":
-            app.accounts.users.enable(user.id)
+            app.accounts.set_user_active(user, True, actor=admin.id)
             notice = "ユーザーを有効にしました"
         elif action == "role":
             role = form.fields.get("role", "")
-            app.accounts.users.set_role(user.id, role)
+            app.accounts.set_user_role(user, role, actor=admin.id)
             notice = f"役割を「{role_label(role)}」にしました"
         elif action == "rename":
-            name = app.accounts.users.rename(user.id, form.fields.get("name", ""))
+            name = app.accounts.rename_user(user, form.fields.get("name", ""), actor=admin.id)
             notice = f"表示名を「{name}」にしました"
         else:
             raise InvalidInputError("ユーザー管理の操作を確認してください")
-        audit(handler, f"user.{action}", _managed(user, action, form))
     except InvalidInputError as error:
         _users_page(handler, email, status=400, error=str(error))
     except MailError as error:

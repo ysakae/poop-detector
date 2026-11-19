@@ -398,3 +398,20 @@ def test_cli_renames_users_and_records_it(cli, capsys):
         "家族A → おとうさん",
         "b@example.org（家族B → おかあさん）",
     ]
+
+
+def test_audited_user_change_rolls_back_on_audit_failure(store, monkeypatch):
+    accounts = store.accounts
+    admin = accounts.users.create("家族A", "admin")
+    member = accounts.users.create("家族B", "member")
+    user = accounts.users.get(member)
+
+    def unavailable(*args, **kwargs):
+        raise sqlite3.OperationalError("監査ログに書き込めません")
+
+    monkeypatch.setattr(accounts.audit, "record", unavailable)
+    with pytest.raises(sqlite3.OperationalError, match="監査ログ"):
+        accounts.set_user_active(user, False, actor=admin)
+
+    assert accounts.users.get(member).active
+    assert accounts.audit.recent() == []

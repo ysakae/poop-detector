@@ -235,11 +235,15 @@ class UserStore:
         if not changed:
             raise InvalidInputError("ユーザーが見つかりません")
 
-    def rename(self, user_id: str, name: str) -> str:
+    def rename(
+        self, user_id: str, name: str, *, connection: sqlite3.Connection | None = None
+    ) -> str:
         """表示名を変え、整えた名前を返す。作るときと同じ規則（空・長さ・重複）で確かめる。"""
         name = checked_name(name)
         try:
-            with self.database.connect() as db:
+            with (
+                nullcontext(connection) if connection is not None else self.database.connect() as db
+            ):
                 changed = db.execute(
                     "UPDATE users SET name = ? WHERE id = ?", (name, user_id)
                 ).rowcount
@@ -275,9 +279,9 @@ class UserStore:
         if user["role"] == "admin" and user["disabled_at"] is None and others == 0:
             raise InvalidInputError(message)
 
-    def disable(self, user_id: str) -> None:
+    def disable(self, user_id: str, *, connection: sqlite3.Connection | None = None) -> None:
         """ユーザーを無効にする。最後の有効な管理者は無効にできない。"""
-        with self.database.connect() as db:
+        with nullcontext(connection) if connection is not None else self.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             self._keep_an_admin(
                 db, user_id, "最後の管理者は無効にできません。先に別の管理者を登録してください"
@@ -287,10 +291,12 @@ class UserStore:
                 (_stamp(self.clock()), user_id),
             )
 
-    def set_role(self, user_id: str, role: str) -> None:
+    def set_role(
+        self, user_id: str, role: str, *, connection: sqlite3.Connection | None = None
+    ) -> None:
         """役割を変える。最後の有効な管理者は一般ユーザーにできない。"""
         checked = _role(role)
-        with self.database.connect() as db:
+        with nullcontext(connection) if connection is not None else self.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             if checked != "admin":
                 self._keep_an_admin(
@@ -302,8 +308,8 @@ class UserStore:
                 raise InvalidInputError("ユーザーが見つかりません")
             db.execute("UPDATE users SET role = ? WHERE id = ?", (checked, user_id))
 
-    def enable(self, user_id: str) -> None:
-        with self.database.connect() as db:
+    def enable(self, user_id: str, *, connection: sqlite3.Connection | None = None) -> None:
+        with nullcontext(connection) if connection is not None else self.database.connect() as db:
             db.execute("UPDATE users SET disabled_at = NULL WHERE id = ?", (user_id,))
 
     def logged_in(self, user_id: str) -> None:
@@ -612,10 +618,33 @@ class Accounts:
     """ユーザー・パスキー・登録用 URL の台帳と、監査ログをまとめる。"""
 
     def __init__(self, database: Database, *, clock: Clock = time.time) -> None:
+        self.database = database
         self.users = UserStore(database, clock)
         self.passkeys = PasskeyStore(database, clock)
         self.enrollments = EnrollmentStore(database, self.users, clock)
         self.audit = AuditLog(database, clock)
+
+    def rename_user(self, user: User, name: str, *, actor: str) -> str:
+        """表示名の変更と監査ログをまとめて確定する。"""
+        with self.database.connect() as db:
+            name = self.users.rename(user.id, name, connection=db)
+            self.audit.record(actor, "user.rename", renamed(user, name), connection=db)
+        return name
+
+    def set_user_role(self, user: User, role: str, *, actor: str) -> None:
+        """役割の変更と監査ログをまとめて確定する。"""
+        with self.database.connect() as db:
+            self.users.set_role(user.id, role, connection=db)
+            target = user.email or user.name
+            self.audit.record(actor, "user.role", f"{target}（{role_label(role)}）", connection=db)
+
+    def set_user_active(self, user: User, active: bool, *, actor: str) -> None:
+        """有効状態の変更と監査ログをまとめて確定する。"""
+        with self.database.connect() as db:
+            change = self.users.enable if active else self.users.disable
+            change(user.id, connection=db)
+            action = "user.enable" if active else "user.disable"
+            self.audit.record(actor, action, user.email or user.name, connection=db)
 
     def expires_in(self, enrollment: Enrollment) -> timedelta:
         """登録用 URL が切れるまでの時間。"""
