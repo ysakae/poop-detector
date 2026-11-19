@@ -250,3 +250,31 @@ def test_header_spans_in_rendered_page(gui):
     head = re.search(r"<thead><tr>(.*?)</tr></thead>", html, re.S)[1]
     spans = [int(n) for n in re.findall(r'colspan="(\d+)"', head)]
     assert spans == [7, 7, 7, 7]
+
+
+def test_grid_cells_stay_table_cells_and_swatches_are_separate():
+    import re
+    from pathlib import Path
+
+    import poop_detector.gui as gui_package
+
+    css = (Path(gui_package.__file__).parent / "templates" / "style.css").read_text()
+
+    def declarations(selector: str) -> str:
+        return "".join(
+            m[1] for m in re.finditer(r"(?<![\w-])" + re.escape(selector) + r"\{([^}]*)\}", css)
+        )
+
+    # 表のセルに display を付けると、行がセルでなくなり見出しとずれる。
+    assert "display" not in declarations(".sleep-cell,.sleep-swatch")
+    assert "display:table" in declarations(".sleep-grid")
+    assert "display:inline-block" in declarations(".sleep-swatch")
+    assert "border:0" in declarations(".sleep-grid th,.sleep-grid td")
+
+
+def test_page_uses_swatch_only_in_legend(gui):
+    server, _, _ = gui
+    html = _page(server)
+    assert 'class="sleep-swatch' in html
+    assert '<td class="sleep-cell' in html
+    assert '<span class="sleep-cell' not in html
