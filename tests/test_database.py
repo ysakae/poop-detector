@@ -567,3 +567,21 @@ def test_tray_stay_migration_preserves_an_existing_video_and_assessment(tmp_path
                 FROM clips c JOIN video_assessments a ON a.clip_id=c.id"""
             ).fetchone()
         ) == ("ready", None, "urine")
+
+
+def test_sleep_migration_preserves_existing_clip(tmp_path):
+    path = tmp_path / "sleep-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:27]:
+            migration(db)
+        db.execute("PRAGMA user_version = 27")
+        db.execute(
+            """INSERT INTO clips (id, source, requested_at, status)
+            VALUES ('clip', 'dog_exit', '2026-11-19', 'ready')"""
+        )
+    with Database(path).connect() as db:
+        assert db.execute("SELECT status FROM clips WHERE id='clip'").fetchone()[0] == "ready"
+        tables = {
+            row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE name LIKE 'sleep_%'")
+        }
+    assert tables == {"sleep_minutes", "sleep_detection_hours"}
