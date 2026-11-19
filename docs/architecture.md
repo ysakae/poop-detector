@@ -12,7 +12,7 @@
 | `capture/` | 中核 | カメラの映像の取得と再接続、GUI へのライブ映像 |
 | `records/` | 中核 | 検知イベントと排泄の記録の台帳、集計、CSV の書き出しと期間の集計（`export.py`）、バックアップと復元（`backup.py`）、SQLite の接続とスキーマの版 |
 | `video/` | 中核・任意 | 動画の台帳・録画・保持（中核）、動画の自動判定と判定器（任意） |
-| `features/` | 任意 | 犬の検出、見守り通知、トレー追従、行動マップ |
+| `features/` | 任意 | 犬の検出、見守り通知、トレー追従、行動マップ、睡眠の記録 |
 | `experimental/` | 実験的 | トレー外検知（`outside.py`）、旋回分析（`circling.py`）、軌跡の特徴量（`trajectory.py`）と旋回の比較（`circling_compare.py`） |
 | `commands/`・`gui/` | — | CLI のサブコマンドと、GUI |
 
@@ -87,6 +87,18 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `CameraWatchdogExtension` | `watchdog.enabled`（既定で有効） | 位置合わせ前の映像が届かない時間を数え、カメラの不調として知らせる（`features/watchdog.py`） |
 
 新しい機能は `monitor(..., extensions=[...])` に渡せば、`Monitor` を変えずに足せます。
+
+## 睡眠の記録の在室の判断（`features/sleep_motion.py`・`features/sleep.py`）
+
+睡眠は「寝ていると誤って数えない」側に倒して判定します。観測を作る `sleep_motion.py` と、静止の連続から状態を決める `sleep.py` に分かれています。
+
+- 犬の居場所は、いなくなった証拠が出るまで保ちます。検出が途切れただけでは捨てません。
+- 検出した時点の枠の画像を覚え、あとで枠の中がその画像と `BOX_GONE_RATIO` を超えて違えば、居場所を捨てます。
+- 動きが画面の縁で起きたときは、犬が出た（`left`）とみなします。
+- `left` にしてから `EXIT_GRACE_SECONDS`（30秒）の間は、動きが枠の周りにない限り `left` を保ちます。
+- 静止の途中の動きは、`STIR_RECOVERY_SECONDS`（60秒）続けて静止するまで合算します。
+- 判定できない観測（`unknown`）は静止の連続を切ります。
+- トレーの交換中は拡張にフレームが届かないので、`commands/run.py` の `_TrayExchange` が新しいシーンを反映したときに `interrupt` で連続を切ります。
 
 ## 検知の考え方（変更時に壊しやすい不変条件）
 

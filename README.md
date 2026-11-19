@@ -53,7 +53,7 @@
 | 任意 | 犬の存在・出入りの検出 | `dog.enabled`、`--dog` | `setup-dog-model` でモデルを取得する。実映像での検出精度は確かめていない | [犬の検出](docs/dog.md) |
 | 任意 | 排泄後の再侵入・踏みつけリスク | `reentry.enabled` | 固定トレー・動画保存・領域登録が必要。片付けは手動確認 | [再侵入の見守り](docs/reentry.md) |
 | 任意 | サークルの行動マップ | `features.activity_map`、`--activity-map` | 床面の登録と犬の検出が必要 | [犬の検出](docs/dog.md#サークルの行動マップ) |
-| 任意 | 睡眠の記録 | `sleep.enabled`、`--sleep` | 犬の検出が必要 | [犬の検出](docs/dog.md) |
+| 任意 | 睡眠の記録 | `sleep.enabled`、`--sleep` | 犬の検出が必要。実映像での精度は未検証 | [睡眠の記録](docs/dog.md#睡眠の記録) |
 | 実験的 | トレー外の排泄候補 | `features.detect_outside`、`--detect-outside` | 動画の自動判定と犬の検出が必要。精度は確かめていない | [犬の検出](docs/dog.md#トレー外の排泄候補を検知する) |
 | 実験的 | 保存動画の旋回候補の分析 | `circling-review`・`circling-compare` | 保存済みの動画の分析だけで、監視や通知にはつながっていない | [犬の検出](docs/dog.md#保存動画から旋回候補を確認する) |
 
