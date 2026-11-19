@@ -19,9 +19,11 @@ from ..features.monitoring import (
     dog_observer_from_config,
     standard_extensions,
 )
+from ..features.sleep import SleepRecorder, sleep_recorder
 from ..features.tray_registration import TrayRegistration, TrayScene
 from ..frames import Frame
 from ..gui.server import background_gui
+from ..records.database import events_database
 from ..video.recording import ClipCollector
 from ..web_address import WebOptions
 from .context import (
@@ -60,6 +62,7 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
         activity_map=args.activity_map,
         detect_outside=args.detect_outside,
         dog=args.dog,
+        sleep=args.sleep,
     )
     context = replace(context, config=check_monitor_features(config))
     config = context.config
@@ -143,6 +146,7 @@ class _TrayExchange:
     scene_extensions: Callable[[TrayScene], list[MonitorExtension]]
     collector: ClipCollector | None
     track_tray: bool
+    sleep: SleepRecorder | None = None
 
     def before_align(self, engine: Monitor, frame: Frame | None) -> bool:
         if self.registration.status()["phase"] not in _EXCHANGE_PHASES:
@@ -155,6 +159,9 @@ class _TrayExchange:
             engine.replace_scene(
                 scene.roi, scene.baseline, scene.tracker, self.scene_extensions(scene)
             )
+            if self.sleep is not None:
+                # 交換中は拡張にフレームが届かず、再開後の差分が古い映像と比べられる。
+                self.sleep.interrupt()
         paused = self.registration.status()["phase"] in _EXCHANGE_PHASES
         if self.collector is not None:
             self.collector.set_maintenance(paused)
@@ -183,6 +190,14 @@ def watch(
         initial = TrayScene(roi, baseline, tray_tracker)
         scenes = {scene_signature(baseline, roi): initial}
         dog_observer = dog_observer_from_config(config) if config.dog_enabled else None
+        sleep = (
+            sleep_recorder(events_database(context.root), context.root, config)
+            if config.sleep_enabled
+            else None
+        )
+        if sleep is not None:
+            # 異常終了でも、判定中の分を書いて閉じる。
+            stack.callback(sleep.close)
         preview = LivePreview(context.root)
         preview.set_tray_state("searching" if tray_tracker is not None else "fixed")
         if config.clip_enabled:
@@ -253,11 +268,12 @@ def watch(
                 early_alert=config.early_alert_enabled,
                 outside_roi=outside_roi,
                 activity_map=activity,
+                sleep=sleep,
             )
             return [*extensions, *watchdog]
 
         exchange = _TrayExchange(
-            registration, scenes, scene_extensions, collector, config.track_tray_enabled
+            registration, scenes, scene_extensions, collector, config.track_tray_enabled, sleep
         )
 
         def before_align(engine: Monitor, frame: Frame | None) -> bool:

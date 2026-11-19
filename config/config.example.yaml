@@ -22,6 +22,16 @@ features:
   # トレー外での排泄の候補も判定する（video_review が必要。犬の検出を自動で有効にする）
   detect_outside: false
 
+# 犬の睡眠の記録（犬の検出を自動で有効にする。床面を登録していれば、その中だけで動きを見る）
+sleep:
+  enabled: false
+  # この時間（分）静止が続いたら寝ているとみなす
+  still_minutes: 5
+  # 寝ている途中の身じろぎとして許す動きの長さ（秒）
+  stir_seconds: 10
+  # 睡眠の集計で「昼」とする時間帯（HH:MM-HH:MM。日をまたげない）
+  daytime: "09:00-18:00"
+
 camera:
   # 1秒あたりの判定回数
   fps: 3.0

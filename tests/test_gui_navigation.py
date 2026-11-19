@@ -15,6 +15,7 @@ MEMBER_SECTIONS = {
     "/weight": "体重",
     "/clips": "動画",
     "/activity": "行動マップ",
+    "/sleep": "睡眠",
 }
 ADMIN_PAGES = {
     "/manage": "稼働状況とトレー",
@@ -146,6 +147,7 @@ MORE = {
     "/weight": "体重",
     "/clips": "動画",
     "/activity": "行動マップ",
+    "/sleep": "睡眠",
     "/account": "自分の設定",
     "/logout": "ログアウト",
 }
@@ -207,6 +209,7 @@ def test_every_menu_icon_exists():
         "体重",
         "動画",
         "行動マップ",
+        "睡眠",
         "管理",
         "自分の設定",
         "ログアウト",

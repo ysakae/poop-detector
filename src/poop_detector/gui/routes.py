@@ -47,6 +47,7 @@ from .pages import (
 )
 from .passkeys import PasskeyError
 from .review_queue import NEXT_PAGE, review_bar, review_items
+from .sleep_page import render_sleep
 from .templating import render_template
 
 if TYPE_CHECKING:
@@ -477,6 +478,11 @@ def clip_thumbnail(handler: "Handler", query: Query) -> None:
         handler.respond(404, "サムネイルがありません")
         return
     handler.respond(200, path.read_bytes(), "image/jpeg")
+
+
+@get("/sleep")
+def sleep_page(handler: "Handler", query: Query) -> None:
+    handler.respond(200, render_sleep(handler.app, query))
 
 
 @get("/activity/background")

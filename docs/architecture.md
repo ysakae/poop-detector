@@ -12,7 +12,7 @@
 | `capture/` | 中核 | カメラの映像の取得と再接続、GUI へのライブ映像 |
 | `records/` | 中核 | 検知イベントと排泄の記録の台帳、集計、CSV の書き出しと期間の集計（`export.py`）、バックアップと復元（`backup.py`）、SQLite の接続とスキーマの版 |
 | `video/` | 中核・任意 | 動画の台帳・録画・保持（中核）、動画の自動判定と判定器（任意） |
-| `features/` | 任意 | 犬の検出、見守り通知、トレー追従、行動マップ |
+| `features/` | 任意 | 犬の検出、見守り通知、トレー追従、行動マップ、睡眠の記録 |
 | `experimental/` | 実験的 | トレー外検知（`outside.py`）、旋回分析（`circling.py`）、軌跡の特徴量（`trajectory.py`）と旋回の比較（`circling_compare.py`） |
 | `commands/`・`gui/` | — | CLI のサブコマンドと、GUI |
 
@@ -24,6 +24,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 - `events.sqlite3` — 次の台帳が同じファイルにテーブルを持ちます。
   - `records.events.Store`：検知イベントと排泄の記録
+  - `features.sleep_store.SleepStore`：睡眠の記録（`sleep_minutes`・`sleep_detection_hours`）
   - `video.clips.ClipStore`：動画の保存要求と状態
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
   - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否だけ）
@@ -82,9 +83,22 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `EarlyAlertExtension` | `--early-alert` | 録画を待たない滞在通知 |
 | `DogExtension` | `--dog`、`--detect-outside` | 犬が ROI に重なる間や推論エラーの間は `occupied` に上書きし、入退場とトレー外の滞在で動画を保存する。トレー外の滞在は、犬がトレーに重なっている間と離れてから `TRAY_GRACE_SECONDS` の間は数えず、前の録画と時間が重ならない時刻まで延ばして録る（`_record_outside`） |
 | `ActivityExtension` | `--activity-map` | 位置合わせ前の映像で犬の位置を記録する。中断は接続の途切れだけで区切る |
+| `SleepExtension` | `--sleep` | 位置合わせ前の映像で犬の在室と静止を1秒ごとに観測し、1分ごとの睡眠の状態を記録する。犬検出の推論は行動マップと共有する（`SharedPredict`）。中断は接続の途切れだけで区切る |
 | `CameraWatchdogExtension` | `watchdog.enabled`（既定で有効） | 位置合わせ前の映像が届かない時間を数え、カメラの不調として知らせる（`features/watchdog.py`） |
 
 新しい機能は `monitor(..., extensions=[...])` に渡せば、`Monitor` を変えずに足せます。
+
+## 睡眠の記録の在室の判断（`features/sleep_motion.py`・`features/sleep.py`）
+
+睡眠は「寝ていると誤って数えない」側に倒して判定します。観測を作る `sleep_motion.py` と、静止の連続から状態を決める `sleep.py` に分かれています。
+
+- 犬の居場所は、いなくなった証拠が出るまで保ちます。検出が途切れただけでは捨てません。
+- 検出した時点の枠の画像を覚え、あとで枠の中がその画像と `BOX_GONE_RATIO` を超えて違えば、居場所を捨てます。
+- 動きが画面の縁で起きたときは、犬が出た（`left`）とみなします。
+- `left` にしてから `EXIT_GRACE_SECONDS`（30秒）の間は、動きが枠の周りにない限り `left` を保ちます。
+- 静止の途中の動きは、`STIR_RECOVERY_SECONDS`（60秒）続けて静止するまで合算します。
+- 判定できない観測（`unknown`）は静止の連続を切ります。
+- トレーの交換中は拡張にフレームが届かないので、`commands/run.py` の `_TrayExchange` が新しいシーンを反映したときに `interrupt` で連続を切ります。
 
 ## 検知の考え方（変更時に壊しやすい不変条件）
 
@@ -157,7 +171,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/asgi.py` | ASGI アプリ。安全対策のミドルウェア（`SecurityHeaders`・`Admission`）、フォームの読み込みと CSRF、ルートの表への振り分け |
 | `gui/exchange.py` | ルートに渡す要求ごとの `Exchange`。`respond`・`redirect`・`stream` で応答を決める |
 | `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
-| `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（ホーム、記録と検知の一覧、動画、行動マップ） |
+| `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py`・`gui/sleep_page.py` | 画面に出す値を整え、テンプレートに渡す（ホーム、記録と検知の一覧、動画、行動マップ、睡眠の草） |
 | `gui/clip_routes.py` | 録画要求、ラベル付け、確定、保護、評価候補の選択、録画整理の各 POST を受け付ける |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル（先頭にデザインの変数） |
 | `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`）。見ている人（`VIEWER`）から共通の枠の値を渡す |

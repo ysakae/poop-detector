@@ -509,6 +509,24 @@ def migrate_to_v27(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE clips ADD COLUMN tray_stay_seconds REAL")
 
 
+def migrate_to_v28(db: sqlite3.Connection) -> None:
+    """犬の睡眠の記録（分ごとの状態と、時ごとの検出の統計）を追加する。"""
+    db.execute(
+        """CREATE TABLE sleep_minutes (
+            minute TEXT PRIMARY KEY,
+            state TEXT NOT NULL,
+            observed_seconds REAL NOT NULL
+        )"""
+    )
+    db.execute(
+        """CREATE TABLE sleep_detection_hours (
+            hour TEXT PRIMARY KEY,
+            present_seconds REAL NOT NULL,
+            detected_seconds REAL NOT NULL
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -538,6 +556,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v25,
     migrate_to_v26,
     migrate_to_v27,
+    migrate_to_v28,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

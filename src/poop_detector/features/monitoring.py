@@ -22,12 +22,13 @@ from ..records.events import utcnow
 from ..video.recording import ClipCollector
 from .activity_map import ActivityRecorder
 from .early_alert import EarlyAlert
+from .sleep import SleepRecorder
 from .tray_tracking import TrayTracker
 
 if TYPE_CHECKING:
     from ..experimental.outside import OutsideWatch
     from ..notifications import Delivery
-    from .dog import DogObserver, DogState, DogTransition, Predict
+    from .dog import Box, DogObserver, DogState, DogTransition, Predict
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,41 @@ class ActivityExtension(MonitorExtension):
             self.recorder.update(raw, self.predict, tick)
 
 
+class SharedPredict:
+    """犬検出の結果を、同じフレームの間だけ使い回す。
+
+    行動マップと睡眠の記録が同じ映像を続けて処理するとき、推論を1回で済ませる。
+    直前に渡されたフレームのオブジェクトと同じ（is）ときだけ前の結果を返す。
+    """
+
+    def __init__(self, predict: "Predict") -> None:
+        self.predict = predict
+        self._frame: Frame | None = None
+        self._boxes: list[Box] = []
+
+    def __call__(self, frame: Frame) -> list["Box"]:
+        if frame is not self._frame:
+            # 推論が失敗したときに、前のフレームの結果を残さない。
+            self._frame = None
+            self._boxes = self.predict(frame)
+            self._frame = frame
+        return list(self._boxes)
+
+
+class SleepExtension(MonitorExtension):
+    """位置合わせ前の映像で犬の在室と静止を観測し、睡眠を記録する（--sleep）。"""
+
+    def __init__(self, recorder: SleepRecorder, predict: "Predict") -> None:
+        self.recorder, self.predict = recorder, predict
+
+    def on_camera_frame(self, raw: Frame | None, disconnected: bool, tick: float) -> None:
+        # トレー追従に失敗しても床面の映像は使えるので、接続の途切れだけで区切る。
+        if disconnected:
+            self.recorder.interrupt()
+        if raw is not None:
+            self.recorder.update(raw, self.predict, tick)
+
+
 def dog_observer_from_config(config: Config) -> "DogObserver":
     """設定の犬検出モデルを読み込む。モデルがなければ準備の方法をログに出して送出する。"""
     from .dog import DogDetector, DogObserver
@@ -194,16 +230,22 @@ def standard_extensions(
     early_alert: bool = False,
     outside_roi: AnyROI | None = None,
     activity_map: ActivityRecorder | None = None,
+    sleep: SleepRecorder | None = None,
 ) -> list[MonitorExtension]:
-    """CLI の --early-alert・--dog・--detect-outside・--activity-map に対応する拡張を作る。"""
+    """CLI の --early-alert・--dog・--detect-outside・--activity-map・--sleep に対応する拡張を作る。"""
     extensions: list[MonitorExtension] = []
     if dog_observer is None and config.dog_enabled:
         dog_observer = dog_observer_from_config(config)
-    if activity_map is not None:
+    if activity_map is not None or sleep is not None:
         if dog_observer is None:
-            raise ValueError("行動マップには犬の検出が必要です")
-        # 行動マップは位置合わせ前の映像を使うので、カメラの読み込み直後に呼ばれる。
-        extensions.append(ActivityExtension(activity_map, dog_observer.predict))
+            raise ValueError("行動マップと睡眠の記録には犬の検出が必要です")
+        # 同じ映像を処理する拡張の間で、犬検出の推論を共有する。
+        predict = SharedPredict(dog_observer.predict)
+        # 位置合わせ前の映像を使うので、カメラの読み込み直後に呼ばれる。
+        if activity_map is not None:
+            extensions.append(ActivityExtension(activity_map, predict))
+        if sleep is not None:
+            extensions.append(SleepExtension(sleep, predict))
     if early_alert:
         extensions.append(EarlyAlertExtension(EarlyAlert(baseline, config), notifier, collector))
     if dog_observer is not None:
@@ -238,6 +280,7 @@ def monitor(
     on_tray_state: Callable[[str], None] | None = None,
     outside_roi: AnyROI | None = None,
     activity_map: ActivityRecorder | None = None,
+    sleep: SleepRecorder | None = None,
     *,
     extensions: Sequence[MonitorExtension] = (),
     clock: Clock | None = None,
@@ -260,6 +303,7 @@ def monitor(
         early_alert=early_alert,
         outside_roi=outside_roi,
         activity_map=activity_map,
+        sleep=sleep,
     )
     return Monitor(
         camera,

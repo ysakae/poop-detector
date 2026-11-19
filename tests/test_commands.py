@@ -146,3 +146,9 @@ def test_registered_command_and_alias_share_handler_and_arguments():
     for name in ("example", "previous"):
         args = root.parse_args([name, "--limit", "3"])
         assert (args.command, args.handler, args.limit) == (name, events, 3)
+
+
+def test_sleep_turns_on_dog_detection():
+    assert check_monitor_features(Config(sleep_enabled=True)).dog_enabled is True
+    assert with_flags(Config(), sleep=True).sleep_enabled is True
+    assert with_flags(Config()).sleep_enabled is False

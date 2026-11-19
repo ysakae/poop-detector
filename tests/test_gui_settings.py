@@ -184,3 +184,11 @@ def test_member_cannot_open_settings(settings_gui):
     member = login(server, role="member")
     assert exchange(server, "GET", PAGE, headers=member, auth=False)[0] == 403
     assert Config.load(path).threshold == 30
+
+
+def test_every_config_section_has_a_japanese_title():
+    from poop_detector.config import SETTINGS
+    from poop_detector.gui.settings_routes import SECTION_TITLES
+
+    missing = {setting.section for setting in SETTINGS} - set(SECTION_TITLES)
+    assert not missing
