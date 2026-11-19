@@ -8,6 +8,7 @@ import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from datetime import time as clock_time
 from pathlib import Path
 from typing import Any, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -121,6 +122,28 @@ def _number(
 
 
 def _always(_value: Any) -> bool:
+    return True
+
+
+def parse_daytime(value: str) -> tuple[clock_time, clock_time]:
+    """「HH:MM-HH:MM」の昼の時間帯を（始め, 終わり）にする。始めは終わりより前でなければならない。"""
+    match = re.fullmatch(r"(\d{2}:\d{2})-(\d{2}:\d{2})", value)
+    if match is None:
+        raise ValueError(f"昼の時間帯は HH:MM-HH:MM の形で書いてください: {value!r}")
+    try:
+        start, end = (clock_time.fromisoformat(part) for part in match.groups())
+    except ValueError:
+        raise ValueError(f"昼の時間帯に存在しない時刻があります: {value!r}") from None
+    if not start < end:
+        raise ValueError("昼の時間帯の始めは終わりより前にしてください（日をまたげません）")
+    return start, end
+
+
+def _daytime(value: Any) -> bool:
+    try:
+        parse_daytime(value)
+    except ValueError:
+        return False
     return True
 
 
@@ -390,6 +413,33 @@ SETTINGS: tuple[Setting, ...] = (
 )
 SETTINGS += (
     Setting(
+        "sleep_enabled", "sleep", "enabled", bool, _always, "true または false（--sleep と同じ）"
+    ),
+    Setting(
+        "sleep_still_minutes",
+        "sleep",
+        "still_minutes",
+        float,
+        _number(1, 60),
+        "1〜60 の数（分。この時間静止が続いたら寝ているとみなす）",
+    ),
+    Setting(
+        "sleep_stir_seconds",
+        "sleep",
+        "stir_seconds",
+        float,
+        _number(0, 120),
+        "0〜120 の数（秒。寝ている途中の身じろぎとして許す動きの長さ）",
+    ),
+    Setting(
+        "sleep_daytime",
+        "sleep",
+        "daytime",
+        str,
+        _daytime,
+        "HH:MM-HH:MM の形で、始めが終わりより前の時間帯（日をまたげない。睡眠の集計の昼）",
+    ),
+    Setting(
         "gui_host",
         "gui",
         "host",
@@ -510,6 +560,10 @@ class Config:
     track_tray_enabled: bool = False
     activity_map_enabled: bool = False
     detect_outside_enabled: bool = False
+    sleep_enabled: bool = False
+    sleep_still_minutes: float = 5
+    sleep_stir_seconds: float = 10
+    sleep_daytime: str = "09:00-18:00"
     gui_host: str = LOCAL_HOST
     gui_port: int = DEFAULT_PORT
     gui_public_url: str = ""
@@ -577,6 +631,7 @@ class Config:
             "track_tray_enabled": "トレー追従",
             "activity_map_enabled": "行動マップ",
             "detect_outside_enabled": "トレー外検知",
+            "sleep_enabled": "睡眠の記録",
             "notifications": "通知",
         }
         return [text for attr, text in names.items() if getattr(self, attr)]
@@ -631,6 +686,7 @@ def with_flags(
     activity_map: bool = False,
     detect_outside: bool = False,
     dog: bool = False,
+    sleep: bool = False,
 ) -> Config:
     """コマンドラインのフラグで有効にした機能を、設定に重ねる（フラグは有効にするだけ）。"""
     return replace(
@@ -641,6 +697,7 @@ def with_flags(
         activity_map_enabled=config.activity_map_enabled or activity_map,
         detect_outside_enabled=config.detect_outside_enabled or detect_outside,
         dog_enabled=config.dog_enabled or dog,
+        sleep_enabled=config.sleep_enabled or sleep,
     )
 
 
@@ -663,7 +720,8 @@ def check_monitor_features(config: Config) -> Config:
         if config.track_tray_enabled or not config.clip_enabled:
             raise ConfigError("再侵入検知には、固定トレーと clips.enabled: true が必要です")
         config = replace(config, dog_enabled=True)
-    if (config.activity_map_enabled or config.detect_outside_enabled) and not config.dog_enabled:
-        logger.info("行動マップ・トレー外検知のため、犬の検出を有効にします")
+    needs_dog = config.activity_map_enabled or config.detect_outside_enabled or config.sleep_enabled
+    if needs_dog and not config.dog_enabled:
+        logger.info("行動マップ・トレー外検知・睡眠の記録のため、犬の検出を有効にします")
         return replace(config, dog_enabled=True)
     return config

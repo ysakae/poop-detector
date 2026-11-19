@@ -702,3 +702,36 @@ def test_tray_exchange_pauses_recording_until_the_new_scene_is_installed():
     assert collector.set_maintenance.call_args_list[0].args == (True,)
     assert collector.set_maintenance.call_args_list[1].args == (False,)
     assert scenes[scene_signature(frame, scene.roi)] is scene
+
+
+def test_run_with_sleep_builds_a_recorder_and_closes_it(cli_env, monkeypatch):
+    """--sleep は犬の検出を補って睡眠の記録を作り、監視が終わったら必ず閉じる。"""
+    from poop_detector.commands import run
+    from poop_detector.features.monitoring import SleepExtension
+    from poop_detector.features.sleep import SleepRecorder
+
+    class Detector:
+        def __init__(self, directory, confidence):
+            pass
+
+        def predict(self, frame):
+            return []
+
+    monkeypatch.setattr("poop_detector.features.dog.DogDetector", Detector)
+    write_config(cli_env, "clips: {enabled: false}\nwatchdog: {enabled: false}\n")
+    use_camera(cli_env, register_scene(cli_env))
+    closed = []
+    original = SleepRecorder.close
+    monkeypatch.setattr(
+        SleepRecorder, "close", lambda self, stamp=None: (closed.append(1), original(self, stamp))
+    )
+    seen = []
+
+    def monitor(self, max_frames):
+        seen.append([type(extension) for extension in self.extensions])
+
+    monkeypatch.setattr(run.Monitor, "run", monitor)
+    assert cli_env.run("run", "--sleep", "--max-frames", "1") == 0
+    assert SleepExtension in seen[0]
+    assert closed == [1]
+    assert (cli_env.root / "events.sqlite3").exists()

@@ -4,9 +4,11 @@ import logging
 import sqlite3
 from collections import Counter
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import cv2
+import numpy as np
 
 from ..frames import Frame
 from ..timezones import local_now
@@ -14,6 +16,9 @@ from .dog import Predict
 from .sleep_store import MinuteRecord, SleepState, SleepStore
 
 if TYPE_CHECKING:
+    from ..config import Config
+    from ..records.database import Database
+
     # sleep_motion は Presence をこのモジュールから読むので、実行時には読み込まない。
     from .sleep_motion import MotionSampler
 
@@ -216,3 +221,17 @@ class SleepRecorder:
                 self.store.add_detection(hour, 1.0, 1.0 if detected else 0.0)
         except sqlite3.Error:
             logger.warning("睡眠の記録を保存できませんでした")
+
+
+def sleep_recorder(database: "Database", root: Path, config: "Config") -> SleepRecorder:
+    """設定から睡眠の記録を組み立てる。床面を登録していれば、その中だけで犬の動きを見る。"""
+    from .activity_map import ActivityLayout
+    from .sleep_motion import MotionSampler
+
+    judge = SleepJudge(config.sleep_still_minutes * 60, config.sleep_stir_seconds)
+    try:
+        floor = np.array(ActivityLayout.load(root).roi.points, dtype=np.float32)
+    except (OSError, ValueError, TypeError, KeyError):
+        logger.info("床面が未登録なので、睡眠の記録は映像の全体を使います")
+        floor = None
+    return SleepRecorder(SleepStore(database), judge, MotionSampler(floor))

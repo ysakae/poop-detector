@@ -138,3 +138,37 @@ def test_review_hourly_cap_defaults_to_twenty_and_rejects_negative_values(tmp_pa
     path.write_text("review: {max_per_hour: -1}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match=r"review.max_per_hour"):
         Config.load(path)
+
+
+def test_daytime_accepts_default():
+    from datetime import time
+
+    from poop_detector.config import parse_daytime
+
+    assert parse_daytime("09:00-18:00") == (time(9), time(18))
+    assert Config().sleep_daytime == "09:00-18:00"
+
+
+@pytest.mark.parametrize("value", ["22:00-06:00", "9-18", "25:00-26:00", "", "09:00-09:00"])
+def test_daytime_rejects_invalid(tmp_path, value):
+    from poop_detector.config import parse_daytime
+
+    with pytest.raises(ValueError, match="昼の時間帯"):
+        parse_daytime(value)
+    with pytest.raises(ConfigError, match=r"sleep\.daytime"):
+        Config.load(write(tmp_path, f"sleep: {{daytime: '{value}'}}\n"))
+
+
+def test_sleep_settings(tmp_path):
+    config = Config.load(
+        write(tmp_path, "sleep: {enabled: true, still_minutes: 3, stir_seconds: 0}\n")
+    )
+    assert (config.sleep_enabled, config.sleep_still_minutes, config.sleep_stir_seconds) == (
+        True,
+        3,
+        0,
+    )
+    assert "睡眠の記録" in config.enabled_features()
+    for text in ("still_minutes: 0", "still_minutes: 61", "stir_seconds: 121"):
+        with pytest.raises(ConfigError, match=r"sleep\."):
+            Config.load(write(tmp_path, f"sleep: {{{text}}}\n"))

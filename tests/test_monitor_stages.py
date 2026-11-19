@@ -1,6 +1,7 @@
 """監視ループの段と拡張を、それぞれ単体で検証する。"""
 
 import numpy as np
+import pytest
 from support import FrameSource, SilentNotifier, spot_scene
 
 from poop_detector.config import Config
@@ -265,3 +266,95 @@ def test_outside_stay_ignores_dog_on_or_just_off_the_tray():
     extension.on_frame(view())
     assert watch.seen == [False, False, True]
     assert collector.sources == ["outside_stay"]
+
+
+def test_shared_predict_runs_once_per_frame():
+    from poop_detector.features.monitoring import SharedPredict
+
+    calls = []
+
+    def predict(frame):
+        calls.append(frame)
+        return [(1, 2, 3, 4)]
+
+    shared = SharedPredict(predict)
+    other = STAIN.copy()
+    assert shared(STAIN) == shared(STAIN) == [(1, 2, 3, 4)]
+    assert len(calls) == 1
+    shared(other)
+    assert len(calls) == 2
+
+
+def test_shared_predict_does_not_keep_a_result_after_a_failure():
+    from poop_detector.features.monitoring import SharedPredict
+
+    attempts = []
+
+    def predict(frame):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise ValueError("失敗")
+        return []
+
+    shared = SharedPredict(predict)
+    with pytest.raises(ValueError, match="失敗"):
+        shared(STAIN)
+    assert shared(STAIN) == []
+
+
+def test_sleep_extension_breaks_only_on_disconnect():
+    from poop_detector.features.monitoring import SleepExtension
+
+    calls = []
+
+    class Recorder:
+        def interrupt(self):
+            calls.append("interrupt")
+
+        def update(self, frame, predict, tick):
+            calls.append(("update", predict(frame), tick))
+
+    extension = SleepExtension(Recorder(), lambda frame: [(1, 2, 3, 4)])
+    extension.on_camera_frame(STAIN, False, 1.0)
+    extension.on_camera_frame(None, True, 2.0)
+    extension.on_interrupt()
+    assert calls == [("update", [(1, 2, 3, 4)], 1.0), "interrupt"]
+
+
+def test_standard_extensions_adds_sleep_sharing_one_prediction():
+    from poop_detector.features.monitoring import SharedPredict, SleepExtension, standard_extensions
+
+    predictions = []
+
+    class Observer:
+        def predict(self, frame):
+            predictions.append(1)
+            return []
+
+    class Recorder:
+        def update(self, frame, predict, tick):
+            predict(frame)
+
+        def interrupt(self):
+            pass
+
+    extensions = standard_extensions(
+        ROI(0, 0, 1, 1),
+        EMPTY,
+        Config(),
+        SilentNotifier(),
+        Clock(),
+        dog_observer=Observer(),
+        activity_map=Recorder(),
+        sleep=Recorder(),
+    )
+    activity, sleep = [e for e in extensions if isinstance(e, (ActivityExtension, SleepExtension))]
+    assert isinstance(activity.predict, SharedPredict)
+    assert activity.predict is sleep.predict
+    activity.on_camera_frame(STAIN, False, 1.0)
+    sleep.on_camera_frame(STAIN, False, 1.0)
+    assert len(predictions) == 1
+    with pytest.raises(ValueError, match="犬の検出"):
+        standard_extensions(
+            ROI(0, 0, 1, 1), EMPTY, Config(), SilentNotifier(), Clock(), sleep=Recorder()
+        )

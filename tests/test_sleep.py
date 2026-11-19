@@ -391,3 +391,29 @@ def test_sqlite_error_is_logged_and_does_not_stop(tmp_path, caplog):
         ticker.run(2 * 60, always_dog)
         ticker.close()
     assert "睡眠の記録を保存できませんでした" in caplog.text
+
+
+def test_sleep_recorder_uses_the_registered_floor(tmp_path):
+    from poop_detector.config import Config
+    from poop_detector.detection.roi import PolygonROI
+    from poop_detector.features.activity_map import ActivityLayout
+    from poop_detector.features.sleep import sleep_recorder
+
+    points = [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]
+    ActivityLayout("a" * 32, PolygonROI(points)).save(tmp_path, np.zeros((100, 100, 3), np.uint8))
+    config = Config(sleep_still_minutes=2, sleep_stir_seconds=7)
+    recorder = sleep_recorder(events_database(tmp_path), tmp_path, config)
+    assert recorder.judge.still_seconds == 120
+    assert recorder.judge.stir_seconds == 7
+    assert recorder.sampler.boundary is not None
+    assert np.allclose(recorder.sampler.boundary, points)
+
+
+def test_sleep_recorder_without_a_floor_uses_the_whole_frame(tmp_path, caplog):
+    from poop_detector.config import Config
+    from poop_detector.features.sleep import sleep_recorder
+
+    with caplog.at_level(logging.INFO):
+        recorder = sleep_recorder(events_database(tmp_path), tmp_path, Config())
+    assert np.array_equal(recorder.sampler.boundary, [[0, 0], [1, 0], [1, 1], [0, 1]])
+    assert "全体" in caplog.text

@@ -121,6 +121,11 @@ def _monitor_commands(commands: CommandGroup) -> None:
         help="サークル内の滞在・通過を集計（features.activity_map と同じ）",
     )
     run_command.add_argument(
+        "--sleep",
+        action="store_true",
+        help="犬の睡眠を1分ごとに記録（sleep.enabled と同じ。犬の検出を自動で有効にする）",
+    )
+    run_command.add_argument(
         "--video-review",
         "--codex",
         dest="video_review",

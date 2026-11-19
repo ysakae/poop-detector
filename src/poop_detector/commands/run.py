@@ -19,9 +19,11 @@ from ..features.monitoring import (
     dog_observer_from_config,
     standard_extensions,
 )
+from ..features.sleep import sleep_recorder
 from ..features.tray_registration import TrayRegistration, TrayScene
 from ..frames import Frame
 from ..gui.server import background_gui
+from ..records.database import events_database
 from ..video.recording import ClipCollector
 from ..web_address import WebOptions
 from .context import (
@@ -60,6 +62,7 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
         activity_map=args.activity_map,
         detect_outside=args.detect_outside,
         dog=args.dog,
+        sleep=args.sleep,
     )
     context = replace(context, config=check_monitor_features(config))
     config = context.config
@@ -183,6 +186,14 @@ def watch(
         initial = TrayScene(roi, baseline, tray_tracker)
         scenes = {scene_signature(baseline, roi): initial}
         dog_observer = dog_observer_from_config(config) if config.dog_enabled else None
+        sleep = (
+            sleep_recorder(events_database(context.root), context.root, config)
+            if config.sleep_enabled
+            else None
+        )
+        if sleep is not None:
+            # 異常終了でも、判定中の分を書いて閉じる。
+            stack.callback(sleep.close)
         preview = LivePreview(context.root)
         preview.set_tray_state("searching" if tray_tracker is not None else "fixed")
         if config.clip_enabled:
@@ -253,6 +264,7 @@ def watch(
                 early_alert=config.early_alert_enabled,
                 outside_roi=outside_roi,
                 activity_map=activity,
+                sleep=sleep,
             )
             return [*extensions, *watchdog]
 
