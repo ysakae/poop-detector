@@ -45,6 +45,9 @@ SECTION_TITLES = {
     "clips": "動画",
     "dog": "犬の検出",
     "early_alert": "見守り通知",
+    "sleep": "睡眠の記録",
+    "watchdog": "監視の停止・カメラの不調の通知",
+    "reentry": "排泄後の再侵入の見守り",
     "review": "動画の自動判定",
     "gui": "GUI",
 }

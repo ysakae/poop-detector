@@ -19,7 +19,7 @@ from ..features.monitoring import (
     dog_observer_from_config,
     standard_extensions,
 )
-from ..features.sleep import sleep_recorder
+from ..features.sleep import SleepRecorder, sleep_recorder
 from ..features.tray_registration import TrayRegistration, TrayScene
 from ..frames import Frame
 from ..gui.server import background_gui
@@ -146,6 +146,7 @@ class _TrayExchange:
     scene_extensions: Callable[[TrayScene], list[MonitorExtension]]
     collector: ClipCollector | None
     track_tray: bool
+    sleep: SleepRecorder | None = None
 
     def before_align(self, engine: Monitor, frame: Frame | None) -> bool:
         if self.registration.status()["phase"] not in _EXCHANGE_PHASES:
@@ -158,6 +159,9 @@ class _TrayExchange:
             engine.replace_scene(
                 scene.roi, scene.baseline, scene.tracker, self.scene_extensions(scene)
             )
+            if self.sleep is not None:
+                # 交換中は拡張にフレームが届かず、再開後の差分が古い映像と比べられる。
+                self.sleep.interrupt()
         paused = self.registration.status()["phase"] in _EXCHANGE_PHASES
         if self.collector is not None:
             self.collector.set_maintenance(paused)
@@ -269,7 +273,7 @@ def watch(
             return [*extensions, *watchdog]
 
         exchange = _TrayExchange(
-            registration, scenes, scene_extensions, collector, config.track_tray_enabled
+            registration, scenes, scene_extensions, collector, config.track_tray_enabled, sleep
         )
 
         def before_align(engine: Monitor, frame: Frame | None) -> bool:

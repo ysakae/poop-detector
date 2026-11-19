@@ -704,6 +704,25 @@ def test_tray_exchange_pauses_recording_until_the_new_scene_is_installed():
     assert scenes[scene_signature(frame, scene.roi)] is scene
 
 
+def test_tray_exchange_interrupts_sleep_recording_when_the_scene_is_replaced():
+    """交換中は拡張にフレームが届かないので、再開時に睡眠の静止の連続を切る。"""
+    from unittest.mock import Mock
+
+    from poop_detector.commands.run import _TrayExchange
+    from poop_detector.features.tray_registration import TrayScene
+
+    registration = Mock()
+    registration.status.side_effect = [{"phase": "apply"}, {"phase": "applied"}]
+    frame, _ = spot_scene()
+    registration.poll.return_value = TrayScene(ROI(0, 0, 1, 1), frame, None)
+    sleep = Mock()
+    exchange = _TrayExchange(registration, {}, lambda scene: [], None, False, sleep)
+
+    exchange.before_align(Mock(), frame)
+
+    sleep.interrupt.assert_called_once_with()
+
+
 def test_run_with_sleep_builds_a_recorder_and_closes_it(cli_env, monkeypatch):
     """--sleep は犬の検出を補って睡眠の記録を作り、監視が終わったら必ず閉じる。"""
     from poop_detector.commands import run
