@@ -1,7 +1,6 @@
 """映像の動きと犬検出から1秒の観測を作る MotionSampler のテスト。"""
 
 import numpy as np
-import pytest
 
 from poop_detector.features.sleep_motion import MotionSampler
 
@@ -84,46 +83,86 @@ def test_lost_detection_without_motion_keeps_still():
     assert sampler.sample(scene(DOG), [DOG]) == ("still", True)
 
 
-def test_lost_detection_after_moving_toward_edge_is_left():
-    sampler = MotionSampler(FLOOR)
-    box = DOG
-    for _ in range(4):
-        box = shifted(box, 12)
-        sampler.sample(scene(box), [box])
-    # 床面の右の縁に向かって動いたあと検出が外れたら、床面が静かでも出ていったとみなす
-    assert sampler.sample(scene(box), []) == ("left", False)
-
-
-def test_lost_detection_after_moving_with_floor_change_is_left():
+def test_moving_then_curled_up_undetected_with_quiet_floor_is_still():
     sampler = MotionSampler(FLOOR)
     sampler.sample(scene(DOG), [DOG])
-    moved = shifted(DOG, -6)
+    moved = shifted(DOG, 12)
     assert sampler.sample(scene(moved), [moved]) == ("moving", True)
-    # 動いた直後に検出が外れ、床面の画素も変わった（犬の姿が消えた）
-    assert sampler.sample(scene(), []) == ("left", False)
+    # 動いたあと丸まって検出が外れても、床面が静かなら動いていない証拠として still
+    for _ in range(3):
+        assert sampler.sample(scene(moved), []) == ("still", False)
+
+
+def test_ear_twitch_inside_last_box_while_undetected_is_moving():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    # 検出が外れたまま、最後の枠の中だけが少し動いた（耳を動かした程度）
+    twitched = scene(DOG)
+    twitched[55:61, 70:74] = 0
+    assert sampler.sample(twitched, []) == ("moving", False)
+    # 居場所は保つので、静かになれば still、再び検出すれば枠で判定する
+    assert sampler.sample(twitched, []) == ("still", False)
+    assert sampler.sample(twitched, [DOG]) == ("still", True)
+
+
+def walked_to_edge(sampler: MotionSampler) -> None:
+    """床面の右の縁まで検出されたまま歩き、縁を越えたところで検出が外れる。"""
+    near = (100, 50, 130, 70)
+    sampler.sample(scene(DOG), [DOG])
+    sampler.sample(scene(near), [near])
+    assert sampler.sample(scene(BEYOND), []) == ("left", False)
+
+
+BEYOND = (130, 50, 160, 70)
+
+
+def test_motion_reaching_the_edge_while_undetected_is_left():
+    walked_to_edge(MotionSampler(FLOOR))
 
 
 def test_left_stays_left_while_floor_is_quiet():
     sampler = MotionSampler(FLOOR)
-    sampler.sample(scene(DOG), [DOG])
-    moved = shifted(DOG, -6)
-    sampler.sample(scene(moved), [moved])
-    assert sampler.sample(scene(), []) == ("left", False)
+    walked_to_edge(sampler)
     for _ in range(5):
-        assert sampler.sample(scene(), []) == ("left", False)
+        assert sampler.sample(scene(BEYOND), []) == ("left", False)
     # 検出のないまま床面に動きが出たら、居場所が分からないので unknown
-    assert sampler.sample(scene(DOG), []) == ("unknown", False)
+    assert sampler.sample(scene(BEYOND, DOG), []) == ("unknown", False)
 
 
-def test_lost_detection_with_floor_motion_after_still_is_unknown():
+def test_undetected_walk_out_after_still_never_becomes_still():
     sampler = MotionSampler(FLOOR)
     settled(sampler)
-    # 静止していた犬の検出が外れ、床面が動いた。出ていった証拠はないので absent にしない
-    stirred = scene(DOG)
-    stirred[50:60, 60:75] = 0
-    assert sampler.sample(stirred, []) == ("unknown", False)
-    # 居場所は保ったままなので、床面が静かになれば静止の継続に戻る
-    assert sampler.sample(stirred, []) == ("still", False)
+    # 検出されないまま、最後の枠の外へ歩いた（縁には届いていない）
+    away = shifted(DOG, -20)
+    assert sampler.sample(scene(away), []) == ("unknown", False)
+    # 犬が見えなくなり、そのあと空の床面が静かでも、居場所を捨てたので still に戻さない
+    assert sampler.sample(scene(), []) == ("unknown", False)
+    for _ in range(5):
+        assert sampler.sample(scene(), []) == ("unknown", False)
+
+
+def test_compact_blob_away_from_dog_is_motion():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    blob = scene(DOG)
+    blob[30:36, 110:116] = 255
+    assert sampler.sample(blob, []) == ("unknown", False)
+
+
+def test_scattered_specks_do_not_count_as_floor_motion():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    # 圧縮や赤外線の点状の雑音。合計は前のしきい値（床面の0.2%、約25画素）を超えるが、
+    # どれも小さな点なので床面の動きとはみなさない
+    specks = scene(DOG)
+    count = 0
+    for y in range(16, 105, 8):
+        for x in range(20, 140, 8):
+            if not (44 < y < 76 and 52 < x < 98):
+                specks[y, x] = 255
+                count += 1
+    assert count > 100
+    assert sampler.sample(specks, []) == ("still", False)
 
 
 def test_unknown_when_no_history_and_no_detection():
@@ -171,9 +210,8 @@ def test_frame_size_change_is_not_compared():
     assert sampler.sample(bigger, [box]) == ("moving", True)
 
 
-@pytest.mark.parametrize("boundary", [None])
-def test_without_floor_uses_whole_frame(boundary):
-    sampler = MotionSampler(boundary)
+def test_without_floor_uses_whole_frame():
+    sampler = MotionSampler(None)
     corner = (0, 0, 20, 20)
     sampler.sample(scene(corner), [corner])
     assert sampler.sample(scene(corner), [corner]) == ("still", True)

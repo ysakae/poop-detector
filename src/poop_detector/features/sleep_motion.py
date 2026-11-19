@@ -19,14 +19,18 @@ MOTION_WIDTH = 160
 PIXEL_DELTA = 25
 # 犬の枠の中で変化した画素の割合がこれ未満なら、枠の中は静止とみなす。
 STILL_RATIO = 0.02
-# 床面の中で変化した画素の割合がこれ未満なら、床面は静かとみなす。
-# 犬は床面に比べて小さいので、枠の中より低くして、犬1頭分の小さな動きも拾う。
-FLOOR_STILL_RATIO = 0.002
+# 床面の中で、つながった変化の塊の面積（縮小した画像の画素）がこれ以上あれば「床面が動いた」。
+# 散らばった点の合計ではなく塊の大きさで決め、圧縮のブロック雑音や赤外線のざらつきを除く。
+# 耳を動かす程度（元の画像で4×6画素ほど）は拾える大きさにする。
+MIN_MOTION_AREA = 24
 # 枠の中心の移動が、枠の対角線のこの割合未満なら、同じ場所にいるとみなす。
 STILL_SHIFT = 0.1
-# 枠の中心から床面の縁までの距離（正規化した座標）がこれ未満で、縁に近づいていれば、
-# 「縁に向かう動き」とみなす。
-EDGE_MARGIN = 0.15
+# 検出が外れたとき、最後の枠を幅・高さのこの割合だけ四方に広げた範囲の中の動きは、
+# 居場所での身じろぎとみなす。
+STIR_MARGIN = 0.25
+# 床面の縁から内側へ、縮小した画像の幅のこの割合の帯。検出が外れたまま、
+# 最後の枠の外の動きがこの帯に届いたら、出ていったとみなす。
+EDGE_MARGIN = 0.1
 # 雑音を抑える平滑化の大きさ（画素、奇数）。
 BLUR_SIZE = 5
 
@@ -45,22 +49,23 @@ def _small_gray(frame: Frame) -> NDArray[Any]:
 class MotionSampler:
     """床面の中の犬の枠と画素の変化から、still・moving・left・unknown を決める。
 
-    犬の居場所は「出ていった証拠」（縁に向かう動きや、動いた直後の床面の変化）があるまで保ち、
-    検出が外れただけでは外に出たとみなさない。居場所が分からないときは unknown にする。
+    犬の居場所は「出ていった証拠」があるまで保ち、検出が外れただけでは外に出たとみなさない。
+    居場所があって検出が外れたとき:
+    - 床面が静か → still（動いていない証拠）
+    - 動きが最後の枠（STIR_MARGIN だけ広げた範囲）の中だけ → moving（身じろぎ）
+    - 枠の外の動きが床面の縁の帯に届いた → left。床面が静かな間は left を保つ
+    - ほかの動き → 居場所を捨てて unknown。再び検出するまで still には戻さない
     """
 
     def __init__(self, boundary: NDArray[Any] | None) -> None:
         self.boundary = _WHOLE_FRAME if boundary is None else np.asarray(boundary, dtype=np.float32)
-        self._floor: NDArray[Any] | None = None
+        self._areas: tuple[NDArray[Any], NDArray[Any]] | None = None
         self.reset()
 
     def reset(self) -> None:
         """居場所と前回の画像を忘れる（監視の開始や接続の再開）。"""
         self._previous: NDArray[Any] | None = None
         self._location: Box | None = None
-        # 床面の中で最後に決めた観測（still か moving）
-        self._last: Presence = "unknown"
-        self._toward_edge = False
         self._left = False
 
     def sample(self, frame: Frame, boxes: Sequence[Box]) -> tuple[Presence, bool]:
@@ -68,12 +73,13 @@ class MotionSampler:
         gray = _small_gray(frame)
         changed = self._changed(gray)
         self._previous = gray
-        inside = self._inside(boxes, frame.shape[:2])
+        shape = frame.shape[:2]
+        inside = self._inside(boxes, shape)
         if len(inside) > 1:
             return "unknown", False
         if inside:
-            return self._with_box(inside[0], changed, frame.shape[:2]), True
-        return self._without_box(changed), False
+            return self._with_box(inside[0], changed, shape), True
+        return self._without_box(changed, shape), False
 
     def _changed(self, gray: NDArray[Any]) -> NDArray[Any] | None:
         previous = self._previous
@@ -86,56 +92,75 @@ class MotionSampler:
         height, width = shape
         if min(height, width) < 2:
             return []
-        return [box for box in boxes if self._edge_distance(box, shape) >= 0]
+        return [box for box in boxes if self._contains(box, shape)]
 
-    def _edge_distance(self, box: Box, shape: tuple[int, ...]) -> float:
-        """枠の中心から床面の縁までの距離。床面の外なら負になる。"""
+    def _contains(self, box: Box, shape: tuple[int, ...]) -> bool:
+        """枠の中心が床面の中にあるか。"""
         height, width = shape
         x1, y1, x2, y2 = box
         center = ((x1 + x2) / (2 * (width - 1)), (y1 + y2) / (2 * (height - 1)))
-        return float(cv2.pointPolygonTest(self.boundary, center, True))
+        return cv2.pointPolygonTest(self.boundary, center, False) >= 0
 
     def _with_box(self, box: Box, changed: NDArray[Any] | None, shape: tuple[int, ...]) -> Presence:
         previous = self._location
-        presence: Presence = "moving"
-        if previous is not None and changed is not None:
-            shift = math.dist(_center(box), _center(previous))
-            diagonal = math.hypot(box[2] - box[0], box[3] - box[1])
-            if shift < diagonal * STILL_SHIFT and _box_ratio(changed, box, shape) < STILL_RATIO:
-                presence = "still"
-        distance = self._edge_distance(box, shape)
-        approaching = previous is None or distance < self._edge_distance(previous, shape)
-        self._toward_edge = presence == "moving" and distance < EDGE_MARGIN and approaching
-        self._location, self._last, self._left = box, presence, False
-        return presence
+        self._location, self._left = box, False
+        if previous is None or changed is None:
+            return "moving"
+        shift = math.dist(_center(box), _center(previous))
+        diagonal = math.hypot(box[2] - box[0], box[3] - box[1])
+        region = changed[_box_slices(box, shape, changed.shape, 0)]
+        if shift < diagonal * STILL_SHIFT and float(region.mean()) < STILL_RATIO:
+            return "still"
+        return "moving"
 
-    def _without_box(self, changed: NDArray[Any] | None) -> Presence:
-        quiet = changed is not None and self._floor_ratio(changed) < FLOOR_STILL_RATIO
-        if self._location is None:
+    def _without_box(self, changed: NDArray[Any] | None, shape: tuple[int, ...]) -> Presence:
+        motion = None if changed is None else self._motion(changed)
+        quiet = motion is not None and not motion.any()
+        location = self._location
+        if location is None:
             if quiet and self._left:
                 return "left"
             self._left = False
             return "unknown"
-        if self._last == "moving" and (self._toward_edge or not quiet):
-            self._location, self._last, self._toward_edge = None, "unknown", False
-            self._left = True
-            return "left"
         if quiet:
-            return self._last
-        # 静止していた犬の検出が外れて床面が動いた。出ていった証拠はないので居場所は保つ。
+            return "still"
+        if motion is not None:
+            stir = np.zeros(motion.shape, dtype=bool)
+            stir[_box_slices(location, shape, motion.shape, STIR_MARGIN)] = True
+            outside = motion & ~stir
+            if not outside.any():
+                return "moving"
+            if (outside & self._regions(motion.shape)[1]).any():
+                self._location, self._left = None, True
+                return "left"
+        # 居場所の外で動きがあった（または画像を比べられない）。どこにいるか分からない。
+        self._location = None
         return "unknown"
 
-    def _floor_ratio(self, changed: NDArray[Any]) -> float:
-        if self._floor is None or self._floor.shape != changed.shape:
-            height, width = changed.shape
+    def _motion(self, changed: NDArray[Any]) -> NDArray[Any]:
+        """床面の中で、MIN_MOTION_AREA 以上の塊になった変化の画素。"""
+        floor, _ = self._regions(changed.shape)
+        mask = (changed & floor).astype(np.uint8)
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        large = [
+            label for label in range(1, count) if stats[label, cv2.CC_STAT_AREA] >= MIN_MOTION_AREA
+        ]
+        motion: NDArray[Any] = np.isin(labels, large)
+        return motion
+
+    def _regions(self, shape: tuple[int, ...]) -> tuple[NDArray[Any], NDArray[Any]]:
+        """縮小した画像での（床面, 床面の縁の帯）のマスク。"""
+        if self._areas is None or self._areas[0].shape != shape:
+            height, width = shape
             points = np.round(self.boundary * [width - 1, height - 1]).astype(np.int32)
-            floor = np.zeros(changed.shape, dtype=np.uint8)
+            floor = np.zeros(shape, dtype=np.uint8)
             cv2.fillPoly(floor, [points], 1)
-            self._floor = floor.astype(bool)
-        area = int(self._floor.sum())
-        if area == 0:
-            return 1.0
-        return float(changed[self._floor].sum()) / area
+            # 画面の端も床面の縁として扱うため、外周を0で囲んでから距離を測る。
+            padded = cv2.copyMakeBorder(floor, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+            distance = cv2.distanceTransform(padded, cv2.DIST_L2, 3)[1:-1, 1:-1]
+            edge = (floor > 0) & (distance <= EDGE_MARGIN * width)
+            self._areas = (floor > 0, edge)
+        return self._areas
 
 
 def _center(box: Box) -> tuple[float, float]:
@@ -143,13 +168,16 @@ def _center(box: Box) -> tuple[float, float]:
     return (x1 + x2) / 2, (y1 + y2) / 2
 
 
-def _box_ratio(changed: NDArray[Any], box: Box, shape: tuple[int, ...]) -> float:
-    """枠の中で変化した画素の割合。枠は元の画像の座標なので、縮小した画像の座標へ移す。"""
+def _box_slices(
+    box: Box, shape: tuple[int, ...], small: tuple[int, ...], margin: float
+) -> tuple[slice, slice]:
+    """元の画像の座標の枠を、四方に margin（幅・高さの割合）広げて縮小した画像の範囲にする。"""
     height, width = shape
-    small_height, small_width = changed.shape
+    small_height, small_width = small
     x1, y1, x2, y2 = box
-    left = max(0, min(small_width - 1, math.floor(x1 * small_width / width)))
-    top = max(0, min(small_height - 1, math.floor(y1 * small_height / height)))
-    right = max(left + 1, min(small_width, math.ceil(x2 * small_width / width)))
-    bottom = max(top + 1, min(small_height, math.ceil(y2 * small_height / height)))
-    return float(changed[top:bottom, left:right].mean())
+    dx, dy = (x2 - x1) * margin, (y2 - y1) * margin
+    left = max(0, min(small_width - 1, math.floor((x1 - dx) * small_width / width)))
+    top = max(0, min(small_height - 1, math.floor((y1 - dy) * small_height / height)))
+    right = max(left + 1, min(small_width, math.ceil((x2 + dx) * small_width / width)))
+    bottom = max(top + 1, min(small_height, math.ceil((y2 + dy) * small_height / height)))
+    return slice(top, bottom), slice(left, right)
