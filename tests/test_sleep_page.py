@@ -1,11 +1,12 @@
 """睡眠の画面の値（sleep_view）のテスト。テストは日本時間で動く。"""
 
 from datetime import UTC, date, datetime, time, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
 from poop_detector.features.sleep_store import MinuteRecord, SleepState, SleepStore
-from poop_detector.gui.sleep_page import sleep_view
+from poop_detector.gui.sleep_page import HourCell, _cell_title, _daytime, sleep_view
 from poop_detector.records.database import events_database
 
 JST = timezone(timedelta(hours=9))
@@ -278,3 +279,22 @@ def test_page_uses_swatch_only_in_legend(gui):
     assert 'class="sleep-swatch' in html
     assert '<td class="sleep-cell' in html
     assert '<span class="sleep-cell' not in html
+
+
+def test_unknown_rows_are_not_counted_as_observed(tmp_path):
+    store = make(tmp_path)
+    put(store, DAY, 3, 0, 40, "unknown")
+    put(store, DAY, 3, 40, 20, "asleep")
+    cell = sleep_view(store, DAY, 7, DAYTIME).rows[3][-1]
+    assert (cell.asleep_minutes, cell.observed_minutes, cell.level) == (20, 20, None)
+
+
+def test_cell_title_shows_detection_ratio():
+    cell = HourCell(DAY, 3, 45, 60, 0.8, 3)
+    assert _cell_title(cell) == "11/20 3時 睡眠 45分／記録 60分／検出 80%"
+
+
+def test_daytime_falls_back_to_default_when_config_is_broken(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("sleep:\n  daytime: 22:00-06:00\n")
+    assert _daytime(SimpleNamespace(config_path=path)) == DAYTIME

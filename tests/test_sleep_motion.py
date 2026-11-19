@@ -354,3 +354,9 @@ def test_without_floor_uses_whole_frame():
     corner = (0, 0, 20, 20)
     sampler.sample(scene(corner), [corner])
     assert sampler.sample(scene(corner), [corner]) == ("still", True)
+
+
+def test_frame_too_small_to_locate_is_unknown():
+    sampler = MotionSampler(FLOOR)
+    tiny = np.zeros((1, 1, 3), dtype=np.uint8)
+    assert sampler.sample(tiny, [(0, 0, 0, 0)]) == ("unknown", False)

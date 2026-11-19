@@ -417,3 +417,13 @@ def test_sleep_recorder_without_a_floor_uses_the_whole_frame(tmp_path, caplog):
         recorder = sleep_recorder(events_database(tmp_path), tmp_path, Config())
     assert np.array_equal(recorder.sampler.boundary, [[0, 0], [1, 0], [1, 1], [0, 1]])
     assert "全体" in caplog.text
+
+
+def test_clock_going_back_keeps_seconds_in_the_current_minute():
+    feeder = Feeder(judge())
+    feeder.feed("moving", 90)
+    # 時計が1分戻っても、前の分を出し直さず、いまの分に数える。
+    feeder.now -= timedelta(minutes=1)
+    feeder.feed("moving", 30)
+    feeder.close()
+    assert summary(feeder.records) == [(0, "awake", 60), (1, "awake", 60)]
