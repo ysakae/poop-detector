@@ -34,6 +34,53 @@ def test_concurrent_feeding_counts_once_and_extra_feeding_stays_separate(gui):
     assert due_clocks(db, now) == []
 
 
+def test_deleted_feeding_reopens_the_plan_and_can_be_replaced(gui):
+    server, store, _ = gui
+    db = store.database
+    now = parse_local("2025-05-02T12:00")
+    plan = feeding_plans.save_plan(db, "12:00", now=now - timedelta(days=1))
+    entry = CareEntry("", now, "feeding", "家族", "", "", 250)
+    first = save_entry(db, entry, plan_id=plan)
+    assert due_clocks(db, now) == []
+    assert submit(server, "/care/delete", {"id": first}, page="/care")[0] == 303
+    assert not feeding_plans.plans_for_day(db, now.date())[0].recorded
+    assert due_clocks(db, now) == ["12:00"]
+    replacement = save_entry(db, entry, plan_id=plan)
+    assert replacement != first
+    assert [row.id for row in entries(db, now.date())] == [replacement]
+    assert feeding_plans.plans_for_day(db, now.date())[0].recorded
+
+
+def test_quick_feeding_keeps_the_date_when_midnight_passes_during_lock(gui, monkeypatch):
+    from contextlib import contextmanager
+
+    from poop_detector.records.care import quick_entry
+
+    _, store, _ = gui
+    database = store.database
+    before_midnight = parse_local("2025-05-02T23:59:59")
+    plan = feeding_plans.save_plan(database, "23:59", now=before_midnight - timedelta(days=1))
+    clock = before_midnight
+    connect = database.connect
+
+    def trace(sql):
+        nonlocal clock
+        if sql == "BEGIN IMMEDIATE":
+            clock = before_midnight + timedelta(seconds=2)
+
+    @contextmanager
+    def tracked_connection():
+        with connect() as db:
+            db.set_trace_callback(trace)
+            yield db
+
+    monkeypatch.setattr(database, "connect", tracked_connection)
+    monkeypatch.setattr("poop_detector.records.care.local_now", lambda: clock)
+    assert quick_entry(database, "feeding", "家族", plan_id=plan)
+    assert feeding_plans.plans_for_day(database, before_midnight.date())[0].recorded
+    assert not feeding_plans.plans_for_day(database, clock.date())[0].recorded
+
+
 def test_reminder_is_claimed_once_and_old_times_are_skipped(gui):
     _, store, _ = gui
     db = store.database

@@ -2,6 +2,7 @@
 
 from urllib.parse import urlencode
 
+import pytest
 from support import login, request
 
 
@@ -106,6 +107,129 @@ def test_edit_feeding_uses_saved_values_and_keeps_invalid_input(gui):
         == 303
     )
     assert "19 g" in request(server, "GET", day_url)[1].decode()
+
+
+@pytest.mark.parametrize("kind", ["feeding", "sheet"])
+def test_care_deletion_hides_the_record_but_leaves_previous_history(gui, kind):
+    from datetime import date
+
+    from support import csrf_token, exchange, submit
+
+    from poop_detector.records.care import (
+        CareEntry,
+        entries,
+        feeding_history,
+        last_feeding,
+        latest_entries,
+        save_entry,
+    )
+    from poop_detector.timezones import parse_local
+
+    server, store, _ = gui
+    database = store.database
+    day = date(2024, 3, 1)
+    previous = save_entry(
+        database,
+        CareEntry("", parse_local("2024-03-01T08:00"), kind, "家族", "以前の記録", "前の銘柄", 200),
+    )
+    removed = save_entry(
+        database,
+        CareEntry(
+            "", parse_local("2024-03-01T10:00"), kind, "家族", "削除する記録", "最新の銘柄", 300
+        ),
+    )
+    edit = f"/care?day={day}&id={removed}"
+    assert b'action="/care/delete"' in request(server, "GET", edit)[1]
+
+    status, headers, _ = exchange(
+        server,
+        "POST",
+        "/care/delete",
+        urlencode({"id": removed, "csrf": csrf_token(server, edit)}),
+        {"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert (status, headers["Location"]) == (303, f"/care?day={day}&deleted=1")
+    page = request(server, "GET", headers["Location"])[1].decode()
+    assert "お世話の記録を削除しました" in page
+    assert "削除する記録" not in page
+    assert "以前の記録" in page
+    assert [entry.id for entry in entries(database, day)] == [previous]
+    assert latest_entries(database)[kind].id == previous
+    if kind == "feeding":
+        assert feeding_history(database) == ("前の銘柄", "20", ["前の銘柄"])
+        assert last_feeding(database) == ("前の銘柄", 200)
+    fields = {"id": removed, "kind": kind, "at": "2024-03-01T10:00"}
+    assert submit(server, "/care", fields, page=edit)[0] == 400
+    assert submit(server, "/care/delete", {"id": removed}, page="/care")[0] == 303
+    with database.connect() as db:
+        assert db.execute("SELECT note FROM care_entries WHERE id=?", (removed,)).fetchone()[0] == (
+            "削除する記録"
+        )
+
+
+def test_missing_care_record_cannot_be_deleted(gui):
+    from support import submit
+
+    server, _, _ = gui
+    assert submit(server, "/care/delete", {"id": "missing"}, page="/care")[0] == 400
+
+
+def test_quick_care_can_be_recorded_again_right_after_deletion(gui):
+    from support import submit
+
+    from poop_detector.records.care import entries, quick_entry
+    from poop_detector.timezones import local_today
+
+    server, store, _ = gui
+    database = store.database
+    first = quick_entry(database, "sheet", "家族")
+    assert submit(server, "/care/delete", {"id": first}, page="/care")[0] == 303
+    replacement = quick_entry(database, "sheet", "家族")
+    assert replacement != first
+    assert [entry.id for entry in entries(database, local_today())] == [replacement]
+
+
+def test_quick_feeding_reads_history_after_an_in_progress_deletion(gui, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from contextlib import contextmanager
+    from threading import Event
+
+    from poop_detector.records.care import CareEntry, entries, quick_entry, save_entry
+    from poop_detector.timezones import local_today, parse_local
+
+    _, store, _ = gui
+    database = store.database
+    save_entry(
+        database, CareEntry("", parse_local("2024-03-01T08:00"), "feeding", "家族", "", "旧", 200)
+    )
+    removed = save_entry(
+        database, CareEntry("", parse_local("2024-03-01T10:00"), "feeding", "家族", "", "誤", 300)
+    )
+    connect = database.connect
+    writing = Event()
+
+    def trace(sql):
+        if sql.startswith(("BEGIN IMMEDIATE", "INSERT INTO care_entries")):
+            writing.set()
+
+    @contextmanager
+    def tracked_connection():
+        with connect() as db:
+            db.set_trace_callback(trace)
+            yield db
+
+    monkeypatch.setattr(database, "connect", tracked_connection)
+    with ThreadPoolExecutor(max_workers=1) as executor, connect() as deletion:
+        deletion.execute(
+            "UPDATE care_entries SET deleted_at=? WHERE id=?",
+            ("2024-03-01T11:00:00+00:00", removed),
+        )
+        future = executor.submit(quick_entry, database, "feeding", "家族")
+        assert writing.wait(2)
+        deletion.commit()
+        assert future.result(timeout=2)
+    (replacement,) = entries(database, local_today())
+    assert (replacement.food, replacement.amount_dg) == ("旧", 200)
 
 
 def test_day_view_is_one_timeline_with_totals(gui):

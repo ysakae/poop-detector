@@ -10,6 +10,7 @@ from ..records.care import (
     KINDS,
     CareEntry,
     care_time,
+    delete_entry,
     entries,
     feeding_history,
     format_grams,
@@ -94,6 +95,7 @@ def _render(
     error: str = "",
     submitted: dict[str, str] | None = None,
     selected_plan: str = "",
+    deleted: bool = False,
 ) -> None:
     store = handler.app.store
     rows = entries(store.database, day)
@@ -140,6 +142,7 @@ def _render(
         timeline=_timeline(day, rows, weights(store.database, day, day), records),
         edit=edit,
         error=error,
+        deleted=deleted,
         at=stamp.strftime("%Y-%m-%dT%H:%M"),
     )
     handler.respond(400 if error else 200, page)
@@ -153,7 +156,13 @@ def care_page(handler: "Handler", query: Query) -> None:
     except InvalidInputError as error:
         _render(handler, local_today(), error=str(error))
         return
-    _render(handler, day, selected=first(query, "id"), selected_plan=first(query, "plan"))
+    _render(
+        handler,
+        day,
+        selected=first(query, "id"),
+        selected_plan=first(query, "plan"),
+        deleted=first(query, "deleted") == "1",
+    )
 
 
 @post("/care/plans")
@@ -203,6 +212,16 @@ def save_care(handler: "Handler", form: Form) -> None:
         _render(handler, day, values.get("id", ""), str(error), dict(values))
         return
     handler.redirect(f"/care?day={stamp.astimezone().date().isoformat()}")
+
+
+@post("/care/delete")
+def delete_care(handler: "Handler", form: Form) -> None:
+    try:
+        day = delete_entry(handler.app.store.database, form.fields.get("id", ""))
+    except InvalidInputError as error:
+        _render(handler, local_today(), error=str(error))
+        return
+    handler.redirect(f"/care?day={day.isoformat()}&deleted=1")
 
 
 @post("/care/quick")

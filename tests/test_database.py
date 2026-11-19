@@ -524,3 +524,22 @@ def test_stool_observation_migration_preserves_existing_notice(tmp_path):
                 stool_notice_claimed FROM video_assessments WHERE clip_id='clip'"""
             ).fetchone()
         ) == ("feces", "2026-11-19", 1, None, None, 0)
+
+
+def test_care_deletion_migration_preserves_existing_plan_record(tmp_path):
+    path = tmp_path / "care-deletion-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:25]:
+            migration(db)
+        db.execute("PRAGMA user_version = 25")
+        db.execute("INSERT INTO feeding_plans (id, clock, changed_at) VALUES ('plan', '08:00', '')")
+        db.execute(
+            """INSERT INTO care_entries (id, at, kind, actor, note, plan_id, plan_day)
+            VALUES ('meal', '2026-11-19T00:00:00+00:00', 'feeding', '家族', '朝', 'plan', '2026-11-19')"""
+        )
+    with Database(path).connect() as db:
+        assert tuple(
+            db.execute(
+                "SELECT note, plan_id, plan_day, deleted_at FROM care_entries WHERE id='meal'"
+            ).fetchone()
+        ) == ("朝", "plan", "2026-11-19", None)
