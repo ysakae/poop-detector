@@ -206,25 +206,33 @@ class ClipCollector:
             if jpeg is None:
                 return
             sample = (now, utcnow(), jpeg)
-            self.buffer.append(sample)
-            while self.buffer and (now - self.buffer[0][0] > self.before + 1e-6):
-                self.buffer.popleft()
-            for job in self.jobs.values():
-                if (
-                    job["status"] == "recording"
-                    and not job.get("interrupted")
-                    and job["trigger"] < now <= job["end"] + 1e-6
-                ):
-                    job["samples"].append(sample)
-            while self.buffer and self._bytes() > self.memory_limit:
-                self.buffer.popleft()
-            if self._bytes() > self.memory_limit:
-                for clip_id in list(self.jobs):
-                    if self.jobs[clip_id]["status"] == "recording":
-                        self.store.update(
-                            clip_id, status="failed", error="録画メモリー上限に達しました"
-                        )
-                        del self.jobs[clip_id]
+            self._distribute_sample(sample)
+            self._enforce_memory_limit()
+
+    def _distribute_sample(self, sample: Sample) -> None:
+        now = sample[0]
+        self.buffer.append(sample)
+        while self.buffer and (now - self.buffer[0][0] > self.before + 1e-6):
+            self.buffer.popleft()
+        for job in self.jobs.values():
+            if (
+                job["status"] == "recording"
+                and not job.get("interrupted")
+                and job["trigger"] < now <= job["end"] + 1e-6
+            ):
+                job["samples"].append(sample)
+
+    def _enforce_memory_limit(self) -> None:
+        """呼び出し側のロック内で、待機バッファ、録画中の順にメモリーを解放する。"""
+        while self.buffer and self._bytes() > self.memory_limit:
+            self.buffer.popleft()
+        if self._bytes() > self.memory_limit:
+            for clip_id in list(self.jobs):
+                if self.jobs[clip_id]["status"] == "recording":
+                    self.store.update(
+                        clip_id, status="failed", error="録画メモリー上限に達しました"
+                    )
+                    del self.jobs[clip_id]
 
     def _interrupt(self) -> None:
         for clip_id, job in list(self.jobs.items()):

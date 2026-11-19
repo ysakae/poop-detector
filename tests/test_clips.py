@@ -261,3 +261,23 @@ def test_encoding_start_metadata_failure_can_retry(tmp_path, monkeypatch):
         collector.poll(now=1)
         collector.drain()
         assert ClipStore(tmp_path).get(clip)["status"] == "ready"
+
+
+def test_recording_memory_evicts_buffer_before_failing_recording(tmp_path):
+    from poop_detector.video.recording import ClipCollector
+
+    with ClipCollector(tmp_path, before=0, memory_mb=8 / 1024**2) as collector:
+        collector.buffer.append((0.0, "2026-11-19T00:00:00+00:00", b"1234"))
+        collector.last_frame = 0.0
+        clip_id = collector.trigger(now=0)
+        assert clip_id is not None
+        sample = (1.0, "2026-11-19T00:00:01+00:00", b"12345")
+        collector.buffer.append(sample)
+        collector._enforce_memory_limit()
+        assert not collector.buffer
+        assert collector.store.get(clip_id)["status"] == "recording"
+
+        collector.jobs[clip_id]["samples"].append(sample)
+        collector._enforce_memory_limit()
+        assert clip_id not in collector.jobs
+        assert collector.store.get(clip_id)["status"] == "failed"
