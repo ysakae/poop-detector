@@ -28,7 +28,7 @@ from .commands.context import CommandContext, Handler
 from .commands.registration import CommandGroup
 from .config import Config, apply_timezone
 from .errors import UserError
-from .records.events import EXCRETION_TYPES
+from .records.events import EXCRETION_TYPES, RECORD_LOCATIONS
 from .redaction import RedactingFormatter, install_log_redaction, redact
 
 
@@ -265,6 +265,7 @@ def _record_commands(commands: CommandGroup) -> None:
     record.add_argument("--start", required=True)
     record.add_argument("--end")
     record.add_argument("--note", default="")
+    record.add_argument("--location", choices=RECORD_LOCATIONS, help="排泄した場所")
 
 
 def _management_commands(commands: CommandGroup) -> None:

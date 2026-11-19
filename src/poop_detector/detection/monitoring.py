@@ -57,7 +57,7 @@ class FrameSource(Protocol):
 class DetectionNotifier(Protocol):
     """差分検知の結果を知らせる通知先。"""
 
-    def send(self, *, clip_id: str | None = None) -> bool: ...
+    def send(self, *, clip_id: str | None = None, detected_at: str | None = None) -> bool: ...
 
 
 class Clock(Protocol):
@@ -298,6 +298,7 @@ class Monitor:
 
     def _record(self, view: FrameView) -> None:
         """イベントを記録し、その跡を通知済み状態にしてから、動画保存と通知へ進む。"""
+        detected_at = self.state.started_at or utcnow()
 
         def record_details(db: sqlite3.Connection, event_id: str) -> None:
             for extension in self.extensions:
@@ -317,7 +318,9 @@ class Monitor:
         self.state.started_at = None
         self.state.settled_since = None
         clip_id = self.collector.trigger(event_id) if self.collector else None
-        if not self.review_notifications and self.notifier.send(clip_id=clip_id):
+        if not self.review_notifications and self.notifier.send(
+            clip_id=clip_id, detected_at=detected_at
+        ):
             self.store.update(event_id, notified_at=utcnow())
         logger.info("排泄の疑いを記録しました: %s", event_id)
 

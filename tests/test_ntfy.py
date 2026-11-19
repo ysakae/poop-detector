@@ -2,6 +2,7 @@
 
 import json
 from contextlib import nullcontext
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from urllib.error import URLError
 
@@ -114,8 +115,12 @@ def test_ntfy_detection_and_early_alert_link_to_the_requested_clip():
     notifier = NtfyNotifier(
         "family", early_topic="watch", opener=open_request, public_url="https://gui.example/"
     )
-    assert notifier.send(clip_id="detection")
-    assert notifier.send_early_alert(clip_id="stay")
+    observed = datetime(2026, 11, 18, 21, 40, tzinfo=UTC)
+    assert notifier.send(clip_id="detection", detected_at=observed.isoformat())
+    assert notifier.send_early_alert(clip_id="stay", detected_at=observed.isoformat())
+    assert all(
+        observed.astimezone().strftime("%m/%d %H:%M:%S") in payload["message"] for payload in sent
+    )
     assert [(payload["topic"], payload["click"]) for payload in sent] == [
         ("family", "https://gui.example/clips?id=detection&notice=1"),
         ("watch", "https://gui.example/clips?id=stay&notice=1"),

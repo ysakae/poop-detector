@@ -21,6 +21,8 @@ _UNSET: Final[Any] = object()
 # events.kind。SUSPECTED は差分検知、MANUAL と MISSED は手入力、VIDEO は動画から確定した記録。
 EventKind: TypeAlias = Literal["SUSPECTED", "MANUAL", "MISSED", "VIDEO"]
 EXCRETION_LOCATIONS = {"tray": "トレー内", "outside": "トレー外"}
+OUTSIDE_PEN = "outside_pen"
+RECORD_LOCATIONS = {**EXCRETION_LOCATIONS, OUTSIDE_PEN: "サークル外"}
 EXCRETION_TYPES = {
     "feces": "排便",
     "urine": "排尿",
@@ -61,9 +63,17 @@ def utcnow() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def validate_location(location: str | None) -> None:
-    if location and location not in EXCRETION_LOCATIONS:
+def validate_location(location: str | None, *, manual: bool = False) -> None:
+    locations = RECORD_LOCATIONS if manual else EXCRETION_LOCATIONS
+    if location and location not in locations:
         raise InvalidInputError("排泄した場所が不正です")
+
+
+def _has_video_confirmation(db: sqlite3.Connection, event_id: str) -> bool:
+    return (
+        db.execute("SELECT 1 FROM clip_confirmations WHERE event_id=?", (event_id,)).fetchone()
+        is not None
+    )
 
 
 class Store:
@@ -158,6 +168,14 @@ class Store:
             key=lambda r: datetime.fromisoformat(r["actual_start"] or r["timestamp"]),
         )
 
+    def editable_locations(self, row: EventRow | None) -> dict[str, str]:
+        """動画に関連付けていない手入力の記録ではサークル外を選べる。"""
+        if row and row["kind"] in ("MANUAL", "MISSED"):
+            with self.connect() as db:
+                if not _has_video_confirmation(db, row["id"]):
+                    return RECORD_LOCATIONS
+        return EXCRETION_LOCATIONS
+
     def classify(
         self,
         event_id: str,
@@ -204,11 +222,16 @@ class Store:
             raise InvalidInputError("動画からの記録を取り消す場合は保留を選択してください")
         feedback = 0 if label == "false" else None if label == "unknown" else 1
         excretion_type = label if label in EXCRETION_TYPES else "unspecified"
-        validate_location(location)
+        validate_location(location, manual=row["kind"] in ("MANUAL", "MISSED"))
         location = row["location"] if location is None else location or None
+        kind = row["kind"]
+        if location == OUTSIDE_PEN:
+            if _has_video_confirmation(db, event_id):
+                raise InvalidInputError("動画に関連付けた記録はサークル外に変更できません")
+            kind = "MANUAL"
         db.execute(
-            "UPDATE events SET feedback=?,actual_start=?,actual_end=?,location=? WHERE id=?",
-            (feedback, start, end, location if feedback == 1 else None, event_id),
+            "UPDATE events SET feedback=?,actual_start=?,actual_end=?,location=?,kind=? WHERE id=?",
+            (feedback, start, end, location if feedback == 1 else None, kind, event_id),
         )
         db.execute(
             "INSERT OR REPLACE INTO excretion_labels VALUES (?,?,?)",
@@ -231,7 +254,7 @@ class Store:
             return self._insert_excretion(
                 db,
                 excretion_type,
-                "MISSED" if missed else "MANUAL",
+                "MISSED" if missed and location != OUTSIDE_PEN else "MANUAL",
                 start,
                 start,
                 end,
@@ -257,7 +280,7 @@ class Store:
         validate_times(start, end)
         if not isinstance(note, str) or len(note) > 2000:
             raise InvalidInputError("メモは2000文字以内にしてください")
-        validate_location(location)
+        validate_location(location, manual=kind == "MANUAL")
         event_id = uuid4().hex
         db.execute(
             """INSERT INTO events (id,timestamp,kind,feedback,actual_start,actual_end,location)

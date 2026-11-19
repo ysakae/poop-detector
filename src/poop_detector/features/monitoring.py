@@ -18,6 +18,7 @@ from ..detection.monitoring import (
 )
 from ..detection.roi import AnyROI
 from ..frames import Frame
+from ..records.events import utcnow
 from ..video.recording import ClipCollector
 from .activity_map import ActivityRecorder
 from .early_alert import EarlyAlert
@@ -34,7 +35,9 @@ logger = logging.getLogger(__name__)
 class MonitorNotifier(DetectionNotifier, Protocol):
     """標準の監視拡張を含めた通知先。"""
 
-    def send_early_alert(self, *, clip_id: str | None = None) -> bool: ...
+    def send_early_alert(
+        self, *, clip_id: str | None = None, detected_at: str | None = None
+    ) -> bool: ...
     def send_reentry(
         self, kind: str, event_id: str, at: datetime, clip_id: str | None
     ) -> "Delivery": ...
@@ -54,8 +57,9 @@ class EarlyAlertExtension(MonitorExtension):
     def on_frame(self, view: FrameView) -> None:
         if not self.stay.update(view.crop, view.valid_mask, view.tick):
             return
+        detected_at = utcnow()
         clip_id = self.collector.trigger(source="early_alert") if self.collector else None
-        if self.notifier.send_early_alert(clip_id=clip_id):
+        if self.notifier.send_early_alert(clip_id=clip_id, detected_at=detected_at):
             logger.info("トイレ見守りの早期通知を送りました")
 
 

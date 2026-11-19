@@ -97,6 +97,11 @@ class AssessmentRow(TypedDict):
     provider: str
     model: str | None
     endpoint_change: float | None
+    stool_seen_at: str | None
+    stool_clear_at: str | None
+    stool_notified_at: str | None
+    notice_label: str | None
+    stool_notice_claimed: int
 
 
 class ClipStore:
