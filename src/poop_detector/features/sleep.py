@@ -1,12 +1,24 @@
-"""1秒ごとの在室と静止の観測から、1分ごとの睡眠の状態を決める。"""
+"""1秒ごとの在室と静止の観測から、1分ごとの睡眠の状態を決めて記録する。"""
 
+import logging
+import sqlite3
 from collections import Counter
 from datetime import UTC, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from .sleep_store import MinuteRecord, SleepState
+import cv2
+
+from ..frames import Frame
+from ..timezones import local_now
+from .dog import Predict
+from .sleep_store import MinuteRecord, SleepState, SleepStore
+
+if TYPE_CHECKING:
+    # sleep_motion は Presence をこのモジュールから読むので、実行時には読み込まない。
+    from .sleep_motion import MotionSampler
 
 Presence = Literal["still", "moving", "left", "unknown"]
+logger = logging.getLogger(__name__)
 
 # 1分のうち観測できた秒数がこれに満たなければ、その分は unknown にする。
 MIN_OBSERVED_SECONDS = 30
@@ -148,3 +160,59 @@ class SleepJudge:
             start = end
         self._seconds = self._seconds[start:]
         return records
+
+
+def _hour_of(stamp: datetime) -> datetime:
+    """ローカル時刻の時の始まり（タイムゾーン付き）。"""
+    return stamp.astimezone().replace(minute=0, second=0, microsecond=0)
+
+
+class SleepRecorder:
+    """映像と犬検出から1秒ごとに観測を作り、確定した分と検出の当たり具合を保存する。
+
+    推論やデータベースの失敗は警告のログにとどめ、監視を止めない（ActivityRecorder と同じ）。
+    """
+
+    def __init__(self, store: SleepStore, judge: SleepJudge, sampler: "MotionSampler") -> None:
+        self.store, self.judge, self.sampler = store, judge, sampler
+        self.last_sample = float("-inf")
+
+    def update(
+        self, frame: Frame, predict: Predict, tick: float, stamp: datetime | None = None
+    ) -> None:
+        """1秒ごとに観測を1つ作る。前回の観測から1秒たっていなければ何もしない。"""
+        if tick - self.last_sample < 1:
+            return
+        self.last_sample = tick
+        now = stamp or local_now()
+        presence: Presence = "unknown"
+        detected = False
+        try:
+            boxes = predict(frame)
+        except (cv2.error, OSError, ValueError):
+            # 推論に失敗した秒は画像も比べず、居場所を保ったまま unknown とする。
+            logger.warning("睡眠の記録用の犬検出に失敗しました")
+        else:
+            presence, detected = self.sampler.sample(frame, boxes)
+        records = self.judge.observe(now, presence)
+        present = presence in ("still", "moving")
+        self._save(records, _hour_of(now) if present else None, detected)
+
+    def interrupt(self) -> None:
+        """接続の途切れで、静止の継続と犬の居場所を捨てる。"""
+        self.judge.interrupt()
+        self.sampler.reset()
+
+    def close(self, stamp: datetime | None = None) -> None:
+        """判定中の分を awake として書き、記録を終える。"""
+        self._save(self.judge.close(stamp or local_now()), None, False)
+        self.sampler.reset()
+
+    def _save(self, records: list[MinuteRecord], hour: datetime | None, detected: bool) -> None:
+        try:
+            if records:
+                self.store.write_minutes(records)
+            if hour is not None:
+                self.store.add_detection(hour, 1.0, 1.0 if detected else 0.0)
+        except sqlite3.Error:
+            logger.warning("睡眠の記録を保存できませんでした")
