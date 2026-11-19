@@ -266,3 +266,34 @@ def test_admin_renames_another_user(gui):
     assert status == 400
     assert "使われています" in page.decode()
     assert users.get(target).name == "<b>新しい名前</b>"
+
+
+def test_failed_recovery_action_is_reported_as_a_mail_error(gui, monkeypatch):
+    from poop_detector.gui import account_routes
+    from poop_detector.gui.invitation_mail import MailError
+
+    server, _, _ = gui
+    cookie = login(server, "管理者")
+    accounts = server.app.accounts
+    target_id = accounts.users.create("対象", "member", email="target@example.org")
+    seen = []
+    apply_action = account_routes._apply_user_action
+
+    def apply(handler, admin, user, action, form):
+        seen.append((admin.id, user.id, action))
+        return apply_action(handler, admin, user, action, form)
+
+    def failed_mail(*args, **kwargs):
+        raise MailError("復旧メールを送信できませんでした")
+
+    monkeypatch.setattr(account_routes, "_apply_user_action", apply)
+    monkeypatch.setattr(account_routes, "recover_by_email", failed_mail)
+    path = "/manage/users"
+    status, _, page = post(
+        server, cookie, path, {"email": "target@example.org", "action": "recover"}, page=path
+    )
+
+    assert seen == [(user_of(server, cookie), target_id, "recover")]
+    assert status == 502
+    assert "復旧メールを送信できませんでした" in page.decode()
+    assert all(entry.action != "user.recover" for entry in accounts.audit.recent())
