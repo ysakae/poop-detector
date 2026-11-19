@@ -668,3 +668,35 @@ def test_gui_command_watches_the_monitor(cli_env, monkeypatch):
     monkeypatch.setattr(server, "serve", lambda *args, **kwargs: None)
     assert cli_env.run("gui", "--no-browser") == 0
     assert checks
+
+
+def test_tray_exchange_pauses_recording_until_the_new_scene_is_installed():
+    from unittest.mock import Mock
+
+    from poop_detector.commands.run import _TrayExchange
+    from poop_detector.detection.scene import scene_signature
+    from poop_detector.features.tray_registration import TrayScene
+
+    registration = Mock()
+    registration.status.side_effect = [{"phase": "apply"}, {"phase": "applied"}]
+    frame, _ = spot_scene()
+    scene = TrayScene(ROI(0, 0, 1, 1), frame, None)
+    registration.poll.return_value = scene
+    collector = Mock()
+    engine = Mock()
+    operations = Mock()
+    operations.attach_mock(collector.set_maintenance, "maintenance")
+    operations.attach_mock(engine.replace_scene, "replace_scene")
+    scenes = {}
+    exchange = _TrayExchange(registration, scenes, lambda scene: [], collector, track_tray=False)
+
+    assert exchange.before_align(engine, frame) is False
+
+    assert [call[0] for call in operations.mock_calls] == [
+        "maintenance",
+        "replace_scene",
+        "maintenance",
+    ]
+    assert collector.set_maintenance.call_args_list[0].args == (True,)
+    assert collector.set_maintenance.call_args_list[1].args == (False,)
+    assert scenes[scene_signature(frame, scene.roi)] is scene

@@ -1,7 +1,5 @@
 """トイレ領域内で動いた後、同じ場所にとどまる場面を検知する。"""
 
-from typing import Any
-
 import cv2
 import numpy as np
 from numpy.typing import NDArray
@@ -40,7 +38,7 @@ class EarlyAlert:
 
     def reset(self) -> None:
         self.sampled_at = float("-inf")
-        self.anchor: NDArray[Any] | None = None
+        self.anchor: NDArray[np.bool_] | None = None
         self.started_at: float | None = None
         self.alerted = False
         self.previous_gray: Frame | None = None
@@ -53,32 +51,48 @@ class EarlyAlert:
         if elapsed > 2 * SAMPLE_SECONDS:
             self.reset()
         self.sampled_at = now
+        measurement = self._measure(frame, valid_mask)
+        if measurement is None:
+            self.anchor = None
+            return False
+        foreground, moving = measurement
+        return self._advance(foreground, moving, now)
+
+    def _measure(
+        self, frame: Frame, valid_mask: Mask | None
+    ) -> tuple[NDArray[np.bool_], bool] | None:
+        """有効領域の最大の前景と、その前景内に動きがあったかを返す。"""
         image = cv2.resize(frame, self.size)
         if valid_mask is not None:
             valid_mask = cv2.resize(valid_mask, self.size, interpolation=cv2.INTER_NEAREST)
             if not np.any(valid_mask):
-                self.anchor = None
                 self.previous_gray = None
-                return False
+                return None
         valid = self.detector.valid_region(image, valid_mask)
         previous = self.previous_gray
-        self.previous_gray = self.detector.gray(image)
+        gray = self.previous_gray = self.detector.gray(image)
         valid_area = np.count_nonzero(valid)
         mask = self.detector.difference_mask(image, valid)
         if cv2.countNonZero(mask) > MAX_FOREGROUND_RATIO * valid_area:
-            self.anchor = None
-            return False
+            return None
         count, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
         if count == 1:
-            self.anchor = None
-            return False
+            return None
         largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
         if stats[largest, cv2.CC_STAT_AREA] < MIN_FOREGROUND_RATIO * valid_area:
-            self.anchor = None
-            return False
+            return None
 
         foreground = labels == largest
         foreground_area = stats[largest, cv2.CC_STAT_AREA]
+        moving = False
+        if previous is not None:
+            changed = cv2.absdiff(gray, previous) >= MOTION_PIXEL_DELTA
+            moving = bool(
+                np.count_nonzero(changed & foreground) >= MIN_MOTION_RATIO * foreground_area
+            )
+        return foreground, moving
+
+    def _advance(self, foreground: NDArray[np.bool_], moving: bool, now: float) -> bool:
         if self.anchor is None or np.count_nonzero(self.anchor & foreground) < (
             MIN_OVERLAP * np.count_nonzero(self.anchor | foreground)
         ):
@@ -87,11 +101,9 @@ class EarlyAlert:
             self.alerted = False
         if self.started_at is None:
             # 起動時から静止している犬や物体は、基準画像との差だけで滞在とみなさない。
-            if previous is not None:
-                changed = cv2.absdiff(self.previous_gray, previous) >= MOTION_PIXEL_DELTA
-                if np.count_nonzero(changed & foreground) >= MIN_MOTION_RATIO * foreground_area:
-                    self.anchor = foreground
-                    self.started_at = now
+            if moving:
+                self.anchor = foreground
+                self.started_at = now
             return False
         if self.alerted or now - self.started_at < self.stay_seconds:
             return False

@@ -926,3 +926,17 @@ def test_saved_mixed_assessment_defers_stool_but_notifies_urine(tmp_path):
 
     assert notices == [("urine", current)]
     assert store.assessments.get(current)["stool_notified_at"] is None
+
+
+def test_sheet_tile_marks_tray_inside_outside_crop_without_mutating_frame():
+    from poop_detector.video.review import DEFAULT_SHEET, _sheet_tile
+
+    frame = np.zeros((100, 200, 3), dtype=np.uint8)
+    tray = ROI(0.3, 0.3, 0.2, 0.2)
+    outside = ROI(0.25, 0.2, 0.5, 0.6)
+
+    tile = _sheet_tile(frame, tray, DEFAULT_SHEET, outside_roi=outside)
+
+    assert np.any(tile[:, :, 1])
+    assert not np.any(tile[:, :, (0, 2)])
+    assert not np.any(frame)

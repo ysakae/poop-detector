@@ -142,3 +142,14 @@ def test_connection_gap_does_not_rearm_early_alert_for_a_static_dog():
     assert not alert.update(stays, None, 1)
     for tick in range(10, 20):
         assert not alert.update(stays, None, tick)
+
+
+def test_stay_state_advances_from_foreground_measurements():
+    empty, _, _ = frames()
+    alert = EarlyAlert(empty, Config())
+    foreground = np.ones((3, 3), dtype=bool)
+    assert not alert._advance(foreground, False, 0)
+    assert not alert._advance(foreground, True, 1)
+    assert not alert._advance(foreground, False, 4)
+    assert alert._advance(foreground, False, 5)
+    assert not alert._advance(foreground, False, 6)

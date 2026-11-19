@@ -549,3 +549,31 @@ def test_visits_record_foot_quality_without_changing_risk(tmp_path):
         ).fetchone()
     # 入場の確定後の3回を数える。品質が低い足元も、いまは HIGH の根拠に数える。
     assert tuple(visit) == ("HIGH", 3, 2, "low")
+
+
+def test_visit_notices_share_a_clip_and_prefer_high_risk():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from poop_detector.features.reentry_extension import ReentryExtension
+
+    store = Mock()
+    notify = Mock()
+    collector = Mock()
+    collector.trigger.return_value = "clip-id"
+    extension = SimpleNamespace(store=store, notify=notify, collector=collector)
+    notices = [("first", "reentry", 1), ("first", "high", 1), ("second", "reentry", 2)]
+    at = "2026-11-19T00:00:00+00:00"
+
+    ReentryExtension._process_visit_notices(extension, notices, at)
+
+    collector.trigger.assert_called_once_with(source="toilet_reentry")
+    assert [call.args for call in notify.call_args_list] == [
+        ("first", "high", at, "clip-id"),
+        ("second", "reentry", at, "clip-id"),
+    ]
+    assert [(call.args, call.kwargs["high"]) for call in store.attach_clip.call_args_list] == [
+        ((1, "clip-id"), False),
+        ((1, "clip-id"), True),
+        ((2, "clip-id"), False),
+    ]

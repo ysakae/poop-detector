@@ -214,6 +214,11 @@ class ReentryExtension(MonitorExtension):
             self.track.previous = None
         at = utcnow()
         notices = self.monitor.observe(side, point, tick, at, quality=quality)
+        self._process_visit_notices(notices, at)
+        self._notify_uncollected(at)
+        self.retry_notices(at)
+
+    def _process_visit_notices(self, notices: list[tuple[str, str, int]], at: str) -> None:
         clip_id = self.collector.trigger(source="toilet_reentry") if notices else None
         # このフレームで上がったすべてのリスクは、同じ時刻の動画を共有する。
         high_visits = {visit for _, kind, visit in notices if kind == "high"}
@@ -222,6 +227,8 @@ class ReentryExtension(MonitorExtension):
                 self.store.attach_clip(visit, clip_id, high=kind == "high")
             if kind != "reentry" or visit not in high_visits:
                 self.notify(event_id, kind, at, clip_id)
+
+    def _notify_uncollected(self, at: str) -> None:
         if self.config.reentry_uncollected_minutes > 0:
             cutoff = datetime.fromisoformat(at) - timedelta(
                 minutes=self.config.reentry_uncollected_minutes
@@ -229,8 +236,6 @@ class ReentryExtension(MonitorExtension):
             for row in self.store.pending(self.layout.id):
                 if datetime.fromisoformat(row["timestamp"]) <= cutoff:
                     self.notify(row["id"], "uncollected", at, None)
-
-        self.retry_notices(at)
 
     def retry_notices(self, at: str) -> None:
         if not self.notice_allowed("high", at):
