@@ -105,15 +105,15 @@ def test_ear_twitch_inside_last_box_while_undetected_is_moving():
     assert sampler.sample(twitched, [DOG]) == ("still", True)
 
 
+BEYOND = (130, 50, 160, 70)
+
+
 def walked_to_edge(sampler: MotionSampler) -> None:
     """床面の右の縁まで検出されたまま歩き、縁を越えたところで検出が外れる。"""
     near = (100, 50, 130, 70)
     sampler.sample(scene(DOG), [DOG])
     sampler.sample(scene(near), [near])
     assert sampler.sample(scene(BEYOND), []) == ("left", False)
-
-
-BEYOND = (130, 50, 160, 70)
 
 
 def test_motion_reaching_the_edge_while_undetected_is_left():
@@ -139,6 +139,59 @@ def test_undetected_walk_out_after_still_never_becomes_still():
     assert sampler.sample(scene(), []) == ("unknown", False)
     for _ in range(5):
         assert sampler.sample(scene(), []) == ("unknown", False)
+
+
+NEAR_EDGE = (110, 50, 140, 70)
+
+
+def test_undetected_exit_from_box_near_floor_edge_is_left():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler, NEAR_EDGE)
+    # 縁の近くで寝ていた犬が、検出されないまま床面の外へ出た。床面の中の動きは
+    # 広げた枠に収まるが、枠の中の画像が犬のいたときと違うので出ていったとみなす
+    outside = (145, 50, 160, 70)
+    assert sampler.sample(scene(outside), []) == ("left", False)
+    for _ in range(3):
+        assert sampler.sample(scene(outside), []) == ("left", False)
+
+
+def test_undetected_exit_at_image_edge_without_floor_is_left():
+    sampler = MotionSampler(None)
+    box = (125, 50, 155, 70)
+    settled(sampler, box)
+    assert sampler.sample(scene(), []) == ("left", False)
+    for _ in range(3):
+        assert sampler.sample(scene(), []) == ("left", False)
+
+
+def test_ear_twitch_of_dog_sleeping_at_edge_keeps_location():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler, NEAR_EDGE)
+    twitched = scene(NEAR_EDGE)
+    twitched[55:61, 120:124] = 0
+    assert sampler.sample(twitched, []) == ("moving", False)
+    for _ in range(3):
+        assert sampler.sample(twitched, []) == ("still", False)
+    assert sampler.sample(twitched, [NEAR_EDGE]) == ("still", True)
+
+
+def test_undetected_exit_from_box_away_from_edge_is_unknown():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    # 床面の真ん中で、検出されないまま犬の姿が枠から消えた
+    assert sampler.sample(scene(), []) == ("unknown", False)
+    for _ in range(5):
+        assert sampler.sample(scene(), []) == ("unknown", False)
+
+
+def test_slow_lighting_change_while_still_keeps_location():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    # 夕方の露出の変化のように、1秒ごとには小さい明るさの変化が積み重なっても居場所は保つ
+    frame = scene(DOG).astype(np.int16)
+    for step in range(1, 9):
+        dimmed = np.clip(frame - step * 10, 0, 255).astype(np.uint8)
+        assert sampler.sample(dimmed, []) == ("still", False)
 
 
 def test_compact_blob_away_from_dog_is_motion():

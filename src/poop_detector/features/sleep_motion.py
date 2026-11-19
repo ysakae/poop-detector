@@ -19,10 +19,15 @@ MOTION_WIDTH = 160
 PIXEL_DELTA = 25
 # 犬の枠の中で変化した画素の割合がこれ未満なら、枠の中は静止とみなす。
 STILL_RATIO = 0.02
-# 床面の中で、つながった変化の塊の面積（縮小した画像の画素）がこれ以上あれば「床面が動いた」。
-# 散らばった点の合計ではなく塊の大きさで決め、圧縮のブロック雑音や赤外線のざらつきを除く。
-# 耳を動かす程度（元の画像で4×6画素ほど）は拾える大きさにする。
+# 床面の中で、つながった変化の塊の面積がこれ以上あれば「床面が動いた」。面積は幅
+# MOTION_WIDTH に縮小した画像の画素で数える。散らばった点の合計ではなく塊の大きさで決め、
+# 圧縮のブロック雑音や赤外線のざらつき（1点は平滑化後に1画素ほど）を除く。人工画像では、
+# 縮小画像で4×6画素の耳の動きが平滑化で広がって約44画素の塊になり、これを拾える。
 MIN_MOTION_AREA = 24
+# 検出が外れたあと、最後の枠の中の画素のうちこの割合より多くが、最後に検出したときの
+# 枠の中の画像と PIXEL_DELTA を超えて違えば、犬はもう枠にいないとみなす。
+# 検出の枠には背景も入るので、半分より少し低くする。身じろぎ（枠の数%）では超えない。
+BOX_GONE_RATIO = 0.4
 # 枠の中心の移動が、枠の対角線のこの割合未満なら、同じ場所にいるとみなす。
 STILL_SHIFT = 0.1
 # 検出が外れたとき、最後の枠を幅・高さのこの割合だけ四方に広げた範囲の中の動きは、
@@ -51,6 +56,8 @@ class MotionSampler:
 
     犬の居場所は「出ていった証拠」があるまで保ち、検出が外れただけでは外に出たとみなさない。
     居場所があって検出が外れたとき:
+    - 最後の枠の中が、最後に見えた犬の画像と大きく違う（BOX_GONE_RATIO）→ 居場所を捨てる。
+      枠が床面の縁の帯（境界がなければ画面の端）にかかっていれば left、ほかは unknown
     - 床面が静か → still（動いていない証拠）
     - 動きが最後の枠（STIR_MARGIN だけ広げた範囲）の中だけ → moving（身じろぎ）
     - 枠の外の動きが床面の縁の帯に届いた → left。床面が静かな間は left を保つ
@@ -66,6 +73,8 @@ class MotionSampler:
         """居場所と前回の画像を忘れる（監視の開始や接続の再開）。"""
         self._previous: NDArray[Any] | None = None
         self._location: Box | None = None
+        # 最後に検出した（または静止を確かめた）ときの、枠の中の縮小した灰色の画像
+        self._snapshot: NDArray[Any] | None = None
         self._left = False
 
     def sample(self, frame: Frame, boxes: Sequence[Box]) -> tuple[Presence, bool]:
@@ -78,8 +87,10 @@ class MotionSampler:
         if len(inside) > 1:
             return "unknown", False
         if inside:
-            return self._with_box(inside[0], changed, shape), True
-        return self._without_box(changed, shape), False
+            presence = self._with_box(inside[0], changed, shape)
+            self._snapshot = gray[_box_slices(inside[0], shape, gray.shape, 0)].copy()
+            return presence, True
+        return self._without_box(gray, changed, shape), False
 
     def _changed(self, gray: NDArray[Any]) -> NDArray[Any] | None:
         previous = self._previous
@@ -113,7 +124,9 @@ class MotionSampler:
             return "still"
         return "moving"
 
-    def _without_box(self, changed: NDArray[Any] | None, shape: tuple[int, ...]) -> Presence:
+    def _without_box(
+        self, gray: NDArray[Any], changed: NDArray[Any] | None, shape: tuple[int, ...]
+    ) -> Presence:
         motion = None if changed is None else self._motion(changed)
         quiet = motion is not None and not motion.any()
         location = self._location
@@ -122,7 +135,15 @@ class MotionSampler:
                 return "left"
             self._left = False
             return "unknown"
+        region = _box_slices(location, shape, gray.shape, 0)
+        if self._gone(gray[region]):
+            # 枠が縁にかかっていれば、検出が外れたまま縁の外へ出ていったとみなす。
+            at_edge = bool(self._regions(gray.shape)[1][region].any())
+            self._location, self._snapshot, self._left = None, None, at_edge
+            return "left" if at_edge else "unknown"
         if quiet:
+            # 静かな間は照明のゆっくりした変化を取り込み、犬の画像を新しくしておく。
+            self._snapshot = gray[region].copy()
             return "still"
         if motion is not None:
             stir = np.zeros(motion.shape, dtype=bool)
@@ -134,8 +155,16 @@ class MotionSampler:
                 self._location, self._left = None, True
                 return "left"
         # 居場所の外で動きがあった（または画像を比べられない）。どこにいるか分からない。
-        self._location = None
+        self._location, self._snapshot = None, None
         return "unknown"
+
+    def _gone(self, region: NDArray[Any]) -> bool:
+        """最後に見えた犬の画像と比べ、枠の中の大部分が変わったか。"""
+        snapshot = self._snapshot
+        if snapshot is None or snapshot.shape != region.shape or region.size == 0:
+            return False
+        differ = cv2.absdiff(region, snapshot) > PIXEL_DELTA
+        return float(differ.mean()) > BOX_GONE_RATIO
 
     def _motion(self, changed: NDArray[Any]) -> NDArray[Any]:
         """床面の中で、MIN_MOTION_AREA 以上の塊になった変化の画素。"""
