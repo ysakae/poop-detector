@@ -137,3 +137,91 @@ def test_empty_period_renders(tmp_path):
     assert (view.trend.recent_minutes, view.trend.usual_minutes) == (None, None)
     assert (view.trend.diff_minutes, view.trend.diff_ratio) == (None, None)
     assert view.period == 91
+
+
+# ---- 画面（/sleep） ----
+
+
+def _seed(server, days: int = 10) -> None:
+    from poop_detector.timezones import local_today
+
+    store = server.app.sleep
+    today = local_today()
+    for back in range(days):
+        day = today - timedelta(days=back)
+        for hour in range(24):
+            fill_hour(store, day, hour, 50 if hour < 6 else 10)
+
+
+def _page(server, query: str = "") -> str:
+    from support import request
+
+    status, body = request(server, "GET", "/sleep" + query)
+    assert status == 200
+    return body.decode()
+
+
+def test_sleep_page_shows_grid_and_totals(gui):
+    server, _, _ = gui
+    _seed(server)
+    html = _page(server)
+    assert html.count('class="sleep-row"') == 24
+    assert "少ない" in html
+    assert "多い" in html
+    assert "記録なし" in html
+    assert "sleep-l4" in html
+    # 6時間×50分＋18時間×10分 = 8時間0分
+    assert "8時間0分" in html
+    assert "直近7日の平均 8時間0分" in html
+    assert "睡眠 50分／記録 60分" in html
+    assert "睡眠の記録がありません" not in html
+
+
+def test_sleep_page_empty_state(gui):
+    server, _, _ = gui
+    assert "睡眠の記録がありません" in _page(server)
+
+
+@pytest.mark.parametrize("query", ["?days=5", "?days=abc", "?days=", ""])
+def test_sleep_page_invalid_days_falls_back_to_28(gui, query):
+    server, _, _ = gui
+    html = _page(server, query)
+    assert 'data-period="28"' in html
+
+
+@pytest.mark.parametrize("days", ["7", "28", "91"])
+def test_sleep_page_accepts_periods(gui, days):
+    server, _, _ = gui
+    _seed(server, 3)
+    html = _page(server, f"?days={days}")
+    assert f'data-period="{days}"' in html
+    assert html.count('class="sleep-row"') == 24
+
+
+def test_sleep_page_requires_login(gui):
+    from support import request
+
+    server, _, _ = gui
+    assert request(server, "GET", "/sleep", auth=False)[0] == 403
+
+
+def test_sleep_page_is_visible_to_members(gui):
+    from support import exchange, login
+
+    server, _, _ = gui
+    status, _, body = exchange(
+        server, "GET", "/sleep", headers=login(server, "家族", role="member"), auth=False
+    )
+    assert status == 200
+    assert 'href="/sleep"' in body.decode()
+
+
+def test_duration_and_trend_text():
+    from poop_detector.gui.sleep_page import duration_text, signed_duration_text
+
+    assert duration_text(750) == "12時間30分"
+    assert duration_text(45) == "45分"
+    assert duration_text(120) == "2時間0分"
+    assert duration_text(0) == "0分"
+    assert signed_duration_text(40) == "+40分"
+    assert signed_duration_text(-65) == "-1時間5分"

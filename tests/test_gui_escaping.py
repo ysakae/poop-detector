@@ -57,6 +57,7 @@ def pages(server, ready, failed):
         f"/clips?id={failed}",
         "/manage/storage",
         "/activity",
+        "/sleep",
     ]
 
 

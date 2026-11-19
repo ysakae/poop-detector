@@ -1,0 +1,45 @@
+{#- 犬の睡眠の草（縦が時刻、横が日付）。文字列は Python 側で作り、ここでは並べるだけ。 -#}
+{% extends "base.html" %}
+{% block content %}
+<h2>睡眠</h2>
+<form action="/sleep" method="get" class="toolbar field-toolbar" data-period="{{ period }}"><label>期間<select name="days">
+{%- for value in periods -%}
+<option value="{{ value }}"{% if value == period %} selected{% endif %}>{{ value }}日間</option>
+{%- endfor -%}
+</select></label><button>表示</button></form>
+{% if empty %}
+<p>睡眠の記録がありません。<code>run --sleep</code> か設定の <code>sleep.enabled</code> で記録を始めます。</p>
+{% else %}
+<p>{{ trend }}</p>
+{% endif %}
+<div class="sleep-scroll" tabindex="0" role="region" aria-label="睡眠の草（縦が時刻、横が日付）">
+<table class="sleep-grid">
+<thead><tr><th scope="col"></th>
+{%- for label in grid.labels -%}
+<th scope="col" class="sleep-day">{{ label }}</th>
+{%- endfor -%}
+</tr></thead>
+<tbody>
+{%- for row in grid.rows %}
+<tr class="sleep-row"><th scope="row" class="sleep-hour">{{ row.hour }}</th>
+{%- for cell in row.cells -%}
+<td class="sleep-cell {{ cell.css }}" title="{{ cell.title }}"></td>
+{%- endfor -%}
+</tr>
+{%- endfor %}
+</tbody>
+</table>
+</div>
+<p class="sleep-legend">少ない <span class="sleep-cell sleep-l0"></span><span class="sleep-cell sleep-l1"></span><span class="sleep-cell sleep-l2"></span><span class="sleep-cell sleep-l3"></span><span class="sleep-cell sleep-l4"></span> 多い　<span class="sleep-cell sleep-none"></span> 記録なし</p>
+<p class="note">マスの色は、その時間に寝ていた分数です（0分から60分）。マスにカーソルを重ねるか長押しすると、睡眠・記録・犬の検出の割合が出ます。記録できた時間が足りない時間は「記録なし」です。</p>
+<h3>日ごとの合計</h3>
+<p class="note">日中は {{ daytime_range }} に寝ていた時間です。記録できた時間が1日の80％に満たない日は「参考」です。</p>
+<table class="sleep-summary">
+<thead><tr><th scope="col">日</th><th scope="col">睡眠</th><th scope="col">日中</th><th scope="col">記録</th></tr></thead>
+<tbody>
+{%- for s in summaries %}
+<tr><th scope="row">{{ s.day }}{% if s.reference %} <span class="chip chip-off">参考</span>{% endif %}</th><td>{{ s.asleep }}</td><td>{{ s.daytime }}</td><td>{{ s.observed }}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+{% endblock %}

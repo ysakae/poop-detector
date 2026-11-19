@@ -16,6 +16,7 @@ MEMBER_SECTIONS: tuple[tuple[str, str, str], ...] = (
     ("/weight", "体重", "weight"),
     ("/clips", "動画", "video"),
     ("/activity", "行動マップ", "map"),
+    ("/sleep", "睡眠", "sleep"),
 )
 MANAGEMENT = ("/manage", "管理", "manage")
 # スマートフォンの幅で画面の下に並べる場所。ほかの場所と PERSONAL は「その他」にまとめる。
