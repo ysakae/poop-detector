@@ -232,6 +232,7 @@ def watch(
                     pet_name=config.pet_name,
                     web=web,
                     config_path=args.config,
+                    review_enabled=config.video_review_enabled,
                 )
             )
         watchdog = camera_watchdog(context, notifier)

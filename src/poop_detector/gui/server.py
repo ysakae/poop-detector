@@ -76,6 +76,7 @@ class GuiApp:
     # 管理 › 設定で書き換える設定ファイル。None なら設定の画面は表示だけ（テストなど）。
     config_path: Path | None = None
     manual_only: bool = False
+    review_enabled: bool = False
     cookie_name: str = COOKIE_NAME
     # 範囲の登録で画面に見せた映像の一時置き場（保存にはその映像を使う）。
     snapshots: Snapshots = field(default_factory=Snapshots)
@@ -184,6 +185,7 @@ def make_server(
     limits: RateLimits = DEFAULT_LIMITS,
     config_path: str | Path | None = None,
     manual_only: bool = False,
+    review_enabled: bool = False,
     cookie_name: str = COOKIE_NAME,
 ) -> GuiServer:
     """GUI のサーバーを作る。待ち受けのアドレスと外部の URL は web、ポートは port を使う。
@@ -217,6 +219,7 @@ def make_server(
         disk_mb=disk_mb,
         config_path=Path(config_path).resolve() if config_path is not None else None,
         manual_only=manual_only,
+        review_enabled=review_enabled,
         cookie_name=cookie_name,
         push_subscriptions=PushSubscriptions(database),
         push_keys=PushKeys(root),
@@ -269,10 +272,17 @@ def background_gui(
     pet_name: str,
     web: WebOptions = LOCAL_ONLY,
     config_path: str | Path | None = None,
+    review_enabled: bool = False,
 ) -> Iterator[None]:
     """監視中は別スレッドで GUI を提供し、監視が終われば待ち受けを閉じる。"""
     with make_server(
-        root, port, disk_mb=disk_mb, pet_name=pet_name, web=web, config_path=config_path
+        root,
+        port,
+        disk_mb=disk_mb,
+        pet_name=pet_name,
+        web=web,
+        config_path=config_path,
+        review_enabled=review_enabled,
     ) as server:
         thread = threading.Thread(target=server.serve_forever, name="poop-detector-gui")
         thread.start()
@@ -294,6 +304,7 @@ def serve(
     web: WebOptions = LOCAL_ONLY,
     config_path: str | Path | None = None,
     manual_only: bool = False,
+    review_enabled: bool = False,
 ) -> None:
     with make_server(
         root,
@@ -303,6 +314,7 @@ def serve(
         web=web,
         config_path=config_path,
         manual_only=manual_only,
+        review_enabled=review_enabled,
     ) as server:
         open_gui_url(server, open_browser)
         try:

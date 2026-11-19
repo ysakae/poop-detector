@@ -218,6 +218,7 @@ def clips_page(handler: "Handler", query: Query) -> None:
         title=app.title,
         queue=review_items(app.store, app.clips),
         focused=first(query, "from") == "review",
+        review_enabled=app.review_enabled,
     )
     handler.respond(200, page)
 

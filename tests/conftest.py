@@ -29,7 +29,7 @@ def fixed_local_timezone():
 
 
 @pytest.fixture
-def gui(tmp_path):
+def gui(tmp_path, request):
     """一時ディレクトリで動くラベル GUI と、イベントを1件入れた記録を用意する。
 
     (server, store, event_id) を返し、テストの後にサーバーを止める。
@@ -38,7 +38,7 @@ def gui(tmp_path):
 
     store = Store(tmp_path)
     event = store.record(np.full((50, 50, 3), 150, np.uint8), 0.1, None, 1)
-    server = make_server(tmp_path, 0)
+    server = make_server(tmp_path, 0, review_enabled=getattr(request, "param", False))
     # 停止の確認間隔を短くし、テストごとのサーバーの停止を待つ時間を減らす。
     thread = threading.Thread(target=server.serve_forever, args=(0.02,), daemon=True)
     thread.start()
