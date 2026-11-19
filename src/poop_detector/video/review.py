@@ -322,6 +322,39 @@ def write_sheet(
     ).timestamps
 
 
+def _align_sheet_frame(
+    frame: Frame, tracker: TrayTracker | None, outside_roi: AnyROI | None
+) -> Frame | None:
+    if tracker is None:
+        return frame
+    if outside_roi is None:
+        return tracker.align(frame)
+    return tracker.align(frame, source_mask=full_mask(outside_roi, frame.shape))
+
+
+def _sheet_tile(
+    frame: Frame, roi: AnyROI, sheet: SheetOptions, *, outside_roi: AnyROI | None
+) -> Frame:
+    if outside_roi is None:
+        crop = roi.crop(frame)
+    else:
+        annotated = frame.copy()
+        cv2.polylines(annotated, [outline(roi, frame.shape)], True, (0, 255, 0), 2)
+        crop = outside_roi.crop(annotated)
+    scale = min(sheet.tile_width / crop.shape[1], sheet.tile_height / crop.shape[0])
+    height, width = crop.shape[:2]
+    return cv2.resize(crop, (max(1, round(width * scale)), max(1, round(height * scale))))
+
+
+def _sheet_mask(roi: AnyROI, frame: Frame, tile: Frame) -> Mask:
+    if isinstance(roi, MaskedROI):
+        mask: Mask = cv2.resize(
+            roi.mask(frame.shape), tile.shape[1::-1], interpolation=cv2.INTER_NEAREST
+        )
+        return mask
+    return np.full(tile.shape[:2], 255, np.uint8)
+
+
 def write_sheets(
     path: Path,
     destination: Path,
@@ -356,31 +389,12 @@ def write_sheets(
             ok, frame = capture.read()
             if not ok:
                 raise ValueError("動画の一部を読み込めません")
-            if tray_tracker is not None:
-                if outside_roi is None:
-                    aligned = tray_tracker.align(frame)
-                else:
-                    aligned = tray_tracker.align(
-                        frame, source_mask=full_mask(outside_roi, frame.shape)
-                    )
-                if aligned is None:
-                    continue
-                frame = aligned
-            if outside_roi is None:
-                crop = roi.crop(frame)
-            else:
-                annotated = frame.copy()
-                cv2.polylines(annotated, [outline(roi, frame.shape)], True, (0, 255, 0), 2)
-                crop = outside_roi.crop(annotated)
-            scale = min(sheet.tile_width / crop.shape[1], sheet.tile_height / crop.shape[0])
-            height, width = crop.shape[:2]
-            tile = cv2.resize(crop, (max(1, round(width * scale)), max(1, round(height * scale))))
+            aligned = _align_sheet_frame(frame, tray_tracker, outside_roi)
+            if aligned is None:
+                continue
+            tile = _sheet_tile(aligned, roi, sheet, outside_roi=outside_roi)
             if outside_roi is None and mask is None:
-                mask = np.full(tile.shape[:2], 255, np.uint8)
-                if isinstance(roi, MaskedROI):
-                    mask = cv2.resize(
-                        roi.mask(frame.shape), tile.shape[1::-1], interpolation=cv2.INTER_NEAREST
-                    )
+                mask = _sheet_mask(roi, aligned, tile)
             tiles.append(tile)
             timestamps.append(round(index / fps, 2))
     finally:
