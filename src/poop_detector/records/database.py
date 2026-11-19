@@ -504,6 +504,11 @@ def migrate_to_v26(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v27(db: sqlite3.Connection) -> None:
+    """犬の出入りの動画に、トレー付近で観測できた滞在時間を残す。"""
+    db.execute("ALTER TABLE clips ADD COLUMN tray_stay_seconds REAL")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -532,6 +537,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v24,
     migrate_to_v25,
     migrate_to_v26,
+    migrate_to_v27,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

@@ -10,6 +10,7 @@ import pytest
 from support import exchange, login, ready_clip
 
 from poop_detector.config import Config
+from poop_detector.video.clip_reviews import Assessment
 from poop_detector.video.plan_usage import QuotaGroup, QuotaWindow
 from poop_detector.video.token_usage import TokenUsage
 
@@ -460,6 +461,49 @@ def test_review_status_shows_the_cap_postponed_clips_and_judge_failures(models_g
     runs.record("codex", None, "review", failed=False)
     html = page(server, login(server))
     assert "上限に達したため、枠が空くまで判定を待っています" in html
+
+
+def test_tray_stay_report_groups_dog_clips_and_keeps_unknowns(models_gui):
+    server, _ = models_gui
+    clips = server.app.clips
+    cases = [
+        ("dog_visit", 0, "urine"),
+        ("dog_enter", 4.9, "none"),
+        ("dog_exit", 5, None),
+        ("dog_visit", 10, "feces"),
+        ("dog_visit", 20, None),
+        ("dog_exit", None, "none"),
+        ("early_alert", 3, "feces"),
+    ]
+    for source, stay, label in cases:
+        clip = ready_clip(clips)
+        clips.update(clip, source=source, tray_stay_seconds=stay)
+        if label is not None:
+            assert clips.assessments.save(clip, Assessment(label=label))
+    interrupted = ready_clip(clips)
+    clips.update(interrupted, source="dog_exit", tray_stay_seconds=1, interrupted=1)
+    assert clips.assessments.save(interrupted, error="人工データの判定失敗")
+    old = ready_clip(clips)
+    clips.update(old, source="dog_exit", tray_stay_seconds=2)
+    with clips.store.connect() as db:
+        db.execute(
+            "UPDATE clips SET requested_at=? WHERE id=?",
+            ((datetime.now(UTC) - timedelta(days=8)).isoformat(), old),
+        )
+
+    html = page(server, login(server))
+    assert "犬の出入りとトレー滞在時間（直近7日間）" in html
+    for name, total, completed, candidates in (
+        ("5秒未満", 2, 2, 1),
+        ("5秒以上10秒未満", 1, 0, 0),
+        ("10秒以上20秒未満", 1, 1, 1),
+        ("20秒以上", 1, 0, 0),
+        ("計測なし", 2, 1, 0),
+    ):
+        row = (
+            f'<th scope="row">{name}</th><td>{total}</td><td>{completed}</td><td>{candidates}</td>'
+        )
+        assert row in html
 
 
 def test_quota_window_view_levels_and_reset_time():

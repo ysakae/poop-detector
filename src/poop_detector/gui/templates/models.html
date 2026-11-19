@@ -25,6 +25,15 @@
 </tbody></table>
 <p class="note">判定器を呼ぶ回数は、1時間あたりの上限（<code>review.max_per_hour</code>）で抑えています。上限の半分を超えるとトレー外の滞在、4分の3を超えると犬の出入りの動画を後回しにし、余裕が戻ってから判定します。監視を起動し直す前の動画は、<code>video-review</code> で判定してください。</p>
 </section>
+<section class="settings-section" aria-labelledby="tray-stay-title"><h3 id="tray-stay-title">犬の出入りとトレー滞在時間（直近7日間）</h3>
+<div class="table-scroll"><table><thead><tr><th scope="col">滞在時間</th><th scope="col">動画</th><th scope="col">判定完了</th><th scope="col">排泄候補</th></tr></thead><tbody>
+{% for band, total, completed, candidates in tray_stay_counts %}
+<tr><th scope="row">{{ band }}</th><td>{{ total }}</td><td>{{ completed }}</td><td>{{ candidates }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+<p class="note">犬がトレーに重なった最初と最後の検出の間を測ります。退場時に録画した動画に記録し、同じ動画に複数の滞在が入った場合は、測れた中で最長のものを使います。</p>
+<p class="note">以前の動画、退場時の計測がない動画、中断のある動画は「計測なし」に含めます。排泄候補は判定器が排便・排尿・両方と答えた動画の本数です。滞在時間は集計に使います。</p>
+</section>
 <section class="settings-section" aria-labelledby="choose-title"><h3 id="choose-title">判定器とモデルを選び直す</h3>
 {% if editable %}
 <form method="post" action="{{ page }}" class="settings-form" id="judge-model-form" data-catalog="{{ catalog }}">{{ csrf_field(token) }}<input type="hidden" name="base" value="{{ base }}">

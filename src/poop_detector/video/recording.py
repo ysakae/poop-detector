@@ -247,6 +247,7 @@ class ClipCollector:
         source: RequestSource = "detected",
         *,
         now: float | None = None,
+        tray_stay_seconds: float | None = None,
     ) -> str | None:
         """監視側から保存を要求する。同時処理数を超えたら None を返す。"""
         now = time.monotonic() if now is None else now
@@ -254,16 +255,18 @@ class ClipCollector:
             if self.maintenance:
                 return None
             # 検知のイベントにひも付く動画は、検知の時刻を基準にするので別に録る。
-            merged = None if event_id is not None else self._extend(source, now)
-            if merged is not None:
-                return merged
-            try:
-                clip_id = self.store.request(source, event_id)
-                self.poll(now=now, force=True)
-                return clip_id
-            except ValueError:
-                logger.warning("動画保存の同時処理数を超えています")
-                return None
+            clip_id = None if event_id is not None else self._extend(source, now)
+            if clip_id is None:
+                try:
+                    clip_id = self.store.request(source, event_id)
+                    self.poll(now=now, force=True)
+                except ValueError:
+                    logger.warning("動画保存の同時処理数を超えています")
+                    return None
+            if tray_stay_seconds is not None and clip_id in self.jobs:
+                job = self.jobs[clip_id]
+                job["tray_stay_seconds"] = max(job.get("tray_stay_seconds", 0), tray_stay_seconds)
+            return clip_id
 
     def _extend(self, source: RequestSource, now: float) -> str | None:
         """録画中の動画を延ばして要求をまとめ、その ID を返す。まとめられなければ None。"""
@@ -339,6 +342,7 @@ class ClipCollector:
                 trigger_offset=max(0, job["trigger"] - samples[0][0]),
                 pre_available=max(0, job["trigger"] - samples[0][0]),
                 post_available=max(0, samples[-1][0] - job["trigger"]),
+                tray_stay_seconds=job.get("tray_stay_seconds"),
                 interrupted=int(
                     job["interrupted"] or gaps or samples[-1][0] < job["end"] - 1 / self.fps
                 ),

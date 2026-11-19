@@ -69,9 +69,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["poop_detector"]
 [tool.coverage.report]
-# 2026-11 のお世話記録の削除を追加した後に全体で 94.17% を確認した。
+# トレー滞在時間の集計を追加した後に、全体で 94.33% を確認した。
 precision = 2
-fail_under = 94.25
+fail_under = 94.27
 show_missing = true
 skip_covered = true
 [tool.mypy]

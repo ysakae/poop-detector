@@ -140,10 +140,15 @@ class DogExtension(MonitorExtension):
         if self.collector is None or not transition:
             return
         last = self.clip_times.get(transition, float("-inf"))
-        if (
-            self.clock.monotonic() - last >= self.config.dog_clip_cooldown_seconds
-            and self.collector.trigger(source=transition) is not None
-        ):
+        if self.clock.monotonic() - last < self.config.dog_clip_cooldown_seconds:
+            return
+        stay = state.tray_stay_seconds
+        clip_id = (
+            self.collector.trigger(source=transition)
+            if stay is None
+            else self.collector.trigger(source=transition, tray_stay_seconds=stay)
+        )
+        if clip_id is not None:
             self.clip_times[transition] = self.clock.monotonic()
 
     def log_status(self) -> None:

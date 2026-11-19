@@ -58,6 +58,39 @@ def test_polygon_outside_bbox_is_not_occlusion():
     assert overlaps_roi((45, 45, 60, 60), roi, (101, 101, 3))
 
 
+@pytest.mark.parametrize("interruption", [None, "error", "reset"])
+def test_observer_measures_completed_tray_stay(interruption):
+    from poop_detector.features.dog import DogObserver
+
+    class Detector:
+        inside = False
+        failed = False
+
+        def predict(self, frame):
+            if self.failed:
+                raise RuntimeError("テスト用の推論失敗")
+            return [(20, 20, 50, 50)] if self.inside else []
+
+    detector = Detector()
+    observer = DogObserver(detector, fps=1, exit_seconds=2)
+    frame = np.zeros((100, 100, 3), np.uint8)
+    roi = ROI(0, 0, 1, 1)
+    assert not observer.update(frame, roi, -1).on_roi
+    detector.inside = True
+    assert observer.update(frame, roi, 0).transition == "dog_enter"
+    for now in range(1, 5):
+        assert observer.update(frame, roi, now).on_roi
+    if interruption == "reset":
+        observer.reset()
+        assert observer.update(frame, roi, 4).on_roi
+    detector.inside = False
+    detector.failed = interruption == "error"
+    observer.update(frame, roi, 5)
+    detector.failed = False
+    exit_state = observer.update(frame, roi, 6)
+    assert exit_state.tray_stay_seconds == (4 if interruption is None else None)
+
+
 def test_inference_failure_is_held_until_recovery():
     from poop_detector.features.dog import DogObserver
 
@@ -157,17 +190,20 @@ def test_monitor_collects_entry_exit_and_detection(tmp_path):
         def update(self, *args):
             self.count += 1
             transition = "dog_enter" if self.count == 1 else "dog_exit" if self.count == 3 else None
-            return DogState(True, self.count < 3, transition, [], 1)
+            stay = 5.0 if transition == "dog_exit" else None
+            return DogState(True, self.count < 3, transition, [], 1, tray_stay_seconds=stay)
 
     class Collector:
         def __init__(self):
             self.sources = []
+            self.stays = []
 
         def poll(self):
             pass
 
-        def trigger(self, event_id=None, source="detected"):
+        def trigger(self, event_id=None, source="detected", *, tray_stay_seconds=None):
             self.sources.append(source)
+            self.stays.append(tray_stay_seconds)
             return "clip-id"
 
     class Notifier:
@@ -187,6 +223,7 @@ def test_monitor_collects_entry_exit_and_detection(tmp_path):
         dog_observer=Observer(),
     )
     assert collector.sources == ["dog_enter", "dog_exit", "detected"]
+    assert collector.stays == [None, 5.0, None]
     assert len(Store(tmp_path).list()) == 1
 
 
