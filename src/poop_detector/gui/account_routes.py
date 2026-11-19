@@ -290,6 +290,29 @@ def users_page(handler: "Handler", query: Query) -> None:
     _users_page(handler, first(query, "email").strip())
 
 
+def _apply_user_action(handler: "Handler", admin: User, user: User, action: str, form: Form) -> str:
+    """管理操作を実行し、成功時の案内を返す。"""
+    app = handler.app
+    if action == "recover":
+        recover_by_email(app.accounts.enrollments, app.site.public_base, user, actor=admin.id)
+        audit(handler, "user.recover", user.email or user.name)
+        return "パスキー復旧メールを送信しました"
+    if action == "disable":
+        app.accounts.set_user_active(user, False, actor=admin.id)
+        return "ユーザーを無効にしました"
+    if action == "enable":
+        app.accounts.set_user_active(user, True, actor=admin.id)
+        return "ユーザーを有効にしました"
+    if action == "role":
+        role = form.fields.get("role", "")
+        app.accounts.set_user_role(user, role, actor=admin.id)
+        return f"役割を「{role_label(role)}」にしました"
+    if action == "rename":
+        name = app.accounts.rename_user(user, form.fields.get("name", ""), actor=admin.id)
+        return f"表示名を「{name}」にしました"
+    raise InvalidInputError("ユーザー管理の操作を確認してください")
+
+
 @post("/manage/users", role="admin")
 def manage_user(handler: "Handler", form: Form) -> None:
     admin = _signed_in(handler)
@@ -300,25 +323,7 @@ def manage_user(handler: "Handler", form: Form) -> None:
         if user is None:
             raise InvalidInputError("ユーザーが見つかりません")
         action = form.fields.get("action", "")
-        if action == "recover":
-            recover_by_email(app.accounts.enrollments, app.site.public_base, user, actor=admin.id)
-            audit(handler, "user.recover", user.email or user.name)
-            notice = "パスキー復旧メールを送信しました"
-        elif action == "disable":
-            app.accounts.set_user_active(user, False, actor=admin.id)
-            notice = "ユーザーを無効にしました"
-        elif action == "enable":
-            app.accounts.set_user_active(user, True, actor=admin.id)
-            notice = "ユーザーを有効にしました"
-        elif action == "role":
-            role = form.fields.get("role", "")
-            app.accounts.set_user_role(user, role, actor=admin.id)
-            notice = f"役割を「{role_label(role)}」にしました"
-        elif action == "rename":
-            name = app.accounts.rename_user(user, form.fields.get("name", ""), actor=admin.id)
-            notice = f"表示名を「{name}」にしました"
-        else:
-            raise InvalidInputError("ユーザー管理の操作を確認してください")
+        notice = _apply_user_action(handler, admin, user, action, form)
     except InvalidInputError as error:
         _users_page(handler, email, status=400, error=str(error))
     except MailError as error:

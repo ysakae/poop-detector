@@ -85,3 +85,17 @@ def test_cli_saves_rotation_with_seek_link_without_modifying_label(gui, monkeypa
     _, page = request(server, "GET", f"/clips?id={clip_id}")
     assert "旋回候補".encode() in page
     assert b'data-video-seek="0.0"' in page
+
+
+def test_tracking_accepts_exactly_one_dog_near_the_tray_boundary():
+    from poop_detector.experimental.circling import _single_dog_position
+
+    roi = ROI(0.2, 0.2, 0.6, 0.6)
+    shape = (100, 100, 3)
+    near = (6, 30, 26, 50)
+    far = (4, 30, 24, 50)
+    inside = (30, 30, 50, 50)
+
+    assert _single_dog_position([near, far], roi, shape) == (16, 40, 20)
+    assert _single_dog_position([far], roi, shape) is None
+    assert _single_dog_position([near, inside], roi, shape) is None

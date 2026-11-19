@@ -12,8 +12,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..detection.roi import AnyROI, outline
-from ..features.dog import Predict
+from ..features.dog import Box, Predict
 from ..features.tray_tracking import TrayTracker
+from ..frames import Shape
 
 # 旋回分析は保存済みの動画に対する実験的な分析で、通知や監視には使わない。
 # 値は人工の軌跡と少数の動画で決めたもので、設定にはしない。
@@ -98,6 +99,20 @@ def find_circling(samples: Sequence[Sample]) -> list[tuple[float, float]]:
     return candidates
 
 
+def _single_dog_position(
+    boxes: Sequence[Box], roi: AnyROI, shape: Shape
+) -> tuple[float, float, float] | None:
+    """トレー付近に犬が1頭だけいれば、中心と大きさを画素単位で返す。"""
+    boundary = outline(roi, shape)
+    positions: list[tuple[float, float, float]] = []
+    for x1, y1, x2, y2 in boxes:
+        x, y = (x1 + x2) / 2, (y1 + y2) / 2
+        size = math.sqrt((x2 - x1) * (y2 - y1))
+        if cv2.pointPolygonTest(boundary, (x, y), True) >= -0.25 * size:
+            positions.append((x, y, size))
+    return positions[0] if len(positions) == 1 else None
+
+
 def track_dog(
     path: str | Path,
     predict: Predict,
@@ -131,15 +146,9 @@ def track_dog(
                 if aligned is None:
                     continue
                 frame = aligned
-            boundary = outline(roi, frame.shape)
-            positions: list[tuple[float, float, float]] = []
-            for x1, y1, x2, y2 in predict(frame):
-                x, y = (x1 + x2) / 2, (y1 + y2) / 2
-                size = math.sqrt((x2 - x1) * (y2 - y1))
-                if cv2.pointPolygonTest(boundary, (x, y), True) >= -0.25 * size:
-                    positions.append((x, y, size))
-            if len(positions) == 1:
-                samples.append((stamp, *positions[0]))
+            position = _single_dog_position(predict(frame), roi, frame.shape)
+            if position is not None:
+                samples.append((stamp, *position))
     finally:
         capture.release()
     return DogTrack(tuple(samples), sampled, len(samples))

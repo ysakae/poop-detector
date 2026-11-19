@@ -49,75 +49,75 @@ def _show_url(context: CommandContext, code: str, minutes: float, heading: str) 
     )
 
 
-def users(args: argparse.Namespace, context: CommandContext) -> int:
-    accounts = Accounts(events_database(context.root))
+def _list_users(accounts: Accounts) -> None:
+    counts = accounts.passkeys.counts()
+    listed = [
+        {
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "active": user.active,
+            "passkeys": counts.get(user.id, 0),
+            "created_at": user.created_at,
+            "last_login": user.last_login,
+        }
+        for user in accounts.users.list()
+    ]
+    print(json.dumps(listed, ensure_ascii=False, indent=2))
+
+
+def _invite_initial_admin(
+    accounts: Accounts, context: CommandContext, name: str, role: str, minutes: int
+) -> None:
+    if accounts.users.list():
+        raise CommandError("2人目からは、招待する人のメールアドレスを指定してください")
+    if role != "admin":
+        raise CommandError("最初のユーザーは管理者として登録してください（--role admin）")
+    code = accounts.enrollments.issue("admin", name=name, created_by=CREATED_BY, minutes=minutes)
+    accounts.audit.record(CLI_ACTOR, "user.invite", f"{name}（{role_label('admin')}）")
+    _show_url(context, code, minutes, "初回管理者の登録用 URL:")
+
+
+def _invite(accounts: Accounts, context: CommandContext, args: argparse.Namespace) -> None:
     action = args.action
-    if action == "list":
-        counts = accounts.passkeys.counts()
-        listed = [
-            {
-                "name": user.name,
-                "email": user.email,
-                "role": user.role,
-                "active": user.active,
-                "passkeys": counts.get(user.id, 0),
-                "created_at": user.created_at,
-                "last_login": user.last_login,
-            }
-            for user in accounts.users.list()
-        ]
-        print(json.dumps(listed, ensure_ascii=False, indent=2))
-        return 0
-    if action == "cancel-invite":
-        if not args.identity or not accounts.enrollments.cancel_email(args.identity):
-            raise CommandError("取り消せる招待が見つかりません")
-        accounts.audit.record(CLI_ACTOR, "user.cancel_invite", args.identity.strip().lower())
-        print("招待を取り消しました")
-        return 0
-    if action in ("invite", "resend"):
-        role = args.role or DEFAULT_INVITE_ROLE
-        if not args.identity:
-            raise CommandError("招待する人のメールアドレスを指定してください")
-        if action == "resend" or "@" in args.identity or args.name is not None:
-            web = WebOptions.from_config(context.config)
-            invite_by_email(
-                accounts.enrollments,
-                Site(web.port, web.public_url).public_base,
-                args.identity,
-                actor=CREATED_BY,
-                name=args.name or "",
-                role=role,
-                minutes=args.minutes,
-                resend=action == "resend",
-            )
-            email = args.identity.strip().lower()
-            detail = email if action == "resend" else f"{email}（{role_label(role)}）"
-            accounts.audit.record(CLI_ACTOR, f"user.{action}", detail)
-            print("招待メールを送信しました")
-            return 0
-        if accounts.users.list():
-            raise CommandError("2人目からは、招待する人のメールアドレスを指定してください")
-        if role != "admin":
-            raise CommandError("最初のユーザーは管理者として登録してください（--role admin）")
-        code = accounts.enrollments.issue(
-            "admin", name=args.identity, created_by=CREATED_BY, minutes=args.minutes
+    role = args.role or DEFAULT_INVITE_ROLE
+    if not args.identity:
+        raise CommandError("招待する人のメールアドレスを指定してください")
+    if action == "resend" or "@" in args.identity or args.name is not None:
+        web = WebOptions.from_config(context.config)
+        invite_by_email(
+            accounts.enrollments,
+            Site(web.port, web.public_url).public_base,
+            args.identity,
+            actor=CREATED_BY,
+            name=args.name or "",
+            role=role,
+            minutes=args.minutes,
+            resend=action == "resend",
         )
-        accounts.audit.record(CLI_ACTOR, "user.invite", f"{args.identity}（{role_label('admin')}）")
-        _show_url(context, code, args.minutes, "初回管理者の登録用 URL:")
-        return 0
+        email = args.identity.strip().lower()
+        detail = email if action == "resend" else f"{email}（{role_label(role)}）"
+        accounts.audit.record(CLI_ACTOR, f"user.{action}", detail)
+        print("招待メールを送信しました")
+        return
+    _invite_initial_admin(accounts, context, args.identity, role, args.minutes)
+
+
+def _change_user(accounts: Accounts, context: CommandContext, args: argparse.Namespace) -> None:
+    action = args.action
     user = _find(accounts, args.identity)
     if action == "set-role":
         if args.role is None:
             raise CommandError("変更後の役割を --role admin か --role member で指定してください")
         accounts.set_user_role(user, args.role, actor=CLI_ACTOR)
         print(f"「{user.name}」の役割を「{role_label(args.role)}」にしました")
-        return 0
+        return
     if action == "rename":
         if not args.name:
             raise CommandError("変更後の表示名を --name で指定してください")
         name = accounts.rename_user(user, args.name, actor=CLI_ACTOR)
         print(f"「{user.name}」の表示名を「{name}」にしました")
-        return 0
+        return
     if action == "recover":
         code = accounts.enrollments.issue_recovery(
             user.id, created_by=CREATED_BY, minutes=args.minutes
@@ -130,4 +130,20 @@ def users(args: argparse.Namespace, context: CommandContext) -> int:
     else:
         accounts.set_user_active(user, True, actor=CLI_ACTOR)
         print(f"「{user.name}」を有効にしました")
+
+
+def users(args: argparse.Namespace, context: CommandContext) -> int:
+    accounts = Accounts(events_database(context.root))
+    action = args.action
+    if action == "list":
+        _list_users(accounts)
+    elif action == "cancel-invite":
+        if not args.identity or not accounts.enrollments.cancel_email(args.identity):
+            raise CommandError("取り消せる招待が見つかりません")
+        accounts.audit.record(CLI_ACTOR, "user.cancel_invite", args.identity.strip().lower())
+        print("招待を取り消しました")
+    elif action in ("invite", "resend"):
+        _invite(accounts, context, args)
+    else:
+        _change_user(accounts, context, args)
     return 0

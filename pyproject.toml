@@ -71,7 +71,7 @@ source = ["poop_detector"]
 [tool.coverage.report]
 # 2026-11 のお世話記録の削除を追加した後に全体で 94.17% を確認した。
 precision = 2
-fail_under = 94.22
+fail_under = 94.25
 show_missing = true
 skip_covered = true
 [tool.mypy]
