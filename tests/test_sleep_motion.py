@@ -239,6 +239,47 @@ def test_creeping_exit_away_from_edge_ends_in_unknown(step):
     assert outcomes[-5:] == ["unknown"] * 5
 
 
+OUTSIDE = (145, 50, 160, 70)
+# 床面の上の縁の帯の、最後の枠から離れた場所
+TOP_BAND = (60, 12, 90, 24)
+
+
+def left_near_edge(sampler: MotionSampler) -> None:
+    """縁の近くで寝ていた犬が、検出されないまま床面の外へ出て left になる。"""
+    settled(sampler, NEAR_EDGE)
+    assert sampler.sample(scene(OUTSIDE), []) == ("left", False)
+
+
+@pytest.mark.parametrize(
+    "returned",
+    [(128, 50, 143, 70), NEAR_EDGE, TOP_BAND],
+    ids=["same-band", "old-box", "other-edge"],
+)
+def test_motion_long_after_left_is_unknown(returned):
+    sampler = MotionSampler(FLOOR)
+    left_near_edge(sampler)
+    for _ in range(600):
+        assert sampler.sample(scene(OUTSIDE), []) == ("left", False)
+    # 静かな時間のあとの動きは、出ていく途中ではなく戻ってきた証拠かもしれない
+    assert sampler.sample(scene(OUTSIDE, returned), []) == ("unknown", False)
+
+
+def test_motion_in_exit_area_within_grace_stays_left():
+    sampler = MotionSampler(FLOOR)
+    left_near_edge(sampler)
+    for _ in range(5):
+        assert sampler.sample(scene(OUTSIDE), []) == ("left", False)
+    # 出ていった直後の、出口（最後の枠の近くの縁）の中の残りの動き
+    assert sampler.sample(scene(OUTSIDE, (130, 55, 143, 65)), []) == ("left", False)
+
+
+def test_motion_in_far_part_of_band_within_grace_is_unknown():
+    sampler = MotionSampler(FLOOR)
+    left_near_edge(sampler)
+    # 縁の帯でも、最後の枠から離れた場所の動きは出口の動きとみなさない
+    assert sampler.sample(scene(OUTSIDE, TOP_BAND), []) == ("unknown", False)
+
+
 def test_compact_blob_away_from_dog_is_motion():
     sampler = MotionSampler(FLOOR)
     settled(sampler)

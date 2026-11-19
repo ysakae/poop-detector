@@ -36,6 +36,12 @@ STIR_MARGIN = 0.25
 # 床面の縁から内側へ、縮小した画像の幅のこの割合の帯。検出が外れたまま、
 # 最後の枠の外の動きがこの帯に届いたら、出ていったとみなす。
 EDGE_MARGIN = 0.1
+# left にしたあと、出口の中の動きを出ていく途中の残りの動きとみなす秒数（sample の回数）。
+# これを過ぎたら、静かな床面だけ left を保ち、動きは戻ってきた証拠かもしれないので unknown。
+EXIT_GRACE_SECONDS = 30
+# 出口に含める縁の帯は、最後の枠を幅・高さのこの割合だけ四方に広げた範囲の中だけにする。
+# 縁の帯のうち出ていった場所から離れた部分の動きは、出口の動きとみなさない。
+EXIT_REACH = 1.0
 # 雑音を抑える平滑化の大きさ（画素、奇数）。
 BLUR_SIZE = 5
 
@@ -61,9 +67,10 @@ class MotionSampler:
     - 床面が静か → still（動いていない証拠）
     - 動きが最後の枠（STIR_MARGIN だけ広げた範囲）の中だけ → moving（身じろぎ）
     - 枠の外の動きが床面の縁の帯に届いた → left
-    left のあとは、床面が静かな間と、動きが出口（最後の枠を広げた範囲と縁の帯）の中だけの間は
-    left を保つ（出ていく途中の残りの動き）。
     - ほかの動き → 居場所を捨てて unknown。再び検出するまで still には戻さない
+    left のあとは、床面が静かな間は left を保つ。left にしてから EXIT_GRACE_SECONDS の間は、
+    動きが出口（最後の枠を広げた範囲と、その近くの縁の帯）の中だけでも left を保つ
+    （出ていく途中の残りの動き）。ほかの動きは unknown にし、再び検出するまで left に戻さない。
     """
 
     def __init__(self, boundary: NDArray[Any] | None) -> None:
@@ -79,9 +86,12 @@ class MotionSampler:
         self._snapshot: NDArray[Any] | None = None
         # left にしたときの出口（縮小した画像のマスク）。left でなければ None
         self._exit: NDArray[Any] | None = None
+        # left にしてから数えた sample の回数（出口の猶予を測る）
+        self._left_age = 0
 
     def sample(self, frame: Frame, boxes: Sequence[Box]) -> tuple[Presence, bool]:
         """1秒分の観測と、床面の中の犬検出がちょうど1つ当たったかを返す。"""
+        self._left_age += 1
         gray = _small_gray(frame)
         changed = self._changed(gray)
         self._previous = gray
@@ -157,21 +167,23 @@ class MotionSampler:
         return "unknown"
 
     def _leave(self, location: Box, shape: tuple[int, ...], small: tuple[int, ...]) -> Presence:
-        exit_area = self._regions(small)[1].copy()
+        near = np.zeros(small, dtype=bool)
+        near[_box_slices(location, shape, small, EXIT_REACH)] = True
+        exit_area = self._regions(small)[1] & near
         exit_area[_box_slices(location, shape, small, STIR_MARGIN)] = True
         self._location, self._snapshot, self._exit = None, None, exit_area
+        self._left_age = 0
         return "left"
 
     def _after_left(self, motion: NDArray[Any] | None) -> Presence:
-        """居場所がないときの観測。出ていった直後の出口の中の動きと、静かな床面は left を保つ。"""
+        """居場所がないときの観測。静かな床面と、出ていった直後の出口の中の動きは left を保つ。"""
         exit_area = self._exit
-        inside_exit = (
-            exit_area is not None
-            and motion is not None
-            and exit_area.shape == motion.shape
-            and not (motion & ~exit_area).any()
-        )
-        if inside_exit:
+        if exit_area is None or motion is None or exit_area.shape != motion.shape:
+            self._exit = None
+            return "unknown"
+        if not motion.any():
+            return "left"
+        if self._left_age <= EXIT_GRACE_SECONDS and not (motion & ~exit_area).any():
             return "left"
         self._exit = None
         return "unknown"
