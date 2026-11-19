@@ -415,3 +415,19 @@ def test_audited_user_change_rolls_back_on_audit_failure(store, monkeypatch):
 
     assert accounts.users.get(member).active
     assert accounts.audit.recent() == []
+
+
+def test_initial_admin_invitation_audits_name_without_the_code(cli, capsys):
+    from poop_detector.commands.context import CommandContext
+    from poop_detector.commands.users import _invite_initial_admin
+    from poop_detector.config import Config
+
+    accounts = Accounts(events_database(cli.root))
+    context = CommandContext(Config(data_dir=str(cli.root)))
+    _invite_initial_admin(accounts, context, "家族A", "admin", 10)
+    _, code = enrollment_code(capsys.readouterr().out)
+
+    assert accounts.enrollments.peek(code).role == "admin"
+    (entry,) = accounts.audit.recent()
+    assert (entry.action, entry.detail) == ("user.invite", "家族A（管理者）")
+    assert code not in entry.detail
