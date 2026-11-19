@@ -158,6 +158,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/exchange.py` | ルートに渡す要求ごとの `Exchange`。`respond`・`redirect`・`stream` で応答を決める |
 | `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
 | `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py` | 画面に出す値を整え、テンプレートに渡す（ホーム、記録と検知の一覧、動画、行動マップ） |
+| `gui/clip_routes.py` | 録画要求、ラベル付け、確定、保護、評価候補の選択、録画整理の各 POST を受け付ける |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル（先頭にデザインの変数） |
 | `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`）。見ている人（`VIEWER`）から共通の枠の値を渡す |
 | `gui/review_queue.py`・`gui/review_routes.py` | 確認待ち。未ラベルの検知と排泄に関わる動画を1つの列にまとめ（動画のある検知は1件）、保存後に次の件を開く。画角を変える前の動画は、撮影時の画角の署名ごとにまとめて確認待ちから外せる（ラベルは付けず、戻せる。外した動画は録画の整理の対象になる） |

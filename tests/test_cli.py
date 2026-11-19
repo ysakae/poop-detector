@@ -329,7 +329,7 @@ def test_run_with_gui_serves_management_and_releases_port(cli_env, monkeypatch, 
             raise RuntimeError("監視が失敗")
 
     monkeypatch.setattr(server, "announce", announce)
-    monkeypatch.setattr(run, "monitor", monitor)
+    monkeypatch.setattr(run.Monitor, "run", monitor)
     assert cli_env.run("run", "--gui", "--gui-port", "0", "--no-browser") == int(monitor_fails)
     assert requests == [200]
     with socket.socket() as connection:
@@ -599,6 +599,15 @@ def test_run_switches_tray_in_the_same_camera_session(cli_env, monkeypatch, caps
     from poop_detector.detection.monitoring import Monitor
     from poop_detector.features.watchdog import CameraWatchdogExtension
 
+    assembled = []
+    build = run.standard_extensions
+
+    def assemble(roi, baseline, *args, **kwargs):
+        extensions = build(roi, baseline, *args, **kwargs)
+        assembled.append((roi, baseline.shape, [type(ext) for ext in extensions]))
+        return extensions
+
+    monkeypatch.setattr(run, "standard_extensions", assemble)
     replaced = []
     original = Monitor.replace_scene
 
@@ -608,9 +617,15 @@ def test_run_switches_tray_in_the_same_camera_session(cli_env, monkeypatch, caps
 
     monkeypatch.setattr(Monitor, "replace_scene", replace_scene)
     monkeypatch.setattr(run, "LatestCamera", CameraSession)
-    assert cli_env.run("run", "--max-frames", "8") == 0
+    assert cli_env.run("run", "--early-alert", "--max-frames", "8") == 0
     # トレーを交換しても、カメラの見張りは続ける。
-    assert replaced == [[CameraWatchdogExtension]]
+    from poop_detector.features.monitoring import EarlyAlertExtension
+
+    assert len(assembled) == 2
+    assert assembled[0][0] != new_roi
+    assert assembled[1] == (new_roi, new_roi.crop(new_baseline).shape, [EarlyAlertExtension])
+    assert assembled[0][2] == assembled[1][2]
+    assert replaced == [[EarlyAlertExtension, CameraWatchdogExtension]]
     assert cli_env.run("tray-registration", "status") == 0
     assert "反映しました" in capsys.readouterr().out
     context_after = context.CommandContext(Config(data_dir=str(cli_env.root)))
@@ -633,11 +648,11 @@ def test_run_watches_the_camera_and_marks_a_clean_stop(cli_env, monkeypatch, ena
     use_camera(cli_env, register_scene(cli_env))
     seen = []
 
-    def monitor(*args, **kwargs):
-        seen.append([type(extension) for extension in kwargs["extensions"]])
+    def monitor(self, max_frames):
+        seen.append([type(extension) for extension in self.extensions])
         LivePreview(cli_env.root).pulse(True)
 
-    monkeypatch.setattr(run, "monitor", monitor)
+    monkeypatch.setattr(run.Monitor, "run", monitor)
     assert cli_env.run("run", "--max-frames", "1") == 0
     assert seen == [[CameraWatchdogExtension] if enabled else []]
     assert LivePreview(cli_env.root).monitor_heartbeat()[0] == "stopped"
