@@ -62,7 +62,8 @@ def plans_for_day(database: Database, day: date) -> list[FeedingPlan]:
     with database.connect() as db:
         rows = db.execute(
             """SELECT p.id, p.clock, e.id AS entry_id
-            FROM feeding_plans p LEFT JOIN care_entries e ON e.plan_id=p.id AND e.plan_day=?
+            FROM feeding_plans p LEFT JOIN care_entries e
+                ON e.plan_id=p.id AND e.plan_day=? AND e.deleted_at IS NULL
             WHERE p.active=1 ORDER BY p.clock""",
             (day.isoformat(),),
         )
@@ -90,7 +91,7 @@ def claim_due(database: Database, now: datetime, recipient: str) -> list[Feeding
         for day in days:
             rows = db.execute(
                 """SELECT p.id, p.clock, p.changed_at FROM feeding_plans p
-                LEFT JOIN care_entries e ON e.plan_id=p.id AND e.plan_day=?
+                LEFT JOIN care_entries e ON e.plan_id=p.id AND e.plan_day=? AND e.deleted_at IS NULL
                 LEFT JOIN feeding_reminders r ON r.plan_id=p.id AND r.day=? AND r.recipient=?
                 WHERE p.active=1 AND e.id IS NULL
                 AND (r.plan_id IS NULL OR r.next_attempt_at <= ?) ORDER BY p.clock""",

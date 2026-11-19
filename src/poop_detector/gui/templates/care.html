@@ -3,6 +3,7 @@
 {% block content %}
 <h2>お世話の記録</h2>
 {% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+{% if deleted %}<p class="message" role="status">お世話の記録を削除しました。</p>{% endif %}
 {% if not edit %}
 <details class="settings-section" id="feeding-plans"{% if feeding_plans or error %} open{% endif %}>
 <summary>ごはんの予定</summary>
@@ -58,6 +59,16 @@
 {% if edit %}<a href="/care?day={{ day }}">訂正を取り消す</a>{% endif %}
 </p>
 </form>
+{% if edit %}
+<details class="clip-more">
+<summary>記録を削除</summary>
+<form method="post" action="/care/delete" class="settings-form">{{ csrf_field(token) }}
+<input type="hidden" name="id" value="{{ edit.id }}">
+<p>この{{ kinds[kind] }}の記録を削除しますか？</p>
+<button class="secondary">この記録を削除</button>
+</form>
+</details>
+{% endif %}
 </section>
 {% endfor %}
 <script src="/assets/care.js" defer></script>

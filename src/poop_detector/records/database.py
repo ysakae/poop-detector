@@ -494,6 +494,16 @@ def migrate_to_v25(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v26(db: sqlite3.Connection) -> None:
+    """削除したお世話の記録を残しつつ、同じ給餌予定に再記録できるようにする。"""
+    db.execute("ALTER TABLE care_entries ADD COLUMN deleted_at TEXT")
+    db.execute("DROP INDEX care_plan_day")
+    db.execute(
+        "CREATE UNIQUE INDEX care_plan_day ON care_entries(plan_id, plan_day) "
+        "WHERE deleted_at IS NULL"
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -521,6 +531,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v23,
     migrate_to_v24,
     migrate_to_v25,
+    migrate_to_v26,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

@@ -58,17 +58,14 @@ def parse_amount(value: str) -> int | None:
 
 def feeding_history(database: Database) -> tuple[str, str, list[str]]:
     with database.connect() as db:
-        last = db.execute(
-            """SELECT food, amount_dg FROM care_entries WHERE kind='feeding'
-            AND (food != '' OR amount_dg IS NOT NULL) ORDER BY at DESC, rowid DESC LIMIT 1"""
-        ).fetchone()
+        food, amount = _last_feeding(db) or ("", None)
         names = db.execute(
-            """SELECT food FROM care_entries WHERE kind='feeding' AND food != ''
+            """SELECT food FROM care_entries WHERE kind='feeding' AND food != '' AND deleted_at IS NULL
             GROUP BY food ORDER BY MAX(at) DESC, food"""
         ).fetchall()
     return (
-        last["food"] if last else "",
-        format_grams(last["amount_dg"]) if last else "",
+        food,
+        format_grams(amount),
         [row["food"] for row in names],
     )
 
@@ -78,7 +75,8 @@ def entries(database: Database, day: date) -> list[CareEntry]:
     end = datetime.combine(day + timedelta(days=1), time.min).astimezone(UTC).isoformat()
     with database.connect() as db:
         rows = db.execute(
-            "SELECT * FROM care_entries WHERE at >= ? AND at < ? ORDER BY at DESC, rowid DESC",
+            """SELECT * FROM care_entries WHERE at >= ? AND at < ? AND deleted_at IS NULL
+            ORDER BY at DESC, rowid DESC""",
             (start, end),
         ).fetchall()
     return [_entry(row) for row in rows]
@@ -102,7 +100,8 @@ def latest_entries(database: Database) -> dict[str, CareEntry]:
     with database.connect() as db:
         for kind in KINDS:
             row = db.execute(
-                "SELECT * FROM care_entries WHERE kind=? ORDER BY at DESC, rowid DESC LIMIT 1",
+                """SELECT * FROM care_entries WHERE kind=? AND deleted_at IS NULL
+                ORDER BY at DESC, rowid DESC LIMIT 1""",
                 (kind,),
             ).fetchone()
             if row is not None:
@@ -112,6 +111,13 @@ def latest_entries(database: Database) -> dict[str, CareEntry]:
 
 def save_entry(database: Database, entry: CareEntry, *, plan_id: str | None = None) -> str:
     """記録を足すか訂正し、その ID を返す。"""
+    with database.connect() as db:
+        if plan_id:
+            db.execute("BEGIN IMMEDIATE")
+        return _save_entry(db, entry, plan_id)
+
+
+def _save_entry(db: sqlite3.Connection, entry: CareEntry, plan_id: str | None) -> str:
     if entry.kind not in KINDS or entry.at > local_now() or len(entry.note) > 500:
         raise InvalidInputError("種類、日時、メモ（500文字以内）を確認してください")
     food = entry.food.strip() if entry.kind == "feeding" else ""
@@ -120,71 +126,83 @@ def save_entry(database: Database, entry: CareEntry, *, plan_id: str | None = No
         raise InvalidInputError("フードの銘柄は120文字以内で入力してください")
     stamp = entry.at.astimezone(UTC).isoformat()
     plan_day = entry.at.astimezone().date().isoformat()
-    with database.connect() as db:
-        if plan_id:
-            if entry.kind != "feeding" or entry.id:
-                raise InvalidInputError("新しいごはんの記録だけを予定に結び付けられます")
-            db.execute("BEGIN IMMEDIATE")
-            existing = db.execute(
-                "SELECT id FROM care_entries WHERE plan_id=? AND plan_day=?",
-                (plan_id, plan_day),
-            ).fetchone()
-            if existing:
-                return str(existing["id"])
-            if (
-                db.execute(
-                    "SELECT 1 FROM feeding_plans WHERE id=? AND active=1", (plan_id,)
-                ).fetchone()
-                is None
-            ):
-                raise InvalidInputError("選んだごはんの予定はありません")
-        if entry.id:
-            if not db.execute(
-                """UPDATE care_entries SET at=?, kind=?, note=?, food=?, amount_dg=?,
-                plan_id=CASE WHEN ?='feeding' AND plan_day=? THEN plan_id END,
-                plan_day=CASE WHEN ?='feeding' AND plan_day=? THEN plan_day END
-                WHERE id=?""",
-                (
-                    stamp,
-                    entry.kind,
-                    entry.note,
-                    food,
-                    amount,
-                    entry.kind,
-                    plan_day,
-                    entry.kind,
-                    plan_day,
-                    entry.id,
-                ),
-            ).rowcount:
-                raise InvalidInputError("訂正する記録が見つかりません")
-            return entry.id
-        identifier = uuid4().hex
-        db.execute(
-            """INSERT INTO care_entries (id, at, kind, actor, note, food, amount_dg, plan_id, plan_day)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+    if plan_id:
+        if entry.kind != "feeding" or entry.id:
+            raise InvalidInputError("新しいごはんの記録だけを予定に結び付けられます")
+        existing = db.execute(
+            "SELECT id FROM care_entries WHERE plan_id=? AND plan_day=? AND deleted_at IS NULL",
+            (plan_id, plan_day),
+        ).fetchone()
+        if existing:
+            return str(existing["id"])
+        if not db.execute(
+            "SELECT 1 FROM feeding_plans WHERE id=? AND active=1", (plan_id,)
+        ).fetchone():
+            raise InvalidInputError("選んだごはんの予定はありません")
+    if entry.id:
+        if not db.execute(
+            """UPDATE care_entries SET at=?, kind=?, note=?, food=?, amount_dg=?,
+            plan_id=CASE WHEN ?='feeding' AND plan_day=? THEN plan_id END,
+            plan_day=CASE WHEN ?='feeding' AND plan_day=? THEN plan_day END
+            WHERE id=? AND deleted_at IS NULL""",
             (
-                identifier,
                 stamp,
                 entry.kind,
-                entry.actor,
                 entry.note,
                 food,
                 amount,
-                plan_id,
-                plan_day if plan_id else None,
+                entry.kind,
+                plan_day,
+                entry.kind,
+                plan_day,
+                entry.id,
             ),
-        )
+        ).rowcount:
+            raise InvalidInputError("訂正する記録が見つかりません")
+        return entry.id
+    identifier = uuid4().hex
+    db.execute(
+        """INSERT INTO care_entries (id, at, kind, actor, note, food, amount_dg, plan_id, plan_day)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            identifier,
+            stamp,
+            entry.kind,
+            entry.actor,
+            entry.note,
+            food,
+            amount,
+            plan_id,
+            plan_day if plan_id else None,
+        ),
+    )
     return identifier
+
+
+def delete_entry(database: Database, identifier: str) -> date:
+    """記録に削除時刻を付け、表示していた日付を返す。再送しても削除時刻は保つ。"""
+    with database.connect() as db:
+        row = db.execute(
+            """UPDATE care_entries SET deleted_at=COALESCE(deleted_at,?)
+            WHERE id=? RETURNING at""",
+            (datetime.now(UTC).isoformat(), identifier),
+        ).fetchone()
+        if row is None:
+            raise InvalidInputError("削除する記録が見つかりません")
+        return to_local(row["at"]).date()
 
 
 def last_feeding(database: Database) -> tuple[str, int | None] | None:
     """銘柄か量を入れた直近の給餌の (銘柄, 0.1 g単位の量)。なければ None。"""
     with database.connect() as db:
-        row = db.execute(
-            """SELECT food, amount_dg FROM care_entries WHERE kind='feeding'
-            AND (food != '' OR amount_dg IS NOT NULL) ORDER BY at DESC, rowid DESC LIMIT 1"""
-        ).fetchone()
+        return _last_feeding(db)
+
+
+def _last_feeding(db: sqlite3.Connection) -> tuple[str, int | None] | None:
+    row = db.execute(
+        """SELECT food, amount_dg FROM care_entries WHERE kind='feeding' AND deleted_at IS NULL
+        AND (food != '' OR amount_dg IS NOT NULL) ORDER BY at DESC, rowid DESC LIMIT 1"""
+    ).fetchone()
     return (row["food"], row["amount_dg"]) if row else None
 
 
@@ -204,29 +222,26 @@ def quick_entry(
     """
     if kind not in KINDS:
         raise InvalidInputError("記録する種類を確認してください")
+    if plan_id and kind != "feeding":
+        raise InvalidInputError("ごはんの予定を指定してください")
     now = local_now()
-    if plan_id:
-        if kind != "feeding":
-            raise InvalidInputError("ごはんの予定を指定してください")
-        food, amount = last_feeding(database) or ("", None)
-        return save_entry(
-            database, CareEntry("", now, kind, actor, "", food, amount), plan_id=plan_id
-        )
-    since = (now - timedelta(seconds=DOUBLE_TAP_SECONDS)).astimezone(UTC).isoformat()
     with database.connect() as db:
-        recent = db.execute(
-            """SELECT id FROM care_entries WHERE kind=? AND actor=? AND at >= ? AND plan_id IS NULL
-            ORDER BY at DESC, rowid DESC LIMIT 1""",
-            (kind, actor, since),
-        ).fetchone()
-    if recent:
-        return str(recent["id"])
-    if kind == "feeding":
-        last = last_feeding(database)
-        if last is None:
+        # 削除とクイック記録の間に、履歴の読み取りと保存が割り込まれないようにする。
+        db.execute("BEGIN IMMEDIATE")
+        if not plan_id:
+            since = (now - timedelta(seconds=DOUBLE_TAP_SECONDS)).astimezone(UTC).isoformat()
+            recent = db.execute(
+                """SELECT id FROM care_entries WHERE kind=? AND actor=? AND at >= ?
+                AND plan_id IS NULL AND deleted_at IS NULL ORDER BY at DESC, rowid DESC LIMIT 1""",
+                (kind, actor, since),
+            ).fetchone()
+            if recent:
+                return str(recent["id"])
+        last = _last_feeding(db) if kind == "feeding" else None
+        if kind == "feeding" and last is None and not plan_id:
             return None
-        return save_entry(database, CareEntry("", now, kind, actor, "", last[0], last[1]))
-    return save_entry(database, CareEntry("", now, kind, actor, ""))
+        food, amount = last or ("", None)
+        return _save_entry(db, CareEntry("", now, kind, actor, "", food, amount), plan_id)
 
 
 def care_time(value: str) -> datetime:
