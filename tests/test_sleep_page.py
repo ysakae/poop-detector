@@ -225,3 +225,28 @@ def test_duration_and_trend_text():
     assert duration_text(0) == "0分"
     assert signed_duration_text(40) == "+40分"
     assert signed_duration_text(-65) == "-1時間5分"
+
+
+@pytest.mark.parametrize("days", [7, 28, 91])
+def test_header_labels_sit_over_their_week_columns(days):
+    from poop_detector.gui.sleep_page import _header_cells
+
+    shown = [DAY - timedelta(days=days - 1 - i) for i in range(days)]
+    cells = _header_cells(shown)
+    assert sum(c["span"] for c in cells) == days
+    position = 0
+    for cell in cells:
+        first = shown[position]
+        assert cell["text"] == f"{first.month}/{first.day}"
+        position += cell["span"]
+
+
+def test_header_spans_in_rendered_page(gui):
+    import re
+
+    server, _, _ = gui
+    _seed(server, 3)
+    html = _page(server, "?days=28")
+    head = re.search(r"<thead><tr>(.*?)</tr></thead>", html, re.S)[1]
+    spans = [int(n) for n in re.findall(r'colspan="(\d+)"', head)]
+    assert spans == [7, 7, 7, 7]

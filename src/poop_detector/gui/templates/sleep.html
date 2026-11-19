@@ -16,7 +16,7 @@
 <table class="sleep-grid">
 <thead><tr><th scope="col"></th>
 {%- for label in grid.labels -%}
-<th scope="col" class="sleep-day">{{ label }}</th>
+<th scope="col" class="sleep-day" colspan="{{ label.span }}">{{ label.text }}</th>
 {%- endfor -%}
 </tr></thead>
 <tbody>
@@ -31,7 +31,7 @@
 </table>
 </div>
 <p class="sleep-legend">少ない <span class="sleep-cell sleep-l0"></span><span class="sleep-cell sleep-l1"></span><span class="sleep-cell sleep-l2"></span><span class="sleep-cell sleep-l3"></span><span class="sleep-cell sleep-l4"></span> 多い　<span class="sleep-cell sleep-none"></span> 記録なし</p>
-<p class="note">マスの色は、その時間に寝ていた分数です（0分から60分）。マスにカーソルを重ねるか長押しすると、睡眠・記録・犬の検出の割合が出ます。記録できた時間が足りない時間は「記録なし」です。</p>
+<p class="note">マスの色は、その時間に寝ていた分数です（0分から60分）。マウスで重ねると、睡眠・記録・犬の検出の割合が出ます。数値は下の「日ごとの合計」でも確かめられます。記録できた時間が足りない時間は「記録なし」です。</p>
 <h3>日ごとの合計</h3>
 <p class="note">日中は {{ daytime_range }} に寝ていた時間です。記録できた時間が1日の80％に満たない日は「参考」です。</p>
 <table class="sleep-summary">

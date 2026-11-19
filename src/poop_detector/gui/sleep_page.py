@@ -201,12 +201,20 @@ def _cell_title(cell: HourCell) -> str:
     return text
 
 
+def _header_cells(days: list[date]) -> list[dict[str, Any]]:
+    """日付の見出し。LABEL_EVERY 日ごとの先頭の列に日付を置き、その週の列数だけ横に結合する。"""
+    return [
+        {
+            "text": f"{days[start].month}/{days[start].day}",
+            "span": min(LABEL_EVERY, len(days) - start),
+        }
+        for start in range(0, len(days), LABEL_EVERY)
+    ]
+
+
 def _grid(view: SleepView) -> dict[str, Any]:
     return {
-        "labels": [
-            f"{day.month}/{day.day}" if i % LABEL_EVERY == 0 else ""
-            for i, day in enumerate(view.days)
-        ],
+        "labels": _header_cells(view.days),
         "rows": [
             {
                 "hour": hour,
