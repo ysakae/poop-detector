@@ -667,46 +667,63 @@ class Review:
             if not stored:
                 continue
             completed += 1
-            if since is None or self.notify is None:
-                continue
-            label = result.label
-            if (
-                new_stool
-                and observed_at
-                and self.store.assessments.has_nearby_stool_notice(row["id"], observed_at)
-            ):
-                self.store.assessments.defer_stool_notice(row["id"])
-                label = "urine" if label == "both" else None
-            if label in EXCRETION_TYPES and self.store.assessments.claim_notice(row["id"], label):
-                sent = self.notify(
-                    label,
-                    location=result.location
-                    if row["interrupted"] or result.location == "outside"
-                    else None,
-                    interrupted=bool(row["interrupted"]),
-                    clip_id=row["id"],
-                    detected_at=observed_at,
+            if since is not None:
+                self._notify_assessment(
+                    row, result, since, observed_at, stool_seen_at, stool_clear_at, new_stool
                 )
-                self.store.assessments.finish_notice(row["id"], sent)
-            if not new_stool and stool_seen_at:
-                self._send_stool_notice(
-                    self.notify,
-                    row["id"],
-                    stool_seen_at,
-                    bool(row["interrupted"]),
-                    existing_stool=True,
-                )
-            if stool_clear_at:
-                for (
-                    candidate,
-                    seen_at,
-                    interrupted,
-                    existing_stool,
-                ) in self.store.assessments.deferred_stool_notices(row["id"], since):
-                    self._send_stool_notice(
-                        self.notify, candidate, seen_at, interrupted, existing_stool=existing_stool
-                    )
         return completed, failures
+
+    def _notify_assessment(
+        self,
+        row: ClipRow,
+        result: Assessment,
+        since: str,
+        observed_at: str | None,
+        stool_seen_at: str | None,
+        stool_clear_at: str | None,
+        new_stool: bool,
+    ) -> None:
+        """保存済みの判定から通知し、重複した便の通知は片付けの根拠が出るまで保留する。"""
+        notify = self.notify
+        if notify is None:
+            return
+        label = result.label
+        if (
+            new_stool
+            and observed_at
+            and self.store.assessments.has_nearby_stool_notice(row["id"], observed_at)
+        ):
+            self.store.assessments.defer_stool_notice(row["id"])
+            label = "urine" if label == "both" else None
+        if label in EXCRETION_TYPES and self.store.assessments.claim_notice(row["id"], label):
+            sent = notify(
+                label,
+                location=result.location
+                if row["interrupted"] or result.location == "outside"
+                else None,
+                interrupted=bool(row["interrupted"]),
+                clip_id=row["id"],
+                detected_at=observed_at,
+            )
+            self.store.assessments.finish_notice(row["id"], sent)
+        if not new_stool and stool_seen_at:
+            self._send_stool_notice(
+                notify,
+                row["id"],
+                stool_seen_at,
+                bool(row["interrupted"]),
+                existing_stool=True,
+            )
+        if stool_clear_at:
+            for (
+                candidate,
+                seen_at,
+                interrupted,
+                existing_stool,
+            ) in self.store.assessments.deferred_stool_notices(row["id"], since):
+                self._send_stool_notice(
+                    notify, candidate, seen_at, interrupted, existing_stool=existing_stool
+                )
 
     def _send_stool_notice(
         self,

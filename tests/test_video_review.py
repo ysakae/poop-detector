@@ -902,3 +902,27 @@ def test_manual_review_and_a_zero_cap_are_not_limited(tmp_path):
     assert Review(store, asking(FEEDING), judges=judges, max_per_hour=1).run(limit=2) == (2, 0)
     unlimited = Review(store, asking(FEEDING), judges=judges, max_per_hour=0)
     assert unlimited.run(limit=10, since=when.isoformat()) == (1, 0)
+
+
+def test_saved_mixed_assessment_defers_stool_but_notifies_urine(tmp_path):
+    store = ClipStore(tmp_path)
+    start = datetime.now(UTC)
+    earlier = ready(store, start)
+    current = ready(store, start + timedelta(seconds=2))
+    result = Assessment("both", "excreting", 10, 15)
+    seen = (start + timedelta(seconds=17)).isoformat()
+    store.assessments.save(earlier, FECES, observed_at=seen, stool_seen_at=seen)
+    assert store.assessments.claim_stool_notice(earlier)
+    store.assessments.finish_stool_notice(earlier, True)
+    store.assessments.save(current, result, observed_at=seen, stool_seen_at=seen)
+    notices = []
+    review = Review(
+        store,
+        lambda *args: pytest.fail("動画を再判定しました"),
+        lambda label, **kwargs: notices.append((label, kwargs["clip_id"])) or True,
+    )
+
+    review._notify_assessment(store.get(current), result, start.isoformat(), seen, seen, None, True)
+
+    assert notices == [("urine", current)]
+    assert store.assessments.get(current)["stool_notified_at"] is None

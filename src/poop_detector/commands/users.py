@@ -8,7 +8,7 @@
 import argparse
 import json
 
-from ..gui.accounts import Accounts, User, renamed, role_label
+from ..gui.accounts import Accounts, User, role_label
 from ..gui.audit import CLI_ACTOR
 from ..gui.invitation_mail import invite_by_email
 from ..records.database import events_database
@@ -106,19 +106,16 @@ def users(args: argparse.Namespace, context: CommandContext) -> int:
         _show_url(context, code, args.minutes, "初回管理者の登録用 URL:")
         return 0
     user = _find(accounts, args.identity)
-    target = user.email or user.name
     if action == "set-role":
         if args.role is None:
             raise CommandError("変更後の役割を --role admin か --role member で指定してください")
-        accounts.users.set_role(user.id, args.role)
-        accounts.audit.record(CLI_ACTOR, "user.role", f"{target}（{role_label(args.role)}）")
+        accounts.set_user_role(user, args.role, actor=CLI_ACTOR)
         print(f"「{user.name}」の役割を「{role_label(args.role)}」にしました")
         return 0
     if action == "rename":
         if not args.name:
             raise CommandError("変更後の表示名を --name で指定してください")
-        name = accounts.users.rename(user.id, args.name)
-        accounts.audit.record(CLI_ACTOR, "user.rename", renamed(user, name))
+        name = accounts.rename_user(user, args.name, actor=CLI_ACTOR)
         print(f"「{user.name}」の表示名を「{name}」にしました")
         return 0
     if action == "recover":
@@ -126,11 +123,11 @@ def users(args: argparse.Namespace, context: CommandContext) -> int:
             user.id, created_by=CREATED_BY, minutes=args.minutes
         )
         _show_url(context, code, args.minutes, f"「{user.name}」にパスキーを追加する URL:")
+        accounts.audit.record(CLI_ACTOR, "user.recover", user.email or user.name)
     elif action == "disable":
-        accounts.users.disable(user.id)
+        accounts.set_user_active(user, False, actor=CLI_ACTOR)
         print(f"「{user.name}」を無効にしました")
     else:
-        accounts.users.enable(user.id)
+        accounts.set_user_active(user, True, actor=CLI_ACTOR)
         print(f"「{user.name}」を有効にしました")
-    accounts.audit.record(CLI_ACTOR, f"user.{action}", target)
     return 0

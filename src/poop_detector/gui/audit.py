@@ -6,6 +6,7 @@ audit_log テーブルに追記するだけで、書き換えや削除はしな�
 
 import sqlite3
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -66,11 +67,18 @@ class AuditLog:
         self.database = database
         self.clock = clock
 
-    def record(self, actor: str, action: str, detail: str = "") -> None:
+    def record(
+        self,
+        actor: str,
+        action: str,
+        detail: str = "",
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> None:
         if action not in ACTIONS:
             raise ValueError(f"監査ログの操作の種類が登録されていません: {action}")
         stamp = datetime.fromtimestamp(self.clock(), UTC).isoformat(timespec="microseconds")
-        with self.database.connect() as db:
+        with nullcontext(connection) if connection is not None else self.database.connect() as db:
             db.execute(
                 "INSERT INTO audit_log (at, actor, action, detail) VALUES (?, ?, ?, ?)",
                 (stamp, actor, action, detail),
