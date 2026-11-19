@@ -129,6 +129,30 @@ class AssessmentStore:
             sum(row["failed"] for row in rows),
         )
 
+    def tray_stay_counts(self, since: str) -> list[tuple[str, int, int, int]]:
+        """犬の出入りの動画本数、判定完了数、排泄候補数を滞在時間帯ごとに返す。"""
+        with self.connect() as db:
+            rows = db.execute(
+                """SELECT CASE
+                    WHEN c.tray_stay_seconds IS NULL OR c.interrupted THEN 4
+                    WHEN c.tray_stay_seconds < 5 THEN 0
+                    WHEN c.tray_stay_seconds < 10 THEN 1
+                    WHEN c.tray_stay_seconds < 20 THEN 2
+                    ELSE 3
+                END AS band, COUNT(*) AS total,
+                SUM(a.clip_id IS NOT NULL AND a.error IS NULL) AS completed,
+                SUM(CASE WHEN a.error IS NULL AND a.label IN ('feces','urine','both')
+                    THEN 1 ELSE 0 END) AS candidates
+                FROM clips c LEFT JOIN video_assessments a ON a.clip_id=c.id
+                WHERE c.source IN ('dog_enter','dog_exit','dog_visit')
+                    AND c.status IN ('ready','removing','removed') AND c.requested_at>=?
+                GROUP BY band""",
+                (since,),
+            ).fetchall()
+        counts = {row["band"]: (row["total"], row["completed"], row["candidates"]) for row in rows}
+        labels = ("5秒未満", "5秒以上10秒未満", "10秒以上20秒未満", "20秒以上", "計測なし")
+        return [(label, *counts.get(band, (0, 0, 0))) for band, label in enumerate(labels)]
+
     def save(
         self,
         clip_id: str,

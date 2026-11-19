@@ -120,8 +120,9 @@ def test_new_database_is_created_at_the_latest_version(tmp_path):
         "notice_label",
         "stool_notice_claimed",
     ]
+    added_columns = {"codex_assessments": assessment_columns, "clips": ["tray_stay_seconds"]}
     for table, expected in TABLES_V1.items():
-        extra = assessment_columns if table == "codex_assessments" else []
+        extra = added_columns.get(table, [])
         assert columns(path, renamed.get(table, table)) == [name for name, _ in expected] + extra
 
 
@@ -164,7 +165,7 @@ def test_database_before_location_column_gains_missing_columns_and_tables(tmp_pa
     store = Store(tmp_path)
 
     assert "location" in columns(path, "events")
-    assert columns(path, "clips")[-1] == "location"
+    assert columns(path, "clips")[-2:] == ["location", "tray_stay_seconds"]
     (event,) = store.list()
     assert event["location"] is None
     assert event["note"] == "朝の記録"
@@ -543,3 +544,26 @@ def test_care_deletion_migration_preserves_existing_plan_record(tmp_path):
                 "SELECT note, plan_id, plan_day, deleted_at FROM care_entries WHERE id='meal'"
             ).fetchone()
         ) == ("朝", "plan", "2026-11-19", None)
+
+
+def test_tray_stay_migration_preserves_an_existing_video_and_assessment(tmp_path):
+    path = tmp_path / "tray-stay-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:26]:
+            migration(db)
+        db.execute("PRAGMA user_version = 26")
+        db.execute(
+            """INSERT INTO clips (id, source, requested_at, status)
+            VALUES ('clip', 'dog_exit', '2026-11-19', 'ready')"""
+        )
+        db.execute(
+            """INSERT INTO video_assessments (clip_id, label, assessed_at)
+            VALUES ('clip', 'urine', '2026-11-19')"""
+        )
+    with Database(path).connect() as db:
+        assert tuple(
+            db.execute(
+                """SELECT c.status, c.tray_stay_seconds, a.label
+                FROM clips c JOIN video_assessments a ON a.clip_id=c.id"""
+            ).fetchone()
+        ) == ("ready", None, "urine")

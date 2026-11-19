@@ -31,7 +31,7 @@ def test_short_visit_keeps_prebuffer_and_records_after_exit(tmp_path):
         entry = collector.trigger(source="dog_enter", now=2)
         for sec in (3, 4, 5):
             collector.feed(frame, now=sec)
-        assert collector.trigger(source="dog_exit", now=5) == entry
+        assert collector.trigger(source="dog_exit", now=5, tray_stay_seconds=2) == entry
         for sec in (6, 7, 8, 9):
             collector.feed(frame, now=sec)
             collector.poll(now=sec)
@@ -39,6 +39,7 @@ def test_short_visit_keeps_prebuffer_and_records_after_exit(tmp_path):
         (visit,) = collector.store.list()
         assert visit["source"] == "dog_visit"
         assert visit["status"] == "ready"
+        assert visit["tray_stay_seconds"] == 2
         assert not visit["interrupted"]
         assert sample_times == list(range(10))
 
@@ -46,6 +47,19 @@ def test_short_visit_keeps_prebuffer_and_records_after_exit(tmp_path):
 def stub_encode(samples, path, fps):
     path.write_bytes(b"mp4")
     return len(samples) / fps
+
+
+def test_dog_exit_clip_keeps_longest_measured_stay(tmp_path):
+    with ClipCollector(tmp_path, after=4, fps=1, encoder=stub_encode) as collector:
+        collector.feed(FRAME, now=0)
+        clip_id = collector.trigger(source="dog_exit", now=0, tray_stay_seconds=15)
+        collector.feed(FRAME, now=1)
+        assert collector.trigger(source="dog_exit", now=1, tray_stay_seconds=0) == clip_id
+        for sec in range(2, 7):
+            collector.feed(FRAME, now=sec)
+        collector.poll(now=6)
+        collector.drain()
+        assert collector.store.get(clip_id)["tray_stay_seconds"] == 15
 
 
 def test_long_visit_merges_entry_and_exit_while_recording(tmp_path):

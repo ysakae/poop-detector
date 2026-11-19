@@ -10,7 +10,7 @@
 
 import json
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -299,6 +299,7 @@ def _render(
     current = Config.load(path) if path is not None else Config()
     results, unreadable = load_results(app.root)
     datasets, unreadable_sets = _datasets(app.root, app.clips)
+    now = datetime.now(UTC)
     page = render_template(
         "models.html",
         title=app.title,
@@ -315,11 +316,12 @@ def _render(
         model=current.review_model if model is None else model,
         custom_model=CUSTOM_MODEL,
         catalog=CATALOG,
-        review_status=_review_status(
-            review_status(app.clips, app.outages, current, datetime.now(UTC))
+        review_status=_review_status(review_status(app.clips, app.outages, current, now)),
+        tray_stay_counts=app.clips.assessments.tray_stay_counts(
+            (now - timedelta(days=7)).isoformat()
         ),
         judges=_judges(handler),
-        plans=_plans(app.plan_usage, datetime.now(UTC)),
+        plans=_plans(app.plan_usage, now),
         plan_action=PLAN_USAGE,
         benchmarks=_benchmarks(results, app.clips),
         unreadable=unreadable,

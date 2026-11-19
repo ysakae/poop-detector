@@ -77,6 +77,7 @@ class ClipRow(TypedDict):
     note: str
     scene_signature: str | None
     location: str | None
+    tray_stay_seconds: float | None
 
 
 class AssessmentRow(TypedDict):
@@ -255,6 +256,7 @@ class ClipStore:
             "interrupted",
             "error",
             "scene_signature",
+            "tray_stay_seconds",
         }
         if not values or not values.keys() <= allowed:
             raise ValueError("更新項目が不正です")

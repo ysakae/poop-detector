@@ -130,6 +130,7 @@ class DogState:
     boxes: list[Box]
     inference_ms: float
     error: bool = False
+    tray_stay_seconds: float | None = None
 
 
 class DogObserver:
@@ -142,6 +143,8 @@ class DogObserver:
     def reset(self) -> None:
         self.last_inference = self.last_seen = self.last_roi = float("-inf")
         self.previous_roi = False
+        self.tray_seen_empty = False
+        self.entered_at: float | None = None
         self.boxes: list[Box] = []
         self.error = False
         self.inference_ms = 0.0
@@ -167,6 +170,8 @@ class DogObserver:
             # 失敗の間は排泄判定を保留する（安全側）ので、種類を問わず捕捉して再試行する。
             except Exception:
                 self.error = True
+                self.tray_seen_empty = False
+                self.entered_at = None
                 logger.error(
                     "犬の推論に失敗しました。排泄判定を保留して再試行します",
                     exc_info=logger.isEnabledFor(logging.DEBUG),
@@ -175,9 +180,18 @@ class DogObserver:
         present = now - self.last_seen < self.exit_seconds
         occupied = now - self.last_roi < self.exit_seconds
         transition: DogTransition | None = None
+        stay = None
         if not self.error and occupied != self.previous_roi:
             transition = "dog_enter" if occupied else "dog_exit"
             self.previous_roi = occupied
+            if occupied:
+                self.entered_at = self.last_roi if self.tray_seen_empty else None
+            elif self.entered_at is not None:
+                # 最初と最後の検出の間を測り、退場を確かめるための猶予は含めない。
+                stay = self.last_roi - self.entered_at
+                self.entered_at = None
+        if not self.error and not occupied:
+            self.tray_seen_empty = True
         return DogState(
-            present, occupied, transition, self.boxes.copy(), self.inference_ms, self.error
+            present, occupied, transition, self.boxes.copy(), self.inference_ms, self.error, stay
         )
