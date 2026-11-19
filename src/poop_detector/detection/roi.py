@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Self, TypeAlias
 
@@ -229,17 +229,57 @@ def full_mask(roi: AnyROI, shape: Shape) -> Mask:
     return mask
 
 
+@dataclass
+class _PolygonSelection:
+    """画素座標の頂点を、ウィンドウの入力や描画と独立して管理する。"""
+
+    width: int
+    height: int
+    points: list[tuple[int, int]] = field(default_factory=list, init=False)
+
+    def add(self, x: int, y: int) -> None:
+        if 0 <= x < self.width and 0 <= y < self.height:
+            self.points.append((x, y))
+
+    def undo(self) -> None:
+        if self.points:
+            self.points.pop()
+
+    def reset(self) -> None:
+        self.points.clear()
+
+    def confirm(self) -> MaskedROI:
+        return MaskedROI.from_pixels(self.points, self.width, self.height)
+
+
+def _polygon_preview(frame: Frame, points: Sequence[tuple[int, int]]) -> Frame:
+    preview = frame.copy()
+    if len(points) > 1:
+        cv2.polylines(preview, [np.array(points, dtype=np.int32)], len(points) >= 3, (0, 220, 0), 2)
+    for index, point in enumerate(points, 1):
+        cv2.circle(preview, point, 6, (0, 220, 0), -1)
+        cv2.putText(
+            preview,
+            str(index),
+            (point[0] + 8, point[1] - 8),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 220, 0),
+            2,
+        )
+    return preview
+
+
 def select_polygon(frame: Frame, window: str = "トイレの多角形を指定") -> "MaskedROI":
     """外周に沿って3点以上をクリックし、Enterで確定する。"""
-    points: list[tuple[int, int]] = []
     height, width = frame.shape[:2]
+    selection = _PolygonSelection(width, height)
 
     def on_mouse(event: int, x: int, y: int, _flags: int, _param: object) -> None:
         if event == cv2.EVENT_LBUTTONDOWN:
-            if 0 <= x < width and 0 <= y < height:
-                points.append((x, y))
-        elif event == cv2.EVENT_RBUTTONDOWN and points:
-            points.pop()
+            selection.add(x, y)
+        elif event == cv2.EVENT_RBUTTONDOWN:
+            selection.undo()
 
     # 範囲の登録は対話的な操作なので、操作方法をターミナルに表示する。
     print("外周に沿って3点以上をクリック。Enter:確定、右クリック:戻す、R:やり直し、Esc:取消")  # noqa: T201
@@ -249,33 +289,18 @@ def select_polygon(frame: Frame, window: str = "トイレの多角形を指定")
     cv2.setMouseCallback(window, on_mouse)
     try:
         while True:
-            preview = frame.copy()
-            if len(points) > 1:
-                cv2.polylines(
-                    preview, [np.array(points, dtype=np.int32)], len(points) >= 3, (0, 220, 0), 2
-                )
-            for index, point in enumerate(points, 1):
-                cv2.circle(preview, point, 6, (0, 220, 0), -1)
-                cv2.putText(
-                    preview,
-                    str(index),
-                    (point[0] + 8, point[1] - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (0, 220, 0),
-                    2,
-                )
+            preview = _polygon_preview(frame, selection.points)
             cv2.imshow(window, preview)
             key = cv2.waitKey(20) & 0xFF
             if key == 27 or cv2.getWindowProperty(window, cv2.WND_PROP_VISIBLE) < 1:
                 raise InvalidInputError("ROI選択を取り消しました")
             if key in (ord("r"), ord("R")):
-                points.clear()
-            elif key in (8, 127) and points:
-                points.pop()
-            elif key in (10, 13) and len(points) >= 3:
+                selection.reset()
+            elif key in (8, 127):
+                selection.undo()
+            elif key in (10, 13) and len(selection.points) >= 3:
                 try:
-                    return MaskedROI.from_pixels(points, width, height)
+                    return selection.confirm()
                 except ValueError:
                     print("多角形が交差・重複しているか面積がありません。Rでやり直してください")  # noqa: T201
     finally:
