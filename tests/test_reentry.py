@@ -577,3 +577,25 @@ def test_visit_notices_share_a_clip_and_prefer_high_risk():
         ((1, "clip-id"), True),
         ((2, "clip-id"), False),
     ]
+
+
+def test_event_feedback_rolls_back_classification_when_detail_cannot_be_saved(tmp_path):
+    import sqlite3
+
+    events = Store(tmp_path)
+    event_id = events.record(np.zeros((8, 8, 3), np.uint8), 0.1, None, 0)
+    store = ReentryStore(tmp_path)
+    store.register(event_id, "first", None)
+    with store.db.connect() as db:
+        db.execute("""
+            CREATE TRIGGER reject_feedback BEFORE UPDATE OF note ON reentry_waste
+            BEGIN SELECT RAISE(ABORT, 'メモ保存失敗'); END
+        """)
+
+    with pytest.raises(sqlite3.IntegrityError, match="メモ保存失敗"):
+        store.save_event_feedback(event_id, label="feces", stool="soft", note="確認済み")
+
+    assert events.list()[0]["feedback"] is None
+    with store.db.connect() as db:
+        row = db.execute("SELECT stool, note FROM reentry_waste").fetchone()
+        assert tuple(row) == (None, "")

@@ -9,10 +9,11 @@ from typing import Literal
 import cv2
 
 from ..detection.roi import AnyROI, outline
+from ..errors import InvalidInputError
 from ..frames import Shape
 from ..notifications import Delivery
 from ..records.database import events_database
-from ..records.events import utcnow
+from ..records.events import Store, utcnow
 from .dog import Box, overlaps_roi
 
 Position = tuple[float, float]
@@ -102,11 +103,73 @@ class WasteTrack:
         return None
 
 
+def _validate_feedback_note(note: str | None) -> None:
+    if note is not None and len(note) > 2000:
+        raise InvalidInputError("メモは2000文字以内にしてください")
+
+
 class ReentryStore:
     """既存の events.sqlite3 に片付け状態と再侵入をひも付ける。"""
 
     def __init__(self, root: Path) -> None:
         self.db = events_database(root)
+
+    def save_event_feedback(
+        self,
+        event_id: str,
+        *,
+        label: str | None = None,
+        location: str | None = None,
+        stool: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        """排泄の分類と片付け候補の補足情報を同時に確定する。"""
+        _validate_feedback_note(note)
+        with self.db.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            candidate = db.execute(
+                "SELECT 1 FROM reentry_waste WHERE event_id=?", (event_id,)
+            ).fetchone()
+            if candidate is None:
+                raise InvalidInputError("排泄候補が見つかりません")
+            if label:
+                Store.classify_in(db, event_id, label, location=location)
+            elif location:
+                raise InvalidInputError("--location は --label と一緒に指定してください")
+            db.execute(
+                """UPDATE reentry_waste SET stool=COALESCE(?,stool), note=COALESCE(?,note)
+                   WHERE event_id=?""",
+                (stool, note, event_id),
+            )
+
+    def save_visit_feedback(
+        self,
+        visit_id: int,
+        *,
+        correct: str | None = None,
+        stepped: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        """省略した項目は維持し、unknown は判定なしとして保存する。"""
+        _validate_feedback_note(note)
+        answers = {"yes": 1, "no": 0, "unknown": None}
+        with self.db.connect() as db:
+            changed = db.execute(
+                """UPDATE reentry_visits
+                   SET correct=CASE WHEN ? THEN ? ELSE correct END,
+                       stepped=CASE WHEN ? THEN ? ELSE stepped END, note=COALESCE(?,note)
+                   WHERE id=?""",
+                (
+                    correct is not None,
+                    answers.get(correct or ""),
+                    stepped is not None,
+                    answers.get(stepped or ""),
+                    note,
+                    visit_id,
+                ),
+            ).rowcount
+            if not changed:
+                raise InvalidInputError("再侵入の記録が見つかりません")
 
     def register(self, event_id: str, configuration_id: str, position: Position | None) -> None:
         with self.db.connect() as db:
