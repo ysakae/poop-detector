@@ -60,7 +60,9 @@ class MotionSampler:
       枠が床面の縁の帯（境界がなければ画面の端）にかかっていれば left、ほかは unknown
     - 床面が静か → still（動いていない証拠）
     - 動きが最後の枠（STIR_MARGIN だけ広げた範囲）の中だけ → moving（身じろぎ）
-    - 枠の外の動きが床面の縁の帯に届いた → left。床面が静かな間は left を保つ
+    - 枠の外の動きが床面の縁の帯に届いた → left
+    left のあとは、床面が静かな間と、動きが出口（最後の枠を広げた範囲と縁の帯）の中だけの間は
+    left を保つ（出ていく途中の残りの動き）。
     - ほかの動き → 居場所を捨てて unknown。再び検出するまで still には戻さない
     """
 
@@ -73,9 +75,10 @@ class MotionSampler:
         """居場所と前回の画像を忘れる（監視の開始や接続の再開）。"""
         self._previous: NDArray[Any] | None = None
         self._location: Box | None = None
-        # 最後に検出した（または静止を確かめた）ときの、枠の中の縮小した灰色の画像
+        # 最後に検出したときの、枠の中の縮小した灰色の画像
         self._snapshot: NDArray[Any] | None = None
-        self._left = False
+        # left にしたときの出口（縮小した画像のマスク）。left でなければ None
+        self._exit: NDArray[Any] | None = None
 
     def sample(self, frame: Frame, boxes: Sequence[Box]) -> tuple[Presence, bool]:
         """1秒分の観測と、床面の中の犬検出がちょうど1つ当たったかを返す。"""
@@ -114,7 +117,7 @@ class MotionSampler:
 
     def _with_box(self, box: Box, changed: NDArray[Any] | None, shape: tuple[int, ...]) -> Presence:
         previous = self._location
-        self._location, self._left = box, False
+        self._location, self._exit = box, None
         if previous is None or changed is None:
             return "moving"
         shift = math.dist(_center(box), _center(previous))
@@ -131,19 +134,15 @@ class MotionSampler:
         quiet = motion is not None and not motion.any()
         location = self._location
         if location is None:
-            if quiet and self._left:
-                return "left"
-            self._left = False
-            return "unknown"
+            return self._after_left(motion)
         region = _box_slices(location, shape, gray.shape, 0)
         if self._gone(gray[region]):
             # 枠が縁にかかっていれば、検出が外れたまま縁の外へ出ていったとみなす。
-            at_edge = bool(self._regions(gray.shape)[1][region].any())
-            self._location, self._snapshot, self._left = None, None, at_edge
-            return "left" if at_edge else "unknown"
+            if self._regions(gray.shape)[1][region].any():
+                return self._leave(location, shape, gray.shape)
+            self._location, self._snapshot = None, None
+            return "unknown"
         if quiet:
-            # 静かな間は照明のゆっくりした変化を取り込み、犬の画像を新しくしておく。
-            self._snapshot = gray[region].copy()
             return "still"
         if motion is not None:
             stir = np.zeros(motion.shape, dtype=bool)
@@ -152,10 +151,29 @@ class MotionSampler:
             if not outside.any():
                 return "moving"
             if (outside & self._regions(motion.shape)[1]).any():
-                self._location, self._left = None, True
-                return "left"
+                return self._leave(location, shape, motion.shape)
         # 居場所の外で動きがあった（または画像を比べられない）。どこにいるか分からない。
         self._location, self._snapshot = None, None
+        return "unknown"
+
+    def _leave(self, location: Box, shape: tuple[int, ...], small: tuple[int, ...]) -> Presence:
+        exit_area = self._regions(small)[1].copy()
+        exit_area[_box_slices(location, shape, small, STIR_MARGIN)] = True
+        self._location, self._snapshot, self._exit = None, None, exit_area
+        return "left"
+
+    def _after_left(self, motion: NDArray[Any] | None) -> Presence:
+        """居場所がないときの観測。出ていった直後の出口の中の動きと、静かな床面は left を保つ。"""
+        exit_area = self._exit
+        inside_exit = (
+            exit_area is not None
+            and motion is not None
+            and exit_area.shape == motion.shape
+            and not (motion & ~exit_area).any()
+        )
+        if inside_exit:
+            return "left"
+        self._exit = None
         return "unknown"
 
     def _gone(self, region: NDArray[Any]) -> bool:

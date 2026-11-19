@@ -1,6 +1,7 @@
 """映像の動きと犬検出から1秒の観測を作る MotionSampler のテスト。"""
 
 import numpy as np
+import pytest
 
 from poop_detector.features.sleep_motion import MotionSampler
 
@@ -184,14 +185,58 @@ def test_undetected_exit_from_box_away_from_edge_is_unknown():
         assert sampler.sample(scene(), []) == ("unknown", False)
 
 
-def test_slow_lighting_change_while_still_keeps_location():
+def test_slow_lighting_change_while_undetected_drops_location():
     sampler = MotionSampler(FLOOR)
     settled(sampler)
-    # 夕方の露出の変化のように、1秒ごとには小さい明るさの変化が積み重なっても居場所は保つ
+    # 犬の画像は検出したときだけ覚えるので、検出のないまま明るさが PIXEL_DELTA を超えて
+    # 変わると、犬がまだいても居場所を捨てる（静止と数えすぎない側に倒す）
     frame = scene(DOG).astype(np.int16)
-    for step in range(1, 9):
-        dimmed = np.clip(frame - step * 10, 0, 255).astype(np.uint8)
-        assert sampler.sample(dimmed, []) == ("still", False)
+    outcomes = [
+        sampler.sample(np.clip(frame - step * 10, 0, 255).astype(np.uint8), [])[0]
+        for step in range(1, 9)
+    ]
+    assert outcomes == ["still", "still"] + ["unknown"] * 6
+
+
+def creep(
+    sampler: MotionSampler, box: tuple[int, int, int, int], step: int, distance: int
+) -> list[str]:
+    """検出のないまま step 画素ずつ（負なら左へ）動き、動くたびに1秒止まる。最後は空の床面が静かに続く。"""
+    outcomes = []
+    for moved in range(step, distance + step, step):
+        frame = scene(shifted(box, moved))
+        outcomes.append(sampler.sample(frame, [])[0])
+        outcomes.append(sampler.sample(frame, [])[0])
+    for _ in range(5):
+        outcomes.append(sampler.sample(scene(), [])[0])
+    return outcomes
+
+
+def after_location_lost(outcomes: list[str]) -> list[str]:
+    first = next(i for i, o in enumerate(outcomes) if o in ("left", "unknown"))
+    return outcomes[first:]
+
+
+@pytest.mark.parametrize("step", [3, 5, 8])
+@pytest.mark.parametrize(
+    ("boundary", "box"), [(FLOOR, NEAR_EDGE), (None, (125, 50, 155, 70))], ids=["floor", "frame"]
+)
+def test_creeping_exit_at_edge_ends_in_left(step, boundary, box):
+    sampler = MotionSampler(boundary)
+    settled(sampler, box)
+    outcomes = creep(sampler, box, step, WIDTH - box[0])
+    assert "still" not in after_location_lost(outcomes)
+    assert outcomes[-5:] == ["left"] * 5
+
+
+@pytest.mark.parametrize("step", [3, 5, 8])
+def test_creeping_exit_away_from_edge_ends_in_unknown(step):
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    # 床面の真ん中で、検出のないまま少しずつ左へ枠の外まで動く（縁の帯には届かない）
+    outcomes = creep(sampler, DOG, -step, -30)
+    assert "still" not in after_location_lost(outcomes)
+    assert outcomes[-5:] == ["unknown"] * 5
 
 
 def test_compact_blob_away_from_dog_is_motion():
