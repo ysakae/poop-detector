@@ -161,3 +161,20 @@ def test_dataset_excludes_unconfirmed_labels_and_rejects_duplicate_event(tmp_pat
     assert cases[0].row["id"] == ids[1]
     with pytest.raises(ValueError, match="重複"):
         read_cases({"clips": entries}, store, "scene")
+
+
+def test_case_tags_are_normalized_without_mutating_the_dataset_tags(tmp_path):
+    from poop_detector.video.benchmark import _make_case
+
+    store = ClipStore(tmp_path)
+    clip_id = ready_clip(store)
+    store.update(clip_id, interrupted=1)
+    row = store.get(clip_id)
+    assert row is not None
+    tags = ["夜間", "一部欠落", "夜間"]
+
+    case = _make_case(row, tmp_path / "clip.mp4", "urine", tags, scene="scene", split="final")
+
+    assert case.tags == tuple(sorted({"夜間", "一部欠落"}))
+    assert (case.scene, case.split) == ("scene", "final")
+    assert tags == ["夜間", "一部欠落", "夜間"]

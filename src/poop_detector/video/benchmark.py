@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import cv2
 
@@ -51,6 +51,41 @@ class Scene:
     outside_roi: AnyROI | None = None
 
 
+def _required_video(store: ClipStore, row: ClipRow, error: str) -> Path:
+    path = store.video_path(row)
+    if path is None:
+        raise InvalidInputError(error)
+    return path
+
+
+def _make_case(
+    row: ClipRow, path: Path, label: str, tags: Sequence[str], *, scene: str, split: str = ""
+) -> Case:
+    case_tags = set(tags)
+    if row["interrupted"]:
+        case_tags.add("一部欠落")
+    return Case(row, path, label, tuple(sorted(case_tags)), scene=scene, split=split)
+
+
+def _manifest_tags(entry: Mapping[str, object], row: ClipRow, events: set[str]) -> list[str]:
+    event = entry.get("event", row["event_id"] or row["id"])
+    linked_event = row["event_id"]
+    tags = entry.get("tags", [])
+    if (
+        not isinstance(event, str)
+        or not event
+        or event in events
+        or (linked_event is not None and linked_event in events)
+        or not isinstance(tags, list)
+        or any(not isinstance(tag, str) or not tag.strip() for tag in tags)
+    ):
+        raise InvalidInputError("評価セットのイベントの重複、またはタグの形式を確認してください")
+    events.add(event)
+    if linked_event is not None:
+        events.add(linked_event)
+    return cast(list[str], tags)
+
+
 def read_cases(manifest: object, store: ClipStore, signature: str) -> tuple[list[Case], list[str]]:
     """評価前に動画と正解を確認し、同じイベントが二重に入るのを防ぐ。"""
     entries = manifest.get("clips") if isinstance(manifest, dict) else None
@@ -69,34 +104,15 @@ def read_cases(manifest: object, store: ClipStore, signature: str) -> tuple[list
         if row is None:
             raise InvalidInputError("評価セットに台帳に存在しない動画があります")
         label = row["label"]
-        if label not in LABELS:
+        if label is None or label not in LABELS:
             excluded.append(clip_id)
             continue
-        path = store.video_path(row)
-        if path is None or row["scene_signature"] != signature:
-            raise InvalidInputError("保存済みで現在の基準と一致する動画だけを指定してください")
-        event = entry.get("event", row["event_id"] or clip_id)
-        linked_event = row["event_id"]
-        tags = entry.get("tags", [])
-        if (
-            not isinstance(event, str)
-            or not event
-            or event in events
-            or (linked_event is not None and linked_event in events)
-            or not isinstance(tags, list)
-            or any(not isinstance(tag, str) or not tag.strip() for tag in tags)
-        ):
-            raise InvalidInputError(
-                "評価セットのイベントの重複、またはタグの形式を確認してください"
-            )
-        events.add(event)
-        if linked_event is not None:
-            events.add(linked_event)
-        case_tags = {*tags}
-        if row["interrupted"]:
-            case_tags.add("一部欠落")
-        if label is not None:
-            cases.append(Case(row, path, label, tuple(sorted(case_tags)), scene=signature))
+        error = "保存済みで現在の基準と一致する動画だけを指定してください"
+        if row["scene_signature"] != signature:
+            raise InvalidInputError(error)
+        path = _required_video(store, row, error)
+        tags = _manifest_tags(entry, row, events)
+        cases.append(_make_case(row, path, label, tags, scene=signature))
     if not cases:
         raise InvalidInputError("評価できる確定ラベル付き動画がありません")
     return cases, excluded
@@ -110,20 +126,13 @@ def dataset_cases(dataset: Dataset, store: ClipStore) -> list[Case]:
     cases = []
     for entry in dataset.included:
         row = store.get(entry.id)
-        path = store.video_path(row)
-        if row is None or path is None or entry.scene_signature is None:
-            raise InvalidInputError("評価セットの録画を確認してください")
-        tags = set(entry.tags)
-        if row["interrupted"]:
-            tags.add("一部欠落")
+        error = "評価セットの録画を確認してください"
+        if row is None or entry.scene_signature is None:
+            raise InvalidInputError(error)
+        path = _required_video(store, row, error)
         cases.append(
-            Case(
-                row,
-                path,
-                entry.label,
-                tuple(sorted(tags)),
-                scene=entry.scene_signature,
-                split=entry.split,
+            _make_case(
+                row, path, entry.label, entry.tags, scene=entry.scene_signature, split=entry.split
             )
         )
     if not cases:
