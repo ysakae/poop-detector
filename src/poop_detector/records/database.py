@@ -533,6 +533,27 @@ def migrate_to_v29(db: sqlite3.Connection) -> None:
         db.execute(f"ALTER TABLE judge_runs ADD COLUMN {column} TEXT")
 
 
+def migrate_to_v30(db: sqlite3.Connection) -> None:
+    """判定の前のふるい分けの指標を、動画ごとに記録する表を追加する（判定には使わない）。"""
+    db.execute(
+        """CREATE TABLE clip_screenings (
+            clip_id TEXT PRIMARY KEY REFERENCES clips(id),
+            version INTEGER NOT NULL,
+            screened_at TEXT NOT NULL,
+            sampled INTEGER NOT NULL,
+            tray_frames INTEGER NOT NULL,
+            weak_tray_frames INTEGER NOT NULL,
+            tray_seconds REAL NOT NULL,
+            weak_tray_seconds REAL NOT NULL,
+            unaligned INTEGER NOT NULL,
+            located INTEGER NOT NULL,
+            net_turning REAL NOT NULL,
+            path_length REAL NOT NULL,
+            stop_seconds REAL NOT NULL
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -564,6 +585,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v27,
     migrate_to_v28,
     migrate_to_v29,
+    migrate_to_v30,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

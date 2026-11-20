@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, NamedTuple, TypeAlias
 from urllib.request import urlopen
 
 import cv2
@@ -17,6 +17,15 @@ from ..frames import Frame, Shape
 
 # 犬の検出枠。画素座標の (左, 上, 右, 下)。
 Box: TypeAlias = tuple[int, int, int, int]
+
+
+class ScoredBox(NamedTuple):
+    """犬の検出枠と、その確信度（物体らしさと犬らしさの積）。"""
+
+    box: Box
+    score: float
+
+
 # 画像から犬の検出枠を求める関数。DogDetector.predict と、テスト用の差し替え。
 Predict: TypeAlias = Callable[[Frame], list[Box]]
 DogTransition: TypeAlias = Literal["dog_enter", "dog_exit"]
@@ -82,6 +91,10 @@ class DogDetector:
         self.strides = np.concatenate(strides).astype(np.float32)
 
     def predict(self, frame: Frame) -> list[Box]:
+        return [scored.box for scored in self.predict_scored(frame)]
+
+    def predict_scored(self, frame: Frame) -> list[ScoredBox]:
+        """confidence 以上の犬の検出枠を、確信度と一緒に返す。"""
         height, width = frame.shape[:2]
         scale = min(640 / width, 640 / height)
         resized = cv2.resize(frame, (max(1, int(width * scale)), max(1, int(height * scale))))
@@ -103,13 +116,14 @@ class DogDetector:
         sizes = np.exp(np.clip(output[selected, 2:4], -20, 20)) * self.strides[selected] / scale
         boxes = np.concatenate([center - sizes / 2, sizes], axis=1)
         keep = cv2.dnn.NMSBoxes(boxes.tolist(), scores[selected].tolist(), self.confidence, 0.5)
-        results: list[Box] = []
+        results: list[ScoredBox] = []
         for index in np.asarray(keep, dtype=int).reshape(-1):
             x, y, w, h = boxes[index]
             x1, x2 = np.clip(np.rint([x, x + w]), 0, width - 1).astype(int)
             y1, y2 = np.clip(np.rint([y, y + h]), 0, height - 1).astype(int)
             if x2 > x1 and y2 > y1:
-                results.append((int(x1), int(y1), int(x2), int(y2)))
+                box = (int(x1), int(y1), int(x2), int(y2))
+                results.append(ScoredBox(box, float(scores[selected][index])))
         return results
 
 

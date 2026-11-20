@@ -2,7 +2,7 @@
 
 import math
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,7 +14,7 @@ from numpy.typing import NDArray
 from ..detection.roi import AnyROI, outline
 from ..features.dog import Box, Predict
 from ..features.tray_tracking import TrayTracker
-from ..frames import Shape
+from ..frames import Frame, Shape
 
 # 旋回分析は保存済みの動画に対する実験的な分析で、通知や監視には使わない。
 # 値は人工の軌跡と少数の動画で決めたもので、設定にはしない。
@@ -113,17 +113,11 @@ def _single_dog_position(
     return positions[0] if len(positions) == 1 else None
 
 
-def track_dog(
-    path: str | Path,
-    predict: Predict,
-    roi: AnyROI,
-    *,
-    tray_tracker: TrayTracker | None = None,
-) -> DogTrack:
-    """動画を1/3秒ごとに調べ、トレー付近に犬が1頭だけいるコマの位置を集める。"""
+def sampled_frames(
+    path: str | Path, *, tray_tracker: TrayTracker | None = None
+) -> Iterator[tuple[float, Frame | None]]:
+    """動画を1/3秒ごとに (時刻, コマ) で返す。トレーの位置合わせに失敗したコマは None。"""
     capture = cv2.VideoCapture(str(path))
-    samples: list[Sample] = []
-    sampled = 0
     next_sample = 0.0
     try:
         fps = capture.get(cv2.CAP_PROP_FPS)
@@ -140,17 +134,28 @@ def track_dog(
             ok, frame = capture.retrieve()
             if not ok:
                 raise ValueError("動画の一部を読み込めません")
-            sampled += 1
-            if tray_tracker is not None:
-                aligned = tray_tracker.align(frame)
-                if aligned is None:
-                    continue
-                frame = aligned
-            position = _single_dog_position(predict(frame), roi, frame.shape)
-            if position is not None:
-                samples.append((stamp, *position))
+            yield stamp, frame if tray_tracker is None else tray_tracker.align(frame)
     finally:
         capture.release()
+
+
+def track_dog(
+    path: str | Path,
+    predict: Predict,
+    roi: AnyROI,
+    *,
+    tray_tracker: TrayTracker | None = None,
+) -> DogTrack:
+    """動画を1/3秒ごとに調べ、トレー付近に犬が1頭だけいるコマの位置を集める。"""
+    samples: list[Sample] = []
+    sampled = 0
+    for stamp, frame in sampled_frames(path, tray_tracker=tray_tracker):
+        sampled += 1
+        if frame is None:
+            continue
+        position = _single_dog_position(predict(frame), roi, frame.shape)
+        if position is not None:
+            samples.append((stamp, *position))
     return DogTrack(tuple(samples), sampled, len(samples))
 
 

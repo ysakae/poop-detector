@@ -602,3 +602,19 @@ def test_failure_kind_migration_keeps_old_judge_runs(tmp_path):
             "SELECT provider, failed, input_tokens, failure, failure_detail FROM judge_runs"
         ).fetchone()
     assert tuple(row) == ("gemini", 1, 10, None, None)
+
+
+def test_screening_migration_keeps_clips_and_adds_the_table(tmp_path):
+    path = tmp_path / "screening-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:29]:
+            migration(db)
+        db.execute("PRAGMA user_version = 29")
+        db.execute(
+            """INSERT INTO clips (id, source, requested_at, status, tray_stay_seconds)
+            VALUES ('clip', 'dog_visit', '2026-11-21', 'ready', 1.0)"""
+        )
+    with Database(path).connect() as db:
+        row = db.execute("SELECT status, tray_stay_seconds FROM clips").fetchone()
+        assert tuple(row) == ("ready", 1.0)
+        assert db.execute("SELECT COUNT(*) FROM clip_screenings").fetchone()[0] == 0
