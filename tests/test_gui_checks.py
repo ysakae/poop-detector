@@ -77,7 +77,7 @@ def test_checks_page_offers_the_three_checks(checks_gui):
     assert 'value="notify"' in html
     assert 'value="camera"' in html
     assert f'href="{PAGE}?diagnose=1"' in html
-    sub = re.search(r'aria-label="管理のメニュー".*?</nav>', html, re.S)[0]
+    sub = re.search(r'aria-label="管理の中の画面".*?</nav>', html, re.S)[0]
     assert re.search(r'href="/manage/checks" aria-current="page">確認と診断', sub)
 
 

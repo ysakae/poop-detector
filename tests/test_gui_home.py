@@ -245,3 +245,14 @@ def test_home_shows_care_without_records_as_empty(gui):
     latest = re.search(r'aria-labelledby="last-care-title".*?</section>', html, re.S)
     assert latest is not None
     assert latest[0].count("まだ記録がありません") == 4
+
+
+def test_live_view_comes_first_with_a_short_judgment(gui):
+    """カメラで見守っているときは、ライブ映像を先頭に置き、自動判定は短く添える。"""
+    server, _, _ = gui
+    html = page(server, "/", login(server, role="member"))
+    assert html.index('class="live-panel"') < html.index('id="review-title"')
+    panel = re.search(r'<section class="live-panel".*?</section>', html, re.S)[0]
+    assert "直近の自動判定" in panel
+    # 根拠の文は動画の画面で読むので、ホームには出さない。
+    assert '<p id="live-reason" hidden>' in panel
