@@ -522,3 +522,21 @@ def test_quota_window_view_levels_and_reset_time():
     assert quota_view("週間", QuotaWindow(100, None), now)["level"] == "high"
     assert quota_view("週間", QuotaWindow(69, None), now)["resets"] == ""
     assert quota_view("週間", None, now) == {"label": "週間", "percent": None}
+
+
+def test_review_status_breaks_down_recent_failures_by_kind(models_gui):
+    server, _ = models_gui
+    html = page(server, login(server))
+    assert "失敗の内訳（24時間以内）" in html
+    assert "失敗はありません" in html
+
+    runs = server.app.clips.judge_runs
+    for _ in range(2):
+        runs.record("gemini", None, "review", failed=True, failure="timeout")
+    runs.record("gemini", None, "review", failed=True, failure="rate_limited")
+    runs.record("gemini", None, "review", failed=True)
+    old = datetime.now(UTC) - timedelta(days=2)
+    runs.record("gemini", None, "review", failed=True, failure="exit", at=old)
+    html = page(server, login(server))
+    assert "タイムアウト 2回、利用制限・混雑 1回、不明 1回" in html
+    assert "異常終了" not in html
