@@ -76,7 +76,8 @@ clips:
   after_seconds: 30
   fps: 5
   max_width: 1280
-  memory_mb: 128
+  # 録画中のコマを置くメモリーの上限（MiB）。同じ滞在をまとめた最長4分ほどの動画（1280幅・5fps）が収まる大きさ
+  memory_mb: 256
   disk_mb: 4096
   # 使用量が上限の90％に達したら、1日より古い確認不要の動画（トレー外の滞在から）を自動で整理する
   auto_cleanup: true

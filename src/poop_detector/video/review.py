@@ -208,6 +208,13 @@ class SheetOptions:
 DEFAULT_SHEET = SheetOptions()
 
 
+# 1枚のシートで扱う動画の長さの目安（秒）と、1本の動画に使うシートの枚数の上限。
+# 録画をまとめて動画が長くなっても、コマの間隔（2.5秒ほど）を保つためにシートを増やす。
+# 75秒までは1枚で、これまでと同じ入力になる。
+SHEET_SECONDS = 75
+MAX_SHEETS = 4
+# コマの間隔の目安（秒）。
+FRAME_INTERVAL = 2.5
 # 前後の差分の指標で比べるコマ数と、変化とみなす明るさの差（256階調）。
 ENDPOINT_FRAMES = 3
 ENDPOINT_LEVELS = 4
@@ -215,10 +222,26 @@ ENDPOINT_LEVELS = 4
 
 @dataclass(frozen=True)
 class Sheets:
-    """シートに使った各コマの秒数と、前後の差分の指標。"""
+    """シートに使った各コマの秒数と、前後の差分の指標、保存したシートのファイル名（時刻順）。"""
 
     timestamps: list[float]
     endpoint_change: float | None
+    images: tuple[str, ...] = ()
+    differences: tuple[str, ...] = ()
+
+
+def _page_path(destination: Path, page: int) -> Path:
+    """page 枚目（1から）のシートの保存先。1枚目は destination のまま。"""
+    if page == 1:
+        return destination
+    return destination.with_name(f"{destination.stem}-{page}{destination.suffix}")
+
+
+def _pages(count: int, per_sheet: int) -> list[slice]:
+    """count コマを、1枚 per_sheet コマまでのシートに均等に分ける。"""
+    pages = max(1, math.ceil(count / per_sheet))
+    size = math.ceil(count / pages)
+    return [slice(start, min(count, start + size)) for start in range(0, count, size)]
 
 
 class TrayNotVisibleError(ValueError):
@@ -264,20 +287,18 @@ def _deltas(
     return deltas, interior
 
 
-def save_difference_sheet(
-    destination: Path, tiles: Sequence[Frame], timestamps: Sequence[float], mask: Mask
-) -> None:
-    """最初の3コマの中央値との差を強調した比較画像を保存する。"""
+def difference_tiles(tiles: Sequence[Frame], mask: Mask) -> list[Frame] | None:
+    """最初の3コマの中央値との差を強調したコマ。比べられる範囲がなければ None。"""
     measured = _deltas(tiles, mask)
     if measured is None:
-        return
+        return None
     deltas, interior = measured
     differences: list[Frame] = []
     for delta in deltas:
         tile = np.clip(128 + 8 * delta, 0, 255).astype(np.uint8)
         tile[~interior] = 0
         differences.append(cv2.cvtColor(tile, cv2.COLOR_GRAY2BGR))
-    save_sheet(destination, differences, timestamps)
+    return differences
 
 
 def endpoint_change(tiles: Sequence[Frame], mask: Mask) -> float | None:
@@ -383,7 +404,12 @@ def write_sheets(
         frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
         if not math.isfinite(fps) or fps <= 0 or frame_count < 2:
             raise ValueError("動画からフレームを取得できません")
-        count = min(frame_count, sheet.max_frames, max(2, math.ceil(duration / 2.5) + 1))
+        pages = min(MAX_SHEETS, max(1, math.ceil(duration / SHEET_SECONDS)))
+        count = min(
+            frame_count,
+            sheet.max_frames * pages,
+            max(2, math.ceil(duration / FRAME_INTERVAL) + 1),
+        )
         for index in np.linspace(0, frame_count - 1, count, dtype=int):
             capture.set(cv2.CAP_PROP_POS_FRAMES, int(index))
             ok, frame = capture.read()
@@ -401,10 +427,28 @@ def write_sheets(
         capture.release()
     if tray_tracker is not None and len(tiles) < max(2, math.ceil(count * 2 / 3)):
         raise TrayNotVisibleError("位置を確認できるフレームが不足しています")
-    save_sheet(destination, tiles, timestamps)
+    layout = _pages(len(tiles), sheet.max_frames)
+    images = []
+    for number, page in enumerate(layout, start=1):
+        target = _page_path(destination, number)
+        save_sheet(target, tiles[page], timestamps[page])
+        images.append(target.name)
+    differences = []
     if compare and len(tiles) >= 4 and difference_path is not None and mask is not None:
-        save_difference_sheet(difference_path, tiles, timestamps, mask)
-    return Sheets(timestamps, None if mask is None else endpoint_change(tiles, mask))
+        # 比較の基準（最初の3コマ）は、シートを分けても動画の最初にそろえる。
+        compared = difference_tiles(tiles, mask)
+        for number, page in enumerate(layout, start=1):
+            if compared is None:
+                break
+            target = _page_path(difference_path, number)
+            save_sheet(target, compared[page], timestamps[page])
+            differences.append(target.name)
+    return Sheets(
+        timestamps,
+        None if mask is None else endpoint_change(tiles, mask),
+        tuple(images),
+        tuple(differences),
+    )
 
 
 @dataclass(frozen=True)
@@ -489,11 +533,18 @@ def prepare_clip(
         prompt = context + "\n" + EVIDENCE_PROMPT
         if outside_roi is None:
             prompt += "\n" + STOOL_PROMPT
-        images = ["frames.jpg"]
-        if difference_path.is_file():
-            images.append(difference_path.name)
+        images = list(sheets.images)
+        if len(images) > 1:
+            prompt += f"\n画像は{len(images)}枚に分かれ、1枚目から順に時刻が続きます。"
+        if sheets.differences:
+            images.extend(sheets.differences)
+            lead = (
+                "2枚目は同じ時刻・配置の比較画像です。"
+                if len(sheets.differences) == 1
+                else f"続く{len(sheets.differences)}枚は、元画像の各枚と同じ時刻・配置の比較画像です。"
+            )
             prompt += (
-                "\n2枚目は同じ時刻・配置の比較画像です。最初の3コマの中央値と比べ、"
+                "\n" + lead + "最初の3コマの中央値と比べ、"
                 "網目や画面全体の明るさの変化を抑えて、暗くなった箇所を強調しています。"
                 "犬が離れたあとも同じ位置に残る小さな暗い跡を探し、元画像の前後と照合してください。"
                 "比較画像だけで排尿とせず、犬の体、動く影、反射、位置ずれを除外してください。"

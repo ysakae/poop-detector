@@ -940,3 +940,64 @@ def test_sheet_tile_marks_tray_inside_outside_crop_without_mutating_frame():
     assert np.any(tile[:, :, 1])
     assert not np.any(tile[:, :, (0, 2)])
     assert not np.any(frame)
+
+
+def write_long_video(path, seconds, fps=2):
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (64, 48))
+    assert writer.isOpened()
+    for index in range(seconds * fps):
+        writer.write(np.full((48, 64, 3), 100 + index % 50, dtype=np.uint8))
+    writer.release()
+
+
+def test_long_clip_is_split_into_sheets_that_keep_the_frame_interval(tmp_path):
+    from poop_detector.video.review import MAX_SHEETS, write_sheets
+
+    path = tmp_path / "long.mp4"
+    write_long_video(path, 240)
+
+    sheets = write_sheets(path, tmp_path / "frames.jpg", ROI(0, 0, 1, 1), 240)
+
+    assert sheets.images == ("frames.jpg", "frames-2.jpg", "frames-3.jpg", "frames-4.jpg")
+    assert len(sheets.images) == MAX_SHEETS
+    for name in sheets.images:
+        assert (tmp_path / name).is_file()
+    # 長い動画でも、コマの間隔は1枚のときと同じくらい（2.5秒ほど）に保つ。
+    # 2fps の動画なので、コマの位置は0.5秒単位でずれる。
+    gaps = np.diff(sheets.timestamps)
+    assert len(sheets.timestamps) > 24
+    assert gaps.max() <= 2.5 + 0.5
+
+
+def test_one_minute_clip_keeps_a_single_sheet(tmp_path):
+    from poop_detector.video.review import write_sheets
+
+    path = tmp_path / "minute.mp4"
+    write_long_video(path, 64)
+
+    sheets = write_sheets(path, tmp_path / "frames.jpg", ROI(0, 0, 1, 1), 64)
+
+    assert sheets.images == ("frames.jpg",)
+    assert len(sheets.timestamps) == 24
+
+
+def test_prompt_explains_multiple_sheets_and_their_differences(tmp_path):
+    from poop_detector.video.review import prepare_clip
+
+    path = tmp_path / "long.mp4"
+    write_long_video(path, 150)
+
+    class Tracker:
+        def align(self, frame):
+            return frame
+
+    row = {"duration": 150, "source": "dog_visit"}
+    with prepare_clip(path, row, ROI(0, 0, 1, 1), tray_tracker=Tracker()) as prepared:
+        assert prepared.images == (
+            "frames.jpg",
+            "frames-2.jpg",
+            "differences.jpg",
+            "differences-2.jpg",
+        )
+        assert "2枚に分かれ" in prepared.prompt
+        assert "続く2枚" in prepared.prompt

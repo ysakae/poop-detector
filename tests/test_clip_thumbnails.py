@@ -10,7 +10,7 @@ from support import request, write_video
 from poop_detector.records.backup import ALLOWED, create_backup
 from poop_detector.video.clip_storage import cleanup_selected
 from poop_detector.video.clips import ClipStore
-from poop_detector.video.recording import ClipCollector
+from poop_detector.video.recording import MERGE_GRACE_SECONDS, ClipCollector
 from poop_detector.video.thumbnails import WIDTH, ensure_thumbnail, thumbnail_path
 
 
@@ -66,7 +66,8 @@ def test_recording_saves_a_thumbnail_with_the_video(tmp_path):
     with ClipCollector(tmp_path, before=1, after=1, fps=1, encoder=encode) as collector:
         collector.feed(frame, now=0)
         clip_id = collector.trigger(source="detected", now=0)
-        for sec in (1, 2):
+        # まとめられる動画は、録画の終わりから少し待って確定する。
+        for sec in range(1, 2 + MERGE_GRACE_SECONDS + 1):
             collector.feed(frame, now=sec)
             collector.poll(now=sec)
         collector.drain()

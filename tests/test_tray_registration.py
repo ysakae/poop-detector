@@ -4,7 +4,7 @@ import numpy as np
 
 from poop_detector.detection.roi import ROI
 from poop_detector.features.tray_registration import TrayRegistration
-from poop_detector.video.recording import ClipCollector
+from poop_detector.video.recording import MERGE_GRACE_SECONDS, ClipCollector
 
 
 def test_tray_registration_switches_only_after_a_new_frame_is_validated(tmp_path):
@@ -63,8 +63,10 @@ def test_recording_does_not_include_frames_from_tray_maintenance(tmp_path):
         collector.set_maintenance(False)
         collector.feed(frame, now=3)
         new = collector.trigger(now=3)
-        collector.feed(frame, now=4)
-        collector.poll(now=4, force=True)
+        # まとめられる動画は、録画の終わりから少し待って確定する。
+        for now in range(4, 4 + MERGE_GRACE_SECONDS + 1):
+            collector.feed(frame, now=now)
+            collector.poll(now=now, force=True)
         collector.drain()
         assert collector.store.get(old)["interrupted"]
         assert collector.store.get(new)["status"] == "ready"

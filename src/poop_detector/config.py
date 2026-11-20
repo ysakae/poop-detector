@@ -532,7 +532,7 @@ class Config:
     clip_after_seconds: float = 30
     clip_fps: float = 5
     clip_max_width: int = 1280
-    clip_memory_mb: float = 128
+    clip_memory_mb: float = 256
     clip_disk_mb: float = DEFAULT_DISK_MIB
     clip_auto_cleanup: bool = True
     reentry_enabled: bool = False
