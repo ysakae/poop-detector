@@ -579,6 +579,8 @@ class AssessmentNotifier(Protocol):
 
 # 動画のパスと行と判定器から判定を返す関数。inspect_clip に ROI などを束ねたもの。
 Inspector = Callable[[Path, ClipRow, VideoJudge], Assessment]
+# 判定の前に動画の指標を求めて記録する処理（experimental.screening.ClipScreener）。
+Screener = Callable[[Path, ClipRow], object]
 
 
 def _clip_timestamp(row: ClipRow, offset: float | None) -> str | None:
@@ -602,8 +604,11 @@ class Review:
         judges: JudgeSource | None = None,
         max_per_hour: int = 0,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        screen: Screener | None = None,
     ) -> None:
         self.store = store
+        # 判定の前のふるい分けの指標を記録する。判定を省くことには使わない。
+        self.screen = screen
         # 監視中に判定器を呼ぶ1時間あたりの上限（0 は上限なし）。now はテストで差し替える。
         self.max_per_hour, self.now = max_per_hour, now
         # 直前に判定してよかった優先度。変わったときだけログに残す。
@@ -648,6 +653,7 @@ class Review:
                 path = self.store.video_path(row)
                 if path is None:
                     raise OSError("動画ファイルがありません")
+                self._screen(path, row)
                 result = self.inspect(path, row, judge)
                 observed_at = _clip_timestamp(
                     row, result.end_seconds if result.label in EVIDENCE else None
@@ -686,6 +692,15 @@ class Review:
                     row, result, since, observed_at, stool_seen_at, stool_clear_at, new_stool
                 )
         return completed, failures
+
+    def _screen(self, path: Path, row: ClipRow) -> None:
+        """ふるい分けの指標を記録する。失敗しても判定は続ける。"""
+        if self.screen is None:
+            return
+        try:
+            self.screen(path, row)
+        except (ValueError, TypeError, OSError, cv2.error):
+            logger.warning("ふるい分けの指標を記録できませんでした（動画 %s）", row["id"])
 
     def _notify_assessment(
         self,

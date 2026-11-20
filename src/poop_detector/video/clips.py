@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .benchmark_candidates import BenchmarkCandidates
     from .clip_labels import ClipLabels
     from .clip_reviews import AssessmentStore, CirclingReviews
+    from .clip_screenings import ScreeningStore
     from .judge_runs import JudgeRunLog
     from .review_dismissals import ReviewDismissals
 
@@ -138,6 +139,13 @@ class ClipStore:
         from .clip_reviews import CirclingReviews
 
         return CirclingReviews(self.store.database)
+
+    @property
+    def screenings(self) -> "ScreeningStore":
+        """判定の前のふるい分けの指標（clip_screenings）。記録だけで、判定には使わない。"""
+        from .clip_screenings import ScreeningStore
+
+        return ScreeningStore(self.store.database)
 
     @property
     def labels(self) -> "ClipLabels":

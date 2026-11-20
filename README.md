@@ -56,6 +56,7 @@
 | 任意 | 睡眠の記録 | `sleep.enabled`、`--sleep` | 犬の検出が必要。実映像での精度は未検証 | [睡眠の記録](docs/dog.md#睡眠の記録) |
 | 実験的 | トレー外の排泄候補 | `features.detect_outside`、`--detect-outside` | 動画の自動判定と犬の検出が必要。精度は確かめていない | [犬の検出](docs/dog.md#トレー外の排泄候補を検知する) |
 | 実験的 | 保存動画の旋回候補の分析 | `circling-review`・`circling-compare` | 保存済みの動画の分析だけで、監視や通知にはつながっていない | [犬の検出](docs/dog.md#保存動画から旋回候補を確認する) |
+| 実験的 | 判定の前のふるい分けの指標 | 犬の検出と動画の自動判定を使う `run`、`video-screening` | 記録するだけで、判定を省いたり通知を変えたりはしない | [犬の検出](docs/dog.md#判定の前のふるい分けの指標を記録する) |
 
 普段使う機能は `config/config.yaml` の `features` に書いておけば、起動は `poop-detector run` だけで済みます（[初期設定](docs/setup.md#使う機能を設定ファイルで有効にする)）。
 

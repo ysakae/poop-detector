@@ -231,3 +231,24 @@ def test_run_can_enable_dog_detection_without_editing_config():
     from poop_detector.main import parser
 
     assert parser().parse_args(["run", "--dog"]).dog
+
+
+def test_scored_predictions_keep_the_confidence_of_each_box():
+    from poop_detector.features.dog import DogDetector
+
+    class Net:
+        def setInput(self, blob):
+            pass
+
+        def forward(self):
+            output = np.zeros((1, 8400, 85), dtype=np.float32)
+            output[0, 0, :4] = [24, 24, np.log(48), np.log(32)]
+            output[0, 0, 4] = 0.5
+            output[0, 0, 5 + 16] = 0.6
+            return output
+
+    detector = DogDetector(None, confidence=0.2, net=Net())
+    (scored,) = detector.predict_scored(np.zeros((100, 200, 3), np.uint8))
+    assert scored.box == (0, 20, 120, 99)
+    assert scored.score == pytest.approx(0.3)
+    assert detector.predict(np.zeros((100, 200, 3), np.uint8)) == [scored.box]

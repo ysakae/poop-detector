@@ -19,6 +19,9 @@ from .context import (
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from ..detection.roi import AnyROI
+    from ..features.tray_tracking import TrayTracker
+    from ..video.clips import ClipRow
     from ..video.review import VideoJudge
 
 
@@ -104,4 +107,56 @@ def circling_review(args: argparse.Namespace, context: CommandContext) -> int:
             f"{clip_id} 旋回候補 {offsets or 'なし'}（位置取得 {located}/{sampled}コマ）",
             flush=True,
         )
+    return 2 if failed else 0
+
+
+def video_screening(args: argparse.Namespace, context: CommandContext) -> int:
+    """保存済みの動画に犬検出をかけ、判定の前のふるい分けの指標を記録する（判定はしない）。
+
+    画角はデータの保存先と tray-scenes/ の下の過去の登録から、動画の署名で選ぶ。
+    """
+    from ..experimental.screening import ClipScreener
+    from ..video.clips import ClipStore
+    from .datasets import load_scene, scene_folders
+
+    check_limit(args.limit)
+    folders = scene_folders(context.root, [])
+    store = ClipStore(context.root)
+    rows = store.screenings.targets(folders, args.limit, args.clip)
+    if not rows:
+        print("登録済みの画角で指標を求められる保存済み動画がありません")
+        return 2 if args.clip else 0
+    track_tray = args.track_tray or context.config.track_tray_enabled
+    scenes: dict[str, tuple[AnyROI, TrayTracker | None]] = {}
+
+    def scene_of(row: "ClipRow") -> tuple["AnyROI", "TrayTracker | None"]:
+        signature = str(row["scene_signature"])
+        if signature not in scenes:
+            folder = context.root / folders[signature]
+            scene = load_scene(folder, context.root, track_tray=track_tray, detect_outside=False)
+            scenes[signature] = (scene.roi, scene.tray_tracker)
+        return scenes[signature]
+
+    screener = ClipScreener(
+        store.screenings, scene_of, context.dog_model_dir, context.config.dog_confidence
+    )
+    failed = 0
+    for row in rows:
+        clip_id = row["id"]
+        try:
+            path = store.video_path(row)
+            if path is None:
+                raise OSError("動画がありません")
+            result = screener(path, row, again=True)
+        except (OSError, ValueError, cv2.error):
+            failed += 1
+            logger.warning("%s ふるい分けの指標を求められませんでした", clip_id)
+            continue
+        if result is not None:
+            print(
+                f"{clip_id} トレー上 {result.tray_frames}コマ・確信度の低いコマ "
+                f"{result.weak_tray_frames}／滞在 {result.tray_seconds:.1f}秒"
+                f"（低い確信度を含めて {result.weak_tray_seconds:.1f}秒）",
+                flush=True,
+            )
     return 2 if failed else 0

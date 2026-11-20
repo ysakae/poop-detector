@@ -108,13 +108,21 @@ def review_watcher(
     notifier: "ToiletNotifier",
     judges: "JudgeSource",
     max_per_hour: int = 0,
+    screening: tuple[Path, float] | None = None,
 ) -> "Review":
-    """録画時の基準で動画を自動判定する。判定器は動画ごとに judges から受け取る。"""
+    """録画時の基準で動画を自動判定する。判定器は動画ごとに judges から受け取る。
+
+    screening は（犬検出モデルの場所, 検出のしきい値）。あれば、判定の前にふるい分けの
+    指標を記録する（判定は省かない）。
+    """
     from ..video.review import Review, inspect_clip
 
-    def inspect(path: Path, row: "ClipRow", judge: "VideoJudge") -> "Assessment":
+    def scene_of(row: "ClipRow") -> TrayScene:
         signature = row["scene_signature"]
-        scene = scenes.get(signature, initial) if signature is not None else initial
+        return scenes.get(signature, initial) if signature is not None else initial
+
+    def inspect(path: Path, row: "ClipRow", judge: "VideoJudge") -> "Assessment":
+        scene = scene_of(row)
         return inspect_clip(
             path,
             row,
@@ -125,12 +133,22 @@ def review_watcher(
             outside_roi=outside_roi if row["source"] in ("outside_stay", "manual") else None,
         )
 
+    screen = None
+    if screening is not None:
+        from ..experimental.screening import ClipScreener
+
+        screen = ClipScreener(
+            collector.store.screenings,
+            lambda row: (scene_of(row).roi, scene_of(row).tracker),
+            *screening,
+        )
     return Review(
         collector.store,
         inspect,
         notifier.send_assessment if notifier.enabled else None,
         judges=judges,
         max_per_hour=max_per_hour,
+        screen=screen,
     )
 
 
@@ -232,6 +250,8 @@ def watch(
                 notifier,
                 judge_source(args.config, config, judge),
                 config.review_max_per_hour,
+                # 犬検出を使うときだけ、判定の前にふるい分けの指標を記録する。
+                (context.dog_model_dir, config.dog_confidence) if config.dog_enabled else None,
             )
             stack.enter_context(review.watch(judge_watchdog(context, notifier)))
         if args.gui:
