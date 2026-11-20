@@ -527,6 +527,12 @@ def migrate_to_v28(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v29(db: sqlite3.Connection) -> None:
+    """判定器の呼び出しに失敗した種類と、番号などの短い詳細（成功とこれまでの失敗は NULL）。"""
+    for column in ("failure", "failure_detail"):
+        db.execute(f"ALTER TABLE judge_runs ADD COLUMN {column} TEXT")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -557,6 +563,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v26,
     migrate_to_v27,
     migrate_to_v28,
+    migrate_to_v29,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

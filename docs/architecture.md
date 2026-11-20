@@ -27,7 +27,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `features.sleep_store.SleepStore`：睡眠の記録（`sleep_minutes`・`sleep_detection_hours`）
   - `video.clips.ClipStore`：動画の保存要求と状態
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
-  - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否だけ）
+  - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否と失敗の種類だけ）
   - `video.clip_reviews.CirclingReviews`：旋回候補
   - `video.clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
   - `video.review_dismissals.ReviewDismissals`：確認待ちから外した動画（`review_dismissals`）
@@ -135,7 +135,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 ### 判定器が止まったとき
 
-判定器の呼び出しに失敗したかどうかは `RecordingJudge.failed` で分かります。`Review` は続けて失敗した回数（`judge_failures`）を数え、`ReviewWorker.next_wait` が `retry_delay` で次の判定までの間隔を20秒から最長30分まで倍に伸ばします。呼び出しに失敗した動画は `Review.retries` に覚えておき、監視中に `MAX_RETRIES` 回まで試し直します（メモリー上だけで、監視を起動し直すと引き継ぎません）。動画を読めない、判定の形式が合わないなど、呼び出し以外の失敗は試し直しません。監視中に判定する順番は `clip_reviews.PRIORITY_ORDER` で、検知と滞在の通知が先、トレー外の滞在が最後です。失敗が続いたときの通知は、下の「監視の停止とカメラの不調の見張り」にあります。
+判定器の呼び出しに失敗したかどうかは `RecordingJudge.failed` で分かります。失敗の種類（タイムアウト・利用制限や混雑・異常終了・判定の形式の誤りなど）は `video/judge_failures.py` が決め、`judge_runs` の `failure` と `failure_detail`（終了コード・エラーの番号・停止の理由だけ。版29で追加）に残します。判定器は種類を付けた `JudgeCallError` を送出し、付けていない例外は型から推し量ります。利用制限や混雑は CLI の応答・標準エラーの言い回しで見分けますが、CLI の文言そのものは台帳にもログにも残しません。管理 › 判定器とモデルに、直近24時間の失敗の内訳を出します。`Review` は続けて失敗した回数（`judge_failures`）を数え、`ReviewWorker.next_wait` が `retry_delay` で次の判定までの間隔を20秒から最長30分まで倍に伸ばします。呼び出しに失敗した動画は `Review.retries` に覚えておき、監視中に `MAX_RETRIES` 回まで試し直します（メモリー上だけで、監視を起動し直すと引き継ぎません）。動画を読めない、判定の形式が合わないなど、呼び出し以外の失敗は試し直しません。監視中に判定する順番は `clip_reviews.PRIORITY_ORDER` で、検知と滞在の通知が先、トレー外の滞在が最後です。失敗が続いたときの通知は、下の「監視の停止とカメラの不調の見張り」にあります。
 
 `review.fallback` に予備の判定器があるときは、`judge_source.FallbackJudges` が主の判定器の出どころを包みます。`Review` が続けて失敗した回数を `JudgeSource.note` で伝え、`SWITCH_AFTER` 回に達すると、使える状態の次の判定器に切り替えます。続けて失敗した回数は切り替えても 0 に戻さないので、切り替えた先も失敗すればすぐ次へ進み、待ち時間も伸び続けます。`RETURN_SECONDS` が過ぎたら主の判定器に戻して試します。
 

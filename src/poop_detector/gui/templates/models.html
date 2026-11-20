@@ -21,9 +21,11 @@
 <tr><th scope="row">判定を待つ動画（24時間以内）</th><td>{{ review_status.waiting }}</td></tr>
 <tr><th scope="row">判定に失敗したままの動画（24時間以内）</th><td>{{ review_status.failed }}</td></tr>
 <tr><th scope="row">判定器の呼び出し</th><td><span class="state state-{{ review_status.judge_state }}">{{ review_status.judge }}</span></td></tr>
+<tr><th scope="row">失敗の内訳（24時間以内）</th><td>{{ failure_breakdown }}</td></tr>
 <tr><th scope="row">予備の判定器</th><td>{{ review_status.fallback }}</td></tr>
 </tbody></table>
 <p class="note">判定器を呼ぶ回数は、1時間あたりの上限（<code>review.max_per_hour</code>）で抑えています。上限の半分を超えるとトレー外の滞在、4分の3を超えると犬の出入りの動画を後回しにし、余裕が戻ってから判定します。監視を起動し直す前の動画は、<code>video-review</code> で判定してください。</p>
+<p class="note">失敗の内訳は、失敗した呼び出しを種類ごとに数えます。「利用制限・混雑」は CLI の応答や標準エラーの言い回しから判断します。CLI の出力そのものは残しません。「不明」は種類を記録する前の失敗です。</p>
 </section>
 <section class="settings-section" aria-labelledby="tray-stay-title"><h3 id="tray-stay-title">犬の出入りとトレー滞在時間（直近7日間）</h3>
 <div class="table-scroll"><table><thead><tr><th scope="col">滞在時間</th><th scope="col">動画</th><th scope="col">判定完了</th><th scope="col">排泄候補</th></tr></thead><tbody>

@@ -9,6 +9,7 @@ import pytest
 from poop_detector.commands.context import CommandError
 from poop_detector.commands.review import ready_judge
 from poop_detector.config import Config
+from poop_detector.video.judge_failures import JudgeCallError, failure_cause
 from poop_detector.video.providers import build_judge
 from poop_detector.video.token_usage import TokenUsage
 
@@ -90,16 +91,23 @@ def test_claude_rejects_invalid_results_without_exposing_cli_output(tmp_path, mo
 
 
 @pytest.mark.parametrize(
-    ("scenario", "expected_error"),
+    ("scenario", "expected_error", "cause"),
     [
-        ("ok", None),
-        ("auth", "agy acp --login"),
-        ("model", "モデル"),
-        ("tool", "ツール"),
-        ("invalid", "有効な判定"),
+        ("ok", None, None),
+        ("auth", "agy acp --login", None),
+        ("model", "モデル", None),
+        ("tool", "ツール", ("tool_request", None)),
+        ("invalid", "有効な判定", ("invalid_output", None)),
+        ("refusal", "有効な判定", ("rejected", "stop:refusal")),
+        ("quota", "有効な判定", ("rate_limited", "code:-32603")),
+        ("error", "有効な判定", ("rejected", "code:-32603")),
+        ("quota_text", "有効な判定", ("rate_limited", "invalid_output")),
+        ("stderr_quota", "有効な判定", ("rate_limited", "invalid_output")),
     ],
 )
-def test_antigravity_cli_exchanges_acp_messages(tmp_path, monkeypatch, scenario, expected_error):
+def test_antigravity_cli_exchanges_acp_messages(
+    tmp_path, monkeypatch, scenario, expected_error, cause
+):
     executable = tmp_path / "agy"
     executable.write_text(
         f"#!{sys.executable}\n"
@@ -138,14 +146,23 @@ def test_antigravity_cli_exchanges_acp_messages(tmp_path, monkeypatch, scenario,
         "        prompt, image = params['prompt']\n"
         "        assert prompt['type'] == 'text' and '指示' in prompt['text']\n"
         "        assert image == {'type': 'image', 'mimeType': 'image/jpeg', 'data': 'ZnJhbWVz'}\n"
+        "        if scenario in ('quota', 'error'):\n"
+        "            message = 'Resource exhausted: check quota private-key' "
+        "if scenario == 'quota' else 'internal private-key'\n"
+        "            send(id=request['id'], error={'code': -32603, 'message': message})\n"
+        "            continue\n"
+        "        if scenario == 'stderr_quota':\n"
+        "            print('429 RESOURCE_EXHAUSTED private-key', file=sys.stderr, flush=True)\n"
         "        if scenario == 'tool':\n"
         "            send(method='session/update', params={'sessionId': 'test', "
         "'update': {'sessionUpdate': 'tool_call'}})\n"
         "        else:\n"
-        "            for chunk in ('{\"label\":', '\"none\"}') if scenario == 'ok' else ('invalid',):\n"
+        "            chunks = {'ok': ('{\"label\":', '\"none\"}'), "
+        "'quota_text': ('You have exhausted your quota. private-key',)}\n"
+        "            for chunk in chunks.get(scenario, ('invalid',)):\n"
         "                send(method='session/update', params={'sessionId': 'test', 'update': {"
         "'sessionUpdate': 'agent_message_chunk', 'content': {'type': 'text', 'text': chunk}}})\n"
-        "        result = {'stopReason': 'end_turn'}\n"
+        "        result = {'stopReason': 'refusal' if scenario == 'refusal' else 'end_turn'}\n"
         "    elif method == 'session/close':\n"
         "        result = {}\n"
         "    else:\n"
@@ -165,8 +182,11 @@ def test_antigravity_cli_exchanges_acp_messages(tmp_path, monkeypatch, scenario,
     judge = ready_judge(Config(review_provider="gemini", review_model="gemini-test"))
     assert judge.name == "Antigravity CLI"
     if expected_error:
-        with pytest.raises(ValueError, match=expected_error):
+        with pytest.raises(ValueError, match=expected_error) as error:
             judge.judge(tmp_path, "指示", ["frames.jpg"], SCHEMA)
+        found = failure_cause(error.value)
+        assert (found.kind, found.detail) == cause
+        assert "private-key" not in str(error.value)
     else:
         assert judge.judge(tmp_path, "指示", ["frames.jpg"], SCHEMA) == RESULT
 
@@ -184,3 +204,50 @@ def test_cli_environment_keeps_the_login_name_for_the_keychain(monkeypatch):
     # 監視の接続情報と API キーは渡さない。
     assert "POOP_RTSP_URL" not in environment
     assert "ANTHROPIC_API_KEY" not in environment
+
+
+@pytest.mark.parametrize(
+    ("outcome", "cause"),
+    [
+        (subprocess.TimeoutExpired(["claude"], 120), ("timeout", None)),
+        (OSError("起動できない"), ("launch", None)),
+        (subprocess.CompletedProcess([], 2, b""), ("exit", "exit:2")),
+        (subprocess.CompletedProcess([], 0, b"non-json private-key"), ("invalid_output", None)),
+        (
+            subprocess.CompletedProcess(
+                [],
+                0,
+                b'{"type":"result","subtype":"success","is_error":true,'
+                b'"result":"Claude AI usage limit reached private-key"}',
+            ),
+            ("rate_limited", "rejected"),
+        ),
+        (
+            subprocess.CompletedProcess(
+                [], 0, b'{"type":"result","subtype":"error_max_turns","result":"private-key"}'
+            ),
+            ("rejected", None),
+        ),
+    ],
+)
+def test_claude_failures_keep_their_kind(tmp_path, monkeypatch, outcome, cause):
+    monkeypatch.setattr("shutil.which", lambda _: "/bin/claude")
+
+    def run(args, **kwargs):
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr("subprocess.run", run)
+    with pytest.raises(JudgeCallError) as error:
+        build_judge("claude").judge(tmp_path, "指示", [], SCHEMA)
+    found = failure_cause(error.value)
+    assert (found.kind, found.detail) == cause
+    assert "private-key" not in str(error.value)
+
+
+def test_missing_cli_is_a_launch_failure(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    with pytest.raises(JudgeCallError) as error:
+        build_judge("gemini").judge(None, "指示", [], SCHEMA)
+    assert failure_cause(error.value).kind == "launch"

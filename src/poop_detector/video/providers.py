@@ -13,12 +13,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .codex_cli import CodexCliJudge
+from .judge_failures import JudgeCallError, mentions_rate_limit, rate_limited
 from .token_usage import TokenUsage, parse_claude
 
 if TYPE_CHECKING:
     from .review import VideoJudge
 
 RESPONSE_LIMIT = 1024 * 1024
+# 失敗の種類を決めるために読む、CLI の標準エラーの末尾の大きさ。中身は残さない。
+STDERR_TAIL = 16 * 1024
+STDERR_DRAIN_SECONDS = 2
+# ACP の停止の理由（stopReason）のうち、記録の詳細に入れてよいもの。
+STOP_REASONS = ("max_tokens", "max_turn_requests", "refusal", "cancelled")
 CHECK_TIMEOUT = 15
 JUDGE_TIMEOUT = 120
 CLAUDE_LOGIN = "claude auth login で Claude Code CLI にログインしてください"
@@ -47,7 +53,9 @@ def _cli_environment() -> dict[str, str]:
 def _executable(command: str, name: str) -> str:
     executable = shutil.which(command)
     if executable is None:
-        raise ValueError(f"{name} をインストールし、{command} を PATH に追加してください")
+        raise JudgeCallError(
+            f"{name} をインストールし、{command} を PATH に追加してください", "launch"
+        )
     return str(Path(executable).resolve())
 
 
@@ -57,8 +65,37 @@ def _encoded_image(folder: Path, image: str) -> str:
 
 def _result(output: object, schema: dict[str, Any], name: str) -> object:
     if not isinstance(output, dict) or output.keys() != set(schema["required"]):
-        raise ValueError(f"{name} から有効な判定を取得できません")
+        raise JudgeCallError(f"{name} から有効な判定を取得できません", "invalid_output")
     return output
+
+
+def _rpc_failure(name: str, message: dict[str, Any]) -> JudgeCallError:
+    """ACP の要求が成果を返さなかったときの失敗。エラーの番号と停止の理由だけを詳細に残す。"""
+    text = f"{name} から有効な判定を取得できません"
+    error = message.get("error")
+    if isinstance(error, dict):
+        code = error.get("code")
+        detail = f"code:{code}" if isinstance(code, int) and not isinstance(code, bool) else None
+        kind = "rate_limited" if mentions_rate_limit(error) else "rejected"
+        return JudgeCallError(text, kind, detail)
+    reason = message.get("result", {}).get("stopReason")
+    return JudgeCallError(text, "rejected", f"stop:{reason}" if reason in STOP_REASONS else None)
+
+
+async def _collected(task: "asyncio.Task[bytes]") -> bytes:
+    """読み終えた標準エラー。CLI の子プロセスが開いたままでも、少し待って諦める。"""
+    try:
+        return await asyncio.wait_for(task, STDERR_DRAIN_SECONDS)
+    except TimeoutError:
+        return b""
+
+
+async def _tail(stream: asyncio.StreamReader | None) -> bytes:
+    """標準エラーを読み切り、末尾だけを返す（読まないとパイプが詰まって CLI が止まる）。"""
+    kept = b""
+    while stream is not None and (chunk := await stream.read(4096)):
+        kept = (kept + chunk)[-STDERR_TAIL:]
+    return kept
 
 
 class ClaudeCodeJudge:
@@ -148,23 +185,31 @@ class ClaudeCodeJudge:
                 timeout=JUDGE_TIMEOUT,
             )
         except subprocess.TimeoutExpired:
-            raise ValueError(f"{self.name} の判定がタイムアウトしました") from None
+            raise JudgeCallError(f"{self.name} の判定がタイムアウトしました", "timeout") from None
         except OSError:
-            raise ValueError(f"{self.name} を起動できません") from None
+            raise JudgeCallError(f"{self.name} を起動できません", "launch") from None
+        invalid = f"{self.name} から有効な判定を取得できません"
+        if process.returncode:
+            raise JudgeCallError(invalid, "exit", f"exit:{int(process.returncode)}")
         try:
-            if process.returncode or len(process.stdout) > RESPONSE_LIMIT:
+            if len(process.stdout) > RESPONSE_LIMIT:
                 raise ValueError
             response = json.loads(process.stdout.rstrip().rsplit(b"\n", 1)[-1])
             self.last_usage = parse_claude(response.get("usage"))
-            if (
+            failed = (
                 response["type"] != "result"
                 or response["subtype"] != "success"
                 or response.get("is_error")
-            ):
-                raise ValueError
+            )
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise JudgeCallError(invalid, "invalid_output") from None
+        if failed:
+            # 利用枠の超過は、結果の本文（result）の言い回しでしか分からない。
+            raise rate_limited(JudgeCallError(invalid, "rejected"), response.get("result"))
+        try:
             return _result(response["structured_output"], schema, self.name)
-        except (KeyError, TypeError, ValueError):
-            raise ValueError(f"{self.name} から有効な判定を取得できません") from None
+        except KeyError:
+            raise JudgeCallError(invalid, "invalid_output") from None
 
 
 class _AntigravitySession:
@@ -184,25 +229,29 @@ class _AntigravitySession:
         while line := await self.reader.readline():
             message: object = json.loads(line)
             if not isinstance(message, dict):
-                raise ValueError("Antigravity CLI の応答形式が不正です")
+                raise JudgeCallError("Antigravity CLI の応答形式が不正です", "connection")
             if message.get("method") == "session/update":
                 self._update(message["params"]["update"])
             elif "method" in message and "id" in message:
                 # クライアント側でファイル操作、端末の起動、権限の承認を行わない。
-                raise ValueError("Antigravity CLI が判定中にツールの使用を要求しました")
+                raise JudgeCallError(
+                    "Antigravity CLI が判定中にツールの使用を要求しました", "tool_request"
+                )
             elif message.get("id") == self.request_id:
                 return message
-        raise ValueError("Antigravity CLI から応答がありません")
+        raise JudgeCallError("Antigravity CLI から応答がありません", "connection", "eof")
 
     def _update(self, update: dict[str, Any]) -> None:
         event = update["sessionUpdate"]
         if event in ("tool_call", "tool_call_update"):
-            raise ValueError("Antigravity CLI が判定中にツールの使用を要求しました")
+            raise JudgeCallError(
+                "Antigravity CLI が判定中にツールの使用を要求しました", "tool_request"
+            )
         if event == "agent_message_chunk" and update["content"]["type"] == "text":
             text = update["content"]["text"]
             self.answer_size += len(text)
             if self.answer_size > RESPONSE_LIMIT:
-                raise ValueError("Antigravity CLI の判定結果が長すぎます")
+                raise JudgeCallError("Antigravity CLI の判定結果が長すぎます", "invalid_output")
             self.answer.append(text)
 
 
@@ -232,24 +281,29 @@ class AntigravityJudge:
                 for image in images
             ),
         ]
-        text = self._run(content, JUDGE_TIMEOUT).strip()
+        answer, stderr = self._run(content, JUDGE_TIMEOUT)
+        text = answer.strip()
         if text.startswith("```json\n") and text.endswith("\n```"):
             text = text.removeprefix("```json\n").removesuffix("\n```")
+        invalid = JudgeCallError(f"{self.name} から有効な判定を取得できません", "invalid_output")
         try:
-            return _result(json.loads(text), schema, self.name)
+            output = json.loads(text)
         except ValueError:
-            raise ValueError(f"{self.name} から有効な判定を取得できません") from None
+            # 利用枠の超過は、判定の代わりに本文で知らせることがある。
+            raise rate_limited(invalid, text, stderr) from None
+        return _result(output, schema, self.name)
 
-    def _run(self, content: list[dict[str, str]], timeout: int) -> str:
+    def _run(self, content: list[dict[str, str]], timeout: int) -> tuple[str, str]:
+        """判定の本文と、標準エラーの末尾（失敗の種類を見分けるためだけに使う）を返す。"""
         executable = _executable("agy", self.name)
         try:
             return asyncio.run(self._exchange(executable, content, timeout))
-        except TimeoutError:
-            raise ValueError(f"{self.name} の応答がタイムアウトしました") from None
         except (OSError, KeyError, TypeError, AttributeError, UnicodeError, json.JSONDecodeError):
-            raise ValueError(f"{self.name} と通信できません") from None
+            raise JudgeCallError(f"{self.name} と通信できません", "connection") from None
 
-    async def _exchange(self, executable: str, content: list[dict[str, str]], timeout: int) -> str:
+    async def _exchange(
+        self, executable: str, content: list[dict[str, str]], timeout: int
+    ) -> tuple[str, str]:
         # 空の作業ディレクトリを使い、判定対象は画像ブロックとしてのみ渡す。
         with tempfile.TemporaryDirectory(prefix="poop-agy-") as folder:
             cwd = str(Path(folder).resolve())
@@ -262,20 +316,31 @@ class AntigravityJudge:
                 env=_cli_environment(),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
                 limit=RESPONSE_LIMIT,
             )
+            diagnostics = asyncio.create_task(_tail(process.stderr))
+            failure: JudgeCallError | None = None
             try:
                 if process.stdin is None or process.stdout is None:
                     raise OSError
                 session = _AntigravitySession(process.stdin, process.stdout)
                 async with asyncio.timeout(timeout):
-                    return await self._judge_in_session(session, cwd, content)
+                    answer = await self._judge_in_session(session, cwd, content)
+            except TimeoutError:
+                failure = JudgeCallError(f"{self.name} の応答がタイムアウトしました", "timeout")
+            except JudgeCallError as error:
+                failure = error
             finally:
                 if process.returncode is None:
                     with suppress(ProcessLookupError):
                         process.kill()
                 await process.wait()
+                stderr = (await _collected(diagnostics)).decode("utf-8", "replace")
+            if failure is None:
+                return answer, stderr
+            # 標準エラーの言い回しで、利用枠の超過や混雑による失敗を見分ける。
+            raise rate_limited(failure, stderr)
 
     async def _judge_in_session(
         self, session: _AntigravitySession, cwd: str, content: list[dict[str, str]]
@@ -285,28 +350,31 @@ class AntigravityJudge:
         if initialized.get("result", {}).get("protocolVersion") != 1 or not capabilities.get(
             "promptCapabilities", {}
         ).get("image"):
-            raise ValueError("画像入力に対応する Antigravity CLI に更新してください")
+            raise JudgeCallError(
+                "画像入力に対応する Antigravity CLI に更新してください", "unsupported"
+            )
         opened = await session.request("session/new", cwd=cwd, mcpServers=[])
         if opened.get("error", {}).get("code") == -32000:
-            raise ValueError(AGY_LOGIN)
+            raise JudgeCallError(AGY_LOGIN, "login")
         if "result" not in opened:
-            raise ValueError("Antigravity CLI のセッションを開始できません")
+            raise JudgeCallError("Antigravity CLI のセッションを開始できません", "rejected")
         session_id = opened["result"]["sessionId"]
         mode = await session.request("session/set_mode", sessionId=session_id, modeId="plan")
         if "result" not in mode:
-            raise ValueError("Antigravity CLI をプランモードに切り替えられません")
+            raise JudgeCallError("Antigravity CLI をプランモードに切り替えられません", "rejected")
         if self.model:
             selected = await session.request(
                 "session/set_model", sessionId=session_id, modelId=self.model
             )
             if "result" not in selected:
-                raise ValueError(
-                    "Antigravity CLI のモデルを選べません。agy models を確認してください"
+                raise JudgeCallError(
+                    "Antigravity CLI のモデルを選べません。agy models を確認してください",
+                    "rejected",
                 )
         if content:
             result = await session.request("session/prompt", sessionId=session_id, prompt=content)
             if result.get("result", {}).get("stopReason") != "end_turn":
-                raise ValueError("Antigravity CLI から有効な判定を取得できません")
+                raise _rpc_failure(self.name, result)
         await session.request("session/close", sessionId=session_id)
         return "".join(session.answer)
 

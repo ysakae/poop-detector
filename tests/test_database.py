@@ -585,3 +585,20 @@ def test_sleep_migration_preserves_existing_clip(tmp_path):
             row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE name LIKE 'sleep_%'")
         }
     assert tables == {"sleep_minutes", "sleep_detection_hours"}
+
+
+def test_failure_kind_migration_keeps_old_judge_runs(tmp_path):
+    path = tmp_path / "failure-kind-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:28]:
+            migration(db)
+        db.execute("PRAGMA user_version = 28")
+        db.execute(
+            """INSERT INTO judge_runs (provider, purpose, ran_at, failed, input_tokens)
+            VALUES ('gemini', 'review', '2026-11-20T00:00:00+00:00', 1, 10)"""
+        )
+    with Database(path).connect() as db:
+        row = db.execute(
+            "SELECT provider, failed, input_tokens, failure, failure_detail FROM judge_runs"
+        ).fetchone()
+    assert tuple(row) == ("gemini", 1, 10, None, None)

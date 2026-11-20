@@ -2,7 +2,8 @@
 
 判定の台帳（video_assessments）は動画1本につき1行で、失敗した判定は再試行で上書きされる。
 使用量は CLI を呼んだ回数で数えたいので、呼ぶたびに1行を追記する別の表に分けている。
-記録するのは判定器・モデル・用途・時刻・成否だけで、CLI の応答や画像は入れない。
+記録するのは判定器・モデル・用途・時刻・成否と失敗の種類（judge_failures）だけで、
+CLI の応答や画像は入れない。
 """
 
 import logging
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..records.database import Database
+from .judge_failures import FailureCause, JudgeCallError, failure_cause
 from .token_usage import TokenUsage
 
 if TYPE_CHECKING:
@@ -74,14 +76,19 @@ class JudgeRunLog:
         failed: bool,
         at: datetime | None = None,
         usage: TokenUsage | None = None,
+        failure: str | None = None,
+        failure_detail: str | None = None,
     ) -> None:
         if purpose not in PURPOSES:
             raise ValueError(f"判定器の用途は {'、'.join(PURPOSES)} のいずれかです")
+        # 種類と詳細の形を確かめる（決まった種類と、番号などの短い語だけを残す）。
+        cause = JudgeCallError("", failure, failure_detail) if failure else None
         stamp = (at or datetime.now(UTC)).astimezone(UTC).isoformat()
         with self.connect() as db:
             db.execute(
                 "INSERT INTO judge_runs (provider, model, purpose, ran_at, failed,"
-                " input_tokens, cached_tokens, output_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " input_tokens, cached_tokens, output_tokens, failure, failure_detail)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     provider,
                     model,
@@ -91,8 +98,26 @@ class JudgeRunLog:
                     usage.input_tokens if usage else None,
                     usage.cached_tokens if usage else None,
                     usage.output_tokens if usage else None,
+                    cause.kind if cause else None,
+                    cause.detail if cause else None,
                 ),
             )
+
+    def failure_counts(
+        self, since: datetime, purpose: str = "review"
+    ) -> list[tuple[str | None, int]]:
+        """since 以降に purpose で失敗した呼び出しを、種類ごとに数える（多い順）。
+
+        種類を記録する前の失敗は、種類を None として数える。
+        """
+        with self.connect() as db:
+            rows = db.execute(
+                """SELECT failure, COUNT(*) AS n FROM judge_runs
+                WHERE failed = 1 AND purpose = ? AND julianday(ran_at) >= julianday(?)
+                GROUP BY failure ORDER BY n DESC, failure IS NULL, failure""",
+                (purpose, since.astimezone(UTC).isoformat()),
+            ).fetchall()
+        return [(row["failure"], int(row["n"])) for row in rows]
 
     def count_since(self, since: datetime) -> int:
         """since 以降に判定器を呼んだ回数（用途と成否を問わない）。"""
@@ -191,15 +216,23 @@ class RecordingJudge:
     ) -> object:
         try:
             output = self.inner.judge(folder, prompt, images, schema)
-        except BaseException:
+        except BaseException as error:
             self.failed = True
-            self._record(failed=True)
+            cause = failure_cause(error)
+            # 種類と詳細だけを出す。例外の文言には CLI の出力が入りうる。
+            logger.warning(
+                "判定器の呼び出しに失敗しました（%s: %s%s）",
+                self.provider,
+                cause.kind,
+                f" {cause.detail}" if cause.detail else "",
+            )
+            self._record(cause)
             raise
         self.failed = False
-        self._record(failed=False)
+        self._record(None)
         return output
 
-    def _record(self, *, failed: bool) -> None:
+    def _record(self, failure: FailureCause | None) -> None:
         # トークン数は、出せる判定器だけが last_usage に置く。
         usage = self.last_usage
         try:
@@ -207,8 +240,10 @@ class RecordingJudge:
                 self.provider,
                 self.model,
                 self.purpose,
-                failed=failed,
+                failed=failure is not None,
                 usage=usage,
+                failure=failure.kind if failure else None,
+                failure_detail=failure.detail if failure else None,
             )
         except sqlite3.Error:
             # 使用量の記録が書けなくても、判定そのものは続ける。

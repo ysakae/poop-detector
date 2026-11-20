@@ -105,3 +105,43 @@ def test_review_records_each_call_of_the_judge(tmp_path):
     (row,) = store.judge_runs.usage()
     assert (row.provider, row.model, row.purpose) == ("claude", "model-b", "review")
     assert (row.total, row.failures) == (2, 1)
+
+
+def test_recording_judge_keeps_only_the_kind_of_failure(tmp_path, caplog):
+    runs = ClipStore(tmp_path).judge_runs
+    judge = RecordingJudge(Judge(fail_on="失敗"), runs, "gemini", None, "review")
+
+    judge.judge(tmp_path, "成功", [], {})
+    with pytest.raises(TimeoutError):
+        judge.judge(tmp_path, "失敗", [], {})
+
+    with runs.connect() as db:
+        rows = db.execute("SELECT failed, failure, failure_detail FROM judge_runs ORDER BY id")
+        assert [tuple(row) for row in rows] == [(0, None, None), (1, "timeout", None)]
+    # ログには種類だけを出し、例外の文言は出さない。
+    assert "timeout" in caplog.text
+    assert "出力に含めない詳細" not in caplog.text
+
+
+def test_failures_are_counted_by_kind_since_a_time(tmp_path):
+    runs = ClipStore(tmp_path).judge_runs
+    runs.record("gemini", None, "review", failed=True, failure="timeout", at=at(2026, 11, 14, 9))
+    runs.record("gemini", None, "review", failed=True, failure="timeout", at=at(2026, 11, 14, 10))
+    runs.record(
+        "gemini", None, "review", failed=True, failure="rate_limited", at=at(2026, 11, 14, 11)
+    )
+    # 種類を記録する前の失敗は「不明」として数える。
+    runs.record("gemini", None, "review", failed=True, at=at(2026, 11, 14, 11, 30))
+    runs.record("gemini", None, "review", failed=False, at=at(2026, 11, 14, 11, 40))
+    runs.record("gemini", None, "review", failed=True, failure="timeout", at=at(2026, 11, 12))
+    runs.record("codex", None, "benchmark", failed=True, failure="exit", at=at(2026, 11, 14, 11))
+
+    counts = runs.failure_counts(at(2026, 11, 13), purpose="review")
+
+    assert counts == [("timeout", 2), ("rate_limited", 1), (None, 1)]
+
+
+def test_unknown_failure_kind_is_refused(tmp_path):
+    runs = ClipStore(tmp_path).judge_runs
+    with pytest.raises(ValueError, match="種類"):
+        runs.record("codex", None, "review", failed=True, failure="secret text")

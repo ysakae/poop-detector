@@ -22,6 +22,7 @@ from ..video import benchmark_sets
 from ..video.benchmark_results import BenchmarkResult, load_results
 from ..video.benchmark_sets import LABELS, SPLIT_NAMES
 from ..video.clips import CLIP_LABELS, ClipStore
+from ..video.judge_failures import FAILURE_NAMES
 from ..video.judge_models import UNAVAILABLE, list_models
 from ..video.judge_runs import JudgeRunUsage
 from ..video.plan_usage import PlanUsageBoard, QuotaWindow
@@ -86,6 +87,16 @@ def _review_status(status: ReviewStatus) -> dict[str, Any]:
         "judge_state": judge_state,
         "fallback": "、".join(status.fallback) or "なし（review.fallback）",
     }
+
+
+def _failure_breakdown(clips: ClipStore, now: datetime) -> str:
+    """直近24時間に監視と video-review で失敗した呼び出しの、種類ごとの回数。"""
+    counts = clips.judge_runs.failure_counts(now - timedelta(hours=24))
+    if not counts:
+        return "失敗はありません"
+    return "、".join(
+        f"{FAILURE_NAMES.get(kind, kind) if kind else '不明'} {count}回" for kind, count in counts
+    )
 
 
 def _tokens(usage: JudgeRunUsage) -> str:
@@ -317,6 +328,7 @@ def _render(
         custom_model=CUSTOM_MODEL,
         catalog=CATALOG,
         review_status=_review_status(review_status(app.clips, app.outages, current, now)),
+        failure_breakdown=_failure_breakdown(app.clips, now),
         tray_stay_counts=app.clips.assessments.tray_stay_counts(
             (now - timedelta(days=7)).isoformat()
         ),
