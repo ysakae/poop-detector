@@ -28,8 +28,13 @@ from .thumbnails import ensure_thumbnail
 logger = logging.getLogger(__name__)
 # 録画中に届いた別の保存要求は、新しい動画を作らずにその録画を延ばして1本にまとめる
 # （犬の入場・トレー外の滞在・見守り通知が数秒おきに重なり、同じ場面の動画が何本もできるため）。
-# 最初の要求からこの秒数を過ぎた要求はまとめず、動画1本の長さとメモリーの使用量を抑える。
-MAX_EXTENSION_SECONDS = 90
+# 最初の要求からこの秒数を過ぎた要求はまとめず、動画1本の長さとメモリーの使用量を抑える
+# （前後の秒数を足して最長4分ほど。判定のシートは長さに応じて枚数を増やす）。
+MAX_EXTENSION_SECONDS = 180
+# 録画の終わりからこの秒数は動画を確定させずに待ち、その間に届いた要求も同じ動画にまとめる。
+# 犬が出入りを繰り返すと、録画の終わった直後に次の要求が届き、同じ滞在が別の動画になるため。
+# 要求が来なければ、待っていた間のコマは捨てて元の終わりで確定する。
+MERGE_GRACE_SECONDS = 30
 # 動画をまとめたときに残すきっかけの優先度（小さいほど優先）。自動判定の順番
 # （clip_reviews.PRIORITY_ORDER）と同じで、トレーの中を見る判定をトレー外の判定より優先する。
 SOURCE_RANK: dict[str, int] = {
@@ -218,14 +223,22 @@ class ClipCollector:
             if (
                 job["status"] == "recording"
                 and not job.get("interrupted")
-                and job["trigger"] < now <= job["end"] + 1e-6
+                and job["trigger"] < now <= job["end"] + job.get("grace", 0) + 1e-6
             ):
                 job["samples"].append(sample)
 
     def _enforce_memory_limit(self) -> None:
-        """呼び出し側のロック内で、待機バッファ、録画中の順にメモリーを解放する。"""
+        """呼び出し側のロック内で、待機バッファ、まとめるために待っている録画、録画中の順に
+        メモリーを解放する。待っている録画は終わりまで録れているので、失敗にせず確定する。
+        """
         while self.buffer and self._bytes() > self.memory_limit:
             self.buffer.popleft()
+        for clip_id, job in list(self.jobs.items()):
+            if self._bytes() <= self.memory_limit:
+                break
+            samples = job["samples"]
+            if job["status"] == "recording" and samples and samples[-1][0] > job["end"]:
+                self._finish(clip_id)
         if self._bytes() > self.memory_limit:
             for clip_id in list(self.jobs):
                 if self.jobs[clip_id]["status"] == "recording":
@@ -263,6 +276,10 @@ class ClipCollector:
                 except ValueError:
                     logger.warning("動画保存の同時処理数を超えています")
                     return None
+                if event_id is None and clip_id in self.jobs:
+                    # 後の要求をまとめられる動画だけ、録画の終わりから少し待って確定する。
+                    # 検知と GUI からの保存はまとめないので、待たずに確定する。
+                    self.jobs[clip_id]["grace"] = MERGE_GRACE_SECONDS
             if tray_stay_seconds is not None and clip_id in self.jobs:
                 job = self.jobs[clip_id]
                 job["tray_stay_seconds"] = max(job.get("tray_stay_seconds", 0), tray_stay_seconds)
@@ -277,12 +294,25 @@ class ClipCollector:
                 job["status"] == "recording"
                 and not job.get("interrupted")
                 and 0 <= now - job["trigger"] <= MAX_EXTENSION_SECONDS
-                and now <= job["end"]
+                and now <= job["end"] + job.get("grace", 0)
+                and self._fits(job, now + self.after)
             ):
                 job["end"] = max(job["end"], now + self.after)
                 job["source"] = merged_source(job["source"], source)
                 return clip_id
         return None
+
+    def _fits(self, job: dict[str, Any], end: float) -> bool:
+        """録画の終わりを end まで延ばしても、メモリーの上限に収まる見込みか。
+
+        上限を超えると録画ごと失敗になるので、収まらなければ延ばさずに別の動画にする。
+        """
+        samples = job["samples"]
+        extra = end - job["end"]
+        if not samples or extra <= 0:
+            return True
+        per_frame = sum(len(sample[2]) for sample in samples) / len(samples)
+        return bool(self._bytes() + per_frame * self.fps * extra <= self.memory_limit)
 
     def poll(self, now: float | None = None, force: bool = False) -> None:
         """GUI からの保存要求を拾い、録画の終わった要求を変換に回す。"""
@@ -319,17 +349,23 @@ class ClipCollector:
                         clip_id, status="recording", scene_signature=self.scene_signature
                     )
             for clip_id, job in list(self.jobs.items()):
-                if job["status"] == "recording" and (job.get("interrupted") or now >= job["end"]):
+                if job["status"] == "recording" and (
+                    job.get("interrupted") or now >= job["end"] + job.get("grace", 0)
+                ):
                     self._finish(clip_id)
 
     def _finish(self, clip_id: str, interrupted: bool = False) -> None:
         job = self.jobs[clip_id]
-        samples = job["samples"]
+        # まとめるために待っていた間のコマは、録画の終わりまでで切る。
+        samples = [sample for sample in job["samples"] if sample[0] <= job["end"] + 1e-6]
+        job["samples"] = samples
         if not samples:
             self.store.update(clip_id, status="failed", error="保存するフレームがありません")
             del self.jobs[clip_id]
             return
-        job["interrupted"] = bool(job.get("interrupted") or interrupted)
+        # 終わりまで録れていれば、待っている間の途切れは中断として扱わない。
+        complete = samples[-1][0] >= job["end"] - 1 / self.fps
+        job["interrupted"] = bool(job.get("interrupted") or interrupted) and not complete
         gaps = any(b[0] - a[0] > max(1, 3 / self.fps) for a, b in itertools.pairwise(samples))
         try:
             self.store.update(

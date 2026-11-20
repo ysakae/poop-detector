@@ -11,7 +11,7 @@ from poop_detector.video.clip_labels import ClipLabel
 from poop_detector.video.clip_reviews import Assessment
 from poop_detector.video.clip_storage import MIB, cleanup_selected, free_space
 from poop_detector.video.clips import ClipStore
-from poop_detector.video.recording import MAX_EXTENSION_SECONDS, ClipCollector
+from poop_detector.video.recording import MAX_EXTENSION_SECONDS, MERGE_GRACE_SECONDS, ClipCollector
 
 FRAME = np.zeros((40, 40, 3), np.uint8)
 
@@ -32,7 +32,7 @@ def test_short_visit_keeps_prebuffer_and_records_after_exit(tmp_path):
         for sec in (3, 4, 5):
             collector.feed(frame, now=sec)
         assert collector.trigger(source="dog_exit", now=5, tray_stay_seconds=2) == entry
-        for sec in (6, 7, 8, 9):
+        for sec in range(6, 9 + MERGE_GRACE_SECONDS + 1):
             collector.feed(frame, now=sec)
             collector.poll(now=sec)
         collector.drain()
@@ -55,9 +55,9 @@ def test_dog_exit_clip_keeps_longest_measured_stay(tmp_path):
         clip_id = collector.trigger(source="dog_exit", now=0, tray_stay_seconds=15)
         collector.feed(FRAME, now=1)
         assert collector.trigger(source="dog_exit", now=1, tray_stay_seconds=0) == clip_id
-        for sec in range(2, 7):
+        for sec in range(2, 6 + MERGE_GRACE_SECONDS + 1):
             collector.feed(FRAME, now=sec)
-        collector.poll(now=6)
+        collector.poll(now=6 + MERGE_GRACE_SECONDS)
         collector.drain()
         assert collector.store.get(clip_id)["tray_stay_seconds"] == 15
 
@@ -87,7 +87,7 @@ def test_overlapping_requests_share_one_clip_with_the_most_urgent_source(tmp_pat
         assert collector.trigger(source="outside_stay", now=6) == outside
         assert collector.jobs[outside]["source"] == "early_alert"
         assert collector.jobs[outside]["end"] == 36
-        for sec in range(7, 40):
+        for sec in range(7, 40 + MERGE_GRACE_SECONDS):
             collector.feed(FRAME, now=sec)
             collector.poll(now=sec)
         collector.drain()
@@ -116,6 +116,74 @@ def test_merging_stops_after_the_extension_limit(tmp_path):
         later = MAX_EXTENSION_SECONDS + 10
         collector.feed(FRAME, now=later)
         assert collector.trigger(source="outside_stay", now=later) not in (None, first)
+
+
+def recorder(sample_times):
+    def encode(samples, path, fps):
+        sample_times.extend(s[0] for s in samples)
+        path.write_bytes(b"mp4")
+        return len(samples) / fps
+
+    return encode
+
+
+def run_until(collector, start, stop):
+    for sec in range(start, stop + 1):
+        collector.feed(FRAME, now=sec)
+        collector.poll(now=sec)
+
+
+def test_request_soon_after_the_recording_ends_extends_the_same_clip(tmp_path):
+    sample_times = []
+    with ClipCollector(tmp_path, before=2, after=4, fps=1, encoder=recorder(sample_times)) as c:
+        run_until(c, 0, 2)
+        first = c.trigger(source="dog_enter", now=2)
+        # 録画の終わり（6秒）を過ぎても、少しの間は確定させずに待つ。
+        run_until(c, 3, 20)
+        assert c.store.get(first)["status"] == "recording"
+        assert c.trigger(source="dog_exit", now=20) == first
+        assert c.jobs[first]["end"] == 24
+        run_until(c, 21, 24 + MERGE_GRACE_SECONDS)
+        c.drain()
+        (clip,) = c.store.list()
+        assert clip["source"] == "dog_visit"
+        assert not clip["interrupted"]
+        # 待っていた間のコマも途切れずに入る。
+        assert sample_times == list(range(25))
+
+
+def test_clip_is_trimmed_to_its_end_when_no_request_follows(tmp_path):
+    sample_times = []
+    with ClipCollector(tmp_path, before=2, after=4, fps=1, encoder=recorder(sample_times)) as c:
+        run_until(c, 0, 2)
+        clip_id = c.trigger(source="dog_enter", now=2)
+        run_until(c, 3, 6 + MERGE_GRACE_SECONDS)
+        c.drain()
+        clip = c.store.get(clip_id)
+        assert clip["status"] == "ready"
+        assert not clip["interrupted"]
+        assert sample_times == list(range(7))
+
+
+def test_request_after_the_wait_starts_a_new_clip(tmp_path):
+    with ClipCollector(tmp_path, after=4, fps=1, encoder=stub_encode) as c:
+        run_until(c, 0, 0)
+        first = c.trigger(source="dog_enter", now=0)
+        later = 4 + MERGE_GRACE_SECONDS + 1
+        run_until(c, 1, later)
+        assert c.trigger(source="dog_enter", now=later) not in (None, first)
+
+
+def test_camera_loss_while_waiting_keeps_the_finished_clip_whole(tmp_path):
+    with ClipCollector(tmp_path, before=2, after=4, fps=1, encoder=stub_encode) as c:
+        run_until(c, 0, 2)
+        clip_id = c.trigger(source="dog_enter", now=2)
+        run_until(c, 3, 10)
+        c.feed(None, now=11)
+        c.drain()
+        clip = c.store.get(clip_id)
+        assert clip["status"] == "ready"
+        assert not clip["interrupted"]
 
 
 def test_interrupted_recording_is_not_extended(tmp_path):
@@ -280,7 +348,8 @@ def encode_bytes(size):
 def record_one(collector, source="outside_stay", event_id=None):
     collector.feed(FRAME, now=0)
     clip_id = collector.trigger(event_id, source=source, now=0)
-    for sec in (1, 2):
+    # まとめられる動画は、録画の終わりから MERGE_GRACE_SECONDS 待って確定する。
+    for sec in range(1, 2 + MERGE_GRACE_SECONDS + 1):
         collector.feed(FRAME, now=sec)
         collector.poll(now=sec)
     collector.drain()
@@ -325,3 +394,26 @@ def test_reserve_near_the_limit_is_kept_for_detections(tmp_path):
         assert record_one(collector)["status"] == "failed"
     with ClipCollector(tmp_path, encoder=encode_bytes(30), **options) as collector:
         assert record_one(collector, source="detected", event_id="event-1")["status"] == "ready"
+
+
+def test_extension_stops_before_the_memory_limit_instead_of_failing(tmp_path):
+    from poop_detector.video.clip_storage import MIB as MEBIBYTE
+    from poop_detector.video.recording import encode_frame
+
+    size = len(encode_frame(FRAME, 1280))
+    # 前後の待ち時間を含めて、およそ60コマ分のメモリーしかない。
+    memory_mb = size * 60 / MEBIBYTE
+    with ClipCollector(
+        tmp_path, before=2, after=10, fps=1, memory_mb=memory_mb, encoder=stub_encode
+    ) as c:
+        run_until(c, 0, 2)
+        first = c.trigger(source="dog_enter", now=2)
+        run_until(c, 3, 10)
+        assert c.trigger(source="dog_exit", now=10) == first
+        run_until(c, 11, 40)
+        # 延ばすとメモリーの上限を超えるので、別の動画にする。
+        second = c.trigger(source="dog_enter", now=40)
+        assert second not in (None, first)
+        run_until(c, 41, 120)
+        c.drain()
+        assert c.store.get(first)["status"] == "ready"

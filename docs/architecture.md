@@ -118,7 +118,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 `ClipCollector` が JPEG 圧縮したフレームをメモリー上限付きで保持し、トリガー前後を切り出して作業スレッドで MP4 に変換します。クリップの `source`（`detected`、`manual`、`dog_enter`、`dog_exit`、`early_alert`、`outside_stay`）で後段の扱いが変わります。
 
-録画中に届いた保存要求は、`ClipCollector.trigger` が新しい行を作らずに録画を延ばしてまとめます（最初の要求から `MAX_EXTENSION_SECONDS` まで）。きっかけは `merged_source` が決め、入場と退場は `dog_visit`、ほかは `SOURCE_RANK` の優先度の高いほうを残します（`clip_reviews.PRIORITY_ORDER` と同じ順で、トレー外の滞在の動画をトレーの中の判定で見直せるようにする）。`event_id` を持つ要求（差分検知）は検知の時刻を基準にするので、まとめません。GUI からの保存要求（`poll` が拾う `queued` 行）もまとめません。
+録画中に届いた保存要求は、`ClipCollector.trigger` が新しい行を作らずに録画を延ばしてまとめます（最初の要求から `MAX_EXTENSION_SECONDS` まで）。まとめられる動画（`event_id` のない要求で作った動画）は、録画の終わりから `MERGE_GRACE_SECONDS` の間も確定させずにコマを集め、その間に届いた要求で延ばします。要求が来なければ `_finish` が元の終わりで切ります。延ばすとメモリーの上限を超える見込みのとき（`_fits`）は延ばさずに別の動画にし、メモリーが足りなくなったら待っている録画から確定します（`_enforce_memory_limit`）。長い動画のコンタクトシートは、`write_sheets` が `SHEET_SECONDS` ごとに1枚（最大 `MAX_SHEETS` 枚）に分け、コマの間隔（`FRAME_INTERVAL`）を保ちます。差分の比較画像も同じ区切りで分け、比較の基準は動画の最初の3コマにそろえます。きっかけは `merged_source` が決め、入場と退場は `dog_visit`、ほかは `SOURCE_RANK` の優先度の高いほうを残します（`clip_reviews.PRIORITY_ORDER` と同じ順で、トレー外の滞在の動画をトレーの中の判定で見直せるようにする）。`event_id` を持つ要求（差分検知）は検知の時刻を基準にするので、まとめません。GUI からの保存要求（`poll` が拾う `queued` 行）もまとめません。
 
 変換が終わると、操作・検知の位置の1コマを小さな JPEG にして、動画と同じ名前の `.jpg` で `clips/` に置きます（`video/thumbnails.py`）。動画の一覧は `/clip-thumbnail` で受け取り、まだない動画はそこで作ります。録画の整理（`clip_storage.remove_video`）は動画と一緒に消します。動画から作り直せるので、バックアップの `ALLOWED` には入れていません。
 
