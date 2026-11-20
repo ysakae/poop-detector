@@ -33,9 +33,10 @@ def audit_actions(server):
 
 def test_page_is_in_the_management_menu_and_admin_only(gui):
     server, _, _ = gui
-    html = page(server, login(server), "/manage")
-    assert f'href="{PAGE}"' in html
-    assert "書き出しとバックアップ" in html
+    # 管理の「設定とデータ」のまとまりに、設定と並べて置く。
+    html = page(server, login(server), "/manage/settings")
+    tabs = re.search(r'aria-label="管理の中の画面".*?</nav>', html, re.S)[0]
+    assert f'href="{PAGE}">書き出しとバックアップ' in tabs
     member = login(server, role="member")
     for path in (PAGE, f"{PAGE}/summary"):
         assert exchange(server, "GET", path, headers=member, auth=False)[0] == 403
