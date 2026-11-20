@@ -15,6 +15,7 @@ from support import exchange, login
 from poop_detector.capture.live_preview import LivePreview
 from poop_detector.detection.roi import ROI
 from poop_detector.features.activity_map import LAYOUT_FILE, ActivityLayout
+from poop_detector.gui.assets import asset_url
 
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 PAGE = "/manage/areas"
@@ -104,7 +105,7 @@ def test_areas_page_lists_what_can_be_registered(areas_gui):
     html = page(areas_gui.server, login(areas_gui.server))
     for text in ("監視範囲と基準画像", "トレー外の範囲", "サークルの床面"):
         assert text in html
-    assert 'src="/assets/areas.js"' in html
+    assert f'src="{asset_url("areas.js")}"' in html
     assert "未登録" in html
     sub = re.search(r'aria-label="管理のメニュー".*?</nav>', html, re.S)[0]
     assert re.search(r'href="/manage/areas" aria-current="page">範囲の登録', sub)

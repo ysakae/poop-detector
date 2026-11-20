@@ -24,6 +24,7 @@ from ..video.thumbnails import ensure_thumbnail
 from .access import expired_cookie, session_ids
 from .accounts import ROLES, Role
 from .activity_page import render_activity
+from .assets import IMAGE_CACHE, serve_asset
 from .auth_api import safe_next
 from .clip_pages import (
     capacity_status,
@@ -414,7 +415,11 @@ def logout(handler: "Handler", _form: Form) -> None:
     handler.respond(
         200,
         page,
-        headers={"Set-Cookie": expired_cookie(secure=secure, name=handler.app.cookie_name)},
+        headers={
+            "Set-Cookie": expired_cookie(secure=secure, name=handler.app.cookie_name),
+            # 預けたスクリプトや画像も、ログアウトした端末から消してもらう。
+            "Clear-Site-Data": '"cache"',
+        },
     )
 
 
@@ -436,19 +441,25 @@ def logout(handler: "Handler", _form: Form) -> None:
     "/assets/menu.js",
     "/assets/notification_target.js",
 )
-def asset(handler: "Handler", _query: Query) -> None:
+def asset(handler: "Handler", query: Query) -> None:
     # 許可したパスだけが登録されているので、ファイル名はこの中のどれか。
-    script = ASSETS / urlsplit(handler.path).path.rsplit("/", 1)[1]
-    handler.respond(200, script.read_bytes(), "text/javascript; charset=utf-8")
+    name = urlsplit(handler.path).path.rsplit("/", 1)[1]
+    serve_asset(handler, name, "text/javascript; charset=utf-8", first(query, "v"))
+
+
+@get("/assets/style.css")
+def stylesheet(handler: "Handler", query: Query) -> None:
+    """全画面のスタイル。画面ごとに埋め込まず、ブラウザーに預けてもらう。"""
+    serve_asset(handler, "style.css", "text/css; charset=utf-8", first(query, "v"))
 
 
 @get("/assets/paw.svg")
 @get("/assets/dog.svg")
-def illustration(handler: "Handler", _query: Query) -> None:
+def illustration(handler: "Handler", query: Query) -> None:
     """肉球の模様と犬のイラスト（CSP の img-src 'self' で読めるように同梱する）。"""
     # 許可したパスだけが登録されているので、ファイル名はこの中のどれか。
     name = urlsplit(handler.path).path.rsplit("/", 1)[1]
-    handler.respond(200, (ASSETS / name).read_bytes(), "image/svg+xml")
+    serve_asset(handler, name, "image/svg+xml", first(query, "v"))
 
 
 @get("/image")
@@ -459,7 +470,7 @@ def event_image(handler: "Handler", query: Query) -> None:
     if event and event["image"]:
         path = (store.root / event["image"]).resolve()
         if path.is_relative_to((store.root / "events").resolve()) and path.is_file():
-            handler.respond(200, path.read_bytes(), "image/jpeg")
+            handler.respond(200, path.read_bytes(), "image/jpeg", {"Cache-Control": IMAGE_CACHE})
             return
     handler.respond(404, "画像または記録が見つかりません")
 
@@ -477,7 +488,7 @@ def clip_thumbnail(handler: "Handler", query: Query) -> None:
     if path is None:
         handler.respond(404, "サムネイルがありません")
         return
-    handler.respond(200, path.read_bytes(), "image/jpeg")
+    handler.respond(200, path.read_bytes(), "image/jpeg", {"Cache-Control": IMAGE_CACHE})
 
 
 @get("/sleep")

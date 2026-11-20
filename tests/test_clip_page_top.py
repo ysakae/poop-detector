@@ -6,6 +6,7 @@ from pathlib import Path
 
 from support import exchange, ready_clip, request
 
+from poop_detector.gui.assets import asset_url
 from poop_detector.video.clips import ClipStore
 
 STYLE = Path(__file__).parents[1] / "src/poop_detector/gui/templates/style.css"
@@ -86,7 +87,7 @@ def test_pending_clips_are_marked_for_automatic_refresh(gui):
     assert f'data-pending-clip="{waiting}"' in detail
     # JavaScript が動かないときのために、変換待ちの知らせと「更新」のリンクを出す。
     assert 'id="clip-pending"' in html
-    assert '<script src="/assets/clip_status.js" defer></script>' in html
+    assert f'<script src="{asset_url("clip_status.js")}" defer></script>' in html
 
     html = clips_html(server, f"/clips?id={done}")
     detail = re.search(r'<article id="clip-detail"[^>]*>', html)[0]

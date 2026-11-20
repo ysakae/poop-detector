@@ -34,7 +34,7 @@
 <p class="toolbar"><button class="secondary">受け取り方を保存</button></p></form>
 <form method="post" action="/account/push/test">{{ csrf_field(token) }}<button class="secondary">自分の端末に通知を試す</button></form>
 </section>
-<script defer src="/assets/push.js"></script>
+<script defer src="{{ asset('push.js') }}"></script>
 <h3>メールアドレス</h3>
 {% if email_error %}<p class="error" role="alert">{{ email_error }}</p>{% endif %}
 {% if email_verified %}<p class="saved" role="status">メールアドレスを確認しました。</p>{% endif %}

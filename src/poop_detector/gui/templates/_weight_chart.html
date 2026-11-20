@@ -31,7 +31,7 @@
 {% endfor %}
 </svg>
 </figure>
-<script src="/assets/weight_chart.js" defer></script>
+<script src="{{ asset('weight_chart.js') }}" defer></script>
 {% endif %}
 {% elif points %}
 {# 稼働中の旧プロセスがテンプレートだけを読み直したときも、従来のグラフを表示する。 #}

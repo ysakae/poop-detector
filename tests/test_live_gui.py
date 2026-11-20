@@ -11,6 +11,7 @@ import numpy as np
 from support import request, session_cookie
 
 from poop_detector.capture.live_preview import LivePreview
+from poop_detector.gui.assets import asset_url
 from poop_detector.video.clip_labels import ClipLabel
 from poop_detector.video.clip_reviews import Assessment
 from poop_detector.video.clips import ClipStore
@@ -52,7 +53,7 @@ def test_home_shows_latest_codex_assessment_and_manual_label(gui):
     status, page = request(server, "GET", "/")
     assert status == 200
     assert "現在のカメラ映像" in page.decode()
-    assert b'src="/assets/live.js"' in page
+    assert f'src="{asset_url("live.js")}"'.encode() in page
     status, response = request(server, "GET", "/live/assessment")
     assert status == 200
     data = json.loads(response)

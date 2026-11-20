@@ -14,6 +14,7 @@ from support import exchange, login
 
 from poop_detector.config import Config, ConfigError
 from poop_detector.gui.accounts import Accounts
+from poop_detector.gui.assets import asset_url
 from poop_detector.gui.templating import ENVIRONMENT
 from poop_detector.gui.themes import APPEARANCES
 from poop_detector.records.database import events_database
@@ -241,7 +242,7 @@ def test_components_escape_their_values():
     assert "&lt;b&gt;" in str(module.chip("<b>", "ok"))
     empty = str(module.empty_state("<b>", "説明"))
     assert "&lt;b&gt;" in empty
-    assert 'src="/assets/dog.svg"' in empty
+    assert f'src="{asset_url("dog.svg")}"' in empty
 
 
 def test_component_styles_exist():

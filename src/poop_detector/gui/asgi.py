@@ -74,7 +74,7 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": (
         "default-src 'none'; img-src 'self' blob:; media-src 'self'; "
-        "script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; "
+        "script-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; "
         "form-action 'self'; frame-ancestors 'none'; base-uri 'none'; "
         "manifest-src 'self'; worker-src 'self'"
     ),
@@ -119,7 +119,7 @@ class SecurityHeaders:
         await self.app(scope, receive, send_with_headers)
 
 
-# ログインしていなくても開ける場所（ログイン、パスキーの登録、その画面のスクリプト）。
+# ログインしていなくても開ける場所（ログイン、パスキーの登録、その画面のスクリプトとスタイル）。
 # 肉球の模様と犬のイラストは、ログインの画面にも出すので公開する。
 # PWA のマニフェスト・アイコン・Service Worker は、ブラウザーが Cookie なしで読むことがあるので公開する。
 PUBLIC_PATHS = frozenset(
@@ -127,6 +127,7 @@ PUBLIC_PATHS = frozenset(
         "/login",
         "/enroll",
         "/assets/passkey.js",
+        "/assets/style.css",
         "/assets/paw.svg",
         "/assets/dog.svg",
         "/manifest.webmanifest",
