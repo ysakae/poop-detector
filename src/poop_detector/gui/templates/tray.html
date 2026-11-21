@@ -1,0 +1,49 @@
+{#- 管理 › 範囲の登録 › トレー交換。監視を止めずに、トレーの範囲と基準画像を登録し直す。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block content %}
+<h2>トレー交換</h2>
+<p class="note">トレーを交換したときや、トレーの位置を変えたときに、監視を止めずにトレーの範囲（監視範囲と基準画像）を登録し直します。新しい基準を確かめてから切り替えます。ほかの範囲は<a href="/manage/areas">範囲の登録</a>で扱います。</p>
+<div class="management-layout" id="management" data-phase="{{ phase }}">
+<section class="management-preview" aria-labelledby="preview-heading">
+<h3 id="preview-heading">トレーの映像</h3>
+<canvas id="tray-preview" width="640" height="360" data-points="{{ points | tojson | forceescape }}" aria-label="トレーの映像と検知範囲"></canvas>
+<p class="note" id="preview-message" role="status">映像を取得しています。</p>
+<button type="button" class="secondary" id="preview-refresh">映像を撮り直す</button>
+{% if phase in ("paused", "failed") %}
+<button type="button" class="secondary" id="edit-roi">新しい範囲を描く</button>
+<button type="button" class="secondary" id="undo-roi" hidden>頂点を1つ戻す</button>
+<button type="button" class="secondary" id="keep-roi" hidden>現在の範囲を使う</button>
+{% endif %}
+</section>
+<section class="management-controls" aria-labelledby="status-heading">
+<h3 id="status-heading">稼働状況</h3>
+<dl class="management-status">
+<dt>監視</dt><dd><span id="manage-monitor" class="chip chip-{{ states.monitor }}">{{ monitor }}</span></dd>
+<dt>カメラ</dt><dd><span id="manage-camera" class="chip chip-{{ states.camera }}">{{ camera }}</span></dd>
+<dt>最終映像</dt><dd id="manage-frame_time">{{ frame_time }}</dd>
+<dt>トレー</dt><dd><span id="manage-tracking" class="chip chip-{{ states.tracking }}">{{ tracking }}</span></dd>
+</dl>
+<h3>手順</h3>
+<p id="manage-message" role="status">{{ message }}</p>
+{% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+{% if phase in ("idle", "applied", "cancelled") %}
+<form method="post" action="/manage/tray">{{ csrf_field(token) }}
+<button name="action" value="begin">トレー交換を開始</button></form>
+<p class="note">監視の一時保留を確認してからトレーを交換してください。</p>
+{% endif %}
+{% if phase in ("paused", "failed") %}
+<form method="post" action="/manage/tray" id="apply-tray">{{ csrf_field(token) }}
+<input type="hidden" name="roi" id="new-roi">
+<p><label><input type="checkbox" name="confirm_empty" value="yes" required> 空のトレーと検知範囲を確認しました</label></p>
+<button name="action" value="apply" id="apply-tray-button" disabled>新しい基準を反映</button></form>
+{% endif %}
+{% if phase in ("begin", "paused", "apply", "failed") %}
+<form method="post" action="/manage/tray" class="management-cancel">{{ csrf_field(token) }}
+<button name="action" value="cancel" class="secondary">交換を取り消す</button></form>
+<p class="note">取り消す場合は、先にトレーを交換前の状態に戻してください。</p>
+{% endif %}
+</section>
+</div>
+<script defer src="{{ asset('management.js') }}"></script>
+{% endblock %}

@@ -47,9 +47,11 @@ uv run poop-detector check-dog --image /absolute/path/to/image.jpg --repeat 10
 動画の自動判定で新しい便、尿の流れ、または新しい濡れ跡を確認した場合に、トレー外の候補として通知します。`--video-review` が必要です。
 
 ```bash
-uv run poop-detector setup-roi --outside   # GUI の「管理 › 範囲の登録」でも登録できる
+uv run poop-detector setup-activity-map   # サークルの床面（GUI の「管理 › 範囲の登録」でも登録できる）
 uv run poop-detector run --dog --video-review --detect-outside
 ```
+
+トレー外検知は、サークルの床面の中で犬がトレーの外に立ち止まった場面を見ます。ベッドや餌皿のまわりなど、床面と違う範囲を見張りたいときだけ、`setup-roi --outside`（GUI では範囲の登録の「トレー外の範囲」）で別の範囲を登録します。登録した範囲は、GUI の「床面と同じにする」で消せます。
 
 トレー追従や見守り通知を使用中なら、`--track-tray` や `--early-alert` も起動コマンドに付けます。
 トレー外での滞在と手動保存の動画では、登録範囲内の画像を選んだ判定器に渡します。

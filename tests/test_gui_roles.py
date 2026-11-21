@@ -29,6 +29,7 @@ ADMIN_GET = {
     "/manage/models",
     "/manage/areas",
     "/manage/areas/frame",
+    "/manage/areas/tray",
     "/manage/export",
     "/manage/export/summary",
 }
@@ -43,6 +44,7 @@ ADMIN_POST = {
     "/manage/models/catalog",
     "/manage/models/plan-usage",
     "/manage/areas",
+    "/manage/areas/outside/clear",
     "/manage/export/records.csv",
     "/manage/export/weights.csv",
     "/manage/export/backup",

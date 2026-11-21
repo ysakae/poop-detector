@@ -263,7 +263,7 @@ NOTICES = [
     ("models.html", "message message-warn", "設定ファイルの場所が分からないため"),
     ("review.html", "message message-warn", "飛ばした件が残っています"),
     ("review.html", 'message" role="status', "すべて確認しました。"),
-    ("management.html", "message message-error", "{{ error }}"),
+    ("tray.html", "message message-error", "{{ error }}"),
 ]
 
 

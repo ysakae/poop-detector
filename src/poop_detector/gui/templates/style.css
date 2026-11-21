@@ -86,6 +86,8 @@ main table{max-width:100%}main th{font-size:13px;font-weight:600;color:var(--mut
 button[aria-busy="true"]{cursor:progress}button[aria-busy="true"]::before{content:"";display:inline-block;width:1em;height:1em;margin-right:8px;vertical-align:-0.15em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:button-busy .8s linear infinite}
 @keyframes button-busy{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){.page-busy::before{animation:none;width:100%;opacity:.6}button[aria-busy="true"]::before{animation:none;border-right-color:currentColor;opacity:.6}}
+/* 管理 › 範囲の登録の、範囲ごとのカード（何に使うかと状態）。 */
+.area-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0 0 20px}.area-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}.area-card h3{margin:0 0 8px;font-size:16px}.area-card p{margin:0 0 8px}
 /* 管理のまとまりの中の画面のタブ。まとまりのメニュー（丸いボタン）の下に、下線のタブで並べる。 */
 .sub-tabs{overflow-x:auto;margin:-8px 0 20px;border-bottom:1px solid var(--border)}.sub-tabs ul{list-style:none;margin:0;padding:0;display:flex;gap:4px}.sub-tabs a{display:flex;align-items:center;min-height:var(--control-height);padding:0 14px;color:var(--muted);border-bottom:3px solid transparent;font-size:14px;text-decoration:none;white-space:nowrap}.sub-tabs a[aria-current=page]{font-weight:700;color:var(--menu-current);border-bottom-color:var(--primary)}
 .badge{display:inline-block;min-width:1.6em;margin-left:6px;padding:0 6px;border-radius:var(--radius-pill);background:var(--badge-bg);color:var(--badge-text);font-size:12px;font-weight:bold;text-align:center;line-height:1.6}
