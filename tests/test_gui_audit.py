@@ -97,7 +97,10 @@ def test_audit_log_records_who_did_what_without_secrets(tmp_path):
 def test_admin_operations_appear_in_the_audit_page(gui):
     server, _, _ = gui
     admin = login(server, "管理者A")
-    assert post(server, admin, "/manage/tray", {"action": "begin"}, page="/manage")[0] == 303
+    assert (
+        post(server, admin, "/manage/tray", {"action": "begin"}, page="/manage/areas/tray")[0]
+        == 303
+    )
     users = server.app.accounts.users
     users.create("家族B", "member", email="b@example.org")
     path = "/manage/users"

@@ -1,9 +1,11 @@
-"""管理 › 範囲の登録。映像の上に多角形を描き、監視範囲と基準画像・トレー外の範囲・床面を登録する。
+"""管理 › 範囲の登録。映像の上に多角形を描き、監視範囲と基準画像・床面・トレー外の範囲を登録する。
 
+範囲はこの画面の1か所で扱い、それぞれが何に使われるかを並べて示す。
 映像は、監視が動いていればそのライブ映像、止まっていればカメラから取った1枚を使う。
 画面に見せた映像を snapshots で預かり、保存にはその映像をそのまま使う。
 監視範囲と基準画像は、監視が止まっているときだけここで登録する（動いている間は、
-新しい基準を確かめてから切り替える「稼働状況とトレー」のトレー交換を使う）。
+新しい基準を確かめてから切り替えるトレー交換の手順 TRAY_PAGE を使う）。
+トレー外の範囲は任意で、登録しなければトレー外検知はサークルの床面を見張る。
 ルートの表への登録はこのモジュールを読み込んだときに行う（asgi.py が読み込む）。
 """
 
@@ -35,10 +37,22 @@ if TYPE_CHECKING:
 
 PAGE = "/manage/areas"
 FRAME_PAGE = "/manage/areas/frame"
+TRAY_PAGE = "/manage/areas/tray"
+CLEAR_OUTSIDE = "/manage/areas/outside/clear"
+# 並びは、必須のトレー、床面、任意のトレー外の範囲。
 KINDS = {
     "roi": "監視範囲と基準画像",
-    "outside": "トレー外の範囲",
     "floor": "サークルの床面",
+    "outside": "トレー外の範囲",
+}
+# それぞれの範囲が何に使われるか（画面のカードに出す）。
+PURPOSES = {
+    "roi": "排泄の検知に使います（必須）。空のトレーの外周を囲み、その中の画像を"
+    "変化を比べる基準にします。",
+    "floor": "行動マップと睡眠の記録で、犬がサークルのどこにいるかを測ります。トレー外検知も、"
+    "トレー外の範囲を登録していなければこの範囲を見張ります。",
+    "outside": "任意。トレー外検知で、床面と違う範囲を見張りたいときだけ登録します（ベッドや"
+    "餌皿のまわり、柵の外に見える床を外すなど）。",
 }
 PREVIEW_WAIT_SECONDS = 3
 
@@ -80,13 +94,23 @@ def _points(context: CommandContext, kind: str) -> list[list[float]]:
 
 
 def _render(
-    handler: "Handler", *, status: int = 200, error: str | None = None, saved: str = ""
+    handler: "Handler",
+    *,
+    status: int = 200,
+    error: str | None = None,
+    saved: str = "",
+    cleared: str = "",
 ) -> None:
     context = _context(handler)
     paths = _paths(context)
     monitoring = _monitoring(handler)
     kinds = [
-        {"value": kind, "label": label, "registered": paths[kind].is_file()}
+        {
+            "value": kind,
+            "label": label,
+            "purpose": PURPOSES[kind],
+            "registered": paths[kind].is_file(),
+        }
         for kind, label in KINDS.items()
     ]
     page = render_template(
@@ -96,17 +120,22 @@ def _render(
         kinds=kinds,
         existing={kind: _points(context, kind) for kind in KINDS},
         monitoring=monitoring,
-        # 監視中は監視範囲をここで登録しないので、最初に選ぶのはトレー外の範囲にする。
-        default_kind="outside" if monitoring else "roi",
+        tray_page=TRAY_PAGE,
+        clear_outside=CLEAR_OUTSIDE,
+        floor_registered=paths["floor"].is_file(),
+        outside_enabled=context.config.detect_outside_enabled,
+        # 監視中は監視範囲をここで登録しないので、最初に選ぶのは床面にする。
+        default_kind="floor" if monitoring else "roi",
         error=error,
         saved=KINDS.get(saved, ""),
+        cleared=cleared == "outside",
     )
     handler.respond(status, page)
 
 
 @get(PAGE, role="admin")
 def areas_page(handler: "Handler", query: Query) -> None:
-    _render(handler, saved=first(query, "saved"))
+    _render(handler, saved=first(query, "saved"), cleared=first(query, "cleared"))
 
 
 def _monitor_frame(handler: "Handler") -> Frame | None:
@@ -188,7 +217,7 @@ def _register(handler: "Handler", form: Form, kind: str, snapshot: Snapshot) -> 
     if kind == "roi":
         if _monitoring(handler) or snapshot.source != "camera":
             raise RegistrationRefusedError(
-                "監視が動いている間は、「稼働状況とトレー」のトレー交換で登録してください"
+                "監視が動いている間は、「トレー交換の手順で登録し直す」から登録してください"
             )
         if form.fields.get("confirm_empty") != "yes":
             raise InvalidInputError("空のトレーが映っていることを確認してください")
@@ -227,3 +256,14 @@ def register_area(handler: "Handler", form: Form) -> None:
         return
     audit(handler, f"area.{kind}", KINDS[kind])
     handler.redirect(f"{PAGE}?saved={kind}")
+
+
+@post(CLEAR_OUTSIDE, role="admin")
+def clear_outside_area(handler: "Handler", form: Form) -> None:
+    """トレー外の範囲を消し、トレー外検知を床面と同じ範囲に戻す。"""
+    if form.fields.get("confirm_clear") != "yes":
+        _render(handler, status=400, error="トレー外の範囲を消す確認欄にチェックしてください")
+        return
+    _context(handler).outside_roi_path.unlink(missing_ok=True)
+    audit(handler, "area.outside.clear", "トレー外の範囲を消し、床面と同じ範囲に戻した")
+    handler.redirect(f"{PAGE}?cleared=outside")

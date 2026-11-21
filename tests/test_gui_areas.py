@@ -287,4 +287,70 @@ def test_monitoring_selects_an_area_that_can_be_registered(areas_gui):
     monitor_running(areas_gui.root)
     html = page(server, admin)
     assert re.search(r'value="roi" disabled>', html)
-    assert re.search(r'value="outside" checked>', html)
+    assert re.search(r'value="floor" checked>', html)
+
+
+def card(html, kind):
+    return re.search(rf'<article class="area-card" id="area-{kind}">.*?</article>', html, re.S)[0]
+
+
+def test_each_area_says_what_it_is_for(areas_gui):
+    html = page(areas_gui.server, login(areas_gui.server))
+    # 並びは、必須のトレー、床面、任意のトレー外の範囲。
+    assert re.findall(r'<article class="area-card" id="area-(\w+)">', html) == [
+        "roi",
+        "floor",
+        "outside",
+    ]
+    assert "排泄の検知" in card(html, "roi")
+    assert "行動マップ" in card(html, "floor")
+    assert "睡眠" in card(html, "floor")
+    outside = card(html, "outside")
+    assert "任意" in outside
+    # 登録していなければ、床面を使う。トレー外検知が止まっていることも示す。
+    assert "床面と同じ範囲を使います" in outside
+    assert "トレー外検知はオフです" in outside
+
+
+def test_tray_card_leads_to_the_tray_exchange_while_monitoring(areas_gui):
+    server = areas_gui.server
+    admin = login(server)
+    assert 'href="/manage/areas/tray"' not in card(page(server, admin), "roi")
+    monitor_running(areas_gui.root)
+    tray = card(page(server, admin), "roi")
+    assert re.search(r'<a class="button[^"]*" href="/manage/areas/tray">', tray)
+
+
+def test_custom_outside_area_can_go_back_to_the_floor(areas_gui):
+    server = areas_gui.server
+    admin = login(server, "管理者")
+    save(server, admin, kind="outside", snapshot=snapshot(server, admin))
+    html = page(server, admin)
+    outside = card(html, "outside")
+    assert "床面と別の範囲を登録しています" in outside
+    token = re.search(r'name="csrf" value="([^"]+)"', html)[1]
+    body = urlencode({"csrf": token, "confirm_clear": "yes"})
+    status, headers, _ = exchange(
+        server, "POST", f"{PAGE}/outside/clear", body, {**FORM, **admin}, auth=False
+    )
+    assert (status, headers["Location"]) == (303, f"{PAGE}?cleared=outside")
+    assert not (areas_gui.root / "outside-roi.json").exists()
+    assert server.app.accounts.audit.recent()[0].action == "area.outside.clear"
+    assert "床面と同じ範囲を使います" in card(page(server, admin), "outside")
+
+
+def test_clearing_the_outside_area_needs_confirmation(areas_gui):
+    server = areas_gui.server
+    admin = login(server)
+    save(server, admin, kind="outside", snapshot=snapshot(server, admin))
+    token = re.search(r'name="csrf" value="([^"]+)"', page(server, admin))[1]
+    status, _, _ = exchange(
+        server,
+        "POST",
+        f"{PAGE}/outside/clear",
+        urlencode({"csrf": token}),
+        {**FORM, **admin},
+        auth=False,
+    )
+    assert status == 400
+    assert (areas_gui.root / "outside-roi.json").exists()

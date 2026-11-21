@@ -30,7 +30,7 @@ PERSONAL: tuple[tuple[str, str, str], ...] = (
 # 管理のメニューにはまとまりだけを並べ、まとまりを開くとその中の画面をタブで切り替える。
 # まとまりの入口は、最初の画面（よく使う画面を先に置く）。
 MANAGEMENT_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
-    ("稼働状況", (("/manage", "稼働状況とトレー"),)),
+    ("稼働状況", (("/manage", "稼働状況"),)),
     (
         "カメラと範囲",
         (

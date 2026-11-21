@@ -45,7 +45,7 @@ ENDPOINT_MAX_LENGTH = 2048
 TTL_SECONDS = 3600
 SEND_TIMEOUT_SECONDS = 5
 GONE = (404, 410)
-# 監視の異常の通知を開いたときの画面（管理 › 稼働状況とトレー）。
+# 監視の異常の通知を開いたときの画面（管理 › 稼働状況）。
 WATCHDOG_URL = "/manage"
 
 
