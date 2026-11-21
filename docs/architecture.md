@@ -205,7 +205,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/auth_api.py` | パスキーの JSON の窓口（`/webauthn/...`）。セッションがない相手なので、Origin の一致と JSON の本文を必須にする |
 | `gui/accounts.py` | ユーザー（`users`）、パスキー（`passkeys`）、登録用 URL（`enrollments`）の台帳。登録用 URL は使い捨てで、値は SHA-256 だけを保存する。最後の有効な管理者は無効にも一般ユーザーにもできない |
 | `gui/audit.py` | 管理者の操作の監査ログ（`audit_log`）。追記だけで、認証情報は入れない |
-| `gui/static/` | 補助的な操作だけを担う JavaScript |
+| `gui/static/` | 補助的な操作だけを担う JavaScript（押したことがすぐ分かる表示の `busy.js` は、ログイン後のすべての画面で読み込む） |
 
 テンプレートはすべての値を自動でエスケープし、渡し忘れた変数はエラーになります。HTML を文字列で組み立てたり、`Markup` でエスケープを外したりしないでください。値の整形と分岐の判断は Python 側で行い、テンプレートは構造だけを受け持ちます。`tests/test_gui_escaping.py` は、特殊文字を含む値が各画面でエスケープされることを確かめます。
 
