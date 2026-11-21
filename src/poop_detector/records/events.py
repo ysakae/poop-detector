@@ -4,7 +4,7 @@ import builtins
 import sqlite3
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Final, Literal, TypeAlias, TypedDict, cast
 from uuid import uuid4
@@ -57,6 +57,12 @@ def validate_times(start: str | None, end: str | None) -> None:
             raise InvalidInputError("時刻にはタイムゾーンが必要です")
     if start and end and datetime.fromisoformat(end) < datetime.fromisoformat(start):
         raise InvalidInputError("完了は開始以降を指定してください")
+
+
+def _local_midnight(day: date) -> str:
+    """ローカル時刻の day の 0 時を、UTC の ISO 8601 にする。"""
+    # 時差のない datetime の astimezone はローカル時刻として解釈する。
+    return datetime.combine(day, time()).astimezone().astimezone(UTC).isoformat()
 
 
 def utcnow() -> str:
@@ -149,16 +155,19 @@ class Store:
                 )
         return event_id
 
-    def list(self) -> list[EventRow]:
+    # 記録の開始。実際の開始がなければ検知の時刻。索引 events_records_by_start と同じ式にする。
+    RECORD_START: Final = "julianday(COALESCE(NULLIF(actual_start,''),timestamp))"
+    _SELECT: Final = """SELECT e.*,
+        COALESCE(l.excretion_type, CASE WHEN e.feedback=1 THEN 'feces'
+        ELSE 'unspecified' END) AS excretion_type, COALESCE(l.note,'') AS note
+        FROM events e LEFT JOIN excretion_labels l ON e.id=l.event_id"""
+
+    def _rows(self, sql: str, parameters: tuple[object, ...] = ()) -> builtins.list[EventRow]:
         with self.connect() as db:
-            return [
-                cast(EventRow, dict(row))
-                for row in db.execute("""SELECT e.*,
-                COALESCE(l.excretion_type, CASE WHEN e.feedback=1 THEN 'feces'
-                ELSE 'unspecified' END) AS excretion_type, COALESCE(l.note,'') AS note
-                FROM events e LEFT JOIN excretion_labels l ON e.id=l.event_id
-                ORDER BY timestamp""")
-            ]
+            return [cast(EventRow, dict(row)) for row in db.execute(sql, parameters)]
+
+    def list(self) -> list[EventRow]:
+        return self._rows(f"{self._SELECT} ORDER BY timestamp")
 
     # list メソッドと名前が重なるため、組み込みの list は builtins から参照する。
     def records(self) -> builtins.list[EventRow]:
@@ -167,6 +176,39 @@ class Store:
             [r for r in self.list() if r["feedback"] == 1],
             key=lambda r: datetime.fromisoformat(r["actual_start"] or r["timestamp"]),
         )
+
+    def records_between(self, first: date, last: date) -> builtins.list[EventRow]:
+        """ローカル時刻の first から last の日に始まった確定記録を、開始の順に返す。
+
+        records() を期間で絞ったものと同じ。日の境目は actual_start、なければ timestamp で決める。
+        """
+        # 固定の SQL の断片だけを組み合わせ、値はプレースホルダーで渡す。
+        sql = (
+            f"{self._SELECT} WHERE e.feedback=1 AND {self.RECORD_START} >= julianday(?)"
+            f" AND {self.RECORD_START} < julianday(?) ORDER BY {self.RECORD_START}, e.timestamp"
+        )
+        return self._rows(sql, (_local_midnight(first), _local_midnight(last + timedelta(1))))
+
+    def latest_records(self, limit: int) -> builtins.list[EventRow]:
+        """開始の新しい確定記録を limit 件まで、records() と同じく開始の古い順に返す。"""
+        # 固定の SQL の断片だけを組み合わせ、値はプレースホルダーで渡す。
+        sql = (
+            f"{self._SELECT} WHERE e.feedback=1"
+            f" ORDER BY {self.RECORD_START} DESC, e.timestamp DESC LIMIT ?"
+        )
+        return builtins.list(reversed(self._rows(sql, (max(0, limit),))))
+
+    def last_record(self, excretion_types: tuple[str, ...], until: datetime) -> EventRow | None:
+        """種類が excretion_types のどれかで、until までに始まった最新の確定記録。"""
+        marks = ",".join("?" * len(excretion_types))
+        # 固定の SQL の断片とプレースホルダーの数だけを組み合わせ、値はプレースホルダーで渡す。
+        sql = (
+            f"{self._SELECT} WHERE e.feedback=1 AND {self.RECORD_START} <= julianday(?)"
+            f" AND COALESCE(l.excretion_type, 'feces') IN ({marks})"
+            f" ORDER BY {self.RECORD_START} DESC, e.timestamp DESC LIMIT 1"
+        )
+        rows = self._rows(sql, (until.astimezone(UTC).isoformat(), *excretion_types))
+        return rows[0] if rows else None
 
     def editable_locations(self, row: EventRow | None) -> dict[str, str]:
         """動画に関連付けていない手入力の記録ではサークル外を選べる。"""
