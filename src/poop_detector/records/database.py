@@ -554,6 +554,77 @@ def migrate_to_v30(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v31(db: sqlite3.Connection) -> None:
+    """ごはんの量の目安と、家族で共有する相談のための列と表を追加する。"""
+    for column in (
+        "breed TEXT",
+        "size_class TEXT CHECK(size_class IN ('toy', 'small', 'medium', 'large', 'giant'))",
+        "adult_grams INTEGER CHECK(adult_grams > 0)",
+        "neutered INTEGER CHECK(neutered IN (0, 1))",
+        "food_id TEXT",
+    ):
+        db.execute(f"ALTER TABLE pet_profile ADD COLUMN {column}")
+    db.execute(
+        """CREATE TABLE foods (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            kcal_dk INTEGER NOT NULL CHECK(kcal_dk BETWEEN 300 AND 7000),
+            source_url TEXT NOT NULL DEFAULT '',
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        )"""
+    )
+    db.execute(
+        """CREATE TABLE food_lookups (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'done', 'failed')),
+            product_name TEXT NOT NULL DEFAULT '',
+            maker TEXT NOT NULL DEFAULT '',
+            kcal_dk INTEGER,
+            source_url TEXT NOT NULL DEFAULT '',
+            note TEXT NOT NULL DEFAULT '',
+            failure TEXT,
+            requested_by TEXT,
+            requested_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT
+        )"""
+    )
+    db.execute(
+        """CREATE TABLE advice_threads (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            deleted_at TEXT
+        )"""
+    )
+    db.execute(
+        """CREATE TABLE advice_messages (
+            id TEXT PRIMARY KEY,
+            thread_id TEXT NOT NULL REFERENCES advice_threads(id),
+            seq INTEGER NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+            author TEXT,
+            body TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'done', 'failed')),
+            failure TEXT,
+            basis TEXT NOT NULL DEFAULT '',
+            provider TEXT,
+            model TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            answered_at TEXT,
+            UNIQUE(thread_id, seq)
+        )"""
+    )
+    db.execute("CREATE INDEX advice_messages_status ON advice_messages(status)")
+    db.execute("CREATE INDEX food_lookups_status ON food_lookups(status)")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -586,6 +657,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v28,
     migrate_to_v29,
     migrate_to_v30,
+    migrate_to_v31,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

@@ -55,7 +55,8 @@ def save_birth_date(database: Database, birth: str) -> None:
     value = parse_day(birth).isoformat() if birth else None
     with database.connect() as db:
         db.execute(
-            "INSERT INTO pet_profile VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET birth=excluded.birth",
+            "INSERT INTO pet_profile (id, birth) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET birth=excluded.birth",
             (value,),
         )
 
