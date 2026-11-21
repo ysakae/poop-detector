@@ -28,6 +28,8 @@ ADMIN_PAGES = {
     "/manage/users": "ユーザー",
     "/manage/invite": "招待",
     "/manage/audit": "監査ログ",
+    "/manage/models": "判定器とモデル",
+    "/manage/export": "書き出しとバックアップ",
 }
 MOVED = {
     "/clips/storage": "/manage/storage",
@@ -89,15 +91,58 @@ def test_admins_see_the_management_section(gui):
     assert current[1] == "管理"
 
 
+# 管理のメニューの5つのまとまりと、その中の画面。
+MANAGEMENT_GROUPS = {
+    "稼働状況": ["/manage"],
+    "カメラと範囲": ["/manage/areas", "/manage/checks", "/manage/setup"],
+    "判定と録画": ["/manage/models", "/manage/storage"],
+    "設定とデータ": ["/manage/settings", "/manage/export"],
+    "家族": ["/manage/users", "/manage/invite", "/manage/audit"],
+}
+
+
+def group_of(path):
+    return next(name for name, pages in MANAGEMENT_GROUPS.items() if path in pages)
+
+
 @pytest.mark.parametrize("path", sorted(ADMIN_PAGES))
-def test_management_pages_share_a_sub_navigation(gui, path):
+def test_management_menu_is_five_groups(gui, path):
     server, _, _ = gui
-    sub = nav_of(page(server, path, login(server)), "管理のメニュー")
-    for href, text in ADMIN_PAGES.items():
-        assert f'href="{href}"' in sub
-        assert text in sub
+    html = page(server, path, login(server))
+    sub = nav_of(html, "管理のメニュー")
+    links = re.findall(r'<a href="([^"]+)"[^>]*>([^<]+)</a>', sub)
+    assert links == [(pages[0], name) for name, pages in MANAGEMENT_GROUPS.items()]
     current = re.search(r'aria-current="page"[^>]*>([^<]+)</a>', sub)
-    assert current[1] == ADMIN_PAGES[path]
+    assert current[1] == group_of(path)
+
+
+@pytest.mark.parametrize("path", sorted(ADMIN_PAGES))
+def test_pages_of_a_group_are_tabs(gui, path):
+    server, _, _ = gui
+    html = page(server, path, login(server))
+    pages = MANAGEMENT_GROUPS[group_of(path)]
+    if len(pages) == 1:
+        # 画面が1つだけのまとまりには、タブを出さない。
+        assert 'aria-label="管理の中の画面"' not in html
+        return
+    tabs = nav_of(html, "管理の中の画面")
+    assert re.findall(r'<a href="([^"]+)"', tabs) == pages
+    current = re.search(r'href="([^"]+)" aria-current="page"', tabs)
+    assert current[1] == path
+
+
+def test_every_management_page_belongs_to_one_group():
+    from poop_detector.gui.navigation import MANAGEMENT_PAGES
+
+    grouped = [href for pages in MANAGEMENT_GROUPS.values() for href in pages]
+    assert sorted(grouped) == sorted(href for href, _ in MANAGEMENT_PAGES)
+
+
+def test_pages_under_a_management_page_keep_its_group(gui):
+    server, _, _ = gui
+    html = page(server, "/manage/export/summary", login(server))
+    current = re.search(r'aria-current="page"[^>]*>([^<]+)</a>', nav_of(html, "管理のメニュー"))
+    assert current[1] == "設定とデータ"
 
 
 def test_monitor_status_appears_in_the_header(gui):

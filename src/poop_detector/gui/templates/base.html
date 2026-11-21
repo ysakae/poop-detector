@@ -17,6 +17,7 @@
 {%- if frame %}{{ menu(frame.menu, "メインメニュー", "site-menu") }}{% endif -%}
 <main>
 {%- if frame and frame.management %}{{ menu(frame.management, "管理のメニュー", "sub-menu") }}{% endif -%}
+{%- if frame and frame.management_tabs %}{{ menu(frame.management_tabs, "管理の中の画面", "sub-tabs") }}{% endif -%}
 {%- block content %}{% endblock -%}
 </main>
 {%- if frame %}<nav class="tab-bar" aria-label="タブ"><ul>

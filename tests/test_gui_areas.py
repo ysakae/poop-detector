@@ -107,7 +107,7 @@ def test_areas_page_lists_what_can_be_registered(areas_gui):
         assert text in html
     assert f'src="{asset_url("areas.js")}"' in html
     assert "未登録" in html
-    sub = re.search(r'aria-label="管理のメニュー".*?</nav>', html, re.S)[0]
+    sub = re.search(r'aria-label="管理の中の画面".*?</nav>', html, re.S)[0]
     assert re.search(r'href="/manage/areas" aria-current="page">範囲の登録', sub)
 
 

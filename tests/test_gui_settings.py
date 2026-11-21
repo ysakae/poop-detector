@@ -167,7 +167,7 @@ def test_settings_page_without_a_config_path_is_read_only(gui):
 def test_management_menu_lists_settings(settings_gui):
     server, _ = settings_gui
     html = page(server, login(server))
-    sub = re.search(r'aria-label="管理のメニュー".*?</nav>', html, re.S)[0]
+    sub = re.search(r'aria-label="管理の中の画面".*?</nav>', html, re.S)[0]
     assert re.search(r'href="/manage/settings" aria-current="page">設定', sub)
 
 

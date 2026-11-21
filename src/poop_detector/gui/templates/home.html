@@ -1,8 +1,10 @@
-{#- ホーム。主役は確認待ちの1つだけで、今日の数字、1回押して記録する入口、最近の記録を並べる（Issue 141）。 -#}
+{#- ホーム。先頭にライブ映像を置く。主役（塗りのボタン）は確認待ちの1つだけで、今日の数字、1回押して記録する入口、最近の記録を並べる（Issue 141）。 -#}
 {% extends "base.html" %}
 {% from "_macros.html" import capacity_panel, chip, csrf_field, empty_state, icon, stat, when %}
 {% block content %}
 {% if recorded %}<p class="message" role="status">{{ recorded.text }}を記録しました。<a href="{{ recorded.url }}">直す</a></p>{% endif %}
+{#- カメラで見守っているときは、いまの様子を最初に見せる。 -#}
+{% if not manual_only %}{% include "_live_panel.html" %}{% endif %}
 <section class="card home-review" aria-labelledby="review-title">
 <h2 id="review-title">確認待ち</h2>
 {% if pending %}<p class="home-review-count"><strong>{{ pending }}</strong>件</p>
@@ -50,7 +52,6 @@
 {% if manual_only %}
 {% if viewer_admin %}<p><a href="/manage/areas">カメラの見守りを追加する</a></p>{% endif %}
 {% else %}
-{% include "_live_panel.html" %}
 {{ capacity_panel(capacity) }}
 {% endif %}
 {% endblock %}
