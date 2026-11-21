@@ -13,12 +13,21 @@ MEMBER_SECTIONS: tuple[tuple[str, str, str], ...] = (
     ("/review", "確認待ち", "review"),
     ("/records", "記録", "records"),
     ("/care", "お世話", "food"),
-    ("/weight", "体重", "weight"),
-    ("/advice", "ごはんの相談", "chat"),
     ("/clips", "動画", "video"),
     ("/activity", "行動マップ", "map"),
     ("/sleep", "睡眠", "sleep"),
 )
+# メインメニューの1つの場所の中に、タブで切り替える画面を持つもの。{場所: ((URL, 画面の名前), ...)}。
+# 中の画面を開いているときも、メインメニューと下のタブでは場所に印を付ける。
+SECTION_PAGES: dict[str, tuple[tuple[str, str], ...]] = {
+    "/care": (
+        ("/care", "記録"),
+        ("/weight", "体重"),
+        ("/advice", "ごはんの相談"),
+        ("/advice/foods", "フード"),
+    ),
+}
+SECTION_LABELS = {"/care": "お世話の中の画面"}
 MANAGEMENT = ("/manage", "管理", "manage")
 # スマートフォンの幅で画面の下に並べる場所。ほかの場所と PERSONAL は「その他」にまとめる。
 # 毎日使う場所を並べる。動画は、確認待ちからラベルを付けるので「その他」に置く。
@@ -100,6 +109,9 @@ class Frame:
     management: tuple[MenuItem, ...]
     # 開いているまとまりの中の画面のタブ。画面が1つだけのまとまりでは空。
     management_tabs: tuple[MenuItem, ...]
+    # お世話など、メインメニューの1つの場所の中の画面のタブと、その並びの名前。
+    section_tabs: tuple[MenuItem, ...]
+    section_label: str
     # スマートフォンの幅の下のタブと、「その他」の中身。more_current は、いまの場所がその中にあるか。
     tabs: tuple[MenuItem, ...]
     more: tuple[MenuItem, ...]
@@ -107,9 +119,33 @@ class Frame:
 
 
 def _within(path: str, section: str) -> bool:
+    # 問い合わせ文字列（/care?day=… など）は場所の判断に使わない。
+    path = path.split("?", 1)[0]
     if section == "/":
         return path == "/"
     return path == section or path.startswith(section + "/")
+
+
+def _in_section(path: str, section: str) -> bool:
+    """path が section の場所か、その中の画面（SECTION_PAGES）か。"""
+    pages = SECTION_PAGES.get(section, ())
+    return _within(path, section) or any(_within(path, href) for href, _ in pages)
+
+
+def _section_page(path: str, pages: tuple[tuple[str, str], ...]) -> str | None:
+    """中の画面のうち、path をいちばん長く含むもの（/advice/foods を /advice と見分ける）。"""
+    found = [href for href, _ in pages if _within(path, href)]
+    return max(found, key=len) if found else None
+
+
+def section_tabs(path: str) -> tuple[tuple[MenuItem, ...], str]:
+    """中の画面を持つ場所を開いているとき、その画面のタブと、タブの並びの名前を返す。"""
+    for section, pages in SECTION_PAGES.items():
+        current = _section_page(path, pages)
+        if current is not None:
+            tabs = tuple(MenuItem(href, text, href == current) for href, text in pages)
+            return tabs, SECTION_LABELS[section]
+    return (), ""
 
 
 def main_menu(path: str, admin: bool, pending: int = 0) -> tuple[MenuItem, ...]:
@@ -119,7 +155,7 @@ def main_menu(path: str, admin: bool, pending: int = 0) -> tuple[MenuItem, ...]:
         MenuItem(
             href,
             text,
-            _within(path, href),
+            _in_section(path, href),
             pending if href == "/review" and pending else None,
             icon,
         )
@@ -163,6 +199,7 @@ def frame_for(viewer: Viewer | None) -> Frame | None:
         return None
     monitor, state = MONITOR_STATES.get(viewer.monitor(), MONITOR_UNKNOWN)
     menu = main_menu(viewer.path, viewer.admin, viewer.pending())
+    tabs, label = section_tabs(viewer.path)
     more = tuple(item for item in menu if item.href not in TAB_SECTIONS) + tuple(
         MenuItem(href, text, _within(viewer.path, href), None, icon)
         for href, text, icon in PERSONAL
@@ -174,6 +211,8 @@ def frame_for(viewer: Viewer | None) -> Frame | None:
         menu=menu,
         management=management_menu(viewer.path, viewer.admin),
         management_tabs=management_tabs(viewer.path, viewer.admin),
+        section_tabs=tabs,
+        section_label=label,
         tabs=tuple(item for item in menu if item.href in TAB_SECTIONS),
         more=more,
         more_current=any(item.current for item in more),

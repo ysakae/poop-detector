@@ -13,11 +13,16 @@ MEMBER_SECTIONS = {
     "/review": "確認待ち",
     "/records": "記録",
     "/care": "お世話",
-    "/weight": "体重",
-    "/advice": "ごはんの相談",
     "/clips": "動画",
     "/activity": "行動マップ",
     "/sleep": "睡眠",
+}
+# 「お世話」の中の画面。メインメニューには「お世話」だけを出し、中をタブで切り替える。
+CARE_PAGES = {
+    "/care": "記録",
+    "/weight": "体重",
+    "/advice": "ごはんの相談",
+    "/advice/foods": "フード",
 }
 ADMIN_PAGES = {
     "/manage": "稼働状況",
@@ -75,12 +80,43 @@ def test_sub_pages_mark_their_section(gui):
     assert current[1] == "動画"
 
 
-def test_advice_thread_marks_the_advice_section():
+@pytest.mark.parametrize(
+    ("path", "tab"),
+    [
+        ("/advice/thread?id=x", "/advice"),
+        ("/advice/foods", "/advice/foods"),
+        ("/weight?id=x", "/weight"),
+        ("/care?day=2026-11-21", "/care"),
+    ],
+)
+def test_care_pages_mark_the_care_section_and_their_tab(path, tab):
     from poop_detector.gui.navigation import Viewer, frame_for
 
-    frame = frame_for(Viewer("家族", False, "/advice/thread?id=x", lambda: "connected", lambda: 0))
-    current = [item.text for item in frame.menu if item.current]
-    assert current == ["ごはんの相談"]
+    frame = frame_for(Viewer("家族", False, path, lambda: "connected", lambda: 0))
+    assert [item.text for item in frame.menu if item.current] == ["お世話"]
+    assert [item.href for item in frame.section_tabs] == list(CARE_PAGES)
+    # /advice/foods は /advice の下にあるが、フードのタブだけに印を付ける。
+    assert [item.href for item in frame.section_tabs if item.current] == [tab]
+    assert [item.href for item in frame.tabs if item.current] == ["/care"]
+
+
+@pytest.mark.parametrize("path", sorted(CARE_PAGES))
+def test_care_pages_show_their_tabs(gui, path):
+    server, _, _ = gui
+    html = page(server, path, login(server, "家族B", role="member"))
+    current = re.search(r'aria-current="page"[^>]*>([^<]+)</a>', nav_of(html, "メインメニュー"))
+    assert current[1] == "お世話"
+    tabs = nav_of(html, "お世話の中の画面")
+    assert re.findall(r'<a href="([^"]+)"', tabs) == list(CARE_PAGES)
+    assert re.search(r'href="([^"]+)" aria-current="page"', tabs)[1] == path
+    for text in CARE_PAGES.values():
+        assert text in tabs
+
+
+def test_other_pages_have_no_section_tabs(gui):
+    server, _, _ = gui
+    html = page(server, "/clips", login(server, role="member"))
+    assert 'aria-label="お世話の中の画面"' not in html
 
 
 def test_header_shows_who_is_logged_in(gui):
@@ -206,8 +242,6 @@ def test_logout_page_points_to_the_login_screen(gui):
 # 動画は、ラベル付けの入口を確認待ちに寄せたので「その他」に置く（#180）。
 TABS = {"/": "ホーム", "/review": "確認待ち", "/records": "記録", "/care": "お世話"}
 MORE = {
-    "/weight": "体重",
-    "/advice": "ごはんの相談",
     "/clips": "動画",
     "/activity": "行動マップ",
     "/sleep": "睡眠",
@@ -269,8 +303,6 @@ def test_every_menu_icon_exists():
     items = (*frame.tabs, *frame.more)
     assert [item.text for item in frame.tabs] == list(TABS.values())
     assert [item.text for item in frame.more] == [
-        "体重",
-        "ごはんの相談",
         "動画",
         "行動マップ",
         "睡眠",
