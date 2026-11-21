@@ -42,7 +42,6 @@ def test_fields_and_adjacent_buttons_share_a_height():
     [
         ("care", "/care"),
         ("records", "/records"),
-        ("events", "/records/events"),
         ("activity", "/activity"),
         ("storage", "/manage/storage"),
         ("users", "/manage/users"),

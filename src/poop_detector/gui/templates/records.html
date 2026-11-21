@@ -2,7 +2,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import empty_state, icon, stat, when %}
 {% block content %}
-<h2>排便・排尿の記録</h2>{% if saved %}<div class="message" role="status">記録しました。</div>{% endif %}<p class="toolbar"><a class="button secondary" href="/records/new">排泄を記録</a><a class="button ghost" href="/records/events">検知の一覧</a></p>
+<h2>排便・排尿の記録</h2>{% if saved %}<div class="message" role="status">記録しました。</div>{% endif %}<p class="toolbar"><a class="button secondary" href="/records/new">排泄を記録</a><a class="button ghost" href="/clips?show=detected">差分検知の動画</a></p>
 <section class="record-stats" aria-labelledby="daily-stats-title"><h3 id="daily-stats-title">1日の排便・排尿回数</h3><form method="get" action="/records" class="toolbar field-toolbar"><label>集計日<input type="date" name="date" value="{{ stats.day }}" required></label><label>時間帯別の集計期間<select name="days">
 {%- for value in stats.periods -%}
 <option value="{{ value }}"{% if value == stats.period %} selected{% endif %}>{{ value }}日間</option>

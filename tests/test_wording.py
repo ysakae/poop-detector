@@ -56,8 +56,12 @@ def test_glossary_is_documented():
         assert preferred in section
 
 
-def test_event_list_is_called_detections(gui):
-    server, _, _ = gui
-    status, body = request(server, "GET", "/records/events")
+def test_detections_are_found_among_the_clips(gui):
+    """検知は動画の一覧の「差分検知」で探し、1件は「記録の詳細」で開く。"""
+    server, _, event = gui
+    status, body = request(server, "GET", "/clips?show=detected")
     assert status == 200
-    assert 'aria-label="検知の一覧"' in body.decode()
+    assert ">差分検知 " in body.decode()
+    status, body = request(server, "GET", f"/records/events?id={event}")
+    assert status == 200
+    assert "<h2>記録の詳細</h2>" in body.decode()

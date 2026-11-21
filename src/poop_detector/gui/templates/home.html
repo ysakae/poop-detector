@@ -48,7 +48,7 @@
 {%- endfor -%}
 </ul>
 {% else %}{{ empty_state("確定記録はまだありません", "排泄を見かけたら、ここから記録できます。", "/records/new", "排泄を記録", "secondary") }}{% endif %}
-<p class="note"><a href="/records/events">検知の一覧</a></p>
+<p class="note"><a href="/clips?show=detected">差分検知の動画</a></p>
 </section>
 {% if manual_only %}
 {% if viewer_admin %}<p><a href="/manage/areas">カメラの見守りを追加する</a></p>{% endif %}

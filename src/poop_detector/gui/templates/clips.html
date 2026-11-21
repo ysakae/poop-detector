@@ -13,7 +13,7 @@
 {{ capacity_panel(capacity) }}{% if viewer_admin %}<p><a href="/manage/storage">録画容量と古い動画の整理</a></p>{% endif %}
 </details>
 {% endif %}
-{% if not focused %}<nav class="filter-menu" aria-label="人のラベルで動画を絞り込む"><ul>
+{% if not focused %}<nav class="filter-menu" aria-label="動画を絞り込む"><ul>
 {%- for filter in filters -%}
 <li><a href="{{ filter.url }}"{% if filter.current %} aria-current="true"{% endif %}>{{ filter.text }}</a></li>
 {%- endfor -%}
@@ -93,7 +93,7 @@
 {% if not clip.pinned %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}<button class="secondary" name="protected" value="1">この動画を保護</button></form>{% elif viewer_admin %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}<button class="secondary" name="protected" value="0">保護指定を解除</button></form>{% else %}<p class="note">保護中の動画です（解除は管理者が行います）。</p>{% endif %}
 {% include "_benchmark_candidate.html" %}
 </details>
-{% if clip.event_id %}<p><a href="/records/events?filter=all&amp;id={{ clip.event_id }}">この動画の検知を開く</a></p>{% endif %}
+{% if clip.event_id %}<p><a href="/records/events?id={{ clip.event_id }}">この動画の検知を開く</a></p>{% endif %}
 {% elif clip.removed is not none %}
 <p>{{ "録画ファイルは整理済みです。" if clip.removed else "録画ファイルの整理を再開できます。" }} {% if viewer_admin %}<a href="/manage/storage">録画の整理を開く</a>{% endif %}</p>
 {% if assessment and assessment.reason %}<p>{{ assessment.label_or_default }} ／ {{ assessment.reason }}</p>{% endif %}

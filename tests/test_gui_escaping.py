@@ -51,7 +51,7 @@ def evil_gui(tmp_path):
 def pages(server, ready, failed):
     return [
         "/",
-        "/records/events?filter=all",
+        f"/records/events?id={server.app.store.list()[0]['id']}",
         "/records",
         f"/clips?id={ready}",
         f"/clips?id={failed}",

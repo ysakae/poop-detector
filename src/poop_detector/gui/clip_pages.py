@@ -56,6 +56,8 @@ CLIP_FILTERS: dict[str, tuple[str, Callable[[Mapping[str, Any]], bool]]] = {
     "all": ("すべて", lambda _row: True),
     "unlabeled": ("未ラベル", lambda row: row["label"] is None),
     "labeled": ("ラベル済み", lambda row: row["label"] is not None),
+    # 画像の差分で見つけた検知の動画（以前の「検知の一覧」の代わり）。
+    "detected": ("差分検知", lambda row: row["source"] == "detected"),
 }
 
 

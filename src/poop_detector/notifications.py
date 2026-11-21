@@ -117,7 +117,7 @@ class ToiletNotifier:
         path = (
             ("/clips?" + urlencode({"id": clip_id}))
             if clip_id
-            else ("/records/events?" + urlencode({"filter": "all", "id": event_id}))
+            else ("/records/events?" + urlencode({"id": event_id}))
         )
         message = (
             f"{at:%Y-%m-%d %H:%M:%S %Z} [{risk}] {detail}。"
