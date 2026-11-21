@@ -82,6 +82,25 @@ def entries(database: Database, day: date) -> list[CareEntry]:
     return [_entry(row) for row in rows]
 
 
+def feeding_totals(database: Database, first: date, last: date) -> dict[date, dict[str, int]]:
+    """ローカルの日付ごと・フードごとの給餌量（0.1 g単位）。削除済みと量のない記録は除く。"""
+    start = datetime.combine(first, time.min).astimezone(UTC).isoformat()
+    end = datetime.combine(last + timedelta(days=1), time.min).astimezone(UTC).isoformat()
+    with database.connect() as db:
+        rows = db.execute(
+            """SELECT at, food, amount_dg FROM care_entries
+            WHERE kind='feeding' AND amount_dg IS NOT NULL AND deleted_at IS NULL
+            AND at >= ? AND at < ?""",
+            (start, end),
+        ).fetchall()
+    totals: dict[date, dict[str, int]] = {}
+    for row in rows:
+        foods = totals.setdefault(to_local(row["at"]).date(), {})
+        food = row["food"].strip()
+        foods[food] = foods.get(food, 0) + row["amount_dg"]
+    return totals
+
+
 def _entry(row: sqlite3.Row) -> CareEntry:
     return CareEntry(
         row["id"],
