@@ -12,6 +12,10 @@ from typing import Any
 
 from .token_usage import TokenUsage, parse_codex
 
+JUDGE_TIMEOUT = 120
+# ウェブ検索は動画の判定より時間がかかる。advice.jobs.STALE_SECONDS はこの2倍。
+LOOKUP_TIMEOUT = 300
+
 
 def codex_environment() -> dict[str, str]:
     """Codex CLI に渡す最小限の環境変数。RTSP の URL などは渡さない。"""
@@ -107,6 +111,22 @@ class CodexCliJudge:
     def judge(
         self, folder: Path, prompt: str, images: Sequence[str], schema: dict[str, Any]
     ) -> object:
+        return self._invoke(folder, prompt, images, schema, search=False, timeout=JUDGE_TIMEOUT)
+
+    def lookup(self, folder: Path, prompt: str, schema: dict[str, Any]) -> object:
+        """ウェブ検索だけを許して調べさせる（画像なし）。シェルとファイルの書き込みは無効のまま。"""
+        return self._invoke(folder, prompt, (), schema, search=True, timeout=LOOKUP_TIMEOUT)
+
+    def _invoke(
+        self,
+        folder: Path,
+        prompt: str,
+        images: Sequence[str],
+        schema: dict[str, Any],
+        *,
+        search: bool,
+        timeout: int,
+    ) -> object:
         # 同じ入力を別のモデルでも使うため、前の出力を読み間違えないようにする。
         (folder / "result.json").unlink(missing_ok=True)
         (folder / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
@@ -116,6 +136,7 @@ class CodexCliJudge:
         completed = self.runner(
             [
                 "codex",
+                *(["--search"] if search else []),
                 "--ask-for-approval",
                 "never",
                 "exec",
@@ -146,7 +167,7 @@ class CodexCliJudge:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             check=True,
-            timeout=120,
+            timeout=timeout,
         )
         self.last_usage = parse_codex(getattr(completed, "stdout", None))
         return json.loads((folder / "result.json").read_text(encoding="utf-8"))

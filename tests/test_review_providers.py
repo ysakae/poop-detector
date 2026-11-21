@@ -9,8 +9,15 @@ import pytest
 from poop_detector.commands.context import CommandError
 from poop_detector.commands.review import ready_judge
 from poop_detector.config import Config
+from poop_detector.features.advice import jobs
+from poop_detector.video.codex_cli import CodexCliJudge
 from poop_detector.video.judge_failures import JudgeCallError, failure_cause
-from poop_detector.video.providers import build_judge
+from poop_detector.video.providers import (
+    LOOKUP_TIMEOUT,
+    ClaudeCodeJudge,
+    build_judge,
+    supports_lookup,
+)
 from poop_detector.video.token_usage import TokenUsage
 
 SCHEMA = {"type": "object", "properties": {"label": {"type": "string"}}, "required": ["label"]}
@@ -251,3 +258,56 @@ def test_missing_cli_is_a_launch_failure(monkeypatch):
     with pytest.raises(JudgeCallError) as error:
         build_judge("gemini").judge(None, "指示", [], SCHEMA)
     assert failure_cause(error.value).kind == "launch"
+
+
+def test_codex_lookup_enables_only_web_search(tmp_path):
+    seen = {}
+
+    def runner(args, **kwargs):
+        seen.update(args=args, kwargs=kwargs)
+        (tmp_path / "result.json").write_text(json.dumps(RESULT), encoding="utf-8")
+        return subprocess.CompletedProcess(args, 0, b"")
+
+    judge = CodexCliJudge(runner)
+    assert judge.lookup(tmp_path, "探して", SCHEMA) == RESULT
+    args = seen["args"]
+    assert args[:4] == ["codex", "--search", "--ask-for-approval", "never"]
+    assert args.index("--search") < args.index("exec")
+    assert "shell_tool" in args
+    assert "unified_exec" in args
+    assert args[args.index("--sandbox") + 1] == "read-only"
+    assert "--image" not in args
+    assert seen["kwargs"]["timeout"] == LOOKUP_TIMEOUT
+
+
+def test_claude_lookup_allows_only_web_tools(tmp_path, monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _: "/bin/claude")
+    seen = {}
+
+    def run(args, **kwargs):
+        seen.update(args=args, kwargs=kwargs)
+        response = {"type": "result", "subtype": "success", "structured_output": RESULT}
+        return subprocess.CompletedProcess(args, 0, json.dumps(response).encode() + b"\n")
+
+    monkeypatch.setattr("subprocess.run", run)
+    assert ClaudeCodeJudge("").lookup(tmp_path, "探して", SCHEMA) == RESULT
+    args = seen["args"]
+    assert args[args.index("--tools") + 1] == "WebSearch,WebFetch"
+    assert args[args.index("--allowedTools") + 1] == "WebSearch,WebFetch"
+    assert "Bash" not in " ".join(args)
+    assert "--safe-mode" in args
+    assert "--no-session-persistence" in args
+    assert args[args.index("--permission-mode") + 1] == "dontAsk"
+    content = json.loads(seen["kwargs"]["input"])["message"]["content"]
+    assert [item["type"] for item in content] == ["text"]
+    assert seen["kwargs"]["timeout"] == LOOKUP_TIMEOUT
+
+
+def test_antigravity_does_not_support_lookup():
+    assert not supports_lookup(build_judge("gemini"))
+    assert supports_lookup(build_judge("codex"))
+    assert supports_lookup(build_judge("claude"))
+
+
+def test_stale_seconds_covers_lookup_timeout():
+    assert LOOKUP_TIMEOUT * 2 == jobs.STALE_SECONDS

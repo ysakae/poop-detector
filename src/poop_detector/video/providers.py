@@ -10,9 +10,9 @@ import tempfile
 from collections.abc import Sequence
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
-from .codex_cli import CodexCliJudge
+from .codex_cli import JUDGE_TIMEOUT, LOOKUP_TIMEOUT, CodexCliJudge
 from .judge_failures import JudgeCallError, mentions_rate_limit, rate_limited
 from .token_usage import TokenUsage, parse_claude
 
@@ -26,9 +26,24 @@ STDERR_DRAIN_SECONDS = 2
 # ACP の停止の理由（stopReason）のうち、記録の詳細に入れてよいもの。
 STOP_REASONS = ("max_tokens", "max_turn_requests", "refusal", "cancelled")
 CHECK_TIMEOUT = 15
-JUDGE_TIMEOUT = 120
 CLAUDE_LOGIN = "claude auth login で Claude Code CLI にログインしてください"
 AGY_LOGIN = "agy acp --login で Antigravity CLI にログインしてください"
+
+
+__all__ = ["JUDGE_TIMEOUT", "LOOKUP_TIMEOUT"]
+
+
+class WebLookup(Protocol):
+    """ウェブ検索だけを許して調べさせられる判定器。"""
+
+    name: str
+
+    def lookup(self, folder: Path, prompt: str, schema: dict[str, Any]) -> object: ...
+
+
+def supports_lookup(judge: object) -> bool:
+    """判定器がウェブ検索の口（lookup）を持つか。"""
+    return callable(getattr(judge, "lookup", None))
 
 
 def _cli_environment() -> dict[str, str]:
@@ -132,6 +147,24 @@ class ClaudeCodeJudge:
     def judge(
         self, folder: Path, prompt: str, images: Sequence[str], schema: dict[str, Any]
     ) -> object:
+        return self._invoke(folder, prompt, images, schema, tools="", timeout=JUDGE_TIMEOUT)
+
+    def lookup(self, folder: Path, prompt: str, schema: dict[str, Any]) -> object:
+        """ウェブ検索と取得のツールだけを許して調べさせる（画像なし）。"""
+        return self._invoke(
+            folder, prompt, (), schema, tools="WebSearch,WebFetch", timeout=LOOKUP_TIMEOUT
+        )
+
+    def _invoke(
+        self,
+        folder: Path,
+        prompt: str,
+        images: Sequence[str],
+        schema: dict[str, Any],
+        *,
+        tools: str,
+        timeout: int,
+    ) -> object:
         executable = _executable("claude", self.name)
         self.last_usage = None
         message = {
@@ -167,7 +200,8 @@ class ClaudeCodeJudge:
                     "--verbose",
                     "--safe-mode",
                     "--tools",
-                    "",
+                    tools,
+                    *(["--allowedTools", tools] if tools else []),
                     "--permission-mode",
                     "dontAsk",
                     "--no-session-persistence",
@@ -182,7 +216,7 @@ class ClaudeCodeJudge:
                 cwd=folder,
                 env=_cli_environment(),
                 check=False,
-                timeout=JUDGE_TIMEOUT,
+                timeout=timeout,
             )
         except subprocess.TimeoutExpired:
             raise JudgeCallError(f"{self.name} の判定がタイムアウトしました", "timeout") from None
