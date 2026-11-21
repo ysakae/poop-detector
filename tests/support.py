@@ -164,3 +164,35 @@ def add_clip(
     if label is not None:
         clips.labels.save(clip_id, ClipLabel(label, activity=activity, location=location))
     return clip_id
+
+
+class FakeAdvisor:
+    """相談の作業スレッド用の偽の判定器。answer・lookup_output に値か例外を入れて変える。"""
+
+    name = "偽の判定器"
+
+    def __init__(self, answer=None, lookup_output=None):
+        self.answer = {"answer": "量は今のままで大丈夫です"} if answer is None else answer
+        self.lookup_output = lookup_output
+        self.last_usage = None
+        self.prompts = []
+
+    @staticmethod
+    def _result(value):
+        if isinstance(value, BaseException):
+            raise value
+        return value
+
+    def judge(self, folder, prompt, images, schema):
+        self.prompts.append(prompt)
+        return self._result(self.answer)
+
+    def lookup(self, folder, prompt, schema):
+        self.prompts.append(prompt)
+        return self._result(self.lookup_output)
+
+
+class NoLookupAdvisor(FakeAdvisor):
+    """ウェブ検索の口を持たない判定器。"""
+
+    lookup = None

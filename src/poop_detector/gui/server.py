@@ -38,6 +38,7 @@ from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
 from ..web_push import PushKeys, PushSubscriptions
 from .access import COOKIE_NAME
 from .accounts import Accounts
+from .advice_worker import advice_worker
 from .asgi import create_app
 from .feeding_notifications import feeding_reminders
 from .pages import page_title
@@ -132,11 +133,14 @@ class GuiServer:
         del poll_interval
         self._started = True
         try:
-            with feeding_reminders(
-                self.app.store.database,
-                self.app.push_subscriptions,
-                self.app.push_keys,
-                public_url=self.site.public_url,
+            with (
+                feeding_reminders(
+                    self.app.store.database,
+                    self.app.push_subscriptions,
+                    self.app.push_keys,
+                    public_url=self.site.public_url,
+                ),
+                advice_worker(self.app),
             ):
                 self._server.run(sockets=[self.socket])
         finally:
