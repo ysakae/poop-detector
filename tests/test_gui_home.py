@@ -344,3 +344,12 @@ def test_date_inputs_drop_the_ios_native_look():
     assert value, "日付の値の位置の規則がありません"
     assert "text-align:left" in value[1]
     assert re.search(r"input::-webkit-datetime-edit\{[^}]*padding:0", style)
+
+
+def test_empty_date_inputs_keep_their_width():
+    """見た目の既定を外すと、iOS では値のない日付・時刻の欄が枠だけに縮むので、最小幅を持たせる。"""
+    style = (GUI_DIR / "templates" / "style.css").read_text()
+    for kind, width in (("time", "7em"), ("date", "9.5em"), ("datetime-local", "13em")):
+        rule = re.search(rf"\ninput\[type={kind}\]\{{([^}}]*)\}}", style)
+        assert rule, f"{kind} の欄の最小幅の規則がありません"
+        assert f"min-width:{width}" in rule[1]

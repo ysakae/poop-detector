@@ -52,6 +52,9 @@ input[type=text],input[type=datetime-local],input[type=date],input[type=time],in
 :is(input[type=datetime-local],input[type=date],input[type=time]){-webkit-appearance:none;appearance:none}
 input::-webkit-date-and-time-value{text-align:left;min-height:1.375em;margin:0}
 input::-webkit-datetime-edit{padding:0}
+input[type=time]{min-width:7em}
+input[type=date]{min-width:9.5em}
+input[type=datetime-local]{min-width:13em}
 textarea{width:100%;resize:vertical}
 button,a.button{font:inherit;font-weight:600;line-height:1.375;min-height:var(--control-height);padding:10px 20px;border:1px solid var(--primary);background:var(--primary);color:var(--on-primary);border-radius:var(--radius-pill);cursor:pointer}
 a.button{display:inline-block;text-decoration:none}
