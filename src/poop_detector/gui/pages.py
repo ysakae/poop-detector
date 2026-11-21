@@ -1,6 +1,7 @@
 """GUI のホーム（ダッシュボード）、検知の一覧（イベントのラベル付け）、排泄の記録の画面。"""
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
 from typing import Any, TypeAlias
 from urllib.parse import urlencode
@@ -24,6 +25,7 @@ STATS_PERIODS = ("7", "30", "90")
 EVENTS_PAGE = "/records/events"
 # 目視で確認した排泄を記録する画面。
 NEW_RECORD_PAGE = "/records/new"
+CARE_PAGE = "/care"
 RECENT_RECORDS = 5
 APP_TITLE = "トイレ記録"
 
@@ -288,31 +290,41 @@ HOME_QUICK: tuple[tuple[str, str, str], ...] = (
 RECORD_ICONS = {"feces": "feces", "urine": "urine"}
 
 
-def _recorded_notice(entry: CareEntry, day: str) -> dict[str, str]:
+def care_url(entry: CareEntry) -> str:
+    """お世話の記録を、実施した日のお世話の画面で直す URL。"""
+    day = entry.at.astimezone().date().isoformat()
+    return f"{CARE_PAGE}?" + urlencode({"day": day, "id": entry.id})
+
+
+def _recorded_notice(entry: CareEntry) -> dict[str, str]:
     """ホームから記録した直後の知らせ。何を記録したかと、直す画面の URL。"""
     detail = feeding_text(entry.food, entry.amount_dg) if entry.kind == "feeding" else ""
     name = "ごはん" if entry.kind == "feeding" else "シート交換"
-    return {
-        "text": f"{name}（{detail}）" if detail else name,
-        "url": f"/care?day={day}&id={entry.id}",
-    }
+    return {"text": f"{name}（{detail}）" if detail else name, "url": care_url(entry)}
 
 
-def _last_care(
-    store: Store, records: Sequence[EventRow], today: date
-) -> list[tuple[str, str, ListTime | None, str]]:
-    """お世話の種類ごとに、ホームに出す最後の実施時刻をそろえる。"""
+@dataclass(frozen=True)
+class LastCare:
+    """ホームの「最後のお世話」の1行。url は、その記録を直す画面（記録がなければ空）。"""
+
+    label: str
+    icon: str
+    stamp: ListTime | None
+    amount: str
+    url: str
+
+
+def _care_row(label: str, icon: str, entry: CareEntry | None, today: date) -> LastCare:
+    if entry is None:
+        return LastCare(label, icon, None, "", "")
+    amount = feeding_text("", entry.amount_dg) if entry.kind == "feeding" else ""
+    return LastCare(label, icon, list_time(entry.at.isoformat(), today), amount, care_url(entry))
+
+
+def _last_care(store: Store, records: Sequence[EventRow], today: date) -> list[LastCare]:
+    """お世話の種類ごとに、ホームに出す最後の実施時刻と、直す画面の URL をそろえる。"""
     entries = latest_entries(store.database)
-    feeding = entries.get("feeding")
-    sheet = entries.get("sheet")
-    result = [
-        (
-            "ごはん",
-            "food",
-            list_time(feeding.at.isoformat(), today) if feeding else None,
-            feeding_text("", feeding.amount_dg) if feeding else "",
-        ),
-    ]
+    result = [_care_row("ごはん", "food", entries.get("feeding"), today)]
     now = local_now()
     for label, kind in (("うんち", "feces"), ("おしっこ", "urine")):
         row = next(
@@ -324,11 +336,12 @@ def _last_care(
             ),
             None,
         )
-        stamp = (row["actual_start"] or row["timestamp"]) if row else None
-        result.append((label, kind, list_time(stamp, today), ""))
-    result.append(
-        ("シート交換", "sheet", list_time(sheet.at.isoformat(), today) if sheet else None, "")
-    )
+        if row is None:
+            result.append(LastCare(label, kind, None, "", ""))
+        else:
+            stamp = row["actual_start"] or row["timestamp"]
+            result.append(LastCare(label, kind, list_time(stamp, today), "", event_url(row["id"])))
+    result.append(_care_row("シート交換", "sheet", entries.get("sheet"), today))
     return result
 
 
@@ -374,7 +387,7 @@ def render_home(
         food_grams=format_grams(sum(fed)),
         token=token,
         quick_feed=feeding_text(*last) if last else "",
-        recorded=_recorded_notice(done, today.isoformat()) if done else None,
+        recorded=_recorded_notice(done) if done else None,
         quick=HOME_QUICK,
         next_feeding=next(
             (plan for plan in plans_for_day(store.database, today) if not plan.recorded), None
