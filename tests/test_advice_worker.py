@@ -8,7 +8,9 @@ import pytest
 from support import FakeAdvisor, NoLookupAdvisor
 
 from poop_detector.features.advice.worker import AdviceWorker
+from poop_detector.gui.advice_worker import clean_workdir
 from poop_detector.gui.advice_worker import configured_judge as real_configured_judge
+from poop_detector.gui.advice_worker import configured_lookup_judge as real_lookup_judge
 from poop_detector.records import advice
 from poop_detector.records.events import Store
 from poop_detector.video.judge_failures import JudgeCallError
@@ -205,3 +207,104 @@ def test_configured_judge_reads_settings(tmp_path):
     assert (provider, model) == ("codex", "gpt-test")
     config.write_text("review:\n  provider: codex\n  model: ''\n")
     assert real_configured_judge(config)[2] is None
+
+
+FOUND = {
+    "product_name": "テストフード",
+    "maker": "テスト",
+    "kcal_per_100g": 385,
+    "source_url": "https://maker.example/p",
+    "note": "",
+}
+
+
+def test_lookup_uses_its_own_judge_when_given(setup, tmp_path):
+    """主の判定器がウェブ検索に対応しなくても、カロリー探し用の判定器で探す。"""
+    store, database = setup
+    queue_lookup(database)
+    worker = AdviceWorker(
+        database,
+        store,
+        lambda: (NoLookupAdvisor(), "gemini", None),
+        lambda: "ポチ",
+        tmp_path / "work",
+        clock=lambda: NOW,
+        choose_lookup=lambda: (FakeAdvisor(lookup_output=FOUND), "codex", None),
+    )
+    worker.poll_once()
+    assert lookup_row(database)["status"] == "done"
+    assert [row["provider"] for row in runs(database, "food_lookup")] == ["codex"]
+
+
+def test_lookup_is_unsupported_when_no_judge_can_search(setup, tmp_path):
+    store, database = setup
+    queue_lookup(database)
+    worker = AdviceWorker(
+        database,
+        store,
+        lambda: (FakeAdvisor(), "codex", None),
+        lambda: "ポチ",
+        tmp_path / "work",
+        clock=lambda: NOW,
+        choose_lookup=lambda: None,
+    )
+    worker.poll_once()
+    assert (lookup_row(database)["status"], lookup_row(database)["failure"]) == (
+        "failed",
+        "unsupported",
+    )
+
+
+def test_configured_lookup_judge_falls_back_to_a_web_capable_judge(tmp_path):
+    from poop_detector.video.codex_cli import CodexCliJudge
+
+    config = tmp_path / "config.yaml"
+    config.write_text("review:\n  provider: gemini\n  model: g-1\n  fallback: codex\n")
+    judge, provider, model = real_lookup_judge(config)
+    assert isinstance(judge, CodexCliJudge)
+    # 予備の判定器には主のモデル名を渡さない（別の CLI のモデル名なので）。
+    assert (provider, model) == ("codex", None)
+    config.write_text("review:\n  provider: codex\n  model: gpt-test\n")
+    assert real_lookup_judge(config)[1:] == ("codex", "gpt-test")
+    config.write_text("review:\n  provider: gemini\n  model: g-1\n")
+    assert real_lookup_judge(config) is None
+
+
+def test_clean_workdir_removes_only_old_leftovers(tmp_path):
+    import os
+
+    work = tmp_path / "advice-work"
+    old = work / "tmpold"
+    new = work / "tmpnew"
+    old.mkdir(parents=True)
+    (old / "schema.json").write_text("{}")
+    new.mkdir()
+    stamp = time.time()
+    os.utime(old, (stamp - 3600, stamp - 3600))
+    clean_workdir(work, stamp)
+    assert not old.exists()
+    assert new.exists()
+    # まだ作られていなければ何もしない。
+    clean_workdir(tmp_path / "missing", stamp)
+
+
+def test_clean_workdir_skips_links_and_keeps_going(tmp_path):
+    import os
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("x")
+    work = tmp_path / "advice-work"
+    work.mkdir()
+    (work / "dangling").symlink_to(tmp_path / "nowhere")
+    (work / "linked").symlink_to(outside)
+    old = work / "tmpold"
+    old.mkdir()
+    stamp = time.time()
+    os.utime(old, (stamp - 3600, stamp - 3600))
+    for link in ("dangling", "linked"):
+        os.utime(work / link, (stamp - 3600, stamp - 3600), follow_symlinks=False)
+    clean_workdir(work, stamp)
+    # リンクの先は消さず、壊れたリンクがあっても残りを掃除する。
+    assert (outside / "keep.txt").exists()
+    assert not old.exists()

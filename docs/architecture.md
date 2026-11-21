@@ -168,9 +168,9 @@ OpenCV のネットはスレッド間で共有しないので、`ClipScreener` �
 目安の計算（`records/feeding_advice.py`）は副作用のない関数で、判定器がなくても動きます。相談の回答とフードのカロリー探しだけが、判定器の CLI を使います。
 
 - 質問とカロリー探しの依頼は、`advice_messages`・`food_lookups` に `queued` の行を入れるだけで、すぐ応答します。仕事の取り出しと書き戻しは `features/advice/jobs.py` が受け持ちます。取り出しは `BEGIN IMMEDIATE` の中で行い、同じ仕事を2つの処理が取りません。`running` のまま `STALE_SECONDS` を過ぎた仕事は取り残しとして `failed`（`timeout`）にします。
-- 作業スレッド（`gui/advice_worker.py` の `advice_worker`）は GUI の稼働中だけ動き、`features/advice/worker.py` の `AdviceWorker.poll_once` が1件ずつ処理します。判定器は設定（`review.provider`・`review.model`）から作り、呼び出しは `judge_runs` に用途 `advice`・`food_lookup` で記録します。回答の本文と指示文はログに出しません。
+- 作業スレッド（`gui/advice_worker.py` の `advice_worker`）は GUI の稼働中だけ動き、`features/advice/worker.py` の `AdviceWorker.poll_once` が1件ずつ処理します。相談の判定器は設定（`review.provider`・`review.model`）から作ります。カロリー探しは、主の判定器、`review.fallback` の順にウェブ検索に対応するもの（`supports_lookup`）を選びます（`configured_lookup_judge`。予備には主のモデル名を渡しません）。フードの画面も同じ選び方で、探す欄を出すかを決めます。呼び出しは `judge_runs` に用途 `advice`・`food_lookup` で記録します。回答の本文と指示文はログに出しません。
 - 1時間あたりの回数は `HOURLY_LIMIT` で抑えます。動画の自動判定の上限（`review.max_per_hour`）が数えるのは用途 `review`・`benchmark` だけで（`JudgeRunLog.count_since` の `purposes`）、相談やカロリー探しの呼び出しは動画の判定の枠を使いません。
-- 作業用の一時フォルダー `advice-work/` はデータの保存先に作ります。バックアップの `ALLOWED` にないので入れず、復元でも戻しません。
+- 作業用の一時フォルダー `advice-work/` はデータの保存先に作ります。バックアップの `ALLOWED` にないので入れず、復元でも戻しません。強制終了などで残った中のフォルダーは、作業スレッドの起動時に `clean_workdir` が、`STALE_SECONDS` より古いものだけ消します。
 
 ## 監視の停止とカメラの不調の見張り
 
@@ -221,7 +221,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/audit.py` | 管理者の操作の監査ログ（`audit_log`）。追記だけで、認証情報は入れない |
 | `gui/static/` | 補助的な操作だけを担う JavaScript（押したことがすぐ分かる表示の `busy.js` は、ログイン後のすべての画面で読み込む） |
 
-テンプレートはすべての値を自動でエスケープし、渡し忘れた変数はエラーになります。HTML を文字列で組み立てたり、`Markup` でエスケープを外したりしないでください。例外は、ごはんの相談の AI の回答だけです。`gui/markdown_text.answer_html` が、markdown-it-py で生の HTML を無効にして（`html: False`）Markdown を HTML にし、nh3 で `ALLOWED_TAGS` のタグと https の絶対 URL のリンクだけに絞ってから `Markup` にします。画像・`style`・`class`・`title` などの属性は捨てます。CSP の `style-src` には `'unsafe-inline'` があり、インラインの style を止めないので、nh3 で落とすことが唯一の守りです。変換後が `MAX_HTML_LENGTH`（100,000文字）を超えた回答は、文字のまま出します。家族が書いた質問は、これまでどおり文字のまま出します。`Markup` を作るのはこの関数だけにし、許すタグを増やすときは `tests/test_markdown_text.py` に危ない入力の例を足してください。値の整形と分岐の判断は Python 側で行い、テンプレートは構造だけを受け持ちます。`tests/test_gui_escaping.py` は、特殊文字を含む値が各画面でエスケープされることを確かめます。
+テンプレートはすべての値を自動でエスケープし、渡し忘れた変数はエラーになります。HTML を文字列で組み立てたり、`Markup` でエスケープを外したりしないでください。例外は、ごはんの相談の AI の回答だけです。`gui/markdown_text.answer_html` が、markdown-it-py で生の HTML を無効にして（`html: False`）Markdown を HTML にし、nh3 で `ALLOWED_TAGS` のタグと https の絶対 URL のリンクだけに絞ってから `Markup` にします。画像・`style`・`class`・`title` などの属性は捨てます。CSP の `style-src` には `'unsafe-inline'` があり、インラインの style を止めないので、nh3 で落とすことが唯一の守りです。https のリンクの後ろには、行き先のドメインを「（maker.example）」のように添えます（リンクの文字にドメインが入っていれば添えない）。markdown-it のトークンの段階で文字を足すので、HTML の文字列は組み立てません。変換後が `MAX_HTML_LENGTH`（100,000文字）を超えた回答は、文字のまま出します。家族が書いた質問は、これまでどおり文字のまま出します。`Markup` を作るのはこの関数だけにし、許すタグを増やすときは `tests/test_markdown_text.py` に危ない入力の例を足してください。値の整形と分岐の判断は Python 側で行い、テンプレートは構造だけを受け持ちます。`tests/test_gui_escaping.py` は、特殊文字を含む値が各画面でエスケープされることを確かめます。
 
 ルートが使うストアや鍵は `GuiApp` にまとめ、`Exchange.app` からルートへ渡します。ルートの関数は同期の関数で、Starlette がスレッドプールで呼びます。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。管理者だけの操作には `role="admin"` を付けます（`@get("/manage", role="admin")`）。`asgi.dispatch` が、ルートの表に宣言した役割（`routes.required_role`）を持たない人を 403 で断ります。同じルートの中で役割によって分かれる操作（動画の保護の解除）は、ルートの中で `routes.is_admin` で確かめます。テンプレートは `viewer_admin` で管理者だけの入口を出し分けますが、拒否はサーバーで行います。管理者だけの画面は `/manage` の下に置き、`gui/navigation.py` の管理のメニューに加えます。`tests/test_gui_roles.py` は、ルートの表のすべてのルートで、宣言した役割が権限の表と一致し、一般ユーザーが管理者のルートを断られることを確かめます。管理者の操作は `routes.audit` で監査ログに残します。
 

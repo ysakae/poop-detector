@@ -65,3 +65,27 @@ def test_huge_output_falls_back_to_plain_text():
     # 空のセルの多い表は、短い本文でも大きな HTML になる。上限を超えたら文字のまま出す。
     text = "|a" * 750 + "\n" + "|-" * 750 + "\n" + "x\n" * 1500
     assert answer_html(text) is None
+
+
+def test_links_show_where_they_go():
+    # 表示の文字と行き先が違っても、行き先のドメインが見えるようにする。
+    html = answer_html("[https://bank.example](https://evil.example/login)")
+    assert re.search(
+        r'<a href="https://evil.example/login"[^>]*>https://bank.example</a>（evil.example）', html
+    )
+
+
+def test_links_named_by_their_domain_are_not_annotated_twice():
+    html = answer_html("[maker.example の公式](https://maker.example/p) <https://maker.example/q>")
+    assert "（maker.example）" not in html
+
+
+def test_unsafe_links_get_no_domain_note():
+    assert "（" not in answer_html("[x](javascript:alert(1)) [y](/manage)")
+
+
+def test_domain_note_ignores_case_but_not_lookalike_labels():
+    assert "（maker.example）" not in answer_html("[Maker.Example](https://maker.example/p)")
+    # 行き先のドメインを含む別の名前は、行き先を示したことにならない。
+    assert "（evil.example）" in answer_html("[bank-evil.example](https://evil.example/)")
+    assert "（" not in answer_html("[x](http://plain.example/)")

@@ -24,7 +24,7 @@ from ..records.foods import (
 from ..records.profile import PetProfile, save_profile
 from ..records.weights import parse_grams
 from ..timezones import local_today
-from ..video.providers import build_judge, supports_lookup
+from . import advice_worker
 from .advice_page import (
     DISCLAIMER,
     gain_text,
@@ -104,19 +104,23 @@ def _consult_problem(handler: "Handler") -> str | None:
     return handler.app.judge_readiness.problem(config.review_provider, config.review_model)
 
 
+NO_WEB_JUDGE = (
+    "いまの判定器と予備の判定器（review.fallback）は、どれもウェブ検索に対応していないため、"
+    "カロリー探しは使えません。Codex CLI か Claude Code CLI を予備に足すと使えます。"
+)
+
+
 def _lookup_problem(handler: "Handler") -> str | None:
-    """カロリー探しを使えない理由。使えるなら None。"""
-    config = _config(handler)
-    problem = _consult_problem(handler)
-    if problem is not None:
-        return problem
-    try:
-        judge = build_judge(config.review_provider, config.review_model)
-    except ValueError as error:
-        return str(error)
-    if not supports_lookup(judge):
-        return "いまの判定器はウェブ検索に対応していないため、カロリー探しは使えません。"
-    return None
+    """カロリー探しを使えない理由。使えるなら None。
+
+    作業スレッドと同じく、主の判定器と予備の判定器から、ウェブ検索に対応するものを選ぶ
+    （テストで差し替えられるよう、モジュールから引く）。
+    """
+    choice = advice_worker.configured_lookup_judge(handler.app.config_path)
+    if choice is None:
+        return NO_WEB_JUDGE
+    _, provider, model = choice
+    return handler.app.judge_readiness.problem(provider, model or "")
 
 
 def _render(

@@ -55,10 +55,14 @@ class AdviceWorker:
         pet_name: Callable[[], str],
         workdir: Path,
         clock: Callable[[], datetime] = local_now,
+        choose_lookup: Callable[[], JudgeChoice | None] | None = None,
     ) -> None:
         self.database = database
         self.store = store
         self.choose = choose
+        # カロリー探しの判定器。None を返せばウェブ検索に対応する判定器がない。
+        # 渡さなければ相談と同じ判定器を使う。
+        self.choose_lookup = choose_lookup or choose
         self.pet_name = pet_name
         self.workdir = workdir
         self.clock = clock
@@ -150,9 +154,8 @@ class AdviceWorker:
         finish_answer(self.database, job.id, body, provider, model, self.clock())
 
     def _lookup(self, job: Job, folder: Path) -> None:
-        choice = self.choose()
-        judge, _, _ = choice
-        if not supports_lookup(judge):
+        choice = self.choose_lookup()
+        if choice is None or not supports_lookup(choice[0]):
             fail_job(self.database, job, "unsupported", self.clock())
             return
         with self.database.connect() as db:
@@ -160,7 +163,7 @@ class AdviceWorker:
                 db.execute("SELECT name FROM food_lookups WHERE id=?", (job.id,)).fetchone()[0]
             )
         prompt = lookup_prompt(name)
-        web = cast(WebLookup, judge)
+        web = cast(WebLookup, choice[0])
         result, cause = self._call(
             "food_lookup",
             choice,

@@ -68,6 +68,29 @@ def test_food_lookup_hidden_when_judge_unavailable(gui, monkeypatch):
     assert 'action="/advice/foods/lookup"' not in html
 
 
+def test_food_lookup_hidden_when_no_judge_can_search(gui, monkeypatch):
+    monkeypatch.setattr(
+        "poop_detector.gui.advice_worker.configured_lookup_judge", lambda config_path: None
+    )
+    server, _, _ = gui
+    html = request(server, "GET", PAGE)[1].decode()
+    assert "どれもウェブ検索に対応していない" in html
+    assert 'action="/advice/foods/lookup"' not in html
+
+
+def test_food_lookup_shown_with_a_web_capable_fallback(gui, judge_ready, monkeypatch):
+    """主の判定器が Antigravity でも、予備の Codex で探せるなら探す欄を出す。"""
+    from poop_detector.video.codex_cli import CodexCliJudge
+
+    monkeypatch.setattr(
+        "poop_detector.gui.advice_worker.configured_lookup_judge",
+        lambda config_path: (CodexCliJudge(), "codex", None),
+    )
+    server, _, _ = gui
+    html = request(server, "GET", PAGE)[1].decode()
+    assert 'action="/advice/foods/lookup"' in html
+
+
 def test_food_lookup_failure_is_shown_in_japanese(gui, judge_ready):
     server, store, _ = gui
     submit(server, "/advice/foods/lookup", {"name": "失敗フード"}, page=PAGE)
