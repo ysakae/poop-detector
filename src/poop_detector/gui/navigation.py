@@ -14,6 +14,7 @@ MEMBER_SECTIONS: tuple[tuple[str, str, str], ...] = (
     ("/records", "記録", "records"),
     ("/care", "お世話", "food"),
     ("/weight", "体重", "weight"),
+    ("/advice", "ごはんの相談", "chat"),
     ("/clips", "動画", "video"),
     ("/activity", "行動マップ", "map"),
     ("/sleep", "睡眠", "sleep"),

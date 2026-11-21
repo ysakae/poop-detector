@@ -256,3 +256,14 @@ def test_live_view_comes_first_with_a_short_judgment(gui):
     assert "直近の自動判定" in panel
     # 根拠の文は動画の画面で読むので、ホームには出さない。
     assert '<p id="live-reason" hidden>' in panel
+
+
+def test_home_shows_todays_guide_only_when_available(gui):
+    from test_gui_advice import _setup_guide
+
+    server, store, _ = gui
+    cookie = login(server, role="member")
+    assert "今日の目安" not in page(server, "/", cookie)
+    _setup_guide(server, store)
+    html = page(server, "/", cookie)
+    assert "今日の目安 109 g" in html

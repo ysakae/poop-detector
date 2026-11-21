@@ -25,9 +25,10 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 - `events.sqlite3` — 次の台帳が同じファイルにテーブルを持ちます。
   - `records.events.Store`：検知イベントと排泄の記録
   - `features.sleep_store.SleepStore`：睡眠の記録（`sleep_minutes`・`sleep_detection_hours`）
+  - `records.foods`・`records.advice`・`records.profile`：ごはんの量の目安と相談の台帳（`foods`：フードのカロリー、`food_lookups`：カロリー探しの依頼、`advice_threads`・`advice_messages`：家族で共有する相談の会話、`pet_profile`：犬種・体格・成犬時の予想体重・去勢の有無・主に食べているフード）。どれも秘密ではないので `SECRET_TABLES` には入れず、バックアップに含める
   - `video.clips.ClipStore`：動画の保存要求と状態
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
-  - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否と失敗の種類だけ）
+  - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否と失敗の種類だけ。用途は `review`・`benchmark` に加えて、相談の `advice` とカロリー探しの `food_lookup`）
   - `video.clip_reviews.CirclingReviews`：旋回候補
   - `video.clip_screenings.ScreeningStore`：判定の前のふるい分けの指標（`clip_screenings`。記録だけで、判定には使わない）
   - `video.clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
@@ -162,6 +163,15 @@ OpenCV のネットはスレッド間で共有しないので、`ClipScreener` �
 
 サブスクリプションの5時間・週間の消費割合は保存せず、管理 › 判定器とモデルで押したときだけ `video.plan_usage.PlanUsageBoard` が各 CLI に問い合わせ、GUI のメモリーに置きます。どの CLI もモデルを呼ばない方法で問い合わせます（Codex CLI は `codex app-server` の `account/rateLimits/read`、Claude Code CLI は `claude --print /usage --max-turns 0` の表示、Antigravity CLI は `agy --print /usage --output-format json`）。型と範囲を確かめた割合と時刻だけを取り出し、アカウントの ID や応答の本文は持ちません。形が合わない版は「不明」と示します。
 
+## ごはんの目安と相談の作業（`features/advice/`）
+
+目安の計算（`records/feeding_advice.py`）は副作用のない関数で、判定器がなくても動きます。相談の回答とフードのカロリー探しだけが、判定器の CLI を使います。
+
+- 質問とカロリー探しの依頼は、`advice_messages`・`food_lookups` に `queued` の行を入れるだけで、すぐ応答します。仕事の取り出しと書き戻しは `features/advice/jobs.py` が受け持ちます。取り出しは `BEGIN IMMEDIATE` の中で行い、同じ仕事を2つの処理が取りません。`running` のまま `STALE_SECONDS` を過ぎた仕事は取り残しとして `failed`（`timeout`）にします。
+- 作業スレッド（`gui/advice_worker.py` の `advice_worker`）は GUI の稼働中だけ動き、`features/advice/worker.py` の `AdviceWorker.poll_once` が1件ずつ処理します。判定器は設定（`review.provider`・`review.model`）から作り、呼び出しは `judge_runs` に用途 `advice`・`food_lookup` で記録します。回答の本文と指示文はログに出しません。
+- 1時間あたりの回数は `HOURLY_LIMIT` で抑えます。動画の自動判定の上限（`review.max_per_hour`）が数えるのは用途 `review`・`benchmark` だけで（`JudgeRunLog.count_since` の `purposes`）、相談やカロリー探しの呼び出しは動画の判定の枠を使いません。
+- 作業用の一時フォルダー `advice-work/` はデータの保存先に作ります。バックアップの `ALLOWED` にないので入れず、復元でも戻しません。
+
 ## 監視の停止とカメラの不調の見張り
 
 止まった監視は自分で知らせられないので、見張り役を分けています（`features/watchdog.py`）。
@@ -187,6 +197,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/exchange.py` | ルートに渡す要求ごとの `Exchange`。`respond`・`redirect`・`stream` で応答を決める |
 | `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
 | `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py`・`gui/sleep_page.py` | 画面に出す値を整え、テンプレートに渡す（ホーム、記録と検知の一覧、動画、行動マップ、睡眠の草） |
+| `gui/advice_routes.py`・`gui/advice_page.py`・`gui/advice_worker.py` | ごはんの目安と相談（`/advice`・`/advice/foods`）。ルートは、プロフィールの保存・フードの登録と停止・相談の質問・再質問・削除・状態の問い合わせを受け付ける。`advice_page.py` が画面の値（目安・実績・会話）とホームの「今日の目安」（`today_grams`）を整え、`advice_worker.py` が GUI の稼働中に作業スレッドを動かす |
 | `gui/clip_routes.py` | 録画要求、ラベル付け、確定、保護、評価候補の選択、録画整理の各 POST を受け付ける |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル（先頭にデザインの変数） |
 | `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`）。見ている人（`VIEWER`）から共通の枠の値を渡す |

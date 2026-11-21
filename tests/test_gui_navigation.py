@@ -14,6 +14,7 @@ MEMBER_SECTIONS = {
     "/records": "記録",
     "/care": "お世話",
     "/weight": "体重",
+    "/advice": "ごはんの相談",
     "/clips": "動画",
     "/activity": "行動マップ",
     "/sleep": "睡眠",
@@ -72,6 +73,14 @@ def test_sub_pages_mark_their_section(gui):
     html = page(server, "/clips?id=x", login(server, role="member"))
     current = re.search(r'aria-current="page"[^>]*>([^<]+)</a>', nav_of(html, "メインメニュー"))
     assert current[1] == "動画"
+
+
+def test_advice_thread_marks_the_advice_section():
+    from poop_detector.gui.navigation import Viewer, frame_for
+
+    frame = frame_for(Viewer("家族", False, "/advice/thread?id=x", lambda: "connected", lambda: 0))
+    current = [item.text for item in frame.menu if item.current]
+    assert current == ["ごはんの相談"]
 
 
 def test_header_shows_who_is_logged_in(gui):
@@ -191,6 +200,7 @@ def test_logout_page_points_to_the_login_screen(gui):
 TABS = {"/": "ホーム", "/review": "確認待ち", "/records": "記録", "/care": "お世話"}
 MORE = {
     "/weight": "体重",
+    "/advice": "ごはんの相談",
     "/clips": "動画",
     "/activity": "行動マップ",
     "/sleep": "睡眠",
@@ -253,6 +263,7 @@ def test_every_menu_icon_exists():
     assert [item.text for item in frame.tabs] == list(TABS.values())
     assert [item.text for item in frame.more] == [
         "体重",
+        "ごはんの相談",
         "動画",
         "行動マップ",
         "睡眠",

@@ -71,7 +71,7 @@ source = ["poop_detector"]
 [tool.coverage.report]
 # トレー滞在時間の集計を追加した後に、全体で 94.33% を確認し、睡眠の画面の追加後は 94.56%、判定器の失敗の種類の記録の追加後は 94.65%（CI の実測）、ふるい分けの指標の記録の追加後は手元で 94.82% になった（CI は手元より 0.02% ほど低い）。
 precision = 2
-fail_under = 94.83
+fail_under = 95.1
 show_missing = true
 skip_covered = true
 [tool.mypy]
