@@ -42,12 +42,13 @@ def snapshot(database: Database, today: date) -> Snapshot:
     return Snapshot(profile, rows, current_advice(database, today, rows))
 
 
-def today_grams(database: Database, today: date) -> int | None:
-    """今日の1日の量の目安（g、1 g 単位）。出せないときは None。"""
-    guide = snapshot(database, today).advice.guide
+def today_grams(database: Database, today: date) -> tuple[int, bool] | None:
+    """今日の1日の量の目安（g、1 g 単位）と、警告があるか。出せないときは None。"""
+    advice = snapshot(database, today).advice
+    guide = advice.guide
     if guide is None or guide.grams_per_day is None:
         return None
-    return round(guide.grams_per_day)
+    return round(guide.grams_per_day), bool(advice.warnings)
 
 
 def _headline(guide: Guide) -> str:

@@ -373,7 +373,7 @@ def render_home(
         today=today,
         daily=daily,
         food_grams=format_grams(sum(fed)),
-        guide_grams=today_grams(store.database, today),
+        guide_today=today_grams(store.database, today),
         token=token,
         quick_feed=feeding_text(*last) if last else "",
         recorded=_recorded_notice(done, today.isoformat()) if done else None,

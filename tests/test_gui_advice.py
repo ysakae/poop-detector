@@ -342,7 +342,7 @@ def test_today_grams(gui):
     server, store, _ = gui
     assert today_grams(store.database, local_today()) is None
     _setup_guide(server, store)
-    assert today_grams(store.database, local_today()) == 109
+    assert today_grams(store.database, local_today()) == (109, False)
 
 
 def test_advice_status_for_unknown_thread_is_404(gui):
