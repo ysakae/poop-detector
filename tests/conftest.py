@@ -37,6 +37,10 @@ def fake_advice_judge(monkeypatch):
         "poop_detector.gui.advice_worker.configured_judge",
         lambda config_path: (FakeAdvisor(), "codex", None),
     )
+    monkeypatch.setattr(
+        "poop_detector.gui.advice_worker.configured_lookup_judge",
+        lambda config_path: (FakeAdvisor(), "codex", None),
+    )
 
 
 @pytest.fixture
