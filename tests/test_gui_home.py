@@ -325,3 +325,22 @@ def test_latest_care_times_line_up_with_recent_records(gui):
     rule = re.search(r"\.latest-care li\{([^}]*)\}", style)
     assert rule, "最新のお世話の列のスタイルがありません"
     assert "grid-template-columns:22px minmax(0,1fr) auto" in rule[1]
+
+
+def test_date_inputs_drop_the_ios_native_look():
+    """iOS の Safari は日付・日時の入力欄を独自に描き、幅・高さ・文字の位置がほかの欄とずれる。
+
+    見た目の既定を外し、値を左寄せにして、ほかの入力欄と同じ箱にそろえる。
+    """
+    style = (GUI_DIR / "templates" / "style.css").read_text()
+    rule = re.search(
+        r":is\(input\[type=datetime-local\],input\[type=date\],input\[type=time\]\)\{([^}]*)\}",
+        style,
+    )
+    assert rule, "日付・日時の入力欄の見た目の規則がありません"
+    assert "-webkit-appearance:none" in rule[1]
+    assert "appearance:none" in rule[1]
+    value = re.search(r"input::-webkit-date-and-time-value\{([^}]*)\}", style)
+    assert value, "日付の値の位置の規則がありません"
+    assert "text-align:left" in value[1]
+    assert re.search(r"input::-webkit-datetime-edit\{[^}]*padding:0", style)
