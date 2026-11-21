@@ -143,6 +143,9 @@ PUBLIC_PATHS = frozenset(
         "/sw.js",
         "/assets/icon-192.png",
         "/assets/icon-512.png",
+        "/assets/apple-touch-icon.png",
+        "/apple-touch-icon.png",
+        "/apple-touch-icon-precomposed.png",
     }
 )
 PUBLIC_PREFIX = "/webauthn/"

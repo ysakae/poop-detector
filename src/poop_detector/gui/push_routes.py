@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from .exchange import Exchange as Handler
 
 JSON = "application/json; charset=utf-8"
+# iPhone・iPad の Safari が、ページの指定を読む前に探すことのあるアイコンの場所。
+APPLE_PROBES = ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png")
 
 
 @get("/manifest.webmanifest")
@@ -32,7 +34,8 @@ def manifest(handler: "Handler", _query: object) -> None:
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
-        "background_color": "#edf3f5",
+        # style.css のライトの --bg。アイコンの地（--primary）と合わせて、起動画面の色にする。
+        "background_color": "#faf7f2",
         "theme_color": "#faf7f2",
         "lang": "ja",
         "icons": [
@@ -48,10 +51,17 @@ def service_worker(handler: "Handler", _query: object) -> None:
     handler.respond(200, (ASSETS / "sw.js").read_bytes(), "text/javascript; charset=utf-8")
 
 
-@get("/assets/icon-192.png", "/assets/icon-512.png")
+@get(
+    "/assets/icon-192.png",
+    "/assets/icon-512.png",
+    "/assets/apple-touch-icon.png",
+    *APPLE_PROBES,
+)
 def app_icon(handler: "Handler", query: Query) -> None:
+    """ホーム画面のアイコン（scripts/make-app-icons.py で作る）。"""
     # マニフェストと Service Worker は版のない URL で参照するので、確かめてから使ってもらう。
-    name = urlsplit(handler.path).path.rsplit("/", 1)[1]
+    path = urlsplit(handler.path).path
+    name = "apple-touch-icon.png" if path in APPLE_PROBES else path.rsplit("/", 1)[1]
     serve_asset(handler, name, "image/png", first(query, "v"))
 
 
