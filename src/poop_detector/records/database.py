@@ -625,6 +625,39 @@ def migrate_to_v31(db: sqlite3.Connection) -> None:
     db.execute("CREATE INDEX food_lookups_status ON food_lookups(status)")
 
 
+def migrate_to_v32(db: sqlite3.Connection) -> None:
+    """判定器の用途に advice（ごはんの相談）と food_lookup（フードのカロリー探し）を加える。
+
+    SQLite は CHECK 制約を書き換えられないので、表を作り直して行をすべて写す。
+    """
+    db.execute("DROP INDEX judge_runs_by_time")
+    db.execute("ALTER TABLE judge_runs RENAME TO judge_runs_before_v32")
+    db.execute(
+        """CREATE TABLE judge_runs (
+        id INTEGER PRIMARY KEY,
+        provider TEXT NOT NULL,
+        model TEXT,
+        purpose TEXT NOT NULL
+            CHECK(purpose IN ('review', 'benchmark', 'advice', 'food_lookup')),
+        ran_at TEXT NOT NULL,
+        failed INTEGER NOT NULL CHECK(failed IN (0, 1)),
+        input_tokens INTEGER,
+        cached_tokens INTEGER,
+        output_tokens INTEGER,
+        failure TEXT,
+        failure_detail TEXT)"""
+    )
+    db.execute(
+        """INSERT INTO judge_runs (id, provider, model, purpose, ran_at, failed,
+            input_tokens, cached_tokens, output_tokens, failure, failure_detail)
+        SELECT id, provider, model, purpose, ran_at, failed,
+            input_tokens, cached_tokens, output_tokens, failure, failure_detail
+        FROM judge_runs_before_v32"""
+    )
+    db.execute("DROP TABLE judge_runs_before_v32")
+    db.execute("CREATE INDEX judge_runs_by_time ON judge_runs(ran_at)")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -658,6 +691,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v29,
     migrate_to_v30,
     migrate_to_v31,
+    migrate_to_v32,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

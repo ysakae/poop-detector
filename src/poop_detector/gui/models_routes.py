@@ -46,7 +46,12 @@ def _percent(value: float | None) -> str:
     return "―" if value is None else f"{value:.1%}"
 
 
-PURPOSE_NAMES = {"review": "監視・保存済み動画", "benchmark": "判定器の比較"}
+PURPOSE_NAMES = {
+    "review": "監視・保存済み動画",
+    "benchmark": "判定器の比較",
+    "advice": "ごはんの相談",
+    "food_lookup": "フードのカロリー探し",
+}
 
 
 def _review_status(status: ReviewStatus) -> dict[str, Any]:

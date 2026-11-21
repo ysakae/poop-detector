@@ -49,6 +49,18 @@ def test_unknown_purpose_is_refused(tmp_path):
         runs.record("codex", None, "other", failed=False)
 
 
+def test_count_since_ignores_advice_by_default(tmp_path):
+    runs = ClipStore(tmp_path).judge_runs
+    runs.record("codex", None, "review", failed=False, at=at(2026, 11, 14, 11, 0))
+    runs.record("codex", None, "advice", failed=False, at=at(2026, 11, 14, 11, 1))
+    runs.record("codex", None, "advice", failed=True, at=at(2026, 11, 14, 11, 2))
+    runs.record("codex", None, "food_lookup", failed=False, at=at(2026, 11, 14, 11, 3))
+    since = at(2026, 11, 14, 10, 0)
+
+    assert runs.count_since(since) == 1
+    assert runs.count_since(since, ("advice", "food_lookup")) == 3
+
+
 class Judge:
     """呼ばれた回数を数え、指定した指示で失敗する偽の判定器。"""
 

@@ -606,6 +606,30 @@ def test_failure_kind_migration_keeps_old_judge_runs(tmp_path):
     assert tuple(row) == ("gemini", 1, 10, None, None)
 
 
+def test_purpose_migration_keeps_judge_runs_and_accepts_new_purposes(tmp_path):
+    path = tmp_path / "purpose-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:31]:
+            migration(db)
+        db.execute("PRAGMA user_version = 31")
+        db.execute(
+            """INSERT INTO judge_runs (provider, purpose, ran_at, failed, input_tokens, failure)
+            VALUES ('codex', 'review', '2026-11-20T00:00:00+00:00', 1, 10, 'timeout')"""
+        )
+    with Database(path).connect() as db:
+        db.execute(
+            "INSERT INTO judge_runs (provider, purpose, ran_at, failed)"
+            " VALUES ('codex', 'advice', '2026-11-21T00:00:00+00:00', 0)"
+        )
+        rows = db.execute(
+            "SELECT purpose, failed, input_tokens, failure FROM judge_runs ORDER BY id"
+        ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        ("review", 1, 10, "timeout"),
+        ("advice", 0, None, None),
+    ]
+
+
 def test_screening_migration_keeps_clips_and_adds_the_table(tmp_path):
     path = tmp_path / "screening-migration.sqlite3"
     with sqlite3.connect(path) as db:
@@ -632,7 +656,7 @@ def test_v30_database_keeps_profile_and_weights_after_v31(tmp_path):
         db.execute("INSERT INTO weights VALUES ('w1', '2026-11-01', 3200, 'メモ')")
     database = Database(path)
     with database.connect() as db:
-        assert schema_version(db) == 31
+        assert schema_version(db) == LATEST_VERSION
         row = db.execute("SELECT birth, breed, size_class, food_id FROM pet_profile").fetchone()
         assert tuple(row) == ("2026-06-15", None, None, None)
         assert db.execute("SELECT grams FROM weights").fetchone()[0] == 3200
