@@ -71,7 +71,7 @@
 {% endif %}
 </section>
 {% endfor %}
-<script src="/assets/care.js" defer></script>
+<script src="{{ asset('care.js') }}" defer></script>
 <h3>日ごとの記録</h3>
 <form method="get" action="/care" class="toolbar field-toolbar">
 <label>日付<input type="date" name="day" value="{{ day }}" max="{{ today }}" required></label><button class="secondary">表示</button>

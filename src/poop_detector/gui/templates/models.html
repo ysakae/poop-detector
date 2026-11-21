@@ -49,7 +49,7 @@
 <div class="settings-field" id="judge-custom-model"><label>モデル名<input name="custom_model" value="{{ model }}" maxlength="128"></label></div>
 <p><button>保存</button></p>
 </form>
-<script defer src="/assets/judge_models.js"></script>
+<script defer src="{{ asset('judge_models.js') }}"></script>
 <p class="note">設定ファイルの review の値だけを書き換えます。動いている監視（run）は、次の動画の判定から反映します。新しい判定器を使えない（未ログインなど）ときは、前の判定器のまま続けます。</p>
 {% else %}<p class="message message-warn">設定ファイルの場所が分からないため、表示だけです。</p>{% endif %}
 </section>

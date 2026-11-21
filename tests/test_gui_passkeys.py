@@ -11,6 +11,7 @@ from soft_authenticator import SoftAuthenticator
 from support import exchange
 
 from poop_detector.gui.accounts import Accounts
+from poop_detector.gui.assets import asset_url
 from poop_detector.gui.server import make_server
 from poop_detector.records.database import events_database
 from poop_detector.web_address import WebOptions
@@ -184,7 +185,7 @@ def test_pages_send_browsers_without_a_session_to_login(tmp_path):
         status, _, page = browser.get("/login")
         assert status == 200
         assert 'data-passkey="login"' in page.decode()
-        assert 'src="/assets/passkey.js"' in page.decode()
+        assert f'src="{asset_url("passkey.js")}"' in page.decode()
         assert browser.get("/assets/passkey.js")[0] == 200
         # 画像などページ以外は、これまでどおり 403 を返す。
         assert browser.get("/live/frame", {"Accept": "image/*"})[0] == 403

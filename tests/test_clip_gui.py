@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from support import ready_clip, request, submit
 
+from poop_detector.gui.assets import asset_url
 from poop_detector.video.clip_labels import ClipLabel
 from poop_detector.video.clip_reviews import Assessment
 
@@ -99,7 +100,7 @@ def test_clip_links_keep_addressable_details_for_partial_navigation(gui):
     assert status == 200
     assert b'id="clip-list"' in body
     assert b'id="clip-detail"' in body
-    assert b'src="/assets/clips.js"' in body
+    assert f'src="{asset_url("clips.js")}"'.encode() in body
     assert f'class="active" href="/clips?id={old}"'.encode() in body
     assert f'href="/clips?id={new}"'.encode() in body
     assert request(server, "GET", "/assets/clips.js")[0] == 200

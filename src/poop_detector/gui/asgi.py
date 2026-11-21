@@ -27,6 +27,7 @@ from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.middleware import Middleware
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Route
@@ -74,7 +75,7 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": (
         "default-src 'none'; img-src 'self' blob:; media-src 'self'; "
-        "script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; "
+        "script-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; "
         "form-action 'self'; frame-ancestors 'none'; base-uri 'none'; "
         "manifest-src 'self'; worker-src 'self'"
     ),
@@ -83,6 +84,13 @@ SECURITY_HEADERS = {
     # Admission の Origin の検査で断られてしまう。same-origin なら、ほかのサイトには URL を渡さない。
     "Referrer-Policy": "same-origin",
 }
+# 圧縮しない応答の形式。ライブ映像（multipart/x-mixed-replace）は少しずつ流すので、
+# 圧縮でまとめて遅らせない。画像と動画はもともと圧縮されている。
+# HTML の圧縮は、応答の長さから秘密を推し量る攻撃（BREACH）の前提になるが、セッションの
+# Cookie は SameSite=Strict で、ほかのサイトからログインした画面を開かせられないので許す。
+UNCOMPRESSED = (*DEFAULT_EXCLUDED_CONTENT_TYPES, "multipart/*")
+# 圧縮の強さ。最大の9はほとんど縮まないのに CPU を多く使うので、gzip の既定の6にする。
+COMPRESS_LEVEL = 6
 # HTTPS で届いた要求にだけ付ける。サブドメインには広げない（利用者の他のサイトに影響するため）。
 HSTS = "max-age=31536000"
 
@@ -119,7 +127,7 @@ class SecurityHeaders:
         await self.app(scope, receive, send_with_headers)
 
 
-# ログインしていなくても開ける場所（ログイン、パスキーの登録、その画面のスクリプト）。
+# ログインしていなくても開ける場所（ログイン、パスキーの登録、その画面のスクリプトとスタイル）。
 # 肉球の模様と犬のイラストは、ログインの画面にも出すので公開する。
 # PWA のマニフェスト・アイコン・Service Worker は、ブラウザーが Cookie なしで読むことがあるので公開する。
 PUBLIC_PATHS = frozenset(
@@ -127,6 +135,7 @@ PUBLIC_PATHS = frozenset(
         "/login",
         "/enroll",
         "/assets/passkey.js",
+        "/assets/style.css",
         "/assets/paw.svg",
         "/assets/dog.svg",
         "/manifest.webmanifest",
@@ -371,6 +380,12 @@ def create_app(gui: "GuiApp", site: Site, limits: RateLimits) -> Starlette:
             Route("/{path:path}", dispatch, methods=["GET", "POST"]),
         ],
         middleware=[
+            # モバイル回線での転送量を減らす。リバースプロキシが圧縮しなくても効く。
+            Middleware(
+                GZipMiddleware,
+                compresslevel=COMPRESS_LEVEL,
+                exclude_content_types=UNCOMPRESSED,
+            ),
             Middleware(SecurityHeaders),
             Middleware(Throttle, limits=limits),
             Middleware(Admission, gui=gui, site=site),

@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from support import exchange, login
 
 from poop_detector.gui.asgi import SECURITY_HEADERS
+from poop_detector.gui.assets import asset_url
 
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 ENDPOINT = "https://fcm.googleapis.com/fcm/send/device-1"
@@ -76,7 +77,7 @@ def test_account_page_offers_web_push(gui):
     assert "通知（Web Push）" in html
     key = server.app.push_keys.public_key()
     assert f'data-public-key="{key}"' in html
-    assert 'src="/assets/push.js"' in html
+    assert f'src="{asset_url("push.js")}"' in html
     assert 'name="alerts" value="1" checked' in html
     assert re.search(r'name="early" value="1">', html)
 
@@ -187,4 +188,4 @@ def test_notification_target_survives_a_browser_that_opens_the_start_page(gui):
     assert exchange(server, "GET", "/assets/notification_target.js", auth=False)[0] == 403
 
     page = exchange(server, "GET", "/", headers=cookie, auth=False)[2].decode()
-    assert '<script src="/assets/notification_target.js" defer></script>' in page
+    assert f'<script src="{asset_url("notification_target.js")}" defer></script>' in page

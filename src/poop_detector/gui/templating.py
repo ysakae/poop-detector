@@ -9,6 +9,7 @@ from typing import Any
 
 from jinja2 import Environment, PackageLoader, StrictUndefined
 
+from .assets import asset_url
 from .icons import ICONS
 from .navigation import Viewer, frame_for
 from .themes import Display
@@ -22,6 +23,8 @@ ENVIRONMENT = Environment(
 )
 # アイコンの形。_macros.html の icon が名前で引く（ない名前は StrictUndefined がエラーにする）。
 ENVIRONMENT.globals["icons"] = ICONS
+# 同梱の静的ファイルの URL（内容のハッシュ付き）。ブラウザーが長く預けられる。
+ENVIRONMENT.globals["asset"] = asset_url
 
 
 # 画面を見ている人。asgi.dispatch がルートを呼ぶスレッドで設定する（ログインしていなければ None）。

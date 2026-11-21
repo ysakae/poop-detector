@@ -8,10 +8,13 @@
 
 import json
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 from ..web_push import WebPushNotifier, push_subject
 from .accounts import User
-from .routes import ASSETS, Form, get, post
+from .assets import serve_asset
+from .pages import Query
+from .routes import ASSETS, Form, first, get, post
 from .templating import render_template
 
 if TYPE_CHECKING:
@@ -46,9 +49,10 @@ def service_worker(handler: "Handler", _query: object) -> None:
 
 
 @get("/assets/icon-192.png", "/assets/icon-512.png")
-def app_icon(handler: "Handler", _query: object) -> None:
-    name = handler.path.rsplit("/", 1)[1]
-    handler.respond(200, (ASSETS / name).read_bytes(), "image/png")
+def app_icon(handler: "Handler", query: Query) -> None:
+    # マニフェストと Service Worker は版のない URL で参照するので、確かめてから使ってもらう。
+    name = urlsplit(handler.path).path.rsplit("/", 1)[1]
+    serve_asset(handler, name, "image/png", first(query, "v"))
 
 
 def _user(handler: "Handler") -> User:

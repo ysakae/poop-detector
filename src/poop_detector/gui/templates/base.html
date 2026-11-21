@@ -11,9 +11,7 @@
 {%- macro tab(item) -%}
 <a href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{{ icon(item.icon) }}{{ item.text }}{% if item.badge %}<span class="badge">{{ item.badge }}</span>{% endif %}</a>
 {%- endmacro -%}
-<!doctype html><html lang="ja" data-appearance="{{ display.appearance }}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>{{ title }}</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/assets/icon-192.png"><meta name="theme-color" content="#faf7f2"><style>
-{% include "style.css" %}
-</style><header class="site-header"><h1>{{ title }}</h1>
+<!doctype html><html lang="ja" data-appearance="{{ display.appearance }}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>{{ title }}</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="{{ asset('icon-192.png') }}"><meta name="theme-color" content="#faf7f2"><link rel="stylesheet" href="{{ asset('style.css') }}"><header class="site-header"><h1>{{ title }}</h1>
 {%- if frame %}<p class="site-status"><span class="chip chip-{{ frame.monitor_state }}">監視：{{ frame.monitor }}</span> <a href="/account">{{ frame.person }}さん</a> <a class="header-logout" href="/logout">ログアウト</a></p>{% endif -%}
 </header>
 {%- if frame %}{{ menu(frame.menu, "メインメニュー", "site-menu") }}{% endif -%}
@@ -26,5 +24,5 @@
 {%- for item in frame.tabs %}<li>{{ tab(item) }}</li>{% endfor -%}
 <li><details class="tab-more{% if frame.more_current %} current{% endif %}"><summary>{{ icon("more") }}その他</summary><ul>
 {%- for item in frame.more %}<li>{{ tab(item) }}</li>{% endfor -%}
-</ul></details></li></ul></nav><script src="/assets/menu.js" defer></script><script src="/assets/busy.js" defer></script><script src="/assets/notification_target.js" defer></script>{% endif -%}
+</ul></details></li></ul></nav><script src="{{ asset('menu.js') }}" defer></script><script src="{{ asset('busy.js') }}" defer></script><script src="{{ asset('notification_target.js') }}" defer></script>{% endif -%}
 </html>

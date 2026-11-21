@@ -5,6 +5,8 @@ from pathlib import Path
 
 from support import exchange, login
 
+from poop_detector.gui.assets import asset_url
+
 STATIC = Path(__file__).resolve().parents[1] / "src" / "poop_detector" / "gui" / "static"
 TEMPLATES = STATIC.parent / "templates"
 
@@ -19,7 +21,8 @@ def test_every_signed_in_page_loads_the_busy_script(gui):
     server, _, _ = gui
     cookie = login(server)
     for path in ("/", "/records", "/manage", "/manage/models"):
-        assert '<script src="/assets/busy.js" defer></script>' in page(server, path, cookie)
+        tag = f'<script src="{asset_url("busy.js")}" defer></script>'
+        assert tag in page(server, path, cookie)
     status, headers, _ = exchange(server, "GET", "/assets/busy.js")
     assert status == 200
     assert headers["Content-Type"].startswith("text/javascript")

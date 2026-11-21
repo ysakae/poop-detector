@@ -6,6 +6,7 @@ import pytest
 from support import exchange, login
 
 from poop_detector.capture.live_preview import LivePreview
+from poop_detector.gui.assets import asset_url
 
 MEMBER_SECTIONS = {
     "/": "ホーム",
@@ -276,7 +277,7 @@ def test_login_page_is_a_friendly_card(gui):
     host = {"Host": f"localhost:{server.server_address[1]}"}
     _, _, body = exchange(server, "GET", "/login", headers=host, auth=False)
     card = entry_card(body.decode())
-    assert '<img src="/assets/dog.svg" alt="" width="96" height="96">' in card
+    assert f'<img src="{asset_url("dog.svg")}" alt="" width="96" height="96">' in card
     assert 'data-passkey="login"' in card
     assert len(re.findall(r"<button", card)) == 1
 
@@ -304,7 +305,7 @@ def test_logout_page_explains_how_to_come_back(gui):
 # メニューの操作を助けるスクリプト（#163）。動かなくても、開閉とリンクはそのまま使える。
 def test_menu_script_is_loaded_only_for_signed_in_pages(gui):
     server, _, _ = gui
-    tag = '<script src="/assets/menu.js" defer></script>'
+    tag = f'<script src="{asset_url("menu.js")}" defer></script>'
     assert tag in page(server, "/", login(server, role="member"))
     host = {"Host": f"localhost:{server.server_address[1]}"}
     _, _, body = exchange(server, "GET", "/login", headers=host, auth=False)
