@@ -306,7 +306,7 @@ def _recorded_notice(entry: CareEntry) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class LastCare:
-    """ホームの「最後のお世話」の1行。url は、その記録を直す画面（記録がなければ空）。"""
+    """ホームの「最新のお世話」の1行。url は、その記録を直す画面（記録がなければ空）。"""
 
     label: str
     icon: str

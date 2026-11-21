@@ -161,6 +161,7 @@ main>.card{margin-bottom:16px}.card>h2{font-size:16px;margin:0 0 10px;color:var(
 .day-list .timeline-time{text-align:right;font-variant-numeric:tabular-nums}
 .timeline a.timeline-time{color:var(--link)}
 .day-list a{justify-self:end}
+.latest-care li{grid-template-columns:22px minmax(0,1fr) auto}
 .weight-table td:nth-child(-n+2){white-space:nowrap}.weight-figure{background:none;min-height:0;text-align:left;margin:8px 0 16px}.weight-figure figcaption{padding:4px 0;color:var(--muted)}.weight-chart{display:block;max-width:100%;height:auto}.weight-chart .area{fill:var(--primary-soft)}.weight-chart .axis{stroke:var(--border-strong)}.weight-chart .line{fill:none;stroke:var(--primary);stroke-width:2.5;stroke-linejoin:round}.weight-chart circle{fill:var(--primary);stroke:var(--surface);stroke-width:1.5}
 .weight-chart[data-weight-chart]{width:100%;max-width:620px;font-variant-numeric:tabular-nums}
 .weight-chart .weight-axes{fill:none}
