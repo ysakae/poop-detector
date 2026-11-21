@@ -1,5 +1,6 @@
 """相談の作業スレッドの処理（回答・カロリー探し・失敗・上限）を検証する。"""
 
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -7,6 +8,7 @@ import pytest
 from support import FakeAdvisor, NoLookupAdvisor
 
 from poop_detector.features.advice.worker import AdviceWorker
+from poop_detector.gui.advice_worker import configured_judge as real_configured_judge
 from poop_detector.records import advice
 from poop_detector.records.events import Store
 from poop_detector.video.judge_failures import JudgeCallError
@@ -168,3 +170,38 @@ def test_gui_server_starts_and_stops_advice_worker(gui):
             break
         time.sleep(0.1)
     assert answer_row(database, message)["status"] == "done"
+    server.shutdown()
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and any(
+        t.name == "advice-worker" for t in threading.enumerate()
+    ):
+        time.sleep(0.05)
+    assert not any(t.name == "advice-worker" for t in threading.enumerate())
+
+
+@pytest.mark.parametrize("broken", ["choose", "pet_name"])
+def test_unexpected_error_fails_job_as_other(setup, tmp_path, broken):
+    _, database = setup
+    _, message = ask(database)
+
+    def boom():
+        raise RuntimeError("壊れた")
+
+    worker = make_worker(setup, tmp_path, FakeAdvisor())
+    setattr(worker, broken, boom)
+    assert worker.poll_once() is True
+    row = answer_row(database, message)
+    assert (row["status"], row["failure"]) == ("failed", "other")
+    assert runs(database, "advice") == []
+
+
+def test_configured_judge_reads_settings(tmp_path):
+    from poop_detector.video.codex_cli import CodexCliJudge
+
+    config = tmp_path / "config.yaml"
+    config.write_text("review:\n  provider: codex\n  model: gpt-test\n")
+    judge, provider, model = real_configured_judge(config)
+    assert isinstance(judge, CodexCliJudge)
+    assert (provider, model) == ("codex", "gpt-test")
+    config.write_text("review:\n  provider: codex\n  model: ''\n")
+    assert real_configured_judge(config)[2] is None

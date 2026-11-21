@@ -8,7 +8,7 @@ import tempfile
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ...records import advice
 from ...records.database import Database
@@ -16,7 +16,7 @@ from ...records.events import Store
 from ...timezones import local_now
 from ...video.judge_failures import FailureCause, failure_cause
 from ...video.judge_runs import JudgeRunLog
-from ...video.providers import supports_lookup
+from ...video.providers import WebLookup, supports_lookup
 from ...video.review import VideoJudge
 from .context import build_context
 from .jobs import (
@@ -96,6 +96,7 @@ class AdviceWorker:
             model,
             purpose,
             failed=cause is not None,
+            at=self.clock(),
             usage=getattr(judge, "last_usage", None),
             failure=cause.kind if cause else None,
             failure_detail=cause.detail if cause else None,
@@ -159,10 +160,11 @@ class AdviceWorker:
                 db.execute("SELECT name FROM food_lookups WHERE id=?", (job.id,)).fetchone()[0]
             )
         prompt = lookup_prompt(name)
+        web = cast(WebLookup, judge)
         result, cause = self._call(
             "food_lookup",
             choice,
-            lambda: judge.lookup(folder, prompt, LOOKUP_SCHEMA),  # type: ignore[attr-defined]
+            lambda: web.lookup(folder, prompt, LOOKUP_SCHEMA),
             parse_lookup,
         )
         if cause is not None:

@@ -33,6 +33,10 @@ def configured_judge(config_path: Path | None) -> JudgeChoice:
 
 @contextmanager
 def advice_worker(app: "GuiApp") -> Iterator[None]:
+    """GUI の稼働中、相談の仕事を処理するスレッドを動かす。
+
+    処理中にプロセスが終わった仕事は running のまま残り、expire_stale（STALE_SECONDS）が failed にする。
+    """
     worker = AdviceWorker(
         app.store.database,
         app.store,
