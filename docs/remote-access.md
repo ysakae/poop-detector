@@ -45,12 +45,11 @@ gui:
 
 ```text
 toilet.example.com {
-	encode
 	reverse_proxy 127.0.0.1:8765
 }
 ```
 
-`encode` は、画面（HTML）・スタイル・スクリプト・JSON を zstd か gzip で圧縮して送ります。テキストの転送量がおよそ数分の一になるので、スマートフォンのモバイル回線で開くときに効きます。GUI 自身は圧縮しないので、外から開く構成では付けてください。Caddy の既定で圧縮するのは文字の形式（`text/*`、JSON、JavaScript、SVG など）だけで、ライブ映像（`multipart/x-mixed-replace`）・JPEG の画像・動画は圧縮せず、そのまま流します。スクリプトや画像はブラウザーに預けてもらうので（[設計の概要](architecture.md) の GUI の節）、2回目からは取り直しません。
+GUI は、画面（HTML）・スタイル・スクリプト・JSON を自分で gzip に圧縮して送るので、リバースプロキシで圧縮を設定する必要はありません（Tailscale Serve のように圧縮できないプロキシでも、モバイル回線での転送量が減ります）。ライブ映像・JPEG の画像・動画は圧縮せず、そのまま流します。スクリプトや画像はブラウザーに預けてもらうので（[設計の概要](architecture.md) の GUI の節）、2回目からは取り直しません。
 
 Cloudflare Tunnel や Tailscale などのトンネルを使う場合も、転送先を `http://127.0.0.1:8765` にします。元の `Host` と `X-Forwarded-Proto` の渡し方は、各サービスの説明を確かめてください。HTTPS で届いても `X-Forwarded-Proto` が渡らない構成では、HSTS と `Secure` 属性が付きません。
 
@@ -64,4 +63,4 @@ Cloudflare Tunnel や Tailscale などのトンネルを使う場合も、転送
 - `http://` で開くと、リバースプロキシが `https://` に移す
 - ほかのドメイン名やサーバーの IP アドレスで開くと「アクセスできません」になる
 - ルーターでポート 8765 を外に公開していない（外から届くのはリバースプロキシのポートだけ）
-- ブラウザーの開発者ツールで、画面の応答に `Content-Encoding: zstd` か `gzip` が付いている（`encode` を付けた場合）
+- ブラウザーの開発者ツールで、画面の応答に `Content-Encoding: gzip` が付いている

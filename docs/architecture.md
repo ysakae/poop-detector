@@ -221,6 +221,8 @@ Host ヘッダーの検査、POST の Origin の検査、パスキーでのロ�
 - 動画のサムネイルと検知の画像は、ID ごとに中身が変わらないので `IMAGE_CACHE`（1日）を付けます。見つからない応答には付けません。
 - 画面（HTML）、JSON、動画、ライブ映像、マニフェスト、Service Worker は預けません。ログアウトの応答は `Clear-Site-Data: "cache"` で、預けたファイルも消してもらいます。
 
+応答は、`GZipMiddleware` が gzip に圧縮します（ブラウザーが `Accept-Encoding: gzip` を送ったときだけ）。圧縮しない形式は `asgi.UNCOMPRESSED` で、ライブ映像（`multipart/*`）は少しずつ流すので外し、画像・動画は Starlette の既定どおり外します。HTML も圧縮しますが、セッションの Cookie が `SameSite=Strict` なので、ほかのサイトからログインした画面を開かせて応答の長さを測る攻撃（BREACH）はできません（`tests/test_gui_compression.py`）。
+
 POST の CSRF トークンはセッションごとで、`GuiApp.csrf_for` がセッションの ID と起動ごとの鍵の HMAC から導きます。`asgi.Admission` が確かめたセッションを scope の `state` でルートへ渡し、`Exchange.csrf` から画面のフォームに埋め込みます。パスキーでログインすると `SessionStore.create` がセッションを始め、その ID を HttpOnly の Cookie に入れます。以後の要求は、Cookie のセッションを `SessionStore.check` で確かめます。セッションはユーザーに結び付き（`user_id` 列）、ユーザーのないセッションは使えません。ログインしていなくても開けるのは、ログイン（`/login`）、パスキーの登録（`/enroll`）、その画面のスクリプト、パスキーの JSON の窓口だけです（`asgi.PUBLIC_PATHS`）。ほかの画面をブラウザーで開くとログインの画面へ移し、画像などには 403 を返します。無効にしたユーザーのセッションは使えません。最初の管理者の登録と、パスキーをなくしたときの復旧は、監視するマシンで実行する `users invite`・`users recover` が出す登録用 URL で行います。このマシンで実行できること自体を信頼の根拠にします。`tests/test_gui_routes.py` は、ルートの表にあるすべてのルートで安全対策が効くことを確かめます。インラインスクリプトは CSP で動かないため、JavaScript は `gui/static/` に置き、`gui/routes.py` の `asset` のパスに加えてください。
 
 ## 時刻とタイムゾーン
