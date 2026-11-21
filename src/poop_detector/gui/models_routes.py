@@ -26,7 +26,7 @@ from ..video.judge_failures import FAILURE_NAMES
 from ..video.judge_models import UNAVAILABLE, list_models
 from ..video.judge_runs import JudgeRunUsage
 from ..video.plan_usage import PlanUsageBoard, QuotaWindow
-from ..video.providers import PROVIDER_NAMES, build_judge
+from ..video.providers import PROVIDER_NAMES
 from ..video.review_status import ReviewStatus, review_status
 from .pages import Query, local_time, message_page
 from .routes import Form, audit, first, get, post
@@ -44,15 +44,6 @@ DOG_MODEL_DIR = Path("models") / "dog-yolox"
 
 def _percent(value: float | None) -> str:
     return "―" if value is None else f"{value:.1%}"
-
-
-def readiness(config: Config) -> str | None:
-    """判定器が使えない理由。使えれば None。文言はこのパッケージの案内だけで、値を含まない。"""
-    try:
-        build_judge(config.review_provider, config.review_model).check()
-    except ValueError as error:
-        return str(error)
-    return None
 
 
 PURPOSE_NAMES = {"review": "監視・保存済み動画", "benchmark": "判定器の比較"}
@@ -320,7 +311,7 @@ def _render(
         base=digest(path) if path is not None else "",
         current_name=PROVIDER_NAMES.get(current.review_provider, current.review_provider),
         current_model=current.review_model or "（既定）",
-        problem=readiness(current),
+        problem=app.judge_readiness.problem(current.review_provider, current.review_model),
         review_enabled=current.video_review_enabled,
         providers=list(PROVIDER_NAMES.items()),
         provider=current.review_provider if provider is None else provider,

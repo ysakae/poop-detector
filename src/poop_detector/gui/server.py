@@ -32,6 +32,7 @@ from ..records.database import events_database
 from ..records.events import Store
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
+from ..video.judge_readiness import JudgeReadiness
 from ..video.plan_usage import PlanUsageBoard
 from ..web_address import LOCAL_ONLY, Site, WebOptions, proxy_list
 from ..web_push import PushKeys, PushSubscriptions
@@ -85,6 +86,8 @@ class GuiApp:
     snapshots: Snapshots = field(default_factory=Snapshots)
     # 直近に問い合わせた判定器の CLI のプランの使用量（管理 › 判定器とモデル）。
     plan_usage: PlanUsageBoard = field(default_factory=PlanUsageBoard)
+    # 判定器が使える状態かの確認（管理 › 判定器とモデル）。しばらく使い回す。
+    judge_readiness: JudgeReadiness = field(default_factory=JudgeReadiness)
 
     def csrf_for(self, session_id: str) -> str:
         """セッションの CSRF トークン。セッションの ID と鍵の HMAC で、ID そのものは出さない。"""
