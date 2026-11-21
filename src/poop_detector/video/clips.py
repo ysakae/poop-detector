@@ -249,6 +249,15 @@ class ClipStore:
             row = db.execute("SELECT * FROM clips WHERE id=?", (clip_id,)).fetchone()
         return cast(ClipRow, dict(row)) if row else None
 
+    def for_event(self, event_id: str) -> str | None:
+        """検知から作った動画の ID。いくつかあれば最新のもの。"""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT id FROM clips WHERE event_id=? ORDER BY requested_at DESC LIMIT 1",
+                (event_id,),
+            ).fetchone()
+        return row["id"] if row else None
+
     def update(self, clip_id: str, **values: object) -> None:
         allowed = {
             "status",

@@ -39,7 +39,7 @@ def test_review_page_lists_what_waits_for_review(gui):
     html = page(server, "/review", cookie)
     assert "確認待ち 2件" in html
     assert f'href="/clips?id={clip_id}&amp;from=review"' in html
-    assert f'href="/records/events?filter=unlabeled&amp;id={event_id}&amp;from=review"' in html
+    assert f'href="/records/events?id={event_id}&amp;from=review"' in html
     assert 'href="/review/next"' in html
 
 
@@ -69,14 +69,14 @@ def test_next_opens_the_newest_item_then_skips_forward(gui):
     assert (status, headers["Location"]) == (303, f"/clips?id={clip_id}&from=review")
     path = f"/review/next?after=clip:{clip_id}"
     _, headers, _ = exchange(server, "GET", path, headers=cookie, auth=False)
-    assert headers["Location"] == f"/records/events?filter=unlabeled&id={event_id}&from=review"
+    assert headers["Location"] == f"/records/events?id={event_id}&from=review"
 
 
 def test_editors_opened_from_review_show_the_review_bar(gui):
     server, _, event_id = gui
     clip_id = ready_clip(server, source="manual")
     cookie = login(server, role="member")
-    html = page(server, f"/records/events?filter=unlabeled&id={event_id}&from=review", cookie)
+    html = page(server, f"/records/events?id={event_id}&from=review", cookie)
     assert "確認待ち 残り2件" in html
     assert f'href="/review/next?after=event:{event_id}"' in html
     assert 'name="from" value="review"' in html
@@ -84,8 +84,8 @@ def test_editors_opened_from_review_show_the_review_bar(gui):
     assert "確認待ち 残り2件" in html
     assert f'href="/review/next?after=clip:{clip_id}"' in html
     assert 'name="from" value="review"' in html
-    # 検知の一覧は、確認待ちから開いていなければ出さない（動画は列にあれば出す）。
-    events = page(server, f"/records/events?filter=unlabeled&id={event_id}", cookie)
+    # 記録の詳細は、確認待ちから開いていなければ帯を出さない（動画は列にあれば出す）。
+    events = page(server, f"/records/events?id={event_id}", cookie)
     assert "確認待ち 残り" not in events
 
 
@@ -93,7 +93,7 @@ def test_saving_an_event_from_review_moves_to_the_next(gui):
     server, store, event_id = gui
     cookie = login(server, role="member")
     fields = {"id": event_id, "label": "false", "filter": "unlabeled", "from": "review"}
-    path = f"/records/events?filter=unlabeled&id={event_id}&from=review"
+    path = f"/records/events?id={event_id}&from=review"
     status, headers, _ = post(server, cookie, "/save", fields, path)
     assert (status, headers["Location"]) == (303, f"/review/next?after=event:{event_id}")
     assert next(row for row in store.list() if row["id"] == event_id)["feedback"] == 0
@@ -113,7 +113,7 @@ def test_saving_a_clip_from_review_moves_to_the_next(gui):
 
 
 def test_saving_outside_review_stays_on_the_editor(gui):
-    """確認待ちの列にない動画（ラベル済み）と、検知の一覧からの保存は、同じ画面に残る。"""
+    """確認待ちの列にない動画（ラベル済み）と、記録の詳細からの保存は、同じ画面に残る。"""
     server, _, event_id = gui
     clip_id = ready_clip(server, source="manual")
     cookie = login(server, role="member")
@@ -124,9 +124,9 @@ def test_saving_outside_review_stays_on_the_editor(gui):
     fields = {"id": clip_id, "label": "none", "activity": "other"}
     _, headers, _ = post(server, cookie, "/clips/label", fields, f"/clips?id={clip_id}")
     assert headers["Location"] == f"/clips?id={clip_id}&saved=1"
-    fields = {"id": event_id, "label": "false", "filter": "unlabeled"}
-    _, headers, _ = post(server, cookie, "/save", fields, "/records/events")
-    assert headers["Location"].startswith("/records/events?")
+    fields = {"id": event_id, "label": "false"}
+    _, headers, _ = post(server, cookie, "/save", fields, f"/records/events?id={event_id}")
+    assert headers["Location"] == f"/records/events?id={event_id}&saved=1"
 
 
 def test_waiting_clip_opened_from_the_clip_list_joins_the_review(gui):
@@ -169,7 +169,7 @@ def test_holding_an_item_moves_past_it_instead_of_reopening_it(gui):
     fields = {"id": newer, "label": "unknown", "filter": "unlabeled", "from": "review"}
     _, headers, _ = post(server, cookie, "/save", fields, f"/records/events?id={newer}&from=review")
     _, headers, _ = exchange(server, "GET", headers["Location"], headers=cookie, auth=False)
-    assert headers["Location"] == f"/records/events?filter=unlabeled&id={event_id}&from=review"
+    assert headers["Location"] == f"/records/events?id={event_id}&from=review"
 
 
 def test_after_the_last_item_returns_to_the_list_when_some_were_skipped(gui):
@@ -188,7 +188,7 @@ def test_saved_item_continues_with_the_older_ones(gui):
     cookie = login(server, role="member")
     path = f"/review/next?after=event:{newer}"
     _, headers, _ = exchange(server, "GET", path, headers=cookie, auth=False)
-    assert headers["Location"] == f"/records/events?filter=unlabeled&id={event_id}&from=review"
+    assert headers["Location"] == f"/records/events?id={event_id}&from=review"
 
 
 def test_detection_with_a_video_is_listed_as_one_item(gui):
@@ -206,10 +206,10 @@ def test_review_shows_only_the_item(gui):
     html = page(server, f"/clips?id={clip_id}&from=review", cookie)
     assert 'id="clip-list"' not in html
     assert "今の前後の動画を保存" not in html
-    html = page(server, f"/records/events?filter=unlabeled&id={event_id}&from=review", cookie)
-    assert 'aria-label="検知の一覧"' not in html
+    html = page(server, f"/records/events?id={event_id}&from=review", cookie)
+    assert "<h2>記録の詳細</h2>" not in html
     assert "目視で確認した排便・排尿を記録する" not in html
-    assert 'aria-label="検知の一覧"' in page(server, "/records/events", cookie)
+    assert "<h2>記録の詳細</h2>" in page(server, f"/records/events?id={event_id}", cookie)
 
 
 def test_menu_marks_review_while_reviewing(gui):

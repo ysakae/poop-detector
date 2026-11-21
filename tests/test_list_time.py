@@ -104,12 +104,9 @@ def test_clip_list_and_records_are_split_by_day(gui):
     assert re.search(r'<time datetime="[^"]+" title="[^"]+">\d\d:\d\d</time>', records)
 
 
-def test_home_and_event_list_name_the_day_in_each_row(gui):
+def test_home_names_the_day_in_each_row(gui):
     server, store, _ = gui
     store.add_excretion("urine", datetime.now(UTC).isoformat())
     cookie = login(server, role="member")
     home = page(server, "/", cookie)
     assert re.search(r'<time datetime="[^"]+" title="[^"]+">今日 \d\d:\d\d</time>', home)
-    events = page(server, "/records/events", cookie)
-    nav = re.search(r'aria-label="検知の一覧".*?</nav>', events, re.S)[0]
-    assert re.search(r">今日 \d\d:\d\d</time>", nav)

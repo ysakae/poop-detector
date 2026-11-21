@@ -42,7 +42,7 @@ def test_records_are_a_timeline_with_icons(gui):
 
 def test_gui_lists_image_and_saves_label(gui):
     server, store, event = gui
-    status, data = request(server, "GET", "/records/events")
+    status, data = request(server, "GET", f"/records/events?id={event}")
     assert status == 200
     assert "排便だった".encode() in data
     assert event.encode() in data
@@ -85,8 +85,8 @@ def test_gui_missed_and_filter(gui):
     assert post(server, {"action": "missed", "start": "2026-11-08T19:00"})[0] == 303
     assert store.metrics()["missed"] == 1
     assert post(server, {"id": event, "label": "false"})[0] == 303
-    assert event.encode() not in request(server, "GET", "/records/events?filter=unlabeled")[1]
-    assert event.encode() in request(server, "GET", "/records/events?filter=false")[1]
+    detail = request(server, "GET", f"/records/events?id={event}")[1].decode()
+    assert '<input type="radio" name="label" value="false" checked required>' in detail
 
 
 def test_gui_urine_and_excretion_log(gui):
@@ -99,7 +99,8 @@ def test_gui_urine_and_excretion_log(gui):
     )
     assert len(store.records()) == 2
     assert store.metrics()["missed"] == 0
-    assert event.encode() in request(server, "GET", "/records/events?filter=urine")[1]
+    detail = request(server, "GET", f"/records/events?id={event}")[1].decode()
+    assert '<input type="radio" name="label" value="urine" checked required>' in detail
     assert post(server, {"action": "missed", "type": "both", "start": "2026-11-08T23:20"})[0] == 303
     assert store.metrics()["excretion_counts"] == {"feces": 2, "urine": 2, "unknown": 0}
     assert (
@@ -171,7 +172,7 @@ def test_gui_rejects_get_without_session(gui):
 
 def test_gui_rejects_post_without_session_even_with_csrf(gui):
     server, store, event = gui
-    page = request(server, "GET", "/records/events")[1].decode()
+    page = request(server, "GET", f"/records/events?id={event}")[1].decode()
     csrf = re.search(r'name="csrf" value="([^"]+)"', page)[1]
     body = urlencode({"id": event, "label": "false", "csrf": csrf})
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -255,17 +256,17 @@ def test_serve_without_users_explains_the_first_registration(launch):
 
 
 def test_manual_record_has_its_own_page(gui):
-    """目視の記録は、検知の一覧の下ではなく、専用の画面で入力する。"""
-    server, _, _ = gui
+    """目視の記録は、記録の詳細ではなく、専用の画面で入力する。"""
+    server, _, event = gui
     status, body = request(server, "GET", "/records/new")
     page = body.decode()
     assert status == 200
     assert "<h2>排泄を記録</h2>" in page
     assert 'name="action"' in page
     assert 'name="start"' in page
-    # 検知の一覧は履歴だけにする。
-    events = request(server, "GET", "/records/events")[1].decode()
-    assert "<h2>検知の一覧</h2>" in events
+    # 記録の詳細は1件のラベルだけを扱う。
+    events = request(server, "GET", f"/records/events?id={event}")[1].decode()
+    assert "<h2>記録の詳細</h2>" in events
     assert 'name="action"' not in events
     assert "目視で確認した排便・排尿を記録する" not in events
     # 保存すると記録の画面へ戻り、足した記録が見える。
@@ -282,11 +283,3 @@ def test_old_manual_record_link_moves_to_the_new_page(gui):
     server, _, _ = gui
     status, headers, _ = exchange(server, "GET", "/records/events?manual=1")
     assert (status, headers["Location"]) == (301, "/records/new")
-
-
-def test_event_list_points_to_the_review_when_something_waits(gui):
-    server, store, event_id = gui
-    page = request(server, "GET", "/records/events")[1].decode()
-    assert '確認待ちが1件あります。<a href="/review">確認待ちを開く</a>' in page
-    store.classify(event_id, "false")
-    assert "確認待ちが" not in request(server, "GET", "/records/events?filter=all")[1].decode()

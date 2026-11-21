@@ -1,31 +1,21 @@
-{#- 検知の一覧（記録の下）。検知の一覧と、選んだ検知のラベル入力欄。 -#}
+{#- 記録の詳細（記録の下）。1件の検知・確定記録の画像とラベル入力欄。一覧は動画の一覧（差分検知）にある。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import chip, csrf_field, icon, location_field, when %}
+{% from "_macros.html" import csrf_field, icon, location_field %}
 {% block content %}
 {% include "_review_bar.html" %}
 {% if not review %}
-<h2>検知の一覧</h2>{% if waiting %}<p class="message message-info" role="status">確認待ちが{{ waiting }}件あります。<a href="/review">確認待ちを開く</a></p>{% endif %}
-<div class="toolbar field-toolbar"><form method="get" action="/records/events" class="toolbar field-toolbar"><label>表示する記録<select name="filter">
-{%- for value, text in filters -%}
-<option value="{{ value }}" {% if value == mode %}selected{% endif %}>{{ text }}</option>
-{%- endfor -%}
-</select></label> <button class="secondary">表示</button></form>
-<p>未ラベル {{ metrics.unlabeled }}件 ／ 排便 {{ counts.feces }}件 ／ 排尿 {{ counts.urine }}件 ／ 種類不明 {{ counts.unknown }}件</p></div>
+<h2>記録の詳細</h2>
+<p class="toolbar"><a class="button ghost" href="/records">記録の一覧</a>{% if clip_url %}<a class="button secondary" href="{{ clip_url }}">この検知の動画を開く</a>{% endif %}</p>
 {% if saved %}<div class="message" role="status">保存しました。</div>{% endif %}
-<p class="note">自動検知は排泄の疑いです。便・尿の種類は確認して記録してください。尿跡が残っていても追加の変化を監視します。同じ跡は再通知しません。検知されなかった排泄は<a href="/records/new">排泄を記録</a>から足せます。</p>
+<p class="note">自動検知は排泄の疑いです。便・尿の種類は確認して記録してください。検知を探すときは<a href="/clips?show=detected">差分検知の動画</a>を、検知されなかった排泄は<a href="/records/new">排泄を記録</a>を開いてください。</p>
 {% endif %}
-<div class="workspace{% if review %} reviewing{% endif %}">{% if not review %}<nav class="event-list" aria-label="検知の一覧">
-{%- for item in items -%}
-<a class="{% if item.active %}active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="true"{% endif %}><span class="clip-thumb">{% if item.image %}<img src="/image?id={{ item.id }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon(item.icon) }}{% endif %}</span><span class="clip-text">{{ when(item.when) }}{{ chip(item.label, item.state) }}</span></a>
-{%- endfor -%}
-</nav>{% endif %}<article>
-{% if row %}
-<h2>{{ row.time }}</h2>
+<div class="workspace reviewing"><article>
+<h3>{{ row.time }}</h3>
 {% if row.image %}<figure><img src="/image?id={{ row.id }}" alt="検知時のカメラ画像"><figcaption>検知時の画像。静止画だけで判断できない場合は保留してください。</figcaption></figure>{% else %}<p>この記録には画像がありません。</p>{% endif %}
 {% if row.editable %}
 {% if row.quick %}
 <form method="post" action="/save" class="quick-confirm">{{ csrf_field(token) }}
-<input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="filter" value="{{ mode }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}
+<input type="hidden" name="id" value="{{ row.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}
 <h4>実際にはどうでしたか？</h4>
 <div class="quick-buttons">
 {%- for button in row.quick -%}
@@ -36,7 +26,7 @@
 </form>
 {% endif %}
 <details class="clip-more"{% if not row.quick %} open{% endif %}><summary>くわしく入力（場所・開始と完了・メモ・種類不明・保留）</summary>
-<form method="post" action="/save">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="filter" value="{{ mode }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>実際にはどうでしたか？</legend><div class="choices">
+<form method="post" action="/save">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ row.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>実際にはどうでしたか？</legend><div class="choices">
 {%- for value, text in row.choices -%}
 <label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == row.selected_label %}checked{% endif %} required>{{ text }}</label>
 {%- endfor -%}
@@ -47,8 +37,5 @@
 </div><p><label>メモ（任意）<br><textarea name="note" rows="3" maxlength="2000">{{ row.note }}</textarea></label></p><p class="form-actions"><button{% if row.quick %} class="secondary"{% endif %}>ラベルを保存</button></p></form>
 </details>
 {% else %}<p>通知されなかった排便として登録されています。</p>{% endif %}
-{% else %}
-<div class="empty"><h2>該当する記録はありません</h2><p>「すべて」に切り替えるか、監視で記録が増えたら再表示してください。</p></div>
-{% endif %}
 </article></div>{% if not review %}<footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>{% endif %}
 {% endblock %}

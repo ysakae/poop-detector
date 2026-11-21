@@ -33,6 +33,7 @@ from .clip_pages import (
     stream_video,
 )
 from .pages import (
+    DETECTED_CLIPS,
     EVENTS_PAGE,
     NEW_RECORD_PAGE,
     Query,
@@ -40,7 +41,7 @@ from .pages import (
     message_page,
     outage_rows,
     parse_time,
-    render_events,
+    render_event_detail,
     render_home,
     render_new_record,
     render_records,
@@ -62,7 +63,6 @@ MOVED_PAGES = {
     "/account/invite": "/manage/invite",
     "/account/audit": "/manage/audit",
 }
-FILTERS = ("all", "unlabeled", "true", "false", "missed", "manual", "feces", "urine", "both")
 
 
 @dataclass(frozen=True)
@@ -149,7 +149,7 @@ def _review_bar(handler: "Handler", query: Query, key: str) -> dict[str, Any] | 
 
 @get("/")
 def home_page(handler: "Handler", _query: Query) -> None:
-    """ホーム（ダッシュボード）。問い合わせ文字列付きの古いリンクは検知の一覧へ移す。"""
+    """ホーム（ダッシュボード）。問い合わせ文字列付きの古いリンクは記録の詳細か動画の一覧へ移す。"""
     query = urlsplit(handler.path).query
     recorded = first(_query, "recorded")
     if query and set(_query) != {"recorded"}:
@@ -174,16 +174,37 @@ def home_page(handler: "Handler", _query: Query) -> None:
 
 @get(EVENTS_PAGE)
 def events_page(handler: "Handler", query: Query) -> None:
+    """記録の詳細。ID のない URL（以前の検知の一覧）は、動画の一覧の差分検知へ移す。"""
     app = handler.app
     if first(query, "manual"):
         # 目視の記録の入力欄は専用の画面へ移した。古いリンクとブックマークを移す。
         handler.redirect(NEW_RECORD_PAGE, status=301)
         return
-    review = _review_bar(handler, query, f"event:{first(query, 'id')}")
-    # 確認待ちから開いていないときは、確認待ちへの入口のために件数を渡す。
-    waiting = 0 if review else len(review_items(app.store, app.clips))
-    page = render_events(
-        app.store, handler.csrf, query, title=app.title, review=review, waiting=waiting
+    event_id = first(query, "id")
+    if not event_id:
+        handler.redirect(DETECTED_CLIPS, status=301)
+        return
+    row = next((r for r in app.store.list() if r["id"] == event_id), None)
+    if row is None:
+        handler.respond(
+            404,
+            message_page(
+                "記録が見つかりません",
+                "削除されたか、URL が誤っています。",
+                "/records",
+                "記録に戻る",
+                title=app.title,
+            ),
+        )
+        return
+    page = render_event_detail(
+        app.store,
+        handler.csrf,
+        row,
+        clip_id=app.clips.for_event(event_id),
+        saved=bool(first(query, "saved")),
+        title=app.title,
+        review=_review_bar(handler, query, f"event:{event_id}"),
     )
     handler.respond(200, page)
 
@@ -577,7 +598,7 @@ def live_assessment(handler: "Handler", _query: Query) -> None:
 
 @post("/save")
 def save_label(handler: "Handler", form: Form) -> None:
-    """イベントのラベル、または手動・見逃しの記録を保存し、検知の一覧へ戻す。"""
+    """イベントのラベル、または手動・見逃しの記録を保存し、記録の詳細へ戻す。"""
     try:
         _save_label(handler, form.fields)
     except (ValueError, UnicodeError, TypeError):
@@ -591,10 +612,9 @@ def save_label(handler: "Handler", form: Form) -> None:
         # 目視の記録は、足した記録が見える記録の画面へ戻す。
         handler.redirect("/records?saved=1")
         return
-    mode = form.fields.get("filter", "unlabeled")
-    if mode not in FILTERS:
-        mode = "unlabeled"
-    handler.redirect(f"{EVENTS_PAGE}?" + urlencode({"filter": mode, "saved": "1"}))
+    # 保存した記録の詳細に戻り、保存したラベルを見せる。
+    event_id = form.fields.get("id", "")
+    handler.redirect(f"{EVENTS_PAGE}?" + urlencode({"id": event_id, "saved": "1"}))
 
 
 def _save_label(handler: "Handler", fields: Mapping[str, str]) -> None:

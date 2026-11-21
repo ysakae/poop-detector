@@ -1,4 +1,4 @@
-"""GUI のホーム（ダッシュボード）、検知の一覧（イベントのラベル付け）、排泄の記録の画面。"""
+"""GUI のホーム（ダッシュボード）、記録の詳細（イベントのラベル付け）、排泄の記録の画面。"""
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -16,7 +16,7 @@ from ..timezones import local_now, local_today, parse_local, timezone_label, to_
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
 from .advice_page import today_grams
-from .clip_pages import capacity_info
+from .clip_pages import capacity_info, clips_url
 from .list_time import ListTime, by_day, list_time
 from .templating import render_template
 
@@ -26,6 +26,9 @@ STATS_PERIODS = ("7", "30", "90")
 EVENTS_PAGE = "/records/events"
 # 目視で確認した排泄を記録する画面。
 NEW_RECORD_PAGE = "/records/new"
+RECORDS_PAGE = "/records"
+# 差分検知の動画の一覧（以前の「検知の一覧」の行き先）。
+DETECTED_CLIPS = "/clips?show=detected"
 CARE_PAGE = "/care"
 RECENT_RECORDS = 5
 APP_TITLE = "トイレ記録"
@@ -89,23 +92,12 @@ def save_failed_page(title: str | None) -> str:
     return message_page(
         "保存できませんでした",
         "ラベルと時刻を確認してください。完了は開始以降を指定します。",
-        EVENTS_PAGE,
-        "検知の一覧に戻る",
+        RECORDS_PAGE,
+        "記録に戻る",
         title=title,
     )
 
 
-FILTERS = {
-    "unlabeled": "未ラベル",
-    "all": "すべて",
-    "true": "排泄あり",
-    "feces": "排便",
-    "urine": "排尿",
-    "both": "排便・排尿",
-    "manual": "手動記録",
-    "false": "誤検知",
-    "missed": "見逃し",
-}
 # 検知の画像の確認で、1回押して保存するボタン（値・文言・アイコン）。
 EVENT_QUICK_LABELS: tuple[tuple[str, str, str], ...] = (
     ("feces", "排便", "feces"),
@@ -125,53 +117,6 @@ NEW_RECORD_KINDS: tuple[tuple[str, str], ...] = (
 )
 KIND_SUFFIXES = {"MISSED": "（見逃し）", "MANUAL": "（手動）", "VIDEO": "（映像）"}
 SOURCES = {"MANUAL": "手動", "MISSED": "見逃し", "SUSPECTED": "検知を確認", "VIDEO": "映像で確認"}
-
-
-def matches_filter(row: EventRow, mode: str) -> bool:
-    """検知の一覧の「表示する記録」の絞り込み。"""
-    if mode == "all":
-        return True
-    if mode == "missed":
-        return row["kind"] == "MISSED"
-    if mode == "manual":
-        return row["kind"] in ("MANUAL", "VIDEO")
-    if mode == "true":
-        return row["feedback"] == 1
-    if mode in ("feces", "urine", "both"):
-        kind = row["excretion_type"]
-        return row["feedback"] == 1 and (kind == mode or (mode != "both" and kind == "both"))
-    if row["kind"] != "SUSPECTED":
-        return False
-    return (mode == "unlabeled" and row["feedback"] is None) or (
-        mode == "false" and row["feedback"] == 0
-    )
-
-
-def label_text(row: EventRow) -> str:
-    """一覧に出す記録の状態（排便、誤検知、未ラベルなど）。"""
-    if row["feedback"] == 1:
-        label = EXCRETION_TYPES[row["excretion_type"]]
-    elif row["feedback"] == 0:
-        label = "誤検知"
-    else:
-        label = "未ラベル"
-    return label + KIND_SUFFIXES.get(row["kind"], "")
-
-
-def event_item(row: EventRow, mode: str, active: bool) -> dict[str, Any]:
-    """検知の一覧の1行。動画の一覧と同じく、サムネイル・時刻・状態のラベルで見せる。"""
-    # 画像のない記録（手動・見逃し）は、種類のアイコンで見せる。
-    icon = RECORD_ICONS.get(row["excretion_type"], "paw") if row["feedback"] == 1 else "camera"
-    return {
-        "active": active,
-        "url": f"{EVENTS_PAGE}?" + urlencode({"filter": mode, "id": row["id"]}),
-        "id": row["id"],
-        "image": bool(row["image"]),
-        "icon": icon,
-        "when": list_time(row["timestamp"]),
-        "label": label_text(row),
-        "state": "warn" if row["feedback"] is None else "ok",
-    }
 
 
 def selected_label(row: EventRow) -> str:
@@ -223,42 +168,32 @@ def event_detail(row: EventRow) -> dict[str, Any]:
     }
 
 
-def render_events(
+def render_event_detail(
     store: Store,
     token: str,
-    query: Query,
+    row: EventRow,
     *,
+    clip_id: str | None = None,
+    saved: bool = False,
     title: str | None = None,
     review: Mapping[str, Any] | None = None,
-    waiting: int = 0,
 ) -> str:
-    """検知の一覧。イベントの一覧と、選んだイベントのラベル入力欄。
+    """記録の詳細。1件の検知・確定記録の画像とラベル入力欄。
 
-    review は確認待ちから開いたときの帯（review_queue.review_bar）。waiting は確認待ちの件数。
+    検知を探す一覧は動画の一覧（差分検知）にまとめた。ここは、確定記録を直すときと、
+    動画のない検知（整理済み・変換の失敗）を静止画で確かめるときに開く。clip_id は検知の動画。
+    review は確認待ちから開いたときの帯（review_queue.review_bar）。
     """
-    mode = query.get("filter", ["unlabeled"])[0]
-    if mode not in FILTERS:
-        mode = "unlabeled"
-    rows = [row for row in reversed(store.list()) if matches_filter(row, mode)]
-    selected = query.get("id", [""])[0]
-    row = next((r for r in rows if r["id"] == selected), rows[0] if rows else None)
-    metrics = store.metrics()
-    items = [event_item(item, mode, row is not None and row["id"] == item["id"]) for item in rows]
     return render_template(
         "events.html",
         title=title or APP_TITLE,
         token=token,
-        filters=list(FILTERS.items()),
-        mode=mode,
-        metrics=metrics,
-        counts=metrics["excretion_counts"],
-        saved=bool(query.get("saved")),
-        items=items,
-        row=event_detail(row) if row else None,
+        saved=saved,
+        row=event_detail(row),
+        clip_url=clips_url("all", clip_id) if clip_id else "",
         locations=list(store.editable_locations(row).items()),
         timezone=timezone_label(),
         review=review,
-        waiting=waiting,
     )
 
 
@@ -401,8 +336,8 @@ def render_home(
 
 
 def event_url(event_id: str) -> str:
-    """記録を検知の一覧で開く URL（ラベル済みも含めて表示する）。"""
-    return f"{EVENTS_PAGE}?" + urlencode({"filter": "all", "id": event_id})
+    """記録の詳細を開く URL。"""
+    return f"{EVENTS_PAGE}?" + urlencode({"id": event_id})
 
 
 # 時間帯別の棒グラフ。棒の高さは CSS の level-0〜level-10 の段階で示す（CSP でインラインの

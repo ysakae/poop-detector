@@ -16,11 +16,7 @@ def quick_form(html: str) -> str | None:
     return match[0] if match else None
 
 
-def event_list(html: str) -> str:
-    return html.split('aria-label="検知の一覧">', 1)[1].split("</nav>", 1)[0]
-
-
-def post_save(server, fields: dict[str, str], page: str = "/records/events"):
+def post_save(server, fields: dict[str, str], page: str = "/records/new"):
     body = urlencode({**fields, "csrf": csrf_token(server, page)})
     form = {"Content-Type": "application/x-www-form-urlencoded"}
     return exchange(server, "POST", "/save", body, form)
@@ -60,12 +56,12 @@ def test_labeled_event_opens_the_detailed_form_instead(gui):
     assert '<details class="clip-more" open>' in html
 
 
-def test_one_tap_keeps_times_and_note_and_returns_to_the_list(gui):
+def test_one_tap_keeps_times_and_note_and_returns_to_the_record(gui):
     server, store, event = gui
     store.classify(event, "unknown", "2026-11-08T19:00:00+09:00", None, "メモ")
     status, headers, _ = post_save(server, {"id": event, "label": "feces", "filter": "unlabeled"})
     assert status == 303
-    assert headers["Location"].startswith("/records/events?")
+    assert headers["Location"] == "/records/events?" + urlencode({"id": event, "saved": "1"})
     row = store.list()[0]
     assert (row["feedback"], row["excretion_type"]) == (1, "feces")
     assert row["actual_start"] == "2026-11-08T19:00:00+09:00"
@@ -81,21 +77,6 @@ def test_one_tap_from_the_review_queue_moves_to_the_next_item(gui):
     status, headers, _ = post_save(server, fields, page)
     assert (status, headers["Location"]) == (303, f"/review/next?after=event:{event}")
     assert store.list()[0]["feedback"] == 0
-
-
-def test_event_list_rows_have_thumbnails_and_state_chips(gui):
-    server, store, event = gui
-    store.add_excretion("urine", "2026-11-08T19:00:00+09:00")
-    listing = event_list(request(server, "GET", "/records/events?filter=all")[1].decode())
-    assert (
-        f'<span class="clip-thumb"><img src="/image?id={event}" alt="" loading="lazy"'
-        ' decoding="async"></span>'
-    ) in listing
-    assert '<span class="clip-text">' in listing
-    assert '<span class="chip chip-warn">未ラベル</span>' in listing
-    assert '<span class="chip chip-ok">排尿（手動）</span>' in listing
-    # 画像のない記録はアイコンで見せる。
-    assert listing.count('<span class="clip-thumb"><svg class="icon"') == 1
 
 
 def test_event_page_has_no_inline_style():
