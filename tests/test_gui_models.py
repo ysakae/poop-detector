@@ -72,7 +72,9 @@ def test_management_menu_links_the_page_for_admins_only(models_gui):
     server, _ = models_gui
     html = page(server, login(server), "/manage")
     assert f'href="{PAGE}"' in html
-    assert "判定器とモデル" in html
+    # 管理のメニューはまとまりの名前を出し、この画面はそのまとまりの入口になる。
+    assert "判定と録画" in html
+    assert "判定器とモデル" in page(server, login(server))
     member = login(server, role="member")
     status, _, _ = exchange(server, "GET", PAGE, headers=member, auth=False)
     assert status == 403
