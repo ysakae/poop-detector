@@ -283,7 +283,7 @@ def test_home_guide_notes_when_the_advice_has_warnings(gui):
 
 
 def test_home_last_care_links_to_editing_each_record(gui):
-    """最後のお世話の各行から、その記録を直す画面を開ける。"""
+    """最新のお世話の各行から、その記録を直す画面を開ける。"""
     from datetime import timedelta
     from html import unescape
 
@@ -311,3 +311,17 @@ def test_home_last_care_links_to_editing_each_record(gui):
         event_url(both),
         f"/care?day={day}&id={sheet}",
     ]
+
+
+def test_latest_care_times_line_up_with_recent_records(gui):
+    """最新のお世話の時刻は、最近の確定記録と同じく右端にそろえる（空の訂正の列を持たない）。"""
+    server, _, _ = gui
+    html = page(server, "/", login(server, role="member"))
+    section = re.search(r'aria-labelledby="last-care-title".*?</section>', html, re.S)
+    assert section is not None
+    assert '<h2 id="last-care-title">最新のお世話</h2>' in section[0]
+    assert '<ul class="timeline day-list latest-care">' in section[0]
+    style = (GUI_DIR / "templates" / "style.css").read_text()
+    rule = re.search(r"\.latest-care li\{([^}]*)\}", style)
+    assert rule, "最新のお世話の列のスタイルがありません"
+    assert "grid-template-columns:22px minmax(0,1fr) auto" in rule[1]
