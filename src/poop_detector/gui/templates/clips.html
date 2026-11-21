@@ -34,7 +34,9 @@
 <h3>{{ clip.time }}</h3><p class="note">{{ clip.source }} ／ {{ clip.status }}</p>
 {% if notice_unavailable %}<p>動画ファイルを確認できません。<a href="/records/new">排泄を記録</a></p>{% endif %}
 {% if clip.ready %}
-<video controls preload="metadata" class="clip-video" playsinline src="/clip-video?id={{ clip.id }}{{ seek }}">動画を再生できません。</video><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
+<video controls preload="metadata" class="clip-video" playsinline poster="/clip-thumbnail?id={{ clip.id }}" src="/clip-video?id={{ clip.id }}{{ seek }}">動画を再生できません。</video>
+{#- 確認のための再生の操作。ブラウザーの標準の操作バーより大きく押せるボタンにする（static/clips.js）。 -#}
+<div class="video-controls"><button class="secondary" type="button" data-video-jump="-10">10秒戻る</button><button class="secondary" type="button" data-video-jump="10">10秒進む</button><button class="secondary" type="button" data-video-seek="{{ clip.trigger_offset }}">操作・検知の位置へ</button><button class="secondary" type="button" data-video-rate="2" aria-pressed="false">2倍速</button></div><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
 {% if clip.interrupted %}<div class="message message-warn">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>{% endif %}
 {% if circling %}
 <div class="message message-info"><strong>行動分析 ／ 旋回候補</strong><p>トレー付近の位置を取得 {{ circling.located }}/{{ circling.sampled }}コマ</p>

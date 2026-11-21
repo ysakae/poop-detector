@@ -3,6 +3,18 @@
 const clipList = document.querySelector("#clip-list");
 let selection;
 history.scrollRestoration = "manual";
+// 選んだ再生の速さ。一覧から別の動画を開いても引き継ぐ（画面を開き直すと戻る）。
+let playbackRate = 1;
+
+function applyRate(detail) {
+    const video = detail?.querySelector("video");
+    const button = detail?.querySelector("button[data-video-rate]");
+    if (!video || !button) return;
+    const fast = playbackRate === Number(button.dataset.videoRate);
+    video.defaultPlaybackRate = playbackRate;
+    video.playbackRate = playbackRate;
+    button.setAttribute("aria-pressed", String(fast));
+}
 
 async function showClip(url, push) {
     if (selection) selection.abort();
@@ -18,6 +30,7 @@ async function showClip(url, push) {
         if (request.signal.aborted) return;
 
         document.querySelector("#clip-detail").replaceWith(detail);
+        applyRate(detail);
         const activePath = active?.getAttribute("href");
         for (const link of clipList.querySelectorAll("a")) {
             link.classList.toggle("active", link.getAttribute("href") === activePath);
@@ -41,11 +54,21 @@ clipList?.addEventListener("click", (event) => {
 window.addEventListener("popstate", () => showClip(location.href, false));
 
 document.addEventListener("click", (event) => {
-    const button = event.target.closest("#clip-detail button[data-video-offset], #clip-detail button[data-video-seek]");
+    const button = event.target.closest(
+        "#clip-detail button[data-video-offset], #clip-detail button[data-video-seek],"
+        + " #clip-detail button[data-video-jump], #clip-detail button[data-video-rate]"
+    );
     if (!button) return;
     const detail = button.closest("#clip-detail");
     const video = detail.querySelector("video");
-    if (button.dataset.videoSeek !== undefined) {
+    if (button.dataset.videoRate !== undefined) {
+        const rate = Number(button.dataset.videoRate);
+        playbackRate = playbackRate === rate ? 1 : rate;
+        applyRate(detail);
+    } else if (button.dataset.videoJump !== undefined) {
+        const end = Number.isFinite(video.duration) ? video.duration : Infinity;
+        video.currentTime = Math.min(Math.max(video.currentTime + Number(button.dataset.videoJump), 0), end);
+    } else if (button.dataset.videoSeek !== undefined) {
         video.currentTime = Number(button.dataset.videoSeek);
     } else if (video.readyState) {
         const input = detail.querySelector(`input[name="${button.dataset.videoOffset}"]`);
