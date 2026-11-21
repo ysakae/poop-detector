@@ -98,3 +98,11 @@ def test_profile_rejects_invalid_input(
     values = {"breed": "", "size_class": "", "neutered": "", "food_id": ""} | kwargs
     with pytest.raises(InvalidInputError, match=message):
         save_profile(Database(tmp_path / "e.sqlite3"), adult_grams=None, **values)
+
+
+def test_profile_accepts_full_width_space_in_breed(tmp_path: Path) -> None:
+    database = Database(tmp_path / "e.sqlite3")
+    save_profile(
+        database, breed="トイ　プードル", size_class="", adult_grams=None, neutered="", food_id=""
+    )
+    assert load_profile(database).breed == "トイ　プードル"

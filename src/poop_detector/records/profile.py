@@ -1,5 +1,6 @@
 """犬のプロフィール（生年月日・犬種・体格・去勢・フード）の読み書き。"""
 
+import unicodedata
 from dataclasses import dataclass
 from datetime import date
 
@@ -55,7 +56,7 @@ def save_profile(
 ) -> None:
     """生年月日以外の項目を保存する。行がなければ作る。"""
     name = breed.strip()
-    if len(name) > MAX_BREED_LENGTH or not breed.isprintable():
+    if len(name) > MAX_BREED_LENGTH or any(unicodedata.category(char) == "Cc" for char in breed):
         raise InvalidInputError("犬種は60文字以内で入力してください")
     if size_class and size_class not in SIZE_CLASSES:
         raise InvalidInputError("体格を選んでください")
