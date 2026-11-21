@@ -55,7 +55,7 @@ def _thin(rows: list[Weight]) -> tuple[Weight, ...]:
 def _excretions(store: Store, days: list[date]) -> tuple[tuple[date, int, int], ...]:
     feces = dict.fromkeys(days, 0)
     urine = dict.fromkeys(days, 0)
-    for row in store.records():
+    for row in store.records_between(days[0], days[-1]) if days else ():
         day = to_local(row["actual_start"] or row["timestamp"]).date()
         if day not in feces:
             continue

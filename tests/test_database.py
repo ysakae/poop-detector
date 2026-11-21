@@ -678,3 +678,22 @@ def test_save_birth_date_after_profile_columns_are_added(tmp_path):
     database = Database(tmp_path / "birth.sqlite3")
     save_birth_date(database, "2026-06-15")
     assert birth_date(database) == date(2026, 6, 15)
+
+
+def test_v31_database_gains_the_records_index_and_keeps_events(tmp_path):
+    """版31のデータベースに、確定記録を開始の時刻で探す索引を足す。記録は残る。"""
+    path = tmp_path / "records-index.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:31]:
+            migration(db)
+        db.execute("PRAGMA user_version = 31")
+        db.execute(
+            "INSERT INTO events (id,timestamp,kind,feedback,actual_start) VALUES (?,?,?,?,?)",
+            ("e1", "2026-11-01T01:00:00+00:00", "MANUAL", 1, "2026-11-01T01:00:00+00:00"),
+        )
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT id FROM events").fetchone()[0] == "e1"
+        indexes = {r[1] for r in db.execute("PRAGMA index_list(events)")}
+        assert "events_records_by_start" in indexes
