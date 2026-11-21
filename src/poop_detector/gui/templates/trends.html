@@ -1,0 +1,21 @@
+{#- いつもとの違い。日ごとの移動・睡眠・排泄の回数を並べ、いつもと違う値に印を付ける。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import chip %}
+{% block content %}
+<h2>いつもとの違い</h2>
+<p class="note">その日より前の{{ usual_days }}日のいつもの値と比べて、大きく違う値に印を付けます。移動は床面のマス目を通過した回数で、行動マップを使うときだけ出ます。睡眠は睡眠の記録を使うときだけ出ます。観測が足りない日は「—」です。獣医師の診断の代わりにはなりません。</p>
+<div class="card table-scroll">
+<table class="data-table trends">
+<thead><tr><th scope="col">日付</th>{% for header in headers %}<th scope="col">{{ header }}</th>{% endfor %}</tr></thead>
+<tbody>
+{%- for row in rows -%}
+<tr><th scope="row">{{ row.day.strftime("%m/%d") }}{% if row.day == today %}<small>（途中）</small>{% endif %}</th>
+{%- for cell in row.cells -%}
+<td>{{ cell.text }}{% if cell.note %} {{ chip(cell.note, "warn") }}{% endif %}</td>
+{%- endfor -%}
+</tr>
+{%- endfor -%}
+</tbody>
+</table>
+</div>
+{% endblock %}

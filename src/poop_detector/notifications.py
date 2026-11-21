@@ -5,7 +5,7 @@ import logging
 import re
 import subprocess
 from collections.abc import Callable, Sequence
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal, TypeAlias
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
@@ -126,6 +126,14 @@ class ToiletNotifier:
             + (f" 検知 {time}" if time else "")
         )
         return self._display(message, path="/floor?" + urlencode({"id": object_id}))
+
+    def send_trend(self, labels: list[str], day: date) -> bool:
+        """移動・睡眠・排泄の回数が、2日続けていつもと違うことを知らせる。"""
+        message = (
+            f"{self.owner}様子が2日続けていつもと違います（{'、'.join(labels)}）。"
+            "記録を見返し、気になるときは獣医師に相談してください。"
+        )
+        return self._display(message, path="/trends?" + urlencode({"day": day.isoformat()}))
 
     def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> Delivery:
         detail, risk = {

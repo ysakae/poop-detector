@@ -7,7 +7,8 @@
 {% if not manual_only %}{% include "_live_panel.html" %}{% endif %}
 <section class="card home-review" aria-labelledby="review-title">
 <h2 id="review-title">確認待ち</h2>
-{% if floor_pending %}<p class="note"><a href="/floor">床の候補 {{ floor_pending }}件が未確認です</a></p>
+{% if trend_notes %}<p class="note"><a href="/trends">昨日はいつもと違いました（{{ trend_notes | join("、") }}）</a></p>
+{% endif %}{% if floor_pending %}<p class="note"><a href="/floor">床の候補 {{ floor_pending }}件が未確認です</a></p>
 {% endif %}{% if pending %}<p class="home-review-count"><strong>{{ pending }}</strong>件</p>
 <p><a class="button" href="/review">確認待ち {{ pending }}件を確認する</a></p>
 {% else %}<p>{{ chip("確認待ちはありません", "ok") }}</p>{% endif %}

@@ -49,6 +49,7 @@ from . import (
     push_routes,  # noqa: F401
     review_routes,  # noqa: F401
     settings_routes,  # noqa: F401
+    trends_routes,  # noqa: F401
     weight_routes,  # noqa: F401
 )
 from .access import (

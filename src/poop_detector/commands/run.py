@@ -36,6 +36,7 @@ from .context import (
     monitor_watchdog,
     open_camera,
     outage_tracker,
+    trend_watch,
     with_web_push,
 )
 from .review import ready_judge
@@ -263,6 +264,7 @@ def watch(
         if args.gui:
             # 同じプロセスの GUI からも、監視ループが止まっていないかを見張る。
             stack.enter_context(monitor_watchdog(context, notifier))
+            stack.enter_context(trend_watch(context, notifier))
             web = WebOptions.from_config(config, port=args.gui_port)
             stack.enter_context(
                 background_gui(

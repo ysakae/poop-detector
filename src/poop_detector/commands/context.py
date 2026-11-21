@@ -6,6 +6,7 @@ import platform
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import timedelta
 from functools import cached_property
 from pathlib import Path
 
@@ -31,6 +32,8 @@ from ..records.database import events_database
 from ..web_push import PushKeys, PushSubscriptions, WebPushNotifier, push_subject
 
 logger = logging.getLogger(__name__)
+# いつもと違う日が続いていないかを確かめる間隔（秒）。
+TREND_CHECK_SECONDS = 1800
 
 
 class CommandError(UserError):
@@ -141,6 +144,29 @@ def monitor_watchdog(context: CommandContext, notifier: ToiletNotifier) -> Itera
 
     tracker = outage_tracker(context, "monitor", notifier)
     with watching(MonitorWatchdog(LivePreview(context.root), tracker).check):
+        yield
+
+
+@contextmanager
+def trend_watch(context: CommandContext, notifier: ToiletNotifier) -> Iterator[None]:
+    """GUI のサーバーの間、いつもと違う日が続いていないかを確かめる（trends.notify）。"""
+    if not context.config.trends_notify:
+        yield
+        return
+    from ..features.daily_trends import USUAL_DAYS, TrendNotices, gather
+    from ..features.watchdog import watching
+    from ..records.events import Store
+    from ..timezones import local_today
+
+    store = Store(context.root)
+    notices = TrendNotices(store.database)
+
+    def check() -> None:
+        today = local_today()
+        days = gather(context.root, store, today - timedelta(days=USUAL_DAYS + 2), today)
+        notices.notify(days, today, notifier)
+
+    with watching(check, TREND_CHECK_SECONDS):
         yield
 
 
