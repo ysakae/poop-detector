@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from ..errors import InvalidInputError
@@ -65,6 +66,14 @@ def parse_source_url(value: str) -> str:
         or any(char.isspace() or not char.isprintable() for char in text)
     ):
         raise InvalidInputError(URL_ERROR)
+    try:
+        parts = urlsplit(text)
+        host = parts.hostname
+        has_userinfo = parts.username is not None or parts.password is not None
+    except ValueError:
+        raise InvalidInputError(URL_ERROR) from None
+    if parts.scheme != "https" or not host or has_userinfo:
+        raise InvalidInputError(URL_ERROR)
     return text
 
 
@@ -81,6 +90,9 @@ def save_food(
     name = name.strip()
     if not 1 <= len(name) <= MAX_NAME_LENGTH:
         raise InvalidInputError(f"フードの名前は1〜{MAX_NAME_LENGTH}文字で入力してください")
+    if not 300 <= kcal_dk <= 7000:
+        raise InvalidInputError(KCAL_ERROR)
+    source_url = parse_source_url(source_url)
     stamp = (now or local_now()).astimezone(UTC).isoformat()
     try:
         with database.connect() as db:
@@ -92,6 +104,15 @@ def save_food(
                 if not changed:
                     raise InvalidInputError("変更するフードが見つかりません")
                 return food_id
+            stopped = db.execute(
+                "SELECT id FROM foods WHERE name=? AND active=0", (name,)
+            ).fetchone()
+            if stopped is not None:
+                db.execute(
+                    "UPDATE foods SET kcal_dk=?, source_url=?, active=1 WHERE id=?",
+                    (kcal_dk, source_url, stopped["id"]),
+                )
+                return str(stopped["id"])
             food_id = uuid4().hex
             db.execute(
                 """INSERT INTO foods (id, name, kcal_dk, source_url, created_by, created_at)

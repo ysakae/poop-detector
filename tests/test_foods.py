@@ -32,7 +32,11 @@ def test_parse_kcal_range_and_step():
 def test_parse_source_url_requires_https():
     assert foods.parse_source_url("") == ""
     assert foods.parse_source_url("https://example.com/a") == "https://example.com/a"
+    assert foods.parse_source_url("https://a.example/" + "a" * 482) != ""
+    assert len("https://a.example/" + "a" * 482) == 500
     for bad in (
+        "https://",
+        "https://u:p@h.example/",
         "http://x",
         "javascript:alert(1)",
         "https://a b",
@@ -115,3 +119,19 @@ def test_unregistered_names_lists_feeding_foods_not_in_ledger(database):
         save_entry(database, CareEntry("", at, "feeding", "u", "", food, 100))
     add(database, "ふつう")
     assert foods.unregistered_names(database) == ["新しい", "古い"]
+
+
+def test_save_food_rejects_out_of_range_kcal_and_bad_url(database):
+    with pytest.raises(InvalidInputError, match="30〜700 kcal/100g"):
+        add(database, kcal_dk=10)
+    with pytest.raises(InvalidInputError, match="httpsのURL"):
+        foods.save_food(database, name="x", kcal_dk=3850, source_url="http://x", user_id="u")
+    assert foods.active_foods(database) == []
+
+
+def test_readding_stopped_name_reactivates_same_row(database):
+    food = add(database)
+    foods.stop_food(database, food)
+    assert add(database, "ふつう", 4000) == food
+    assert [(f.id, f.kcal_dk) for f in foods.active_foods(database)] == [(food, 4000)]
+    assert foods.unregistered_names(database) == []
