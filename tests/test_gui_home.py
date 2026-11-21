@@ -256,3 +256,34 @@ def test_live_view_comes_first_with_a_short_judgment(gui):
     assert "直近の自動判定" in panel
     # 根拠の文は動画の画面で読むので、ホームには出さない。
     assert '<p id="live-reason" hidden>' in panel
+
+
+def test_home_last_care_links_to_editing_each_record(gui):
+    """最後のお世話の各行から、その記録を直す画面を開ける。"""
+    from datetime import timedelta
+    from html import unescape
+
+    from poop_detector.gui.pages import event_url
+    from poop_detector.records.care import CareEntry, save_entry
+    from poop_detector.timezones import local_now
+
+    server, store, _ = gui
+    cookie = login(server, role="member")
+    yesterday = (local_now() - timedelta(days=1)).replace(hour=23, minute=20, second=0)
+    database = store.database
+    fed = save_entry(database, CareEntry("", yesterday, "feeding", "家族A", "", "", 250))
+    sheet = save_entry(database, CareEntry("", yesterday, "sheet", "家族B", ""))
+    both = store.add_excretion("both", yesterday.isoformat())
+
+    latest = re.search(
+        r'aria-labelledby="last-care-title".*?</section>', page(server, "/", cookie), re.S
+    )
+    assert latest is not None
+    links = [unescape(href) for href in re.findall(r'href="([^"]+)"', latest[0])]
+    day = yesterday.date().isoformat()
+    assert links == [
+        f"/care?day={day}&id={fed}",
+        event_url(both),
+        event_url(both),
+        f"/care?day={day}&id={sheet}",
+    ]
