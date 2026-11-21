@@ -22,6 +22,8 @@ REVALIDATE = "private, no-cache"
 # 動画のサムネイルと検知の画像。ID ごとに中身は変わらないが、消した録画の画像を
 # 端末に長く残さないよう1日にとどめる。
 IMAGE_CACHE = "private, max-age=86400"
+# 保存した録画の動画。画像と同じく、ID ごとに中身は変わらないので1日預けてもらう。
+VIDEO_CACHE = IMAGE_CACHE
 
 
 def source(name: str) -> Path:

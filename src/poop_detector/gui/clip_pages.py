@@ -22,6 +22,7 @@ from ..video.clip_storage import (
 )
 from ..video.clips import ACTIVITIES, CLIP_LABELS, PENDING_STATUSES, ClipRow, ClipStore
 from ..video.review import RESUME_WINDOW
+from .assets import VIDEO_CACHE
 from .list_time import by_day, list_time
 from .review_queue import ReviewItem, review_bar
 from .templating import render_template
@@ -531,7 +532,15 @@ def stream_video(handler: "Exchange", root: str | Path, clip_id: str) -> None:
     path = store.video_path(store.get(clip_id))
     if path is None:
         return handler.respond(404, "動画が見つかりません")
-    size = path.stat().st_size
+    stat = path.stat()
+    size = stat.st_size
+    # 同じ録画を見返すときに取り直さないよう、端末に預けてもらう。書き換わったら（大きさか
+    # 更新時刻が変われば）別の ETag になるので、古い中身は使われない。
+    tag = f'"{size:x}-{stat.st_mtime_ns:x}"'
+    cache = {"Cache-Control": VIDEO_CACHE, "ETag": tag, "Accept-Ranges": "bytes"}
+    if handler.headers.get("If-None-Match") == tag:
+        handler.respond(304, b"", "video/mp4", cache)
+        return None
     start, end = 0, size - 1
     range_header = handler.headers.get("Range")
     if range_header:
@@ -553,11 +562,7 @@ def stream_video(handler: "Exchange", root: str | Path, clip_id: str) -> None:
         except ValueError:
             handler.respond(416, b"", "video/mp4", {"Content-Range": f"bytes */{size}"})
             return None
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Content-Length": str(max(0, end - start + 1)),
-        "Cache-Control": "no-store",
-    }
+    headers = {**cache, "Content-Length": str(max(0, end - start + 1))}
     if range_header:
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
     handler.stream(206 if range_header else 200, read_range(path, start, end), "video/mp4", headers)

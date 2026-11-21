@@ -221,7 +221,8 @@ Host ヘッダーの検査、POST の Origin の検査、パスキーでのロ�
 
 - 同梱のスクリプト・スタイル・画像は、テンプレートの `asset("menu.js")` が内容の SHA-256 を `?v=` に付けた URL を出します。いまの版を指す要求には1年の `immutable` を、版のない URL や古い版には `no-cache` と `ETag` を返し、変わっていなければ 304 にします。`style.css` は画面に埋め込まず、`/assets/style.css` として配ります（CSP の `style-src 'self'`）。テンプレートでは `/assets/...` を直に書かず、`asset(...)` を使ってください。
 - 動画のサムネイルと検知の画像は、ID ごとに中身が変わらないので `IMAGE_CACHE`（1日）を付けます。見つからない応答には付けません。
-- 画面（HTML）、JSON、動画、ライブ映像、マニフェスト、Service Worker は預けません。ログアウトの応答は `Clear-Site-Data: "cache"` で、預けたファイルも消してもらいます。
+- 保存した録画の動画（`/clip-video`）も、見返すたびに取り直さないよう `VIDEO_CACHE`（1日）を付けます。ETag は動画の大きさと更新時刻から作り、変わっていなければ `If-None-Match` に 304 を返します（Range の要求も同じ）。整理で消した録画も、端末に預けた分は期限まで残ることがあります（ログアウトすれば消えます）。
+- 画面（HTML）、JSON、ライブ映像、マニフェスト、Service Worker は預けません。ログアウトの応答は `Clear-Site-Data: "cache"` で、預けたファイルも消してもらいます。
 
 応答は、`GZipMiddleware` が gzip に圧縮します（ブラウザーが `Accept-Encoding: gzip` を送ったときだけ）。圧縮しない形式は `asgi.UNCOMPRESSED` で、ライブ映像（`multipart/*`）は少しずつ流すので外し、画像・動画は Starlette の既定どおり外します。HTML も圧縮しますが、セッションの Cookie が `SameSite=Strict` なので、ほかのサイトからログインした画面を開かせて応答の長さを測る攻撃（BREACH）はできません（`tests/test_gui_compression.py`）。
 
