@@ -14,6 +14,7 @@ GUI で `Markup`（エスケープを外した HTML）を作ってよいのは�
    （空のセルの多い表は、短い本文でも大きな HTML になる）。
 """
 
+import re
 from urllib.parse import urlsplit
 
 from markdown_it import MarkdownIt
@@ -45,6 +46,15 @@ def _https_host(href: str) -> str | None:
         return None
 
 
+def _names_host(label: str, host: str) -> bool:
+    """リンクの文字が行き先のドメインをそのまま示しているか（大文字・小文字は区別しない）。
+
+    bank-evil.example のように、ドメインを含む別の名前は示したことにしない。
+    """
+    pattern = rf"(?<![\w.-]){re.escape(host)}(?![\w-])"
+    return re.search(pattern, label.lower()) is not None
+
+
 def _with_host_notes(children: list[Token]) -> list[Token]:
     """リンクの閉じの後ろに「（ドメイン）」の文字を足した、新しい並びを返す。"""
     result: list[Token] = []
@@ -56,7 +66,7 @@ def _with_host_notes(children: list[Token]) -> list[Token]:
             host = _https_host(str(child.attrGet("href") or ""))
             label = ""
         elif child.type == "link_close":
-            if host and host not in label:
+            if host and not _names_host(label, host):
                 note = Token("text", "", 0)
                 note.content = f"（{host}）"
                 result.append(note)

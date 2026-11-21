@@ -61,12 +61,16 @@ def clean_workdir(workdir: Path, now: float) -> None:
     if not workdir.is_dir():
         return
     for child in workdir.iterdir():
-        if now - child.stat().st_mtime <= STALE_SECONDS:
+        # リンクはたどらない（lstat）。別の GUI が途中で消したものは飛ばして、残りを続ける。
+        try:
+            if now - child.lstat().st_mtime <= STALE_SECONDS:
+                continue
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                child.unlink(missing_ok=True)
+        except OSError:
             continue
-        if child.is_dir() and not child.is_symlink():
-            shutil.rmtree(child, ignore_errors=True)
-        else:
-            child.unlink(missing_ok=True)
 
 
 @contextmanager

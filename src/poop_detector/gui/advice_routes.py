@@ -104,6 +104,12 @@ def _consult_problem(handler: "Handler") -> str | None:
     return handler.app.judge_readiness.problem(config.review_provider, config.review_model)
 
 
+NO_WEB_JUDGE = (
+    "いまの判定器と予備の判定器（review.fallback）は、どれもウェブ検索に対応していないため、"
+    "カロリー探しは使えません。Codex CLI か Claude Code CLI を予備に足すと使えます。"
+)
+
+
 def _lookup_problem(handler: "Handler") -> str | None:
     """カロリー探しを使えない理由。使えるなら None。
 
@@ -115,12 +121,6 @@ def _lookup_problem(handler: "Handler") -> str | None:
         return NO_WEB_JUDGE
     _, provider, model = choice
     return handler.app.judge_readiness.problem(provider, model or "")
-
-
-NO_WEB_JUDGE = (
-    "いまの判定器と予備の判定器（review.fallback）は、どれもウェブ検索に対応していないため、"
-    "カロリー探しは使えません。Codex CLI か Claude Code CLI を予備に足すと使えます。"
-)
 
 
 def _render(

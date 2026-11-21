@@ -82,3 +82,10 @@ def test_links_named_by_their_domain_are_not_annotated_twice():
 
 def test_unsafe_links_get_no_domain_note():
     assert "（" not in answer_html("[x](javascript:alert(1)) [y](/manage)")
+
+
+def test_domain_note_ignores_case_but_not_lookalike_labels():
+    assert "（maker.example）" not in answer_html("[Maker.Example](https://maker.example/p)")
+    # 行き先のドメインを含む別の名前は、行き先を示したことにならない。
+    assert "（evil.example）" in answer_html("[bank-evil.example](https://evil.example/)")
+    assert "（" not in answer_html("[x](http://plain.example/)")

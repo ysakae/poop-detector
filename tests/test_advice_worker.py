@@ -286,3 +286,25 @@ def test_clean_workdir_removes_only_old_leftovers(tmp_path):
     assert new.exists()
     # まだ作られていなければ何もしない。
     clean_workdir(tmp_path / "missing", stamp)
+
+
+def test_clean_workdir_skips_links_and_keeps_going(tmp_path):
+    import os
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("x")
+    work = tmp_path / "advice-work"
+    work.mkdir()
+    (work / "dangling").symlink_to(tmp_path / "nowhere")
+    (work / "linked").symlink_to(outside)
+    old = work / "tmpold"
+    old.mkdir()
+    stamp = time.time()
+    os.utime(old, (stamp - 3600, stamp - 3600))
+    for link in ("dangling", "linked"):
+        os.utime(work / link, (stamp - 3600, stamp - 3600), follow_symlinks=False)
+    clean_workdir(work, stamp)
+    # リンクの先は消さず、壊れたリンクがあっても残りを掃除する。
+    assert (outside / "keep.txt").exists()
+    assert not old.exists()
