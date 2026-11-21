@@ -1,7 +1,6 @@
 """GUI の稼働中、ごはんの相談の回答とカロリー探しを作る作業スレッド。"""
 
 import logging
-import sqlite3
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -51,8 +50,10 @@ def advice_worker(app: "GuiApp") -> Iterator[None]:
             busy = False
             try:
                 busy = worker.poll_once()
-            except (OSError, sqlite3.Error, ValueError):
-                logger.warning("ごはんの相談を処理する作業で問題が起きました")
+            except Exception as error:  # スレッドを止めないため、型名だけ記録して続ける
+                logger.warning(
+                    "ごはんの相談を処理する作業で問題が起きました（%s）", type(error).__name__
+                )
             if not busy:
                 stop.wait(POLL_SECONDS)
 

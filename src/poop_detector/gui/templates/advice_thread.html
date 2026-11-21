@@ -3,6 +3,7 @@
 {% block content %}
 <h2>{{ thread.title }}</h2>
 <p class="note"><a href="/advice">ごはんの相談へ戻る</a></p>
+<p class="note">{{ disclaimer }}</p>
 {% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
 <section class="settings-section"{% if waiting %} data-advice-status="{{ thread.id }}"{% endif %}>
 {% for item in messages %}

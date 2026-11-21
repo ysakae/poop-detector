@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 import pytest
-from support import exchange, login, request, submit
+from support import exchange, first_user, login, request, setup_guide, submit
 
 from poop_detector.features.advice.jobs import LookupResult, finish_lookup
 from poop_detector.records.foods import active_foods, recent_lookups
@@ -116,46 +116,9 @@ def test_empty_lookup_name_keeps_form_and_returns_400(gui, judge_ready):
 ADVICE = "/advice"
 
 
-def _first_user(store):
-    with store.database.connect() as db:
-        return db.execute("SELECT id FROM users LIMIT 1").fetchone()[0]
-
-
-def _setup_guide(server, store, *, birth=True, food_active=True):
-    """生後5か月・3.2 kg・小型（予想5 kg）・385 kcal のフード・給餌の予定3件を入れる。"""
-    from datetime import timedelta
-
-    from poop_detector.records.feeding_plans import save_plan
-    from poop_detector.records.foods import active_foods, save_food, stop_food
-    from poop_detector.records.profile import save_profile
-    from poop_detector.records.weights import save_birth_date, save_weight
-    from poop_detector.timezones import local_today
-
-    request(server, "GET", "/")  # セッションのユーザーを作る
-    today = local_today()
-    database = store.database
-    if birth:
-        save_birth_date(database, (today - timedelta(days=152)).isoformat())
-    save_weight(database, "", today, 3200, "")
-    save_food(database, name="パピー", kcal_dk=3850, source_url="", user_id=_first_user(store))
-    (food,) = active_foods(database)
-    save_profile(
-        database,
-        breed="",
-        size_class="small",
-        adult_grams=5000,
-        neutered="",
-        food_id=food.id,
-    )
-    for clock in ("08:00", "12:00", "18:00"):
-        save_plan(database, clock)
-    if not food_active:
-        stop_food(database, food.id)
-
-
 def test_advice_page_shows_guide_from_records(gui):
     server, store, _ = gui
-    _setup_guide(server, store)
+    setup_guide(server, store)
     html = request(server, "GET", ADVICE)[1].decode()
     assert "109 g" in html
     assert "36 g" in html
@@ -164,7 +127,7 @@ def test_advice_page_shows_guide_from_records(gui):
 
 def test_advice_page_guides_missing_inputs(gui):
     server, store, _ = gui
-    _setup_guide(server, store, birth=False)
+    setup_guide(server, store, birth=False)
     html = request(server, "GET", ADVICE)[1].decode()
     assert "生年月日を入れてください" in html
     assert "109 g" not in html
@@ -172,7 +135,7 @@ def test_advice_page_guides_missing_inputs(gui):
 
 def test_inactive_profile_food_is_treated_as_none(gui):
     server, store, _ = gui
-    _setup_guide(server, store, food_active=False)
+    setup_guide(server, store, food_active=False)
     html = request(server, "GET", ADVICE)[1].decode()
     assert "フードのカロリーが分からないので" in html
     assert "109 g" not in html
@@ -251,7 +214,7 @@ def test_waiting_text_and_form_hidden_while_pending(gui, judge_ready, monkeypatc
     server, store, _ = gui
     request(server, "GET", ADVICE)
     thread_id = start_thread(
-        store.database, title="待ち", question="q", user_id=_first_user(store), basis="{}"
+        store.database, title="待ち", question="q", user_id=first_user(store), basis="{}"
     )
     # 作業スレッドに取られないよう、処理中の状態に固定する。
     with store.database.connect() as db:
@@ -268,7 +231,7 @@ def test_second_question_refused_while_pending(gui, judge_ready):
     server, store, _ = gui
     request(server, "GET", ADVICE)
     thread_id = start_thread(
-        store.database, title="待ち", question="q", user_id=_first_user(store), basis="{}"
+        store.database, title="待ち", question="q", user_id=first_user(store), basis="{}"
     )
     with store.database.connect() as db:
         db.execute("UPDATE advice_messages SET status='running' WHERE role='assistant'")
@@ -288,7 +251,7 @@ def test_failed_answer_shows_reason_and_retry(gui, judge_ready):
     server, store, _ = gui
     request(server, "GET", ADVICE)
     thread_id = start_thread(
-        store.database, title="失敗", question="q", user_id=_first_user(store), basis="{}"
+        store.database, title="失敗", question="q", user_id=first_user(store), basis="{}"
     )
     with store.database.connect() as db:
         db.execute("UPDATE advice_messages SET status='failed', failure='timeout' WHERE seq=2")
@@ -308,7 +271,7 @@ def test_delete_thread_permissions(gui, judge_ready):
 
     server, store, _ = gui
     request(server, "GET", ADVICE)
-    owner = _first_user(store)
+    owner = first_user(store)
     thread_id = start_thread(store.database, title="消す", question="q", user_id=owner, basis="{}")
     member = login(server, role="member")
     page = f"/advice/thread?id={thread_id}"
@@ -341,7 +304,7 @@ def test_today_grams(gui):
 
     server, store, _ = gui
     assert today_grams(store.database, local_today()) is None
-    _setup_guide(server, store)
+    setup_guide(server, store)
     assert today_grams(store.database, local_today()) == (109, False)
 
 
@@ -360,7 +323,7 @@ def test_retry_on_deleted_thread_is_refused(gui, judge_ready):
 
     server, store, _ = gui
     request(server, "GET", ADVICE)
-    owner = _first_user(store)
+    owner = first_user(store)
     thread_id = start_thread(
         store.database, title="消した", question="q", user_id=owner, basis="{}"
     )
@@ -384,7 +347,7 @@ def test_retry_error_renders_thread_page(gui, judge_ready):
     server, store, _ = gui
     request(server, "GET", ADVICE)
     thread_id = start_thread(
-        store.database, title="残る", question="q", user_id=_first_user(store), basis="{}"
+        store.database, title="残る", question="q", user_id=first_user(store), basis="{}"
     )
     with store.database.connect() as db:
         db.execute("UPDATE advice_messages SET status='running' WHERE seq=2")

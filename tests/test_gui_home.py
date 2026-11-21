@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from support import exchange, login
+from support import exchange, login, setup_guide
 
 
 def page(server, path, cookie):
@@ -259,12 +259,10 @@ def test_live_view_comes_first_with_a_short_judgment(gui):
 
 
 def test_home_shows_todays_guide_only_when_available(gui):
-    from test_gui_advice import _setup_guide
-
     server, store, _ = gui
     cookie = login(server, role="member")
     assert "今日の目安" not in page(server, "/", cookie)
-    _setup_guide(server, store)
+    setup_guide(server, store)
     html = page(server, "/", cookie)
     assert "今日の目安 109 g" in html
 
@@ -272,13 +270,11 @@ def test_home_shows_todays_guide_only_when_available(gui):
 def test_home_guide_notes_when_the_advice_has_warnings(gui):
     from datetime import timedelta
 
-    from test_gui_advice import _setup_guide
-
     from poop_detector.timezones import local_today
 
     server, store, _ = gui
     cookie = login(server, role="member")
-    _setup_guide(server, store)
+    setup_guide(server, store)
     assert "確かめてください" not in page(server, "/", cookie)
     with store.database.connect() as db:
         db.execute("UPDATE weights SET day=?", ((local_today() - timedelta(days=20)).isoformat(),))

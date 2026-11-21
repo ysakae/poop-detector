@@ -274,6 +274,7 @@ def _render_thread(
         can_delete=is_admin(handler) or owner,
         consult_problem=_consult_problem(handler),
         question=question,
+        disclaimer=DISCLAIMER,
         error=error,
     )
     handler.respond(status, page)

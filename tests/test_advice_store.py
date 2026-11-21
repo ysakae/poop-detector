@@ -160,3 +160,13 @@ def test_start_thread_with_same_request_key_creates_one_thread(database):
     assert len(pending) == 1
     other = start(database, request_key="k2", now=T0)
     assert other != first
+
+
+def test_retry_refuses_while_another_answer_is_pending(database):
+    thread_id = start(database)
+    failed = advice.messages(database, thread_id)[1]
+    set_status(database, thread_id, "failed")
+    advice.ask(database, thread_id, question="続き", user_id="a", basis="")
+    with pytest.raises(InvalidInputError, match="前の質問の回答を待っています"):
+        advice.retry(database, failed.id)
+    assert advice.messages(database, thread_id)[1].status == "failed"

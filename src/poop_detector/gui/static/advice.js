@@ -16,6 +16,8 @@ async function check() {
     try {
         const query = new URLSearchParams({thread: element.dataset.adviceStatus});
         const response = await fetch("/advice/status?" + query);
+        // 会話が消えたなどで 404 のときは、続けても変わらないので止める。
+        if (response.status === 404) return;
         if (!response.ok) throw new Error("HTTP " + response.status);
         const {state} = await response.json();
         if (state !== "queued" && state !== "running") {

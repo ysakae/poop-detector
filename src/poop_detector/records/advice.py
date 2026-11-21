@@ -154,6 +154,13 @@ def retry(database: Database, message_id: str) -> str:
         ).fetchone()
         if row is None:
             raise InvalidInputError("やり直す回答が見つかりません")
+        pending = db.execute(
+            """SELECT 1 FROM advice_messages
+            WHERE thread_id=? AND role='assistant' AND status IN ('queued', 'running')""",
+            (row["thread_id"],),
+        ).fetchone()
+        if pending is not None:
+            raise InvalidInputError(PENDING_ERROR)
         db.execute(
             "UPDATE advice_messages SET status='queued', failure=NULL, started_at=NULL WHERE id=?",
             (message_id,),
