@@ -59,6 +59,7 @@ ALLOWED = re.compile(
             r"reentry-layout\.json",
             r"activity-[0-9a-f]{32}\.jpg",
             r"events/[0-9a-f]+\.jpg",
+            r"floor-objects/[0-9a-f]{32}\.jpg",
             rf"baseline/{_PART}",
             rf"tray-scenes/[0-9a-f]+/{_PART}(?:/{_PART})*",
             rf"clips/{_PART}\.mp4",
@@ -147,6 +148,7 @@ def _sources(root: Path, work: Path, include_clips: bool) -> dict[str, Path]:
         found[REGISTRATION] = registration
     candidates = [root / name for name in SINGLE_FILES]
     candidates += list(root.glob("activity-*.jpg")) + list((root / "events").glob("*.jpg"))
+    candidates += list((root / "floor-objects").glob("*.jpg"))
     for directory in DIRECTORIES:
         candidates += list((root / directory).rglob("*"))
     if include_clips:

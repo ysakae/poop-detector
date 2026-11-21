@@ -47,6 +47,7 @@ class MonitorNotifier(DetectionNotifier, Protocol):
         self, kind: str, event_id: str, at: datetime, clip_id: str | None
     ) -> "Delivery": ...
     def send_sheet_due(self, events: int, ratio: float) -> bool: ...
+    def send_floor_object(self, object_id: str, detected_at: str) -> bool: ...
 
 
 class EarlyAlertExtension(MonitorExtension):
@@ -223,6 +224,17 @@ def dog_observer_from_config(config: Config) -> "DogObserver":
     return DogObserver(model, config.dog_fps, config.dog_exit_seconds)
 
 
+def _floor_extension(
+    floor: AnyROI, tray: AnyROI, config: Config, notifier: MonitorNotifier, predict: "Predict"
+) -> MonitorExtension:
+    from ..experimental.floor_objects import FloorObjectExtension, FloorObjectWatch
+    from ..records.floor_objects import FloorObjects
+
+    objects = FloorObjects(events_database(config.data_dir), config.data_dir)
+    watch = FloorObjectWatch(floor, tray)
+    return FloorObjectExtension(watch, predict, objects, notifier, notify=config.floor_notify)
+
+
 def standard_extensions(
     roi: AnyROI,
     baseline: Frame,
@@ -236,14 +248,17 @@ def standard_extensions(
     outside_roi: AnyROI | None = None,
     activity_map: ActivityRecorder | None = None,
     sleep: SleepRecorder | None = None,
+    floor: AnyROI | None = None,
 ) -> list[MonitorExtension]:
-    """CLI の --early-alert・--dog・--detect-outside・--activity-map・--sleep に対応する拡張を作る。"""
+    """CLI の --early-alert・--dog・--detect-outside・--activity-map・--sleep・--floor-objects に
+    対応する拡張を作る。floor は床の候補に使う床面（行動マップの登録）。
+    """
     extensions: list[MonitorExtension] = []
     if dog_observer is None and config.dog_enabled:
         dog_observer = dog_observer_from_config(config)
-    if activity_map is not None or sleep is not None:
+    if activity_map is not None or sleep is not None or floor is not None:
         if dog_observer is None:
-            raise ValueError("行動マップと睡眠の記録には犬の検出が必要です")
+            raise ValueError("行動マップ・睡眠の記録・床の候補には犬の検出が必要です")
         # 同じ映像を処理する拡張の間で、犬検出の推論を共有する。
         predict = SharedPredict(dog_observer.predict)
         # 位置合わせ前の映像を使うので、カメラの読み込み直後に呼ばれる。
@@ -251,6 +266,8 @@ def standard_extensions(
             extensions.append(ActivityExtension(activity_map, predict))
         if sleep is not None:
             extensions.append(SleepExtension(sleep, predict))
+        if floor is not None:
+            extensions.append(_floor_extension(floor, roi, config, notifier, predict))
     if config.sheet_enabled:
         log = SheetWearLog(events_database(config.data_dir))
         signature = scene_signature(baseline, roi)

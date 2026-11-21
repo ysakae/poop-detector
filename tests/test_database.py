@@ -716,3 +716,22 @@ def test_v32_database_keeps_care_entries_and_adds_sheet_wear(tmp_path):
         assert db.execute("SELECT COUNT(*) FROM sheet_wear").fetchone()[0] == 0
         with pytest.raises(sqlite3.IntegrityError):
             db.execute("INSERT INTO sheet_wear (at, kind, ratio) VALUES ('t', 'event', 2)")
+
+
+def test_v33_database_keeps_sheet_wear_and_adds_floor_objects(tmp_path):
+    path = tmp_path / "floor-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:33]:
+            migration(db)
+        db.execute("PRAGMA user_version = 33")
+        db.execute("INSERT INTO sheet_wear (at, kind, ratio) VALUES ('t', 'event', 0.1)")
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT ratio FROM sheet_wear").fetchone()[0] == 0.1
+        assert db.execute("SELECT COUNT(*) FROM floor_objects").fetchone()[0] == 0
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO floor_objects (id, detected_at, x1, y1, x2, y2, area_ratio, label) "
+                "VALUES ('a', 't', 0, 0, 1, 1, 0.1, 'bad')"
+            )

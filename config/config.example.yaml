@@ -21,6 +21,9 @@ features:
   activity_map: false
   # トレー外での排泄の候補も判定する（video_review が必要。犬の検出を自動で有効にする）
   detect_outside: false
+  # 床に新しく現れて動かない物（異物・嘔吐の跡など）の候補を記録する（実験的。
+  # setup-activity-map の床面の登録が必要。犬の検出を自動で有効にする）
+  floor_objects: false
 
 # 犬の睡眠の記録（犬の検出を自動で有効にする。床面を登録していれば、その中だけで動きを見る）
 sleep:
@@ -95,6 +98,10 @@ sheet:
   enabled: true
   max_events: 6    # 前回の交換からの排泄の回数
   max_ratio: 0.3   # 汚れが監視範囲に占める割合
+
+# 床の候補（実験的。features.floor_objects を有効にして使う）。false なら記録だけで通知しない。
+floor:
+  notify: true
 
 # 排泄後の再侵入。固定トレー・動画保存・登録済みの reentry-layout.json が必要。
 reentry:

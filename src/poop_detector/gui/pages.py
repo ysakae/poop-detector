@@ -284,6 +284,7 @@ def render_home(
     token: str = "",
     recorded: str = "",
     sheet: SheetSummary | None = None,
+    floor_pending: int = 0,
 ) -> str:
     """ホーム。確認待ちの件数、今日の回数と給餌量、記録の入口、直近の確定記録、ライブ映像。
 
@@ -325,6 +326,7 @@ def render_home(
         recent=recent,
         last_care=_last_care(store, today),
         sheet=sheet,
+        floor_pending=floor_pending,
         timezone=timezone_label(),
     )
 

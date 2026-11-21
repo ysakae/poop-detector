@@ -117,6 +117,16 @@ class ToiletNotifier:
         )
         return self._display(message, path="/")
 
+    def send_floor_object(self, object_id: str, detected_at: str) -> bool:
+        """床に新しく現れて動かない物の候補を知らせる（実験的）。"""
+        time = _notice_time(detected_at)
+        message = (
+            f"{self.owner}サークルの床に、見慣れない物があります。"
+            "異物や嘔吐の跡かもしれません。画像を確認してください。"
+            + (f" 検知 {time}" if time else "")
+        )
+        return self._display(message, path="/floor?" + urlencode({"id": object_id}))
+
     def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> Delivery:
         detail, risk = {
             "reentry": ("未回収の排泄候補があるトレーに再侵入", "MEDIUM"),

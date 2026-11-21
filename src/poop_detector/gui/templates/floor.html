@@ -1,0 +1,24 @@
+{#- 床の候補（実験的）。新しく現れて動かない物の画像を見て、何だったかを記録する。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import chip, csrf_field, empty_state, when %}
+{% block content %}
+<h2>床の候補</h2>
+{% if saved %}<p class="message" role="status">ラベルを保存しました。</p>{% endif %}
+<p class="note">サークルの床に新しく現れて、しばらく動かなかった物です（実験的な機能）。寝床やおもちゃでも反応します。画像を見て、何だったかを選んでください。</p>
+{% if rows %}<ul class="floor-objects">
+{%- for row in rows -%}
+<li id="floor-{{ row.id }}" class="card{% if row.id == selected %} selected{% endif %}">
+<p>{{ when(row.when) }} {% if row.label %}{{ chip(row.label, "ok") }}{% else %}{{ chip("未確認", "warn") }}{% endif %}</p>
+<img src="/floor-image?id={{ row.id }}" alt="床の候補の画像（赤い枠が候補の場所）" loading="lazy">
+<p class="note">床面に占める割合 {{ row.percent }}</p>
+<form method="post" action="/floor/label" class="floor-labels">{{ csrf_field(token) }}
+<input type="hidden" name="id" value="{{ row.id }}">
+{%- for value, text in labels.items() -%}
+<button class="secondary" name="label" value="{{ value }}">{{ text }}</button>
+{%- endfor -%}
+</form>
+</li>
+{%- endfor -%}
+</ul>
+{% else %}{{ empty_state("床の候補はまだありません", "見慣れない物が床にしばらく残ると、ここに並びます。") }}{% endif %}
+{% endblock %}

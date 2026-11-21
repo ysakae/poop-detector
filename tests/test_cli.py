@@ -457,6 +457,13 @@ def test_run_with_activity_map_requires_floor(cli_env, capsys):
     assert "setup-activity-map" in capsys.readouterr().err
 
 
+def test_run_with_floor_objects_requires_floor(cli_env, capsys):
+    use_camera(cli_env, spot_scene()[0])
+    register_scene(cli_env)
+    assert cli_env.run("run", "--floor-objects", "--max-frames", "1") == 2
+    assert "setup-activity-map" in capsys.readouterr().err
+
+
 # --- 犬検出モデル ---
 
 

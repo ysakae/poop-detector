@@ -44,6 +44,7 @@ from . import (
     checks_routes,  # noqa: F401
     clip_routes,  # noqa: F401
     export_routes,  # noqa: F401
+    floor_routes,  # noqa: F401
     models_routes,  # noqa: F401
     push_routes,  # noqa: F401
     review_routes,  # noqa: F401

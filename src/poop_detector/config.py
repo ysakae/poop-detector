@@ -318,6 +318,14 @@ SETTINGS: tuple[Setting, ...] = (
         _number(0, 1),
         "0〜1 の数（汚れが監視範囲に占める割合。0 なら割合では知らせない）",
     ),
+    Setting(
+        "floor_notify",
+        "floor",
+        "notify",
+        bool,
+        _always,
+        "true または false（床の候補を通知する。false なら記録だけ）",
+    ),
     Setting("dog_enabled", "dog", "enabled", bool, _always, "true または false"),
     Setting("dog_fps", "dog", "fps", float, _number(0.2, 10), "0.2〜10 の数"),
     Setting(
@@ -433,6 +441,14 @@ SETTINGS: tuple[Setting, ...] = (
         bool,
         _always,
         "true または false（--detect-outside と同じ）",
+    ),
+    Setting(
+        "floor_objects_enabled",
+        "features",
+        "floor_objects",
+        bool,
+        _always,
+        "true または false（run --floor-objects と同じ。床面の登録と犬の検出が必要）",
     ),
 )
 SETTINGS += (
@@ -569,6 +585,7 @@ class Config:
     sheet_enabled: bool = True
     sheet_max_events: int = 6
     sheet_max_ratio: float = 0.3
+    floor_notify: bool = True
     dog_enabled: bool = False
     dog_fps: float = 1
     dog_confidence: float = 0.4
@@ -588,6 +605,7 @@ class Config:
     activity_map_enabled: bool = False
     detect_outside_enabled: bool = False
     sleep_enabled: bool = False
+    floor_objects_enabled: bool = False
     sleep_still_minutes: float = 5
     sleep_stir_seconds: float = 10
     sleep_daytime: str = "09:00-18:00"
@@ -659,6 +677,7 @@ class Config:
             "activity_map_enabled": "行動マップ",
             "detect_outside_enabled": "トレー外検知",
             "sleep_enabled": "睡眠の記録",
+            "floor_objects_enabled": "床の候補",
             "notifications": "通知",
         }
         return [text for attr, text in names.items() if getattr(self, attr)]
@@ -714,6 +733,7 @@ def with_flags(
     detect_outside: bool = False,
     dog: bool = False,
     sleep: bool = False,
+    floor_objects: bool = False,
 ) -> Config:
     """コマンドラインのフラグで有効にした機能を、設定に重ねる（フラグは有効にするだけ）。"""
     return replace(
@@ -725,6 +745,7 @@ def with_flags(
         detect_outside_enabled=config.detect_outside_enabled or detect_outside,
         dog_enabled=config.dog_enabled or dog,
         sleep_enabled=config.sleep_enabled or sleep,
+        floor_objects_enabled=config.floor_objects_enabled or floor_objects,
     )
 
 
@@ -747,8 +768,13 @@ def check_monitor_features(config: Config) -> Config:
         if config.track_tray_enabled or not config.clip_enabled:
             raise ConfigError("再侵入検知には、固定トレーと clips.enabled: true が必要です")
         config = replace(config, dog_enabled=True)
-    needs_dog = config.activity_map_enabled or config.detect_outside_enabled or config.sleep_enabled
+    needs_dog = (
+        config.activity_map_enabled
+        or config.detect_outside_enabled
+        or config.sleep_enabled
+        or config.floor_objects_enabled
+    )
     if needs_dog and not config.dog_enabled:
-        logger.info("行動マップ・トレー外検知・睡眠の記録のため、犬の検出を有効にします")
+        logger.info("行動マップ・トレー外検知・睡眠の記録・床の候補のため、犬の検出を有効にします")
         return replace(config, dog_enabled=True)
     return config
