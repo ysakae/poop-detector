@@ -8,11 +8,17 @@ GUI で `Markup`（エスケープを外した HTML）を作ってよいのは�
 2. 変換した HTML を nh3 に通し、下の表のタグだけを残す。リンクは https の絶対 URL だけ、
    画像・style・class・title は捨てる。CSP はインラインの style を止めない
    （style-src に 'unsafe-inline' がある）ので、style を落とすのはここが唯一の守りになる。
-3. 変換後が MAX_HTML_LENGTH を超えたら None を返し、画面は文字のまま出す
+3. https のリンクの後ろに、行き先のドメインを文字で添える（表示の文字と行き先が違う
+   リンクで、別のサイトへ誘わないため）。リンクの文字にドメインが入っていれば添えない。
+4. 変換後が MAX_HTML_LENGTH を超えたら None を返し、画面は文字のまま出す
    （空のセルの多い表は、短い本文でも大きな HTML になる）。
 """
 
+from urllib.parse import urlsplit
+
 from markdown_it import MarkdownIt
+from markdown_it.rules_core import StateCore
+from markdown_it.token import Token
 from markupsafe import Markup
 from nh3 import Cleaner
 
@@ -29,8 +35,46 @@ ALLOWED_ATTRIBUTES: dict[str, set[str]] = {"*": set(), "a": {"href"}, "ol": {"st
 # 回答の本文は6000文字まで（prompts.ANSWER_SCHEMA）。ふつうの回答は数十KBに収まる。
 MAX_HTML_LENGTH = 100_000
 
+
+def _https_host(href: str) -> str | None:
+    if not href.startswith("https://"):
+        return None
+    try:
+        return urlsplit(href).hostname
+    except ValueError:
+        return None
+
+
+def _with_host_notes(children: list[Token]) -> list[Token]:
+    """リンクの閉じの後ろに「（ドメイン）」の文字を足した、新しい並びを返す。"""
+    result: list[Token] = []
+    host: str | None = None
+    label = ""
+    for child in children:
+        result.append(child)
+        if child.type == "link_open":
+            host = _https_host(str(child.attrGet("href") or ""))
+            label = ""
+        elif child.type == "link_close":
+            if host and host not in label:
+                note = Token("text", "", 0)
+                note.content = f"（{host}）"
+                result.append(note)
+            host = None
+        elif host is not None and child.type in ("text", "code_inline"):
+            label += child.content
+    return result
+
+
+def _note_link_hosts(state: StateCore) -> None:
+    for token in state.tokens:
+        if token.type == "inline" and token.children:
+            token.children = _with_host_notes(token.children)
+
+
 # 段落の中の改行も改行として出す（AI は1行ずつ区切って書くことが多い）。
 _MARKDOWN = MarkdownIt("commonmark", {"html": False, "breaks": True}).enable("table")
+_MARKDOWN.core.ruler.push("link_hosts", _note_link_hosts)
 
 
 def _https_only(_tag: str, attribute: str, value: str) -> str | None:
