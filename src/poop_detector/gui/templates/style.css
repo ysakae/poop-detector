@@ -49,6 +49,9 @@ fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:bold;margin-bottom:
 .times>div>button{margin-top:8px}
 label{font-size:14px}
 input[type=text],input[type=datetime-local],input[type=date],input[type=time],input[type=number],input[type=email],input:not([type]),select,textarea{display:block;max-width:100%;min-width:0;min-height:var(--control-height);padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius-small);font:inherit;font-size:16px;line-height:1.375;margin-top:7px;color:var(--text);background:var(--surface)}
+:is(input[type=datetime-local],input[type=date],input[type=time]){-webkit-appearance:none;appearance:none}
+input::-webkit-date-and-time-value{text-align:left;min-height:1.375em;margin:0}
+input::-webkit-datetime-edit{padding:0}
 textarea{width:100%;resize:vertical}
 button,a.button{font:inherit;font-weight:600;line-height:1.375;min-height:var(--control-height);padding:10px 20px;border:1px solid var(--primary);background:var(--primary);color:var(--on-primary);border-radius:var(--radius-pill);cursor:pointer}
 a.button{display:inline-block;text-decoration:none}
