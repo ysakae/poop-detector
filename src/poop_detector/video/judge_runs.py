@@ -23,8 +23,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# 監視と video-review の判定（review）と、判定器の比較（benchmark）。
-PURPOSES = ("review", "benchmark")
+# 監視と video-review の判定（review）、判定器の比較（benchmark）、
+# ごはんの相談（advice）、フードのカロリー探し（food_lookup）。
+PURPOSES = ("review", "benchmark", "advice", "food_lookup")
+# 1時間あたりの上限（review.max_per_hour）の対象にする用途。相談は数えない。
+REVIEW_PURPOSES = ("review", "benchmark")
 
 
 @dataclass(frozen=True)
@@ -119,12 +122,15 @@ class JudgeRunLog:
             ).fetchall()
         return [(row["failure"], int(row["n"])) for row in rows]
 
-    def count_since(self, since: datetime) -> int:
-        """since 以降に判定器を呼んだ回数（用途と成否を問わない）。"""
+    def count_since(self, since: datetime, purposes: Sequence[str] = REVIEW_PURPOSES) -> int:
+        """since 以降に purposes の用途で判定器を呼んだ回数（成否は問わない）。"""
+        marks = ", ".join("?" for _ in purposes)
         with self.connect() as db:
+            # 組み立てるのは "?" の並びだけで、用途の値はプレースホルダーで渡すので安全。
             row = db.execute(
-                "SELECT COUNT(*) FROM judge_runs WHERE julianday(ran_at) >= julianday(?)",
-                (since.astimezone(UTC).isoformat(),),
+                f"SELECT COUNT(*) FROM judge_runs WHERE julianday(ran_at) >= julianday(?)"  # noqa: S608
+                f" AND purpose IN ({marks})",
+                (since.astimezone(UTC).isoformat(), *purposes),
             ).fetchone()
         return int(row[0])
 

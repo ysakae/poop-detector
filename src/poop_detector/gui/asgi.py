@@ -38,6 +38,7 @@ from ..web_address import Site
 # 次のモジュールは、読み込むとそれぞれの画面のルートを登録する（名前は使わない）。
 from . import (
     account_routes,  # noqa: F401
+    advice_routes,  # noqa: F401
     areas_routes,  # noqa: F401
     care_routes,  # noqa: F401
     checks_routes,  # noqa: F401

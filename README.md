@@ -50,6 +50,7 @@
 | 任意 | トレー追従 | `features.track_tray`、`--track-tray` | トレーの縁が映っていること。縁が隠れている間は判定を保留する | [初期設定](docs/setup.md#カメラやトレーの小さなずれに追従する) |
 | 任意 | 録画を待たない見守り通知 | `features.early_alert`、`--early-alert` | 滞在を知らせるだけで、排泄の判定ではない | [判定の仕組み](docs/detection.md#録画を待たずトイレの様子を知らせる) |
 | 任意 | 動画の自動判定 | `features.video_review`、`--video-review` | 既定の判定器は Codex CLI で、ログインが必要。動画から切り出した画像を提供元に送る | [動画](docs/video.md#動画の自動判定と通知を使う) |
+| 任意 | ごはんの量の目安と相談 | GUI の「ごはんの相談」 | 目安の計算は判定器なしで動く。相談とフードのカロリー探しには判定器の CLI（既定は Codex CLI）のログインが必要で、質問の内容を提供元に送る。目安であり、獣医師の指示を優先する | [画面の構成](docs/screens.md) |
 | 任意 | 犬の存在・出入りの検出 | `dog.enabled`、`--dog` | `setup-dog-model` でモデルを取得する。実映像での検出精度は確かめていない | [犬の検出](docs/dog.md) |
 | 任意 | 排泄後の再侵入・踏みつけリスク | `reentry.enabled` | 固定トレー・動画保存・領域登録が必要。片付けは手動確認 | [再侵入の見守り](docs/reentry.md) |
 | 任意 | サークルの行動マップ | `features.activity_map`、`--activity-map` | 床面の登録と犬の検出が必要 | [犬の検出](docs/dog.md#サークルの行動マップ) |

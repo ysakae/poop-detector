@@ -5,6 +5,7 @@
 """
 
 import sqlite3
+from datetime import date
 
 import numpy as np
 import pytest
@@ -19,6 +20,7 @@ from poop_detector.records.database import (
     schema_version,
 )
 from poop_detector.records.events import Store
+from poop_detector.records.weights import birth_date, save_birth_date
 from poop_detector.video.clips import ClipStore
 
 # 版管理を入れる直前（0.1.0 の開発中）のスキーマ。Store と ClipStore の初期化が作っていた形。
@@ -604,6 +606,34 @@ def test_failure_kind_migration_keeps_old_judge_runs(tmp_path):
     assert tuple(row) == ("gemini", 1, 10, None, None)
 
 
+def test_purpose_migration_keeps_judge_runs_and_accepts_new_purposes(tmp_path):
+    path = tmp_path / "purpose-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:30]:
+            migration(db)
+        db.execute("PRAGMA user_version = 30")
+        db.execute(
+            """INSERT INTO judge_runs (provider, purpose, ran_at, failed, input_tokens, failure)
+            VALUES ('codex', 'review', '2026-11-20T00:00:00+00:00', 1, 10, 'timeout')"""
+        )
+    with Database(path).connect() as db:
+        db.execute(
+            "INSERT INTO judge_runs (provider, purpose, ran_at, failed)"
+            " VALUES ('codex', 'advice', '2026-11-21T00:00:00+00:00', 0),"
+            " ('codex', 'food_lookup', '2026-11-21T00:00:01+00:00', 0)"
+        )
+        indexes = {r[1] for r in db.execute("PRAGMA index_list(judge_runs)")}
+        assert "judge_runs_by_time" in indexes
+        rows = db.execute(
+            "SELECT purpose, failed, input_tokens, failure FROM judge_runs ORDER BY id"
+        ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        ("review", 1, 10, "timeout"),
+        ("advice", 0, None, None),
+        ("food_lookup", 0, None, None),
+    ]
+
+
 def test_screening_migration_keeps_clips_and_adds_the_table(tmp_path):
     path = tmp_path / "screening-migration.sqlite3"
     with sqlite3.connect(path) as db:
@@ -618,3 +648,33 @@ def test_screening_migration_keeps_clips_and_adds_the_table(tmp_path):
         row = db.execute("SELECT status, tray_stay_seconds FROM clips").fetchone()
         assert tuple(row) == ("ready", 1.0)
         assert db.execute("SELECT COUNT(*) FROM clip_screenings").fetchone()[0] == 0
+
+
+def test_v30_database_keeps_profile_and_weights_after_v31(tmp_path):
+    path = tmp_path / "feeding-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:30]:
+            migration(db)
+        db.execute("PRAGMA user_version = 30")
+        db.execute("INSERT INTO pet_profile VALUES (1, '2026-06-15')")
+        db.execute("INSERT INTO weights VALUES ('w1', '2026-11-01', 3200, 'メモ')")
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        row = db.execute("SELECT birth, breed, size_class, food_id FROM pet_profile").fetchone()
+        assert tuple(row) == ("2026-06-15", None, None, None)
+        assert db.execute("SELECT grams FROM weights").fetchone()[0] == 3200
+        assert db.execute("SELECT COUNT(*) FROM foods").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM food_lookups").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM advice_threads").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM advice_messages").fetchone()[0] == 0
+        indexes = {r[1] for r in db.execute("PRAGMA index_list(advice_messages)")}
+        assert "advice_messages_status" in indexes
+        indexes = {r[1] for r in db.execute("PRAGMA index_list(food_lookups)")}
+        assert "food_lookups_status" in indexes
+
+
+def test_save_birth_date_after_profile_columns_are_added(tmp_path):
+    database = Database(tmp_path / "birth.sqlite3")
+    save_birth_date(database, "2026-06-15")
+    assert birth_date(database) == date(2026, 6, 15)

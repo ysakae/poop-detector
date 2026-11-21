@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from support import exchange, login
+from support import exchange, login, setup_guide
 
 
 def page(server, path, cookie):
@@ -256,6 +256,30 @@ def test_live_view_comes_first_with_a_short_judgment(gui):
     assert "直近の自動判定" in panel
     # 根拠の文は動画の画面で読むので、ホームには出さない。
     assert '<p id="live-reason" hidden>' in panel
+
+
+def test_home_shows_todays_guide_only_when_available(gui):
+    server, store, _ = gui
+    cookie = login(server, role="member")
+    assert "今日の目安" not in page(server, "/", cookie)
+    setup_guide(server, store)
+    html = page(server, "/", cookie)
+    assert "今日の目安 109 g" in html
+
+
+def test_home_guide_notes_when_the_advice_has_warnings(gui):
+    from datetime import timedelta
+
+    from poop_detector.timezones import local_today
+
+    server, store, _ = gui
+    cookie = login(server, role="member")
+    setup_guide(server, store)
+    assert "確かめてください" not in page(server, "/", cookie)
+    with store.database.connect() as db:
+        db.execute("UPDATE weights SET day=?", ((local_today() - timedelta(days=20)).isoformat(),))
+    html = page(server, "/", cookie)
+    assert "今日の目安 109 g（確かめてください）" in html
 
 
 def test_home_last_care_links_to_editing_each_record(gui):

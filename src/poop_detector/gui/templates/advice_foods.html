@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field, empty_state %}
+{% block content %}
+<h2>フード</h2>
+{% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+<section class="settings-section">
+<h3>登録済みのフード</h3>
+{% if foods %}
+<table class="weight-table"><thead><tr><th>名前</th><th>カロリー</th><th>出典</th><th>操作</th></tr></thead>
+<tbody>{% for food in foods %}<tr><td>{{ food.name }}</td><td>{{ food.kcal }} kcal/100g</td><td>{% if food.source_url %}<a href="{{ food.source_url }}" rel="noopener noreferrer" target="_blank">{{ food.source_url }}</a>{% endif %}</td>
+<td><form method="post" action="/advice/foods/stop" class="toolbar">{{ csrf_field(token) }}<input type="hidden" name="food_id" value="{{ food.id }}"><button class="secondary">使わない</button></form></td></tr>{% endfor %}</tbody></table>
+{% else %}{{ empty_state("フードはまだ登録されていません", "下の欄から、フードの名前とカロリーを登録できます。") }}{% endif %}
+</section>
+<section class="settings-section">
+<h3>カロリーを探す</h3>
+{% if lookup_problem %}
+<p class="note">{{ lookup_problem }}</p>
+{% else %}
+<p class="note">AI がウェブで探した値は下書きです。出典を確かめてから登録してください。</p>
+<form method="post" action="/advice/foods/lookup" class="settings-form">{{ csrf_field(token) }}
+<div class="settings-field"><label>フードの名前<input name="name" maxlength="80" required list="food-names" value="{{ lookup_name }}"></label></div>
+<datalist id="food-names">{% for name in names %}<option value="{{ name }}">{% endfor %}</datalist>
+<p class="toolbar"><button>カロリーを探す</button></p>
+</form>
+{% endif %}
+{% for lookup in lookups %}
+<div class="settings-field">
+<p><strong>{{ lookup.name }}</strong> {{ lookup.status_text }}{% if lookup.failure %}：{{ lookup.failure }}{% endif %}</p>
+{% if lookup.done %}
+<p class="note">{{ lookup.product_name }}{% if lookup.maker %}（{{ lookup.maker }}）{% endif %}　{{ lookup.kcal }} kcal/100g</p>
+{% if lookup.source_url %}<p class="note">出典：<a href="{{ lookup.source_url }}" rel="noopener noreferrer" target="_blank">{{ lookup.source_url }}</a></p>{% endif %}
+{% if lookup.note %}<p class="note">{{ lookup.note }}</p>{% endif %}
+<form method="post" action="/advice/foods" class="settings-form">{{ csrf_field(token) }}
+<div class="settings-field"><label>名前<input name="name" maxlength="80" value="{{ lookup.name }}" required></label></div>
+<div class="settings-field"><label>カロリー（kcal/100g）<input name="kcal" inputmode="decimal" value="{{ lookup.kcal }}" required></label></div>
+<div class="settings-field"><label>出典のURL<input name="source_url" maxlength="500" value="{{ lookup.source_url }}"></label></div>
+<p class="toolbar"><button>この値で登録</button></p>
+</form>
+{% endif %}
+</div>
+{% endfor %}
+</section>
+<section class="settings-section">
+<h3>手で入力する</h3>
+<form method="post" action="/advice/foods" class="settings-form">{{ csrf_field(token) }}
+{% if values.get("food_id") %}<input type="hidden" name="food_id" value="{{ values.food_id }}">{% endif %}
+<div class="settings-field"><label>名前<input name="name" maxlength="80" value="{{ values.get('name', '') }}" required></label></div>
+<div class="settings-field"><label>カロリー（kcal/100g）<input name="kcal" inputmode="decimal" value="{{ values.get('kcal', '') }}" required></label></div>
+<div class="settings-field"><label>出典のURL（任意）<input name="source_url" maxlength="500" value="{{ values.get('source_url', '') }}"></label></div>
+<p class="toolbar"><button>登録</button></p>
+</form>
+</section>
+{% endblock %}

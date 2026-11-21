@@ -164,3 +164,72 @@ def add_clip(
     if label is not None:
         clips.labels.save(clip_id, ClipLabel(label, activity=activity, location=location))
     return clip_id
+
+
+class FakeAdvisor:
+    """相談の作業スレッド用の偽の判定器。answer・lookup_output に値か例外を入れて変える。"""
+
+    name = "偽の判定器"
+
+    def __init__(self, answer=None, lookup_output=None):
+        self.answer = {"answer": "量は今のままで大丈夫です"} if answer is None else answer
+        self.lookup_output = lookup_output
+        self.last_usage = None
+        self.prompts = []
+
+    @staticmethod
+    def _result(value):
+        if isinstance(value, BaseException):
+            raise value
+        return value
+
+    def judge(self, folder, prompt, images, schema):
+        self.prompts.append(prompt)
+        return self._result(self.answer)
+
+    def lookup(self, folder, prompt, schema):
+        self.prompts.append(prompt)
+        return self._result(self.lookup_output)
+
+
+class NoLookupAdvisor(FakeAdvisor):
+    """ウェブ検索の口を持たない判定器。"""
+
+    lookup = None
+
+
+def first_user(store):
+    with store.database.connect() as db:
+        return db.execute("SELECT id FROM users LIMIT 1").fetchone()[0]
+
+
+def setup_guide(server, store, *, birth=True, food_active=True):
+    """生後5か月・3.2 kg・小型（予想5 kg）・385 kcal のフード・給餌の予定3件を入れる。"""
+    from datetime import timedelta
+
+    from poop_detector.records.feeding_plans import save_plan
+    from poop_detector.records.foods import active_foods, save_food, stop_food
+    from poop_detector.records.profile import save_profile
+    from poop_detector.records.weights import save_birth_date, save_weight
+    from poop_detector.timezones import local_today
+
+    request(server, "GET", "/")  # セッションのユーザーを作る
+    today = local_today()
+    database = store.database
+    if birth:
+        save_birth_date(database, (today - timedelta(days=152)).isoformat())
+    save_weight(database, "", today, 3200, "")
+    save_food(database, name="パピー", kcal_dk=3850, source_url="", user_id=first_user(store))
+    (food,) = active_foods(database)
+    save_profile(
+        database,
+        breed="",
+        size_class="small",
+        adult_grams=5000,
+        neutered="",
+        food_id=food.id,
+    )
+    for clock in ("08:00", "12:00", "18:00"):
+        save_plan(database, clock)
+    if not food_active:
+        stop_food(database, food.id)

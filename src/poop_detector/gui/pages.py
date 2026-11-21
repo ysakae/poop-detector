@@ -15,6 +15,7 @@ from ..records.record_stats import summarize_records
 from ..timezones import local_now, local_today, parse_local, timezone_label, to_local
 from ..video.clip_storage import DEFAULT_DISK_MIB
 from ..video.clips import ClipStore
+from .advice_page import today_grams
 from .clip_pages import capacity_info
 from .list_time import ListTime, by_day, list_time
 from .templating import render_template
@@ -385,6 +386,7 @@ def render_home(
         today=today,
         daily=daily,
         food_grams=format_grams(sum(fed)),
+        guide_today=today_grams(store.database, today),
         token=token,
         quick_feed=feeding_text(*last) if last else "",
         recorded=_recorded_notice(done) if done else None,

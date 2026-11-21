@@ -28,6 +28,17 @@ def fixed_local_timezone():
     time.tzset()
 
 
+@pytest.fixture(autouse=True)
+def fake_advice_judge(monkeypatch):
+    """GUI の作業スレッドが本物の CLI を起動しないよう、判定器を偽物にする。"""
+    from support import FakeAdvisor
+
+    monkeypatch.setattr(
+        "poop_detector.gui.advice_worker.configured_judge",
+        lambda config_path: (FakeAdvisor(), "codex", None),
+    )
+
+
 @pytest.fixture
 def gui(tmp_path, request):
     """一時ディレクトリで動くラベル GUI と、イベントを1件入れた記録を用意する。
