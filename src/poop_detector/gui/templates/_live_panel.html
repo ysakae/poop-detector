@@ -7,7 +7,7 @@
         <img id="live-frame" alt="現在のカメラ映像" hidden>
         {#- 動画の画面（ブラウザーの標準の操作バー）にそろえ、映像の下端に重ねて右に全画面のボタンを置く。 -#}
         <div class="live-controls" id="live-controls" hidden>
-          <span class="live-badge">ライブ</span>
+          <span class="live-badge" id="live-age">ライブ</span>
           <button type="button" class="live-maximize" id="live-maximize" aria-label="全画面表示" title="全画面表示" aria-pressed="false">
             <span class="live-maximize-open">{{ icon("expand") }}</span>
             <span class="live-maximize-close">{{ icon("shrink") }}</span>
@@ -16,6 +16,8 @@
       </div>
       <figcaption id="live-frame-status">監視からの映像を待っています。</figcaption>
     </figure>
+    {#- 外の回線で見るときに、映像を1秒に2コマまでに抑える。選んだ状態は端末ごとに覚える（static/live.js）。 -#}
+    <p class="live-options"><button type="button" class="secondary" id="live-saver" aria-pressed="false">通信を節約（1秒に2コマ）</button></p>
     {#- ホームの先頭に置くので、直近の自動判定は短く添える。根拠は動画の画面で読む。 -#}
     <div class="live-result">
       <p><span class="note">直近の自動判定（保存済みの動画）</span> <strong id="live-judgment">判定を読み込み中</strong> <a id="live-clip-link" href="/clips" hidden>動画を開く</a></p>
