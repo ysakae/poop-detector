@@ -77,7 +77,9 @@ def export_csv(handler: "Handler", form: Form) -> None:
         data = weights_csv(weights(handler.app.store.database, first_day, last_day))
         kind = "weights"
     else:
-        data = records_csv(handler.app.store.records(), first_day, last_day)
+        data = records_csv(
+            handler.app.store.records_between(first_day, last_day), first_day, last_day
+        )
         kind = "records"
     name = f"poop-{kind}-{first_day:%Y%m%d}-{last_day:%Y%m%d}.csv"
     audit(handler, "export.csv", _period_text(first_day, last_day))
@@ -132,7 +134,7 @@ def summary_page(handler: "Handler", query: Query) -> None:
     except InvalidInputError as error:
         _render(handler, status=400, start=start, end=end, error=str(error))
         return
-    values = _summary(first_day, last_day, list(handler.app.store.records()))
+    values = _summary(first_day, last_day, handler.app.store.records_between(first_day, last_day))
     measurements = weights(handler.app.store.database, first_day, last_day)
     audit(handler, "export.summary", values["period"])
     page = render_template(
