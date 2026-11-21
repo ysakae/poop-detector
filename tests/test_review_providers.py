@@ -44,6 +44,8 @@ def test_claude_cli_passes_two_images_and_schema_without_credentials(tmp_path, m
         assert args[args.index("--output-format") + 1] == "stream-json"
         assert "--verbose" in args
         assert args[args.index("--tools") + 1] == ""
+        # 通常の判定ではウェブ用の許可を付けない（付くのは lookup だけ）。
+        assert "--allowedTools" not in args
         assert "--no-session-persistence" in args
         assert "--safe-mode" in args
         assert json.loads(args[args.index("--json-schema") + 1]) == SCHEMA
