@@ -67,14 +67,25 @@ def _excretions(store: Store, days: list[date]) -> tuple[tuple[date, int, int], 
     return tuple((day, feces[day], urine[day]) for day in days)
 
 
+def current_advice(database: Database, today: date, rows: list[Weight] | None = None) -> Advice:
+    """画面と相談で共通の目安。体重は全記録の最後の1件を使う（期間で切らない）。"""
+    profile = load_profile(database)
+    latest = rows if rows is not None else weights(database)
+    return compute_advice(
+        profile,
+        latest[-1] if latest else None,
+        profile_kcal(database, profile.food_id),
+        len(plans_for_day(database, today)),
+        today,
+    )
+
+
 def build_context(database: Database, store: Store, pet_name: str, today: date) -> AdviceContext:
     """直近の記録から相談の材料を作る。体重は90日、給餌と排泄は14日分。"""
     profile = load_profile(database)
     rows = weights(database, today - timedelta(days=WEIGHT_DAYS - 1), today)
     meals = len(plans_for_day(database, today))
-    advice = compute_advice(
-        profile, rows[-1] if rows else None, profile_kcal(database, profile.food_id), meals, today
-    )
+    advice = current_advice(database, today)
     days = [today - timedelta(days=offset) for offset in range(RECENT_DAYS - 1, -1, -1)]
     totals = feeding_totals(database, days[0], today)
     return AdviceContext(

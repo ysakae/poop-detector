@@ -3,14 +3,14 @@
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from ..features.advice.context import current_advice
 from ..features.advice.jobs import waiting_position
 from ..records.advice import Message, Thread
 from ..records.breeds import SIZE_NAMES
 from ..records.care import feeding_totals
 from ..records.database import Database
-from ..records.feeding_advice import Advice, Guide, compute_advice, intake_summary, weekly_gain
-from ..records.feeding_plans import plans_for_day
-from ..records.foods import kcal_by_name, profile_kcal
+from ..records.feeding_advice import Advice, Guide, intake_summary, weekly_gain
+from ..records.foods import kcal_by_name
 from ..records.profile import PetProfile, load_profile
 from ..records.weights import Weight, weights
 from ..timezones import to_local
@@ -39,11 +39,7 @@ def snapshot(database: Database, today: date) -> Snapshot:
     """記録から目安を計算する。止めたフードのカロリーは使わない。"""
     profile = load_profile(database)
     rows = weights(database)
-    meals = len(plans_for_day(database, today))
-    advice = compute_advice(
-        profile, rows[-1] if rows else None, profile_kcal(database, profile.food_id), meals, today
-    )
-    return Snapshot(profile, rows, advice)
+    return Snapshot(profile, rows, current_advice(database, today, rows))
 
 
 def today_grams(database: Database, today: date) -> int | None:

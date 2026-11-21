@@ -218,3 +218,21 @@ def test_parse_answer_rejects_wrong_shape() -> None:
     for bad in ({"answer": ""}, {"answer": "  "}, {"answer": 3}, {}, "x", None, ["a"]):
         with pytest.raises(ValueError, match=r"正しくありません|空です"):
             parse_answer(bad)
+
+
+@pytest.mark.parametrize("weight_day", [date(2026, 6, 1), date(2026, 12, 25)])
+def test_context_advice_matches_screen_for_old_and_future_weights(store, weight_day) -> None:
+    """90日より古い体重や未来の日付の体重でも、AI に渡す目安は画面と同じ。"""
+    from poop_detector.gui.advice_page import snapshot
+
+    database = store.database
+    save_birth_date(database, "2026-03-21")
+    save_weight(database, "", weight_day, 3000, "")
+    save_profile(database, breed="", size_class="small", adult_grams=5000, neutered="", food_id="")
+    context = build_context(database, store, "もも", TODAY)
+    assert context.advice == snapshot(database, TODAY).advice
+    if weight_day < TODAY:
+        assert context.advice.guide is not None
+        assert context.advice.warnings
+    else:
+        assert context.advice.missing
