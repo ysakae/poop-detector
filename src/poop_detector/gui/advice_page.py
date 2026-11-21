@@ -109,7 +109,10 @@ def intake_view(database: Database, today: date) -> tuple[list[dict[str, str]], 
 
 def gain_text(rows: list[Weight], today: date) -> str:
     gain = weekly_gain(rows, today)
-    return "" if gain is None else f"{gain:+.0f} g/週"
+    if gain is None:
+        return ""
+    grams = round(gain)
+    return f"{grams:+d} g/週" if grams else "±0 g/週"
 
 
 def thread_rows(threads: list[Thread]) -> list[dict[str, str]]:

@@ -358,15 +358,15 @@ def retry_route(handler: "Handler", form: Form) -> None:
     database = handler.app.store.database
     message_id = form.fields.get("message_id", "")
     try:
-        retry(database, message_id)
+        thread_id = retry(database, message_id)
     except InvalidInputError as error:
-        _render_advice(handler, error=str(error), status=400)
+        thread_id = form.fields.get("thread_id", "")
+        if thread(database, thread_id) is None:
+            _render_advice(handler, error=str(error), status=400)
+        else:
+            _render_thread(handler, thread_id, error=str(error), status=400)
         return
-    with database.connect() as db:
-        row = db.execute(
-            "SELECT thread_id FROM advice_messages WHERE id=?", (message_id,)
-        ).fetchone()
-    handler.redirect(f"{THREAD}?id={row[0]}")
+    handler.redirect(f"{THREAD}?id={thread_id}")
 
 
 @post("/advice/delete")

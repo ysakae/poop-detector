@@ -202,7 +202,9 @@ def test_profile_breed_fills_size_and_adult_weight(gui):
 def test_profile_invalid_weight_returns_400(gui):
     server, _, _ = gui
     fields = {"breed": "", "size_class": "", "adult_grams": "abc", "neutered": "", "food_id": ""}
-    assert submit(server, "/advice/profile", fields, page=ADVICE)[0] == 400
+    status, body = submit(server, "/advice/profile", fields, page=ADVICE)
+    assert status == 400
+    assert 'name="adult_grams" inputmode="numeric" value="abc"' in body.decode()
 
 
 def _wait_for(server, path, text):
@@ -351,3 +353,72 @@ def test_advice_status_for_unknown_thread_is_404(gui):
 def test_advice_js_is_served(gui):
     server, _, _ = gui
     assert request(server, "GET", "/assets/advice.js")[0] == 200
+
+
+def test_retry_on_deleted_thread_is_refused(gui, judge_ready):
+    from poop_detector.records.advice import delete_thread, start_thread
+
+    server, store, _ = gui
+    request(server, "GET", ADVICE)
+    owner = _first_user(store)
+    thread_id = start_thread(
+        store.database, title="消した", question="q", user_id=owner, basis="{}"
+    )
+    with store.database.connect() as db:
+        db.execute("UPDATE advice_messages SET status='failed', failure='timeout' WHERE seq=2")
+        message = db.execute("SELECT id FROM advice_messages WHERE seq=2").fetchone()[0]
+    delete_thread(store.database, thread_id, user_id=owner, admin=True)
+    status, body = submit(
+        server, "/advice/retry", {"message_id": message, "thread_id": thread_id}, page=ADVICE
+    )
+    assert status == 400
+    assert "やり直す回答が見つかりません" in body.decode()
+    with store.database.connect() as db:
+        row = db.execute("SELECT status FROM advice_messages WHERE id=?", (message,)).fetchone()
+    assert row[0] == "failed"
+
+
+def test_retry_error_renders_thread_page(gui, judge_ready):
+    from poop_detector.records.advice import start_thread
+
+    server, store, _ = gui
+    request(server, "GET", ADVICE)
+    thread_id = start_thread(
+        store.database, title="残る", question="q", user_id=_first_user(store), basis="{}"
+    )
+    with store.database.connect() as db:
+        db.execute("UPDATE advice_messages SET status='running' WHERE seq=2")
+        message = db.execute("SELECT id FROM advice_messages WHERE seq=2").fetchone()[0]
+    status, body = submit(
+        server,
+        "/advice/retry",
+        {"message_id": message, "thread_id": thread_id},
+        page=f"/advice/thread?id={thread_id}",
+    )
+    assert status == 400
+    assert "残る" in body.decode()
+
+
+def test_waiting_position_text(tmp_path):
+    from poop_detector.gui.advice_page import message_rows
+    from poop_detector.records.advice import messages, start_thread
+    from poop_detector.records.database import Database
+
+    database = Database(tmp_path / "events.sqlite3")
+    start_thread(database, title="先", question="q", user_id="u", basis="{}")
+    later = start_thread(database, title="後", question="q", user_id="u", basis="{}")
+    rows = message_rows(database, messages(database, later))
+    assert "前に1件" in str(rows[-1]["status_text"])
+
+
+def test_gain_text_never_shows_negative_zero():
+    from datetime import date
+
+    from poop_detector.gui.advice_page import gain_text
+    from poop_detector.records.weights import Weight
+
+    today = date(2026, 11, 21)
+    rows = [Weight("a", date(2026, 11, 1), 3000, ""), Weight("b", date(2026, 11, 20), 2999, "")]
+    assert gain_text(rows, today) == "±0 g/週"
+    flat = [Weight("a", date(2026, 11, 1), 3000, ""), Weight("b", date(2026, 11, 20), 3000, "")]
+    assert gain_text(flat, today) == "±0 g/週"

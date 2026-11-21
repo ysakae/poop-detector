@@ -130,16 +130,24 @@ def ask(
         _append(db, thread_id, question, user_id, basis, stamp)
 
 
-def retry(database: Database, message_id: str) -> None:
-    """失敗した回答だけを待ちに戻す。"""
+def retry(database: Database, message_id: str) -> str:
+    """失敗した回答だけを待ちに戻し、その会話の ID を返す。削除した会話は戻さない。"""
     with database.connect() as db:
-        changed = db.execute(
-            """UPDATE advice_messages SET status='queued', failure=NULL, started_at=NULL
-            WHERE id=? AND role='assistant' AND status='failed'""",
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            """SELECT m.thread_id FROM advice_messages m
+            JOIN advice_threads t ON t.id = m.thread_id
+            WHERE m.id=? AND m.role='assistant' AND m.status='failed'
+            AND t.deleted_at IS NULL""",
             (message_id,),
-        ).rowcount
-    if not changed:
-        raise InvalidInputError("やり直す回答が見つかりません")
+        ).fetchone()
+        if row is None:
+            raise InvalidInputError("やり直す回答が見つかりません")
+        db.execute(
+            "UPDATE advice_messages SET status='queued', failure=NULL, started_at=NULL WHERE id=?",
+            (message_id,),
+        )
+    return str(row["thread_id"])
 
 
 _THREAD_SQL = """SELECT t.id, t.title, t.created_by, COALESCE(u.name, '') AS author_name,

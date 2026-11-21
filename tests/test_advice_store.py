@@ -112,11 +112,21 @@ def test_retry_requeues_only_failed_answer(database):
         advice.retry(database, answer.id)
     set_status(database, thread_id, "failed")
     assert advice.messages(database, thread_id)[1].failure == "x"
-    advice.retry(database, answer.id)
+    assert advice.retry(database, answer.id) == thread_id
     again = advice.messages(database, thread_id)[1]
     assert (again.status, again.failure) == ("queued", None)
     with pytest.raises(InvalidInputError, match="やり直す回答が見つかりません"):
         advice.retry(database, "none")
+
+
+def test_retry_refuses_deleted_thread(database):
+    thread_id = start(database)
+    answer = advice.messages(database, thread_id)[1]
+    set_status(database, thread_id, "failed")
+    advice.delete_thread(database, thread_id, user_id="a", admin=True)
+    with pytest.raises(InvalidInputError, match="やり直す回答が見つかりません"):
+        advice.retry(database, answer.id)
+    assert advice.messages(database, thread_id)[1].status == "failed"
 
 
 def test_delete_thread_only_by_creator_or_admin(database):
