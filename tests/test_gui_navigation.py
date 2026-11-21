@@ -20,7 +20,7 @@ MEMBER_SECTIONS = {
     "/sleep": "睡眠",
 }
 ADMIN_PAGES = {
-    "/manage": "稼働状況とトレー",
+    "/manage": "稼働状況",
     "/manage/setup": "初回セットアップ",
     "/manage/areas": "範囲の登録",
     "/manage/settings": "設定",
@@ -145,6 +145,13 @@ def test_every_management_page_belongs_to_one_group():
 
     grouped = [href for pages in MANAGEMENT_GROUPS.values() for href in pages]
     assert sorted(grouped) == sorted(href for href, _ in MANAGEMENT_PAGES)
+
+
+def test_tray_exchange_is_part_of_the_area_registration(gui):
+    server, _, _ = gui
+    html = page(server, "/manage/areas/tray", login(server))
+    tabs = nav_of(html, "管理の中の画面")
+    assert re.search(r'href="/manage/areas" aria-current="page">範囲の登録', tabs)
 
 
 def test_pages_under_a_management_page_keep_its_group(gui):

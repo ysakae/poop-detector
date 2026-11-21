@@ -286,7 +286,9 @@ def management_status(handler: "Handler") -> dict[str, Any]:
     }
 
 
-def render_management(handler: "Handler", error: str | None = None) -> str:
+def render_management(
+    handler: "Handler", error: str | None = None, template: str = "management.html"
+) -> str:
     app = handler.app
     try:
         roi = ROI.load(TrayRegistration(app.root).active_scene().roi_path)
@@ -294,7 +296,7 @@ def render_management(handler: "Handler", error: str | None = None) -> str:
     except (OSError, ValueError, TypeError):
         points = []
     return render_template(
-        "management.html",
+        template,
         title=app.title,
         token=handler.csrf,
         points=points,
@@ -307,6 +309,12 @@ def render_management(handler: "Handler", error: str | None = None) -> str:
 @get("/manage", role="admin")
 def management_page(handler: "Handler", _query: Query) -> None:
     handler.respond(200, render_management(handler))
+
+
+@get("/manage/areas/tray", role="admin")
+def tray_page(handler: "Handler", _query: Query) -> None:
+    """トレー交換。トレーの範囲は範囲の登録で扱うので、その下に置く。"""
+    handler.respond(200, render_management(handler, template="tray.html"))
 
 
 @get("/manage/status", role="admin")
@@ -334,11 +342,13 @@ def management_tray(handler: "Handler", form: Form) -> None:
     except (ValueError, TypeError, AttributeError, OSError):
         handler.respond(
             400,
-            render_management(handler, "操作できません。トレーの状態と範囲を確認してください。"),
+            render_management(
+                handler, "操作できません。トレーの状態と範囲を確認してください。", "tray.html"
+            ),
         )
         return
     audit(handler, f"tray.{action}")
-    handler.redirect("/manage")
+    handler.redirect("/manage/areas/tray")
 
 
 # --- ログインとパスキーの登録（ログインしていなくても開ける） ---

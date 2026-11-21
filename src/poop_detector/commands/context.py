@@ -15,6 +15,7 @@ from ..config import Config
 from ..detection.roi import ROI, AnyROI
 from ..detection.scene import SceneFiles
 from ..errors import UserError
+from ..features.activity_map import ActivityLayout
 from ..features.outages import OutageKind, OutageLog, OutageTracker
 from ..features.tray_registration import TrayRegistration
 from ..features.tray_tracking import TrayTracker
@@ -76,10 +77,20 @@ def load_tray_tracker(
 
 
 def load_outside_roi(context: CommandContext) -> AnyROI:
-    """トレー外の検知に使う、トレーと周囲の床の範囲を読む。"""
-    if not context.outside_roi_path.is_file():
-        raise CommandError("先に setup-roi --outside でトレーと周囲の床を囲んでください")
-    return ROI.load(context.outside_roi_path)
+    """トレー外の検知に使う範囲を読む。
+
+    床面と違う範囲（ベッドや餌皿を外すなど）を見張るときだけ、トレー外の範囲を登録する。
+    登録していなければ、行動マップと同じサークルの床面を使う。
+    """
+    if context.outside_roi_path.is_file():
+        return ROI.load(context.outside_roi_path)
+    try:
+        return ActivityLayout.load(context.root).roi
+    except FileNotFoundError:
+        raise CommandError(
+            "先に管理 › 範囲の登録でサークルの床面を囲んでください"
+            "（CLI では setup-activity-map。床面と違う範囲は setup-roi --outside）"
+        ) from None
 
 
 def check_limit(limit: int) -> None:

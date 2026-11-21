@@ -9,20 +9,22 @@ from poop_detector.features.tray_registration import TrayRegistration
 def test_management_tray_setup_from_the_browser(gui):
     server, _, _ = gui
     registration = TrayRegistration(server.app.root)
-    status, body = request(server, "GET", "/manage")
+    status, body = request(server, "GET", "/manage/areas/tray")
     assert status == 200
     assert "トレー交換を開始".encode() in body
 
-    assert submit(server, "/manage/tray", {"action": "begin"}, page="/manage")[0] == 303
+    assert submit(server, "/manage/tray", {"action": "begin"}, page="/manage/areas/tray")[0] == 303
     roi = ROI(0, 0, 1, 1)
     registration.poll(None, roi, track_tray=False)
-    status, body = request(server, "GET", "/manage")
+    status, body = request(server, "GET", "/manage/areas/tray")
     assert status == 200
     assert b'id="tray-preview"' in body
 
     polygon = '{"mode":"mask","points":[[0.1,0.1],[0.8,0.2],[0.7,0.8],[0.2,0.7]]}'
     assert (
-        submit(server, "/manage/tray", {"action": "apply", "roi": polygon}, page="/manage")[0]
+        submit(
+            server, "/manage/tray", {"action": "apply", "roi": polygon}, page="/manage/areas/tray"
+        )[0]
         == 400
     )
     assert registration.status()["phase"] == "paused"
@@ -31,15 +33,28 @@ def test_management_tray_setup_from_the_browser(gui):
             server,
             "/manage/tray",
             {"action": "apply", "roi": polygon, "confirm_empty": "yes"},
-            page="/manage",
+            page="/manage/areas/tray",
         )[0]
         == 303
     )
     assert registration.status()["roi"]["mode"] == "mask"
 
-    assert submit(server, "/manage/tray", {"action": "cancel"}, page="/manage")[0] == 303
+    assert submit(server, "/manage/tray", {"action": "cancel"}, page="/manage/areas/tray")[0] == 303
     registration.poll(None, roi, track_tray=False)
-    assert "取り消しました".encode() in request(server, "GET", "/manage")[1]
+    assert "取り消しました".encode() in request(server, "GET", "/manage/areas/tray")[1]
+
+
+def test_tray_exchange_moved_under_the_areas(gui):
+    """トレーの範囲は「範囲の登録」で扱い、稼働状況には入口だけを置く。"""
+    server, _, _ = gui
+    status, body = request(server, "GET", "/manage")
+    assert status == 200
+    page = body.decode()
+    assert "<h2>稼働状況</h2>" in page
+    assert 'action="/manage/tray"' not in page
+    assert 'href="/manage/areas/tray"' in page
+    response = submit(server, "/manage/tray", {"action": "begin"}, page="/manage/areas/tray")
+    assert response[0] == 303
 
 
 def test_management_changes_require_a_session_and_csrf_token(gui):

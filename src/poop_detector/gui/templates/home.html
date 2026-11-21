@@ -34,9 +34,9 @@
 <section class="card" aria-labelledby="last-care-title">
 <h2 id="last-care-title">最後のお世話</h2>
 <ul class="timeline day-list">
-{%- for label, name, stamp, amount in last_care -%}
-<li>{{ icon(name) }}<span class="timeline-what">{{ label }}{% if amount %}<small>{{ amount }}</small>{% endif %}</span>
-<span class="timeline-time">{% if stamp %}{{ when(stamp) }}{% else %}まだ記録がありません{% endif %}</span></li>
+{%- for care in last_care -%}
+<li>{{ icon(care.icon) }}<span class="timeline-what">{{ care.label }}{% if care.amount %}<small>{{ care.amount }}</small>{% endif %}</span>
+{% if care.stamp %}<a class="timeline-time" href="{{ care.url }}">{{ when(care.stamp) }}</a>{% else %}<span class="timeline-time">まだ記録がありません</span>{% endif %}</li>
 {%- endfor -%}
 </ul>
 </section>

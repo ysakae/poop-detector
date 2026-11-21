@@ -206,7 +206,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/checks_routes.py` | 管理 › 確認と診断。通知のテスト送信・カメラの確認・診断情報を、CLI と同じ関数で行う |
 | `gui/models_routes.py` | 管理 › 判定器とモデル。判定器の状態と選び直し（設定の書き換えは `settings_file.py`）、監視中の判定の状況（`video/review_status.py`）、比較の結果（`video/benchmark_results.py`）、犬検出モデルの状態（`features/dog_status.py`） |
 | `gui/export_routes.py` | 管理 › 書き出しとバックアップ。確定記録の CSV（`records/export.py`）、印刷用の集計、バックアップの作成（`records/backup.py`）。復元は CLI の `restore` だけで行う |
-| `gui/areas_routes.py`・`gui/snapshots.py` | 管理 › 範囲の登録。映像の上に描いた多角形で、監視範囲と基準画像・トレー外の範囲・床面を登録する。画面に見せた映像を ID で預かり、保存に使う |
+| `gui/areas_routes.py`・`gui/snapshots.py` | 管理 › 範囲の登録。範囲ごとに何に使うかを示し、映像の上に描いた多角形で、監視範囲と基準画像・床面・任意のトレー外の範囲を登録する（トレー外の範囲がなければ、トレー外検知は床面を使う）。監視中のトレーの登録し直しはトレー交換（`/manage/areas/tray`、`gui/routes.py`）。画面に見せた映像を ID で預かり、保存に使う |
 | `gui/themes.py`・`gui/icons.py` | 画面の表示（ライト・ダークの選択）と、同梱のアイコンの形。デザインは1つで、色と形は `style.css` の変数にある |
 | `gui/push_routes.py` | PWA のマニフェスト・Service Worker・アイコンと、Web Push の購読の登録・解除・受け取り方・テスト |
 | `gui/navigation.py` | 共通の枠の値（メインメニュー、管理のメニュー、ログイン中の人、監視の状態）。画面の配置は [画面の構成](screens.md) |

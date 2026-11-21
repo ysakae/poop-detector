@@ -86,6 +86,8 @@ main table{max-width:100%}main th{font-size:13px;font-weight:600;color:var(--mut
 button[aria-busy="true"]{cursor:progress}button[aria-busy="true"]::before{content:"";display:inline-block;width:1em;height:1em;margin-right:8px;vertical-align:-0.15em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:button-busy .8s linear infinite}
 @keyframes button-busy{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){.page-busy::before{animation:none;width:100%;opacity:.6}button[aria-busy="true"]::before{animation:none;border-right-color:currentColor;opacity:.6}}
+/* 管理 › 範囲の登録の、範囲ごとのカード（何に使うかと状態）。 */
+.area-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0 0 20px}.area-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}.area-card h3{margin:0 0 8px;font-size:16px}.area-card p{margin:0 0 8px}.area-card[data-selected]{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-soft)}.area-card button[aria-pressed=true]{color:var(--menu-current);background:var(--primary-soft);border-color:var(--primary);font-weight:700}
 /* 管理のまとまりの中の画面のタブ。まとまりのメニュー（丸いボタン）の下に、下線のタブで並べる。 */
 .sub-tabs{overflow-x:auto;margin:-8px 0 20px;border-bottom:1px solid var(--border)}.sub-tabs ul{list-style:none;margin:0;padding:0;display:flex;gap:4px}.sub-tabs a{display:flex;align-items:center;min-height:var(--control-height);padding:0 14px;color:var(--muted);border-bottom:3px solid transparent;font-size:14px;text-decoration:none;white-space:nowrap}.sub-tabs a[aria-current=page]{font-weight:700;color:var(--menu-current);border-bottom-color:var(--primary)}
 .badge{display:inline-block;min-width:1.6em;margin-left:6px;padding:0 6px;border-radius:var(--radius-pill);background:var(--badge-bg);color:var(--badge-text);font-size:12px;font-weight:bold;text-align:center;line-height:1.6}
@@ -157,6 +159,7 @@ main>.card{margin-bottom:16px}.card>h2{font-size:16px;margin:0 0 10px;color:var(
 .day-list li{display:grid;grid-template-columns:22px minmax(0,1fr) 5ch 2em}
 .day-list .timeline-what{min-width:0;overflow-wrap:anywhere}
 .day-list .timeline-time{text-align:right;font-variant-numeric:tabular-nums}
+.timeline a.timeline-time{color:var(--link)}
 .day-list a{justify-self:end}
 .weight-table td:nth-child(-n+2){white-space:nowrap}.weight-figure{background:none;min-height:0;text-align:left;margin:8px 0 16px}.weight-figure figcaption{padding:4px 0;color:var(--muted)}.weight-chart{display:block;max-width:100%;height:auto}.weight-chart .area{fill:var(--primary-soft)}.weight-chart .axis{stroke:var(--border-strong)}.weight-chart .line{fill:none;stroke:var(--primary);stroke-width:2.5;stroke-linejoin:round}.weight-chart circle{fill:var(--primary);stroke:var(--surface);stroke-width:1.5}
 .weight-chart[data-weight-chart]{width:100%;max-width:620px;font-variant-numeric:tabular-nums}
