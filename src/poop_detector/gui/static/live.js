@@ -18,6 +18,55 @@ const waiting = "監視からの映像を待っています。";
 let retryAt = 0;
 let startedAt = 0;
 
+// 通信を抑える工夫。外の回線で見るときは、映像を1秒に SAVER_FPS コマまでにする。
+// 端末が回線の種類やデータセーバーを教えてくれるとき（Android の Chrome など）は自動で抑え、
+// 「通信を節約」のボタンで選び直せる（選んだ状態は端末ごとに覚える）。
+const SAVER_FPS = 2;
+const SAVER_KEY = "live-saver";
+const STALE_SECONDS = 5; // これより古い映像は「何秒前の映像」と示す
+const ageBadge = document.querySelector("#live-age");
+const saverButton = document.querySelector("#live-saver");
+
+function storedSaver() {
+    try {
+        const value = localStorage.getItem(SAVER_KEY);
+        return value === null ? null : value === "1";
+    } catch {
+        return null; // 保存を使えない環境（プライベートブラウズなど）では、自動の判断に任せる
+    }
+}
+
+function automaticSaver() {
+    const connection = navigator.connection;
+    if (!connection) return false;
+    return Boolean(connection.saveData || connection.type === "cellular"
+        || ["slow-2g", "2g", "3g"].includes(connection.effectiveType));
+}
+
+let saving = storedSaver() ?? automaticSaver();
+// 映像が画面から外れている間（下へスクロールしたとき）は、受け取りを止める。
+let offscreen = false;
+
+function streamUrl() {
+    return saving ? "/live/stream?fps=" + SAVER_FPS : "/live/stream";
+}
+
+function showSaver() {
+    saverButton.setAttribute("aria-pressed", String(saving));
+}
+
+saverButton.addEventListener("click", () => {
+    saving = !saving;
+    try {
+        localStorage.setItem(SAVER_KEY, saving ? "1" : "0");
+    } catch {
+        // 覚えられなくても、この画面では選んだとおりにする。
+    }
+    showSaver();
+    if (image.hasAttribute("src")) image.src = streamUrl();
+});
+showSaver();
+
 // 映像の最大化。全画面の API があればそれを使い、ない端末（iPhone の Safari）では
 // 画面いっぱいに固定して広げる。
 function isMaximized() {
@@ -122,9 +171,28 @@ function stopStream() {
 }
 
 function startStream() {
-    if (document.hidden || image.hasAttribute("src") || Date.now() < retryAt) return;
+    if (document.hidden || offscreen || image.hasAttribute("src") || Date.now() < retryAt) return;
     startedAt = Date.now();
-    image.src = "/live/stream";
+    image.src = streamUrl();
+}
+
+function showAge(stamp) {
+    const age = (Date.now() - new Date(stamp).getTime()) / 1000;
+    const stale = age >= STALE_SECONDS;
+    ageBadge.textContent = stale ? Math.round(age) + "秒前の映像" : "ライブ";
+    ageBadge.toggleAttribute("data-stale", stale);
+}
+
+if ("IntersectionObserver" in window) {
+    new IntersectionObserver(([entry]) => {
+        offscreen = !entry.isIntersecting && !isMaximized();
+        if (offscreen) {
+            // 映像の枠は隠さずに受け取りだけを止める（枠が縮むと、スクロールの位置がずれる）。
+            image.removeAttribute("src");
+        } else {
+            startStream();
+        }
+    }).observe(view);
 }
 
 image.addEventListener("error", () => {
@@ -147,7 +215,7 @@ window.addEventListener("pageshow", startStream);
 
 async function updateStreamStatus() {
     try {
-        if (document.hidden) return;
+        if (document.hidden || offscreen) return;
         const response = await fetch("/live/status", { cache: "no-store" });
         if (!response.ok) throw new Error();
         const { frame_time: stamp, tray_state: trayState } = await response.json();
@@ -160,6 +228,7 @@ async function updateStreamStatus() {
         if (!stamp || !image.hasAttribute("src")) return;
         image.hidden = false;
         controls.hidden = false;
+        showAge(stamp);
         const status = "映像更新 " + jst.format(new Date(stamp));
         if (trayState === "searching") {
             frameStatus.textContent = status + " ／ トレーの位置を確認中・判定保留";

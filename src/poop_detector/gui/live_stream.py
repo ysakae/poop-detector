@@ -16,6 +16,15 @@ if TYPE_CHECKING:
 
 SESSION_CHECK_INTERVAL = 3.0
 REQUEST_INTERVAL = 1.0
+# ブラウザーが ?fps= で指定できるコマ数の範囲（1秒あたり）。外の回線では少なく受け取る。
+MIN_FPS, MAX_FPS = 1, 30
+
+
+def send_interval(value: str | None) -> float | None:
+    """?fps= の値から、コマを送る最短の間隔（秒）。指定がない・正しくなければ None（すぐ送る）。"""
+    if not value or not value.isdigit() or not MIN_FPS <= int(value) <= MAX_FPS:
+        return None
+    return 1 / int(value)
 
 
 def session_active(gui: "GuiApp", session_id: str) -> bool:
@@ -24,7 +33,10 @@ def session_active(gui: "GuiApp", session_id: str) -> bool:
     return user is not None and user.active
 
 
-async def live_frames(gui: "GuiApp", session_id: str) -> AsyncIterator[bytes]:
+async def live_frames(
+    gui: "GuiApp", session_id: str, interval: float | None = None
+) -> AsyncIterator[bytes]:
+    """新しいコマを送り続ける。interval があれば、コマとコマの間をそれだけ空ける。"""
     preview = gui.preview
     last_stamp = None
     last_frame = time.monotonic()
@@ -44,6 +56,10 @@ async def live_frames(gui: "GuiApp", session_id: str) -> AsyncIterator[bytes]:
             last_frame = now
             header = f"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {len(jpeg)}\r\n\r\n"
             yield header.encode("ascii") + jpeg + b"\r\n"
+            if interval is not None:
+                # 間を空ける間のコマは送らず、次はその時点の最新のコマを送る。
+                await asyncio.sleep(interval)
+                continue
         # 遅い接続でも古いフレームは溜めず、送信後にその時点の最新画像を読む。
         await asyncio.sleep(FRAME_INTERVAL / 2)
     yield b"--frame--\r\n"
@@ -58,7 +74,7 @@ async def live_stream(request: Request) -> Response:
     gui: GuiApp = request.app.state.gui
     await run_in_threadpool(gui.preview.request_frame)
     return StreamingResponse(
-        live_frames(gui, session_id),
+        live_frames(gui, session_id, send_interval(request.query_params.get("fps"))),
         media_type="multipart/x-mixed-replace; boundary=frame",
         headers={"X-Accel-Buffering": "no"},
     )

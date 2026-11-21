@@ -38,7 +38,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
   接続とスキーマは `records/database.py` が管理します。スキーマの版を `PRAGMA user_version` に記録し、開くときに未適用の移行処理を順に適用します（版管理を入れる前のデータベースは版0として扱い、版1への移行でいまの形にそろえます）。
 - GUI からの「今の前後の動画を保存」は `clips` テーブルへ `queued` 行を入れるだけで、監視側の `ClipCollector.poll()` が拾います。監視の生存は `capture_status` のハートビートで判定します。
-- ライブ映像は `LivePreview` が `.live-preview.jpg` を書き、GUI が `.live-preview-request` の更新時刻で要求を伝えます。ホームは認証済みのHTTP接続1本で、新しいJPEGができるたびに受け取ります。管理画面の静止画取得は別の経路を使います。
+- ライブ映像は `LivePreview` が `.live-preview.jpg` を書き、GUI が `.live-preview-request` の更新時刻で要求を伝えます。ホームは認証済みのHTTP接続1本（`/live/stream`）で、新しいJPEGができるたびに受け取ります。`?fps=`（1〜30）を付けると、`gui/live_stream.send_interval` の間隔より詰めて送りません（外の回線で通信を抑える「通信を節約」が使う）。管理画面の静止画取得は別の経路を使います。
 - 監視は `LivePreview.pulse` で `.live-preview-monitor` に稼働状態を書き、自分で終了したときは `mark_stopped` で `stopped` を残します。GUI のサーバーはこのファイルの更新時刻を見張り、途絶えたら監視の停止として知らせます（下の「監視の停止とカメラの不調の見張り」）。
 - `activity.sqlite3` は行動マップ専用の別データベースです。
 - 排他は `fcntl.flock` のロックファイル（`.capture.lock`、`.review.lock`、`.activity.lock`）で行います。動画収集を伴う監視は同時に1プロセスだけです。`restore` はこの3つのロックを取れたときだけ、データの保存先を入れ替えます。
