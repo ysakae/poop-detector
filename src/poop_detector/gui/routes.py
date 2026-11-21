@@ -440,6 +440,7 @@ def logout(handler: "Handler", _form: Form) -> None:
     "/assets/passkey.js",
     "/assets/menu.js",
     "/assets/busy.js",
+    "/assets/advice.js",
     "/assets/notification_target.js",
 )
 def asset(handler: "Handler", query: Query) -> None:

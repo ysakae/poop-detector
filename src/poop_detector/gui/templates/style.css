@@ -224,3 +224,4 @@ main table{display:block;overflow-x:auto;max-width:100%}main th{white-space:nowr
   .settings-field label:not(:has(>input[type=checkbox])){grid-template-columns:minmax(0,1fr)}
   .scene-list li{flex-wrap:wrap}.scene-actions{width:100%;justify-content:flex-start}
 }
+.advice-body{white-space:pre-wrap;overflow-wrap:anywhere}.advice-message{padding:8px 0;border-top:1px solid var(--border)}.advice-assistant{background:var(--primary-soft);padding:8px 12px;border-radius:var(--radius-small)}.advice-amount strong{font-size:1.6em}.advice-threads{padding-left:20px}

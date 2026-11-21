@@ -95,3 +95,41 @@ def test_templates_escape_by_default_and_reject_missing_values():
     assert 'href="/&#34;&gt;&lt;script&gt;"' in page
     with pytest.raises(UndefinedError):
         render_template("message.html", title="t")
+
+
+def test_advice_pages_escape_hostile_text(tmp_path):
+    from support import exchange, login
+
+    from poop_detector.records.advice import start_thread
+    from poop_detector.records.foods import save_food
+    from poop_detector.records.profile import save_profile
+
+    store = Store(tmp_path)
+    server = make_server(tmp_path, 0)
+    thread = threading.Thread(target=server.serve_forever, args=(0.02,), daemon=True)
+    thread.start()
+    try:
+        admin = login(server)
+        user = server.app.accounts.users.list()[0].id
+        save_food(store.database, name=EVIL, kcal_dk=3850, source_url="", user_id=user)
+        save_profile(
+            store.database, breed=EVIL, size_class="", adult_grams=None, neutered="", food_id=""
+        )
+        thread_id = start_thread(
+            store.database, title=EVIL, question=EVIL, user_id=user, basis="{}"
+        )
+        with store.database.connect() as db:
+            db.execute(
+                "UPDATE advice_messages SET status='done', body=? WHERE role='assistant'", (EVIL,)
+            )
+        for path in ("/advice", f"/advice/thread?id={thread_id}"):
+            status, _, body = exchange(server, "GET", path, headers=admin, auth=False)
+            text = body.decode()
+            assert status == 200, path
+            for raw in RAW:
+                assert raw not in text, (path, raw)
+            assert "&lt;script&gt;alert" in text, path
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()

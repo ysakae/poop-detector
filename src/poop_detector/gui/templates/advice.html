@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field, empty_state %}
+{% block content %}
+<h2>ごはんの相談</h2>
+{% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
+<section class="settings-section">
+<h3>ごはんの目安</h3>
+{% if guide %}
+<p class="advice-headline">{{ guide.headline }}</p>
+<p class="advice-amount">{% if guide.grams is not none %}1日 <strong>{{ guide.grams }} g</strong>{{ guide.meal }}{% else %}1日 <strong>{{ guide.kcal }} kcal</strong>{% endif %}</p>
+{% if guide.food %}<p class="note">フード：{{ guide.food }}</p>{% endif %}
+<p class="note">{{ guide.formula }}（{{ guide.kcal }} kcal/日）</p>
+{% endif %}
+{% for text in missing %}<p class="message message-error" role="alert">{{ text }}{% if "生年月日" in text %}（<a href="/weight">体重の画面</a>で入れられます）{% endif %}</p>{% endfor %}
+{% for text in warnings %}<p class="message message-error" role="alert">{{ text }}</p>{% endfor %}
+{% if gain %}<p>体重の伸び：{{ gain }}</p>{% endif %}
+<p class="note">{{ disclaimer }}</p>
+<h4>直近7日の実績</h4>
+<table class="weight-table"><thead><tr><th>日</th><th>量</th><th>カロリー</th></tr></thead>
+<tbody>{% for row in intake %}<tr><td>{{ row.day }}</td><td>{{ row.grams }}</td><td>{{ row.kcal }}</td></tr>{% endfor %}</tbody></table>
+{% if average %}<p class="note">{{ average }}</p>{% endif %}
+</section>
+<section class="settings-section">
+<h3>相談</h3>
+{% if threads %}
+<ul class="advice-threads">{% for item in threads %}<li><a href="/advice/thread?id={{ item.id }}">{{ item.title }}</a> <span class="note">{{ item.updated }} 更新・{{ item.author }}・{{ item.state }}</span></li>{% endfor %}</ul>
+{% else %}{{ empty_state("相談はまだありません", "下の欄から、ごはんのことを相談できます。") }}{% endif %}
+{% if consult_problem %}
+<p class="note">{{ consult_problem }}</p>
+{% else %}
+<form method="post" action="/advice/threads" class="settings-form">{{ csrf_field(token) }}
+<div class="settings-field"><label>題名<input name="title" maxlength="60" required value="{{ ask_values.get('title', '') }}"></label></div>
+<div class="settings-field"><label>質問<textarea name="question" maxlength="2000" rows="4" required>{{ ask_values.get('question', '') }}</textarea></label></div>
+<p class="toolbar"><button>送信</button></p>
+</form>
+{% endif %}
+</section>
+<section class="settings-section">
+<h3>プロフィール</h3>
+<form method="post" action="/advice/profile" class="settings-form">{{ csrf_field(token) }}
+<div class="settings-field"><label>犬種<input name="breed" maxlength="60" list="breed-names" value="{{ profile.breed }}"></label></div>
+<datalist id="breed-names">{% for name in breeds %}<option value="{{ name }}">{% endfor %}</datalist>
+<div class="settings-field"><label>体格<select name="size_class"><option value="">分からない</option>{% for value, name in sizes %}<option value="{{ value }}"{% if profile.size_class == value %} selected{% endif %}>{{ name }}</option>{% endfor %}</select></label><small>犬種を選んで空のままにすると、表の値で埋めます。</small></div>
+<div class="settings-field"><label>成犬時の予想体重（g）<input name="adult_grams" inputmode="numeric" value="{{ profile.adult_grams }}"></label></div>
+<div class="settings-field"><label>去勢・避妊<select name="neutered">{% for value, name in neutered_options %}<option value="{{ value }}"{% if profile.neutered == value %} selected{% endif %}>{{ name }}</option>{% endfor %}</select></label></div>
+<div class="settings-field"><label>いまのフード<select name="food_id"><option value="">未選択</option>{% for food in foods %}<option value="{{ food.id }}"{% if profile.food_id == food.id %} selected{% endif %}>{{ food.label }}</option>{% endfor %}</select></label><small><a href="/advice/foods">フードを登録する</a></small></div>
+<p class="toolbar"><button>保存</button></p>
+</form>
+</section>
+{% endblock %}

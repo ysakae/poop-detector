@@ -1,10 +1,12 @@
 """フードの画面（カロリー探しと手入力）を検証する。"""
 
+import json
+import re
 from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 import pytest
-from support import request, submit
+from support import exchange, login, request, submit
 
 from poop_detector.features.advice.jobs import LookupResult, finish_lookup
 from poop_detector.records.foods import active_foods, recent_lookups
@@ -107,3 +109,245 @@ def test_empty_lookup_name_keeps_form_and_returns_400(gui, judge_ready):
     status, body = submit(server, "/advice/foods/lookup", {"name": "   "}, page=PAGE)
     assert status == 400
     assert 'action="/advice/foods/lookup"' in body.decode()
+
+
+# --- 目安・プロフィール・相談 ---
+
+ADVICE = "/advice"
+
+
+def _first_user(store):
+    with store.database.connect() as db:
+        return db.execute("SELECT id FROM users LIMIT 1").fetchone()[0]
+
+
+def _setup_guide(server, store, *, birth=True, food_active=True):
+    """生後5か月・3.2 kg・小型（予想5 kg）・385 kcal のフード・給餌の予定3件を入れる。"""
+    from datetime import timedelta
+
+    from poop_detector.records.feeding_plans import save_plan
+    from poop_detector.records.foods import active_foods, save_food, stop_food
+    from poop_detector.records.profile import save_profile
+    from poop_detector.records.weights import save_birth_date, save_weight
+    from poop_detector.timezones import local_today
+
+    request(server, "GET", "/")  # セッションのユーザーを作る
+    today = local_today()
+    database = store.database
+    if birth:
+        save_birth_date(database, (today - timedelta(days=152)).isoformat())
+    save_weight(database, "", today, 3200, "")
+    save_food(database, name="パピー", kcal_dk=3850, source_url="", user_id=_first_user(store))
+    (food,) = active_foods(database)
+    save_profile(
+        database,
+        breed="",
+        size_class="small",
+        adult_grams=5000,
+        neutered="",
+        food_id=food.id,
+    )
+    for clock in ("08:00", "12:00", "18:00"):
+        save_plan(database, clock)
+    if not food_active:
+        stop_food(database, food.id)
+
+
+def test_advice_page_shows_guide_from_records(gui):
+    server, store, _ = gui
+    _setup_guide(server, store)
+    html = request(server, "GET", ADVICE)[1].decode()
+    assert "109 g" in html
+    assert "36 g" in html
+    assert "獣医師の指示があればそちらを優先してください" in html
+
+
+def test_advice_page_guides_missing_inputs(gui):
+    server, store, _ = gui
+    _setup_guide(server, store, birth=False)
+    html = request(server, "GET", ADVICE)[1].decode()
+    assert "生年月日を入れてください" in html
+    assert "109 g" not in html
+
+
+def test_inactive_profile_food_is_treated_as_none(gui):
+    server, store, _ = gui
+    _setup_guide(server, store, food_active=False)
+    html = request(server, "GET", ADVICE)[1].decode()
+    assert "フードのカロリーが分からないので" in html
+    assert "109 g" not in html
+
+
+def test_profile_breed_fills_size_and_adult_weight(gui):
+    from poop_detector.records.profile import load_profile
+
+    server, store, _ = gui
+    fields = {
+        "breed": "チワワ",
+        "size_class": "",
+        "adult_grams": "",
+        "neutered": "1",
+        "food_id": "",
+    }
+    assert submit(server, "/advice/profile", fields, page=ADVICE)[0] == 303
+    profile = load_profile(store.database)
+    assert (profile.size_class, profile.adult_grams, profile.neutered) == ("toy", 2500, True)
+    # 手で入れた値は表で上書きしない。
+    fields = {**fields, "size_class": "medium", "adult_grams": "12000"}
+    assert submit(server, "/advice/profile", fields, page=ADVICE)[0] == 303
+    profile = load_profile(store.database)
+    assert (profile.size_class, profile.adult_grams) == ("medium", 12000)
+
+
+def test_profile_invalid_weight_returns_400(gui):
+    server, _, _ = gui
+    fields = {"breed": "", "size_class": "", "adult_grams": "abc", "neutered": "", "food_id": ""}
+    assert submit(server, "/advice/profile", fields, page=ADVICE)[0] == 400
+
+
+def _wait_for(server, path, text):
+    import time
+
+    deadline = time.monotonic() + 10
+    html = ""
+    while time.monotonic() < deadline:
+        html = request(server, "GET", path)[1].decode()
+        if text in html:
+            return html
+        time.sleep(0.1)
+    raise AssertionError(f"{text!r} が出ませんでした: {html[:300]}")
+
+
+def _thread_id(store):
+    from poop_detector.records.advice import threads
+
+    return threads(store.database)[0].id
+
+
+def test_question_round_trip(gui, judge_ready):
+    server, store, _ = gui
+    request(server, "GET", ADVICE)
+    status, _ = submit(
+        server, "/advice/threads", {"title": "量の相談", "question": "今の量でいい？"}, page=ADVICE
+    )
+    assert status == 303
+    thread_id = _thread_id(store)
+    page = f"/advice/thread?id={thread_id}"
+    first = request(server, "GET", page)[1].decode()
+    assert "今の量でいい？" in first
+    html = _wait_for(server, page, "量は今のままで大丈夫です")
+    assert "回答を作っています" not in html
+    status, headers, body = exchange(server, "GET", f"/advice/status?thread={thread_id}")
+    assert status == 200
+    assert json.loads(body) == {"state": "done"}
+    assert "no-store" in headers["Cache-Control"]
+
+
+def test_waiting_text_and_form_hidden_while_pending(gui, judge_ready, monkeypatch):
+    from poop_detector.records.advice import start_thread
+
+    server, store, _ = gui
+    request(server, "GET", ADVICE)
+    thread_id = start_thread(
+        store.database, title="待ち", question="q", user_id=_first_user(store), basis="{}"
+    )
+    # 作業スレッドに取られないよう、処理中の状態に固定する。
+    with store.database.connect() as db:
+        db.execute("UPDATE advice_messages SET status='running' WHERE role='assistant'")
+    html = request(server, "GET", f"/advice/thread?id={thread_id}")[1].decode()
+    assert "回答を作っています" in html
+    assert 'action="/advice/ask"' not in html
+    assert "data-advice-status" in html
+
+
+def test_second_question_refused_while_pending(gui, judge_ready):
+    from poop_detector.records.advice import start_thread
+
+    server, store, _ = gui
+    request(server, "GET", ADVICE)
+    thread_id = start_thread(
+        store.database, title="待ち", question="q", user_id=_first_user(store), basis="{}"
+    )
+    with store.database.connect() as db:
+        db.execute("UPDATE advice_messages SET status='running' WHERE role='assistant'")
+    status, body = submit(
+        server,
+        "/advice/ask",
+        {"thread_id": thread_id, "question": "もう一つ"},
+        page=f"/advice/thread?id={thread_id}",
+    )
+    assert status == 400
+    assert "前の質問の回答を待っています" in body.decode()
+
+
+def test_failed_answer_shows_reason_and_retry(gui, judge_ready):
+    from poop_detector.records.advice import start_thread
+
+    server, store, _ = gui
+    request(server, "GET", ADVICE)
+    thread_id = start_thread(
+        store.database, title="失敗", question="q", user_id=_first_user(store), basis="{}"
+    )
+    with store.database.connect() as db:
+        db.execute("UPDATE advice_messages SET status='failed', failure='timeout' WHERE seq=2")
+        message = db.execute("SELECT id FROM advice_messages WHERE seq=2").fetchone()[0]
+    page = f"/advice/thread?id={thread_id}"
+    html = request(server, "GET", page)[1].decode()
+    assert "時間切れでした" in html
+    assert "もう一度聞く" in html
+    assert submit(server, "/advice/retry", {"message_id": message}, page=page)[0] == 303
+    with store.database.connect() as db:
+        status = db.execute("SELECT status FROM advice_messages WHERE id=?", (message,)).fetchone()
+    assert status[0] in ("queued", "running", "done")
+
+
+def test_delete_thread_permissions(gui, judge_ready):
+    from poop_detector.records.advice import start_thread, threads
+
+    server, store, _ = gui
+    request(server, "GET", ADVICE)
+    owner = _first_user(store)
+    thread_id = start_thread(store.database, title="消す", question="q", user_id=owner, basis="{}")
+    member = login(server, role="member")
+    page = f"/advice/thread?id={thread_id}"
+    html = exchange(server, "GET", page, headers=member, auth=False)[2].decode()
+    assert 'action="/advice/delete"' not in html
+    page_html = exchange(server, "GET", ADVICE, headers=member, auth=False)[2].decode()
+    token = re.search(r'name="csrf" value="([^"]+)"', page_html)[1]
+    body = urlencode({"csrf": token, "thread_id": thread_id})
+    sent = {**member, **FORM}
+    assert exchange(server, "POST", "/advice/delete", body, sent, auth=False)[0] == 403
+    assert len(threads(store.database)) == 1
+    assert submit(server, "/advice/delete", {"thread_id": thread_id}, page=page)[0] == 303
+    assert threads(store.database) == []
+
+
+def test_advice_page_hides_form_when_judge_unavailable(gui, monkeypatch):
+    def check(self):
+        raise ValueError("codex loginでCodex CLIにログインしてください")
+
+    monkeypatch.setattr("poop_detector.video.codex_cli.CodexCliJudge.check", check)
+    server, _, _ = gui
+    html = request(server, "GET", ADVICE)[1].decode()
+    assert "codex login" in html
+    assert 'action="/advice/threads"' not in html
+
+
+def test_today_grams(gui):
+    from poop_detector.gui.advice_page import today_grams
+    from poop_detector.timezones import local_today
+
+    server, store, _ = gui
+    assert today_grams(store.database, local_today()) is None
+    _setup_guide(server, store)
+    assert today_grams(store.database, local_today()) == 109
+
+
+def test_advice_status_for_unknown_thread_is_404(gui):
+    server, _, _ = gui
+    assert request(server, "GET", "/advice/status?thread=nope")[0] == 404
+
+
+def test_advice_js_is_served(gui):
+    server, _, _ = gui
+    assert request(server, "GET", "/assets/advice.js")[0] == 200
