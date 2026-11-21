@@ -126,17 +126,18 @@ def test_left_stays_left_while_floor_is_quiet():
     walked_to_edge(sampler)
     for _ in range(5):
         assert sampler.sample(scene(BEYOND), []) == ("left", False)
-    # 検出のないまま床面に動きが出たら、居場所が分からないので unknown
+    # 出ていった直後（EXIT_GRACE_SECONDS の間）の床面の動きは、居場所が分からないので unknown
     assert sampler.sample(scene(BEYOND, DOG), []) == ("unknown", False)
 
 
-def test_undetected_walk_out_after_still_never_becomes_still():
+def test_undetected_walk_then_vanish_in_place_never_counts_empty_floor_as_still():
     sampler = MotionSampler(FLOOR)
     settled(sampler)
-    # 検出されないまま、最後の枠の外へ歩いた（縁には届いていない）
+    # 検出されないまま、最後の枠の外へ歩いた（縁には届いていない）。動いた先へ居場所を移す
     away = shifted(DOG, -20)
-    assert sampler.sample(scene(away), []) == ("unknown", False)
-    # 犬が見えなくなり、そのあと空の床面が静かでも、居場所を捨てたので still に戻さない
+    assert sampler.sample(scene(away), []) == ("moving", False)
+    assert sampler.sample(scene(away), []) == ("still", False)
+    # 動きを伴わずに姿が消えたら居場所を捨て、空の床面が静かでも still に戻さない
     assert sampler.sample(scene(), []) == ("unknown", False)
     for _ in range(5):
         assert sampler.sample(scene(), []) == ("unknown", False)
@@ -230,12 +231,12 @@ def test_creeping_exit_at_edge_ends_in_left(step, boundary, box):
 
 
 @pytest.mark.parametrize("step", [3, 5, 8])
-def test_creeping_exit_away_from_edge_ends_in_unknown(step):
+def test_creeping_dog_away_from_edge_that_vanishes_ends_in_unknown(step):
     sampler = MotionSampler(FLOOR)
     settled(sampler)
-    # 床面の真ん中で、検出のないまま少しずつ左へ枠の外まで動く（縁の帯には届かない）
-    outcomes = creep(sampler, DOG, -step, -30)
-    assert "still" not in after_location_lost(outcomes)
+    # 床面の真ん中で、検出のないまま少しずつ左へ動き（縁の帯には届かない）、最後に姿が消える。
+    # 動いている間は追ってよいが、消えたあとの空の床面は still と数えない
+    outcomes = creep(sampler, DOG, -step, -15)
     assert outcomes[-5:] == ["unknown"] * 5
 
 
@@ -255,13 +256,13 @@ def left_near_edge(sampler: MotionSampler) -> None:
     [(128, 50, 143, 70), NEAR_EDGE, TOP_BAND],
     ids=["same-band", "old-box", "other-edge"],
 )
-def test_motion_long_after_left_is_unknown(returned):
+def test_motion_long_after_left_is_tracked_as_a_returning_dog(returned):
     sampler = MotionSampler(FLOOR)
     left_near_edge(sampler)
     for _ in range(600):
         assert sampler.sample(scene(OUTSIDE), []) == ("left", False)
-    # 静かな時間のあとの動きは、出ていく途中ではなく戻ってきた証拠かもしれない
-    assert sampler.sample(scene(OUTSIDE, returned), []) == ("unknown", False)
+    # 静かな時間のあとの動きは、出ていく途中ではなく戻ってきた犬とみなして追う
+    assert sampler.sample(scene(OUTSIDE, returned), []) == ("moving", False)
 
 
 def test_motion_in_exit_area_within_grace_stays_left():
@@ -273,11 +274,14 @@ def test_motion_in_exit_area_within_grace_stays_left():
     assert sampler.sample(scene(OUTSIDE, (130, 55, 143, 65)), []) == ("left", False)
 
 
-def test_motion_in_far_part_of_band_within_grace_is_unknown():
+def test_motion_right_after_left_is_not_tracked_as_the_dog():
     sampler = MotionSampler(FLOOR)
     left_near_edge(sampler)
-    # 縁の帯でも、最後の枠から離れた場所の動きは出口の動きとみなさない
+    # 出ていった直後の動きは、出ていく途中の動きかもしれないので、そこに犬がいるとはみなさない
     assert sampler.sample(scene(OUTSIDE, TOP_BAND), []) == ("unknown", False)
+    # そのあと空の床面が静かでも still と数えない
+    for _ in range(5):
+        assert sampler.sample(scene(OUTSIDE), []) == ("unknown", False)
 
 
 def test_compact_blob_away_from_dog_is_motion():
@@ -285,7 +289,7 @@ def test_compact_blob_away_from_dog_is_motion():
     settled(sampler)
     blob = scene(DOG)
     blob[30:36, 110:116] = 255
-    assert sampler.sample(blob, []) == ("unknown", False)
+    assert sampler.sample(blob, []) == ("moving", False)
 
 
 def test_scattered_specks_do_not_count_as_floor_motion():
@@ -308,7 +312,6 @@ def test_unknown_when_no_history_and_no_detection():
     sampler = MotionSampler(FLOOR)
     assert sampler.sample(scene(), []) == ("unknown", False)
     assert sampler.sample(scene(), []) == ("unknown", False)
-    assert sampler.sample(scene(DOG), []) == ("unknown", False)
 
 
 def test_box_outside_floor_is_ignored():
@@ -360,3 +363,95 @@ def test_frame_too_small_to_locate_is_unknown():
     sampler = MotionSampler(FLOOR)
     tiny = np.zeros((1, 1, 3), dtype=np.uint8)
     assert sampler.sample(tiny, [(0, 0, 0, 0)]) == ("unknown", False)
+
+
+def test_undetected_dog_that_moves_into_view_and_lies_down_is_tracked():
+    # 丸まると犬検出が外れる。検出が一度もなくても、床面の中で動いて止まった場所を居場所とする
+    sampler = MotionSampler(FLOOR)
+    assert sampler.sample(scene(), []) == ("unknown", False)
+    assert sampler.sample(scene(DOG), []) == ("moving", False)
+    for _ in range(3):
+        assert sampler.sample(scene(DOG), []) == ("still", False)
+
+
+def test_undetected_dog_walking_to_a_new_spot_keeps_being_tracked():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    spot = (30, 70, 60, 95)
+    assert sampler.sample(scene(spot), []) == ("moving", False)
+    for _ in range(3):
+        assert sampler.sample(scene(spot), []) == ("still", False)
+
+
+def test_dog_tracked_by_motion_that_then_vanishes_in_place_is_unknown():
+    sampler = MotionSampler(FLOOR)
+    sampler.sample(scene(), [])
+    sampler.sample(scene(DOG), [])
+    assert sampler.sample(scene(DOG), []) == ("still", False)
+    # 動いて止まった場所の映像を覚えたあと、動きを伴わずに姿が消えたら居場所を捨てる
+    assert sampler.sample(scene(), []) == ("unknown", False)
+    for _ in range(3):
+        assert sampler.sample(scene(), []) == ("unknown", False)
+
+
+def test_tiny_motion_elsewhere_does_not_move_the_dog():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    speck = scene(DOG)
+    speck[30:36, 110:116] = 255
+    # 小さな物の動き（おもちゃなど）で居場所を移さない。犬の静止とも数えない
+    assert sampler.sample(speck, []) == ("moving", False)
+    assert sampler.sample(speck, []) == ("still", False)
+    # 居場所は犬の枠のままなので、犬の姿が消えれば出ていったと分かる
+    specks_only = scene()
+    specks_only[30:36, 110:116] = 255
+    assert sampler.sample(specks_only, []) == ("unknown", False)
+
+
+def test_dog_at_floor_corner_counts_when_its_feet_are_on_the_floor():
+    # 柵に寄りかかると枠の中心は床面の外に出るが、足元（枠の下端の中央）は床面の中にある
+    sampler = MotionSampler(FLOOR)
+    corner = (120, 0, 150, 20)
+    sampler.sample(scene(corner), [corner])
+    assert sampler.sample(scene(corner), [corner]) == ("still", True)
+
+
+def test_motion_located_dog_is_given_a_dog_sized_box():
+    # 寝返りの小さな動きから作った居場所でも、犬の大きさの枠にするので、
+    # 縁の近くで寝ている犬の次の身じろぎを「出ていった」と取り違えない
+    sampler = MotionSampler(FLOOR)
+    sampler.sample(scene(), [])
+    stir = (118, 50, 128, 60)
+    assert sampler.sample(scene(stir), []) == ("moving", False)
+    assert sampler.sample(scene(stir), []) == ("still", False)
+    twitch = scene(stir)
+    twitch[50:56, 130:136] = 255
+    assert sampler.sample(twitch, []) == ("moving", False)
+    assert sampler.sample(twitch, []) == ("still", False)
+
+
+def test_large_undetected_motion_elsewhere_moves_the_dog_there():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    # 犬の枠の中は変わらないまま、離れた場所で犬らしい大きさの動きが出た
+    other = (100, 40, 125, 55)
+    assert sampler.sample(scene(DOG, other), []) == ("moving", False)
+    # 居場所は動いた先へ移り、そこが静かになれば still
+    assert sampler.sample(scene(DOG, other), []) == ("still", False)
+
+
+def test_large_undetected_motion_reaching_the_edge_is_left():
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    assert sampler.sample(scene(DOG, (125, 80, 150, 100)), []) == ("left", False)
+
+
+def test_frame_size_change_while_undetected_drops_location():
+    # 動きで追い始めたばかりで、まだ犬の姿を覚えていない居場所
+    sampler = MotionSampler(FLOOR)
+    sampler.sample(scene(), [])
+    assert sampler.sample(scene(DOG), []) == ("moving", False)
+    # 縦横比が変わると縮小した画像の大きさも変わり、前の画像と比べられない
+    bigger = np.zeros((HEIGHT * 2, WIDTH, 3), dtype=np.uint8)
+    assert sampler.sample(bigger, []) == ("unknown", False)
+    assert sampler.sample(bigger, []) == ("unknown", False)
