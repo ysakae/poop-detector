@@ -609,9 +609,9 @@ def test_failure_kind_migration_keeps_old_judge_runs(tmp_path):
 def test_purpose_migration_keeps_judge_runs_and_accepts_new_purposes(tmp_path):
     path = tmp_path / "purpose-migration.sqlite3"
     with sqlite3.connect(path) as db:
-        for migration in MIGRATIONS[:31]:
+        for migration in MIGRATIONS[:30]:
             migration(db)
-        db.execute("PRAGMA user_version = 31")
+        db.execute("PRAGMA user_version = 30")
         db.execute(
             """INSERT INTO judge_runs (provider, purpose, ran_at, failed, input_tokens, failure)
             VALUES ('codex', 'review', '2026-11-20T00:00:00+00:00', 1, 10, 'timeout')"""
@@ -619,14 +619,18 @@ def test_purpose_migration_keeps_judge_runs_and_accepts_new_purposes(tmp_path):
     with Database(path).connect() as db:
         db.execute(
             "INSERT INTO judge_runs (provider, purpose, ran_at, failed)"
-            " VALUES ('codex', 'advice', '2026-11-21T00:00:00+00:00', 0)"
+            " VALUES ('codex', 'advice', '2026-11-21T00:00:00+00:00', 0),"
+            " ('codex', 'food_lookup', '2026-11-21T00:00:01+00:00', 0)"
         )
+        indexes = {r[1] for r in db.execute("PRAGMA index_list(judge_runs)")}
+        assert "judge_runs_by_time" in indexes
         rows = db.execute(
             "SELECT purpose, failed, input_tokens, failure FROM judge_runs ORDER BY id"
         ).fetchall()
     assert [tuple(row) for row in rows] == [
         ("review", 1, 10, "timeout"),
         ("advice", 0, None, None),
+        ("food_lookup", 0, None, None),
     ]
 
 
