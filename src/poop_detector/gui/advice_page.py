@@ -14,6 +14,7 @@ from ..records.foods import kcal_by_name
 from ..records.profile import PetProfile, load_profile
 from ..records.weights import Weight, weights
 from ..timezones import to_local
+from .markdown_text import answer_html
 
 INTAKE_DAYS = 7
 DISCLAIMER = "目安です。獣医師の指示があればそちらを優先してください。"
@@ -147,6 +148,8 @@ def message_rows(database: Database, items: list[Message]) -> list[dict[str, obj
                 "assistant": item.role == "assistant",
                 "time": to_local(item.created_at.isoformat()).strftime("%m/%d %H:%M"),
                 "body": item.body,
+                # AI の回答だけを Markdown として出す。家族が書いた質問は文字のまま。
+                "html": answer_html(item.body) if item.role == "assistant" else None,
                 "waiting": waiting,
                 "status_text": status_text,
                 "failed": item.status == "failed",
