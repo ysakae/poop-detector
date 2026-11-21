@@ -2,6 +2,7 @@
 
 import json
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from ..config import Config
 from ..errors import InvalidInputError
@@ -238,6 +239,7 @@ def _render_advice(
         threads=thread_rows(threads(database)),
         consult_problem=_consult_problem(handler),
         ask_values=ask_fields or {},
+        request_key=(ask_fields or {}).get("request_key") or uuid4().hex,
         profile=profile_fields or _profile_values(current.profile),
         breeds=[breed.name for breed in BREEDS],
         sizes=[(size, SIZE_NAMES[size]) for size in SIZE_CLASSES],
@@ -323,6 +325,7 @@ def start_thread_route(handler: "Handler", form: Form) -> None:
             question=form.fields.get("question", ""),
             user_id=_user_id(handler),
             basis=_basis(handler),
+            request_key=form.fields.get("request_key", "").strip()[:64] or None,
         )
     except InvalidInputError as error:
         _render_advice(handler, error=str(error), status=400, ask_fields=dict(form.fields))

@@ -84,18 +84,29 @@ def start_thread(
     user_id: str,
     basis: str,
     now: datetime | None = None,
+    request_key: str | None = None,
 ) -> str:
-    """会話を始め、最初の質問と待ちの回答を同時に入れる。"""
+    """会話を始め、最初の質問と待ちの回答を同時に入れる。
+
+    同じ request_key で送り直されたら、新しい会話は作らず既存の会話の ID を返す。
+    """
     title = _clean(title, MAX_TITLE_LENGTH, TITLE_ERROR)
     question = _clean(question, MAX_QUESTION_LENGTH, QUESTION_ERROR)
     stamp = _stamp(now)
     thread_id = uuid4().hex
     with database.connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        if request_key:
+            existing = db.execute(
+                "SELECT id FROM advice_threads WHERE request_key=?", (request_key,)
+            ).fetchone()
+            if existing is not None:
+                return str(existing["id"])
         db.execute(
-            """INSERT INTO advice_threads (id, title, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)""",
-            (thread_id, title, user_id, stamp, stamp),
+            """INSERT INTO advice_threads
+            (id, title, created_by, created_at, updated_at, request_key)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (thread_id, title, user_id, stamp, stamp, request_key or None),
         )
         _append(db, thread_id, question, user_id, basis, stamp)
     return thread_id

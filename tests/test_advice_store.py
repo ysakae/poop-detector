@@ -149,3 +149,14 @@ def test_threads_newest_first(database):
     first = start(database, now=T0)
     second = start(database, now=T0 + timedelta(1))
     assert [t.id for t in advice.threads(database)] == [second, first]
+
+
+def test_start_thread_with_same_request_key_creates_one_thread(database):
+    first = start(database, request_key="k1", now=T0)
+    again = start(database, request_key="k1", now=T0)
+    assert again == first
+    assert len(advice.threads(database)) == 1
+    pending = [m for m in advice.messages(database, first) if m.status == "queued"]
+    assert len(pending) == 1
+    other = start(database, request_key="k2", now=T0)
+    assert other != first

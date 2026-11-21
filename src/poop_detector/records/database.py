@@ -632,7 +632,8 @@ def migrate_to_v31(db: sqlite3.Connection) -> None:
             created_by TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            deleted_at TEXT
+            deleted_at TEXT,
+            request_key TEXT UNIQUE
         )"""
     )
     db.execute(

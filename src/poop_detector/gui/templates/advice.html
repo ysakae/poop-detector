@@ -28,7 +28,7 @@
 {% if consult_problem %}
 <p class="note">{{ consult_problem }}</p>
 {% else %}
-<form method="post" action="/advice/threads" class="settings-form">{{ csrf_field(token) }}
+<form method="post" action="/advice/threads" class="settings-form">{{ csrf_field(token) }}<input type="hidden" name="request_key" value="{{ request_key }}">
 <div class="settings-field"><label>題名<input name="title" maxlength="60" required value="{{ ask_values.get('title', '') }}"></label></div>
 <div class="settings-field"><label>質問<textarea name="question" maxlength="2000" rows="4" required>{{ ask_values.get('question', '') }}</textarea></label></div>
 <p class="toolbar"><button>送信</button></p>

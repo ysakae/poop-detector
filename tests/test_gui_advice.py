@@ -422,3 +422,15 @@ def test_gain_text_never_shows_negative_zero():
     assert gain_text(rows, today) == "±0 g/週"
     flat = [Weight("a", date(2026, 11, 1), 3000, ""), Weight("b", date(2026, 11, 20), 3000, "")]
     assert gain_text(flat, today) == "±0 g/週"
+
+
+def test_resubmitting_a_new_thread_form_creates_one_thread(gui):
+    from poop_detector.records.advice import threads
+
+    server, store, _ = gui
+    request(server, "GET", "/")
+    fields = {"title": "二重", "question": "q", "request_key": "same-key"}
+    first = submit(server, "/advice/threads", fields, page=ADVICE)
+    second = submit(server, "/advice/threads", fields, page=ADVICE)
+    assert first[0] == second[0] == 303
+    assert len(threads(store.database)) == 1
