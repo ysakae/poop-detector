@@ -5,7 +5,6 @@ from typing import Any
 
 from ...errors import InvalidInputError
 from ...records.advice import Message
-from ...records.feeding_advice import weekly_gain
 from ...records.foods import parse_kcal, parse_source_url
 from .context import AdviceContext
 from .jobs import LookupResult
@@ -84,18 +83,21 @@ def _guide_lines(context: AdviceContext) -> list[str]:
     return lines + [f"注意: {warning}" for warning in advice.warnings]
 
 
-def _weight_lines(context: AdviceContext, today_gain: float | None) -> list[str]:
+def _weight_lines(context: AdviceContext) -> list[str]:
     lines = [f"{row.day.isoformat()} {row.grams} g" for row in context.weights] or ["記録なし"]
-    if today_gain is not None:
-        lines.append(f"直近28日の伸び: {today_gain:+.0f} g/週")
+    if context.weekly_gain_g is not None:
+        lines.append(f"直近28日の伸び: {context.weekly_gain_g:+.0f} g/週")
     return lines
 
 
 def _intake_lines(context: AdviceContext) -> list[str]:
     lines = []
-    for day in context.intake:
+    for index, day in enumerate(context.intake):
         kcal = "不明" if day.kcal is None else f"{day.kcal:.0f} kcal"
-        lines.append(f"{day.day.isoformat()} {day.grams:.1f} g / {kcal}")
+        names = context.intake_foods[index] if index < len(context.intake_foods) else ()
+        foods = "、".join(f"{_data(name)} {grams:.1f} g" for name, grams in names)
+        suffix = f" / {foods}" if foods else ""
+        lines.append(f"{day.day.isoformat()} {day.grams:.1f} g / {kcal}{suffix}")
     return [*lines, f"給餌の予定: 1日{context.meals}回"]
 
 
@@ -114,9 +116,6 @@ def _section(title: str, lines: Sequence[str]) -> str:
 def answer_prompt(context: AdviceContext, history: Sequence[Message], question: str) -> str:
     """相談の指示文。history は答え待ちの質問を含まない、これまでのやりとり。"""
     foods = [f"{_data(food.name)}: {food.kcal_dk / 10:.1f} kcal/100g" for food in context.foods]
-    weights_gain = None
-    if context.weights:
-        weights_gain = weekly_gain(context.weights, context.weights[-1].day)
     excretions = [f"{day.isoformat()} 排便{f}回 排尿{u}回" for day, f, u in context.excretions]
     talk = [
         f"{'飼い主（' + _data(m.author_name) + '）' if m.role == 'user' else 'アシスタント'}: "
@@ -128,7 +127,7 @@ def answer_prompt(context: AdviceContext, history: Sequence[Message], question: 
         "以下は資料です。",
         _section("プロフィール", _profile_lines(context)),
         _section("計算した目安", _guide_lines(context)),
-        _section("体重の記録", _weight_lines(context, weights_gain)),
+        _section("体重の記録", _weight_lines(context)),
         _section("直近14日の給餌", _intake_lines(context)),
         _section("直近14日の排泄の確定記録", excretions),
         _section("登録済みのフード", foods or ["なし"]),

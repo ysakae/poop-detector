@@ -7,7 +7,13 @@ from datetime import date, timedelta
 from ...records.care import feeding_totals
 from ...records.database import Database
 from ...records.events import Store
-from ...records.feeding_advice import Advice, DayIntake, compute_advice, intake_summary
+from ...records.feeding_advice import (
+    Advice,
+    DayIntake,
+    compute_advice,
+    intake_summary,
+    weekly_gain,
+)
 from ...records.feeding_plans import plans_for_day
 from ...records.foods import Food, active_foods, kcal_by_name, profile_kcal
 from ...records.profile import PetProfile, load_profile
@@ -31,6 +37,10 @@ class AdviceContext:
     meals: int
     excretions: tuple[tuple[date, int, int], ...]
     foods: tuple[Food, ...]
+    # 間引く前の全体重から求めた直近28日の伸び（g/週）。画面と同じ値。
+    weekly_gain_g: float | None = None
+    # 日ごとのフード名と量（g）。intake と同じ並び。
+    intake_foods: tuple[tuple[tuple[str, float], ...], ...] = ()
 
 
 def _thin(rows: list[Weight]) -> tuple[Weight, ...]:
@@ -76,6 +86,11 @@ def build_context(database: Database, store: Store, pet_name: str, today: date) 
         meals=meals,
         excretions=_excretions(store, days),
         foods=tuple(active_foods(database)),
+        weekly_gain_g=weekly_gain(rows, today),
+        intake_foods=tuple(
+            tuple(sorted((name, dg / 10) for name, dg in totals.get(day, {}).items()))
+            for day in days
+        ),
     )
 
 

@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -14,9 +15,10 @@ from poop_detector.features.advice.prompts import (
 from poop_detector.records.advice import Message
 from poop_detector.records.care import CareEntry, save_entry
 from poop_detector.records.events import Store
+from poop_detector.records.feeding_advice import weekly_gain
 from poop_detector.records.foods import save_food
 from poop_detector.records.profile import save_profile
-from poop_detector.records.weights import save_birth_date, save_weight
+from poop_detector.records.weights import save_birth_date, save_weight, weights
 from poop_detector.timezones import parse_local
 
 TODAY = date(2026, 11, 21)
@@ -123,8 +125,49 @@ def test_weights_are_thinned_to_30_points_keeping_latest(store) -> None:
 def test_basis_text_is_short_json(store) -> None:
     fill(store)
     context = build_context(store.database, store, "もも", TODAY)
-    assert basis_text(context.advice).startswith("{")
-    assert basis_text(build_context(Store(store.root / "x").database, store, "も", TODAY).advice)
+    guide = context.advice.guide
+    assert guide is not None
+    assert guide.grams_per_day is not None
+    data = json.loads(basis_text(context.advice))
+    assert data == {
+        "months": guide.months,
+        "weight_grams": guide.weight_grams,
+        "kcal_per_day": round(guide.kcal_per_day),
+        "grams_per_day": round(guide.grams_per_day),
+    }
+    assert isinstance(data["kcal_per_day"], int)
+    assert isinstance(data["grams_per_day"], int)
+
+
+def test_basis_text_is_empty_object_without_guide(store) -> None:
+    context = build_context(store.database, store, "もも", TODAY)
+    assert context.advice.guide is None
+    assert basis_text(context.advice) == "{}"
+
+
+def test_weekly_gain_uses_all_weights_not_thinned_ones(store) -> None:
+    # ばらつきのある体重では、間引くと28日内の点が変わり、傾きも変わる。
+    for offset in range(60):
+        grams = 3000 - offset * 5 + (200 if offset % 3 == 0 else 0)
+        save_weight(store.database, "", TODAY - timedelta(days=offset), grams, "")
+    context = build_context(store.database, store, "もも", TODAY)
+    raw = weekly_gain(weights(store.database, TODAY - timedelta(days=89), TODAY), TODAY)
+    thinned = weekly_gain(context.weights, TODAY)
+    assert raw is not None
+    assert context.weekly_gain_g == raw
+    assert thinned != raw
+    text = answer_prompt(context, [], "質問")
+    assert f"{raw:+.0f} g/週" in text
+
+
+def test_intake_lines_show_food_names_per_day(store) -> None:
+    fill(store)
+    context = build_context(store.database, store, "もも", TODAY)
+    text = answer_prompt(context, [], "質問")
+    line = next(row for row in text.splitlines() if row.startswith("2026-11-20 40.0 g"))
+    assert "テストフード 40.0 g" in line
+    other = next(row for row in text.splitlines() if row.startswith("2026-11-19 "))
+    assert "テストフード" not in other
 
 
 def test_lookup_prompt_mentions_name_and_schema_fields() -> None:
