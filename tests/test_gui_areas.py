@@ -354,3 +354,31 @@ def test_clearing_the_outside_area_needs_confirmation(areas_gui):
     )
     assert status == 400
     assert (areas_gui.root / "outside-roi.json").exists()
+
+
+def test_each_card_can_show_its_area_on_the_frame(areas_gui):
+    html = page(areas_gui.server, login(areas_gui.server))
+    for kind in ("roi", "floor", "outside"):
+        button = re.search(
+            rf'<button[^>]*data-area-show="{kind}"[^>]*>([^<]*)</button>', card(html, kind)
+        )
+        assert button, kind
+        assert 'type="button"' in button[0]
+        assert 'aria-pressed="false"' in button[0]
+        assert button[1] == "映像で範囲を見る"
+    # 監視中でトレーを登録できないときも、登録済みの範囲は見られる。
+    monitor_running(areas_gui.root)
+    assert 'data-area-show="roi"' in card(page(areas_gui.server, login(areas_gui.server)), "roi")
+
+
+def test_script_shows_the_chosen_area_and_the_effective_outside_area():
+    from pathlib import Path
+
+    script = (
+        Path(__file__).resolve().parents[1] / "src/poop_detector/gui/static/areas.js"
+    ).read_text()
+    # カードのボタンで見る範囲を選び、映像がまだなければ取りにいく。
+    for needle in ("data-area-show", "aria-pressed", "capture()"):
+        assert needle in script
+    # トレー外の範囲を登録していなければ、代わりに見張る床面を示す。
+    assert "existing.floor" in script
