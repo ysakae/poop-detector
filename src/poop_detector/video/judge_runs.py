@@ -129,14 +129,27 @@ class JudgeRunLog:
         return int(row[0])
 
     def trailing_failures(self, purpose: str = "review") -> int:
-        """purpose の呼び出しが、直近で続けて失敗している回数（最後が成功なら 0）。"""
+        """purpose の呼び出しが、直近で続けて失敗している回数（最後が成功なら 0）。
+
+        最後の成功を1回探し、それより新しい呼び出しを数える。同じ時刻なら、あとに書いた行
+        （id が大きい）を新しいとみなす。行の組み合わせを数えると、記録が増えるほど遅くなる。
+        """
         with self.connect() as db:
-            row = db.execute(
-                """SELECT COUNT(*) FROM judge_runs a WHERE a.purpose = ? AND NOT EXISTS (
-                    SELECT 1 FROM judge_runs b WHERE b.purpose = a.purpose AND b.failed = 0
-                    AND (julianday(b.ran_at), b.id) >= (julianday(a.ran_at), a.id))""",
+            last = db.execute(
+                """SELECT julianday(ran_at), id FROM judge_runs WHERE purpose = ? AND failed = 0
+                ORDER BY julianday(ran_at) DESC, id DESC LIMIT 1""",
                 (purpose,),
             ).fetchone()
+            if last is None:
+                row = db.execute(
+                    "SELECT COUNT(*) FROM judge_runs WHERE purpose = ?", (purpose,)
+                ).fetchone()
+            else:
+                row = db.execute(
+                    """SELECT COUNT(*) FROM judge_runs WHERE purpose = ?
+                    AND (julianday(ran_at), id) > (?, ?)""",
+                    (purpose, last[0], last[1]),
+                ).fetchone()
         return int(row[0])
 
     def usage(self, now: datetime | None = None) -> list[JudgeRunUsage]:

@@ -24,5 +24,5 @@
 {%- for item in frame.tabs %}<li>{{ tab(item) }}</li>{% endfor -%}
 <li><details class="tab-more{% if frame.more_current %} current{% endif %}"><summary>{{ icon("more") }}その他</summary><ul>
 {%- for item in frame.more %}<li>{{ tab(item) }}</li>{% endfor -%}
-</ul></details></li></ul></nav><script src="{{ asset('menu.js') }}" defer></script><script src="{{ asset('notification_target.js') }}" defer></script>{% endif -%}
+</ul></details></li></ul></nav><script src="{{ asset('menu.js') }}" defer></script><script src="{{ asset('busy.js') }}" defer></script><script src="{{ asset('notification_target.js') }}" defer></script>{% endif -%}
 </html>

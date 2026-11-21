@@ -6,7 +6,7 @@
 {% if error %}<p class="message message-error" role="alert">{{ error }}</p>{% endif %}
 <section class="settings-section" aria-labelledby="records-title"><h3 id="records-title">記録の書き出し</h3>
 <p class="note">確定記録（排泄の日時・種類・場所・メモ）を、開始の日付で期間を選んで書き出します。時刻はこのマシンのタイムゾーン（{{ timezone }}）で、時差を付けて書きます。</p>
-<form method="post" action="{{ page }}/records.csv" class="settings-form">{{ csrf_field(token) }}
+<form method="post" action="{{ page }}/records.csv" class="settings-form" data-no-busy>{{ csrf_field(token) }}
 <div class="settings-field"><label>始まり<input type="date" name="from" value="{{ start }}" required></label></div>
 <div class="settings-field"><label>終わり<input type="date" name="to" value="{{ end }}" required></label></div>
 <p class="toolbar"><button>排泄のCSVを書き出す</button><button class="secondary" formaction="{{ page }}/weights.csv">体重のCSVを書き出す</button><button class="secondary" formmethod="get" formaction="{{ page }}/summary">印刷用の集計を開く</button></p>
@@ -15,7 +15,7 @@
 </section>
 <section class="settings-section" aria-labelledby="backup-title"><h3 id="backup-title">バックアップ</h3>
 <p class="note">記録のデータベース、監視範囲・基準画像などの登録情報、検知の画像を1つの ZIP にまとめます。監視の動作中でも作れます。</p>
-<form method="post" action="{{ page }}/backup">{{ csrf_field(token) }}
+<form method="post" action="{{ page }}/backup" data-no-busy>{{ csrf_field(token) }}
 <p><label><input type="checkbox" name="clips" value="1">動画も含める（大きくなります）</label></p>
 <p><button>バックアップを作る</button></p>
 </form>

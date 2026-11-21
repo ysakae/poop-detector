@@ -542,3 +542,17 @@ def test_review_status_breaks_down_recent_failures_by_kind(models_gui):
     html = page(server, login(server))
     assert "タイムアウト 2回、利用制限・混雑 1回、不明 1回" in html
     assert "異常終了" not in html
+
+
+def test_readiness_is_reused_for_a_short_while(models_gui):
+    # CLI のログイン状態の確認は数秒かかるので、開き直すたびには確かめない。
+    server, path = models_gui
+    cookie = login(server)
+    page(server, cookie)
+    html = page(server, cookie)
+    assert server.checked == ["Codex CLI"]
+    assert "codex loginでCodex CLIにログインしてください" in html
+    # 判定器を変えたら、その判定器をすぐ確かめる。
+    path.write_text(path.read_text() + "review:\n  provider: claude\n")
+    page(server, cookie)
+    assert server.checked == ["Codex CLI", "Claude Code CLI"]

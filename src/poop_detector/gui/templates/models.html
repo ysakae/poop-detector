@@ -83,7 +83,7 @@
 {%- endfor %}
 <p class="note">{{ plans.checked_at }} に問い合わせた消費の割合です。</p>
 {% else %}<p>まだ問い合わせていません。</p>{% endif %}
-<form method="post" action="{{ plan_action }}">{{ csrf_field(token) }}<button>CLI に問い合わせる</button></form>
+<form method="post" action="{{ plan_action }}">{{ csrf_field(token) }}<button data-busy-label="CLI に問い合わせています…">CLI に問い合わせる</button></form>
 <p class="note">監視するマシンの各 CLI に、ログイン中のアカウントのサブスクリプションの使用量を問い合わせます。モデルは呼ばず、数秒かかります。判定以外の使い方の分も含みます。Claude Code CLI は戻る時刻を出しません。「制限なし」はその制限がないことを示します。棒の色は、70% 以上で注意、90% 以上で警告に変わります。</p>
 </section>
 <section class="settings-section" aria-labelledby="benchmark-title"><h3 id="benchmark-title">判定器・モデルの比較</h3>
