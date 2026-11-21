@@ -11,6 +11,7 @@
 <article class="area-card" id="area-{{ kind.value }}">
 <h3>{{ kind.label }}{% if kind.value == "outside" %}（任意）{% endif %} {{ chip("登録済み" if kind.registered else ("床面を使用" if kind.value == "outside" else "未登録"), "ok" if kind.registered or kind.value == "outside" else "off") }}</h3>
 <p>{{ kind.purpose }}</p>
+<p><button type="button" class="secondary" data-area-show="{{ kind.value }}" aria-pressed="false">映像で範囲を見る</button></p>
 {%- if kind.value == "roi" %}
 {% if monitoring %}<p class="note">監視が動いているので、トレー交換と同じ手順（新しい基準を確かめてから切り替える）で登録し直します。</p><p><a class="button secondary" href="{{ tray_page }}">トレー交換の手順で登録し直す</a></p>{% else %}<p class="note">監視が止まっているので、下の映像で囲んで登録します。</p>{% endif %}
 {%- elif kind.value == "outside" %}
