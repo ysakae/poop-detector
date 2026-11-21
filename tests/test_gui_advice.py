@@ -397,3 +397,27 @@ def test_resubmitting_a_new_thread_form_creates_one_thread(gui):
     second = submit(server, "/advice/threads", fields, page=ADVICE)
     assert first[0] == second[0] == 303
     assert len(threads(store.database)) == 1
+
+
+def test_answer_markdown_is_rendered_but_question_stays_plain(gui, judge_ready):
+    from poop_detector.records.advice import start_thread
+
+    server, store, _ = gui
+    request(server, "GET", ADVICE)
+    thread_id = start_thread(
+        store.database,
+        title="書式",
+        question="**質問の記号**はそのまま",
+        user_id=first_user(store),
+        basis="{}",
+    )
+    with store.database.connect() as db:
+        db.execute(
+            "UPDATE advice_messages SET status='done', body=? WHERE seq=2",
+            ("## 量\n\n- **朝** 36 g\n\n[出典](https://maker.example/p)",),
+        )
+    html = request(server, "GET", f"/advice/thread?id={thread_id}")[1].decode()
+    assert "<h2>量</h2>" in html
+    assert "<li><strong>朝</strong> 36 g</li>" in html
+    assert 'href="https://maker.example/p" rel="noopener noreferrer"' in html
+    assert "**質問の記号**はそのまま" in html

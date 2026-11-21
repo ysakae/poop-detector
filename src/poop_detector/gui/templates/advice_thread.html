@@ -12,6 +12,7 @@
 {% if item.waiting %}<p role="status">{{ item.status_text }}</p>
 {% elif item.failed %}<p class="message message-error" role="alert">{{ item.failure }}</p>
 <form method="post" action="/advice/retry" class="toolbar">{{ csrf_field(token) }}<input type="hidden" name="message_id" value="{{ item.id }}"><input type="hidden" name="thread_id" value="{{ thread.id }}"><button class="secondary">もう一度聞く</button></form>
+{% elif item.html is not none %}<div class="advice-answer">{{ item.html }}</div>
 {% else %}<div class="advice-body">{{ item.body }}</div>{% endif %}
 </div>
 {% endfor %}

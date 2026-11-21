@@ -29,6 +29,9 @@ PyPI に公開する sdist と wheel、およびリポジトリには、この�
 | webauthn | BSD-3-Clause | パスキー（WebAuthn）の検証 |
 | http-ece | MIT | Web Push の本文の暗号化（RFC 8291） |
 | py-vapid | MPL-2.0 | Web Push の送信元の署名（VAPID、RFC 8292） |
+| markdown-it-py | MIT | ごはんの相談の AI の回答を Markdown から HTML にする |
+| mdurl | MIT | markdown-it-py の依存。URL の読み込み |
+| nh3 | MIT | Markdown から作った HTML の消毒（Rust の ammonia を使う） |
 | cbor2 | MIT | webauthn の依存。CBOR の読み書き |
 | cryptography | Apache-2.0 OR BSD-3-Clause | webauthn の依存。署名の検証 |
 | pyOpenSSL | Apache-2.0 | webauthn の依存。証明書の検証 |

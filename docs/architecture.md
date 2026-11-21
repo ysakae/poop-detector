@@ -198,6 +198,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/routes.py` | URL ごとの処理。`@get`・`@post` で `GET_ROUTES`・`POST_ROUTES` に登録する |
 | `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py`・`gui/sleep_page.py` | 画面に出す値を整え、テンプレートに渡す（ホーム、記録と検知の一覧、動画、行動マップ、睡眠の草） |
 | `gui/advice_routes.py`・`gui/advice_page.py`・`gui/advice_worker.py` | ごはんの目安と相談（`/advice`・`/advice/foods`）。ルートは、プロフィールの保存・フードの登録と停止・相談の質問・再質問・削除・状態の問い合わせを受け付ける。`advice_page.py` が画面の値（目安・実績・会話）とホームの「今日の目安」（`today_grams`）を整え、`advice_worker.py` が GUI の稼働中に作業スレッドを動かす |
+| `gui/markdown_text.py` | AI の回答の Markdown を、許したタグと https のリンクだけの HTML にする（`Markup` を作る唯一の場所） |
 | `gui/clip_routes.py` | 録画要求、ラベル付け、確定、保護、評価候補の選択、録画整理の各 POST を受け付ける |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル（先頭にデザインの変数） |
 | `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`）。見ている人（`VIEWER`）から共通の枠の値を渡す |
@@ -220,7 +221,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/audit.py` | 管理者の操作の監査ログ（`audit_log`）。追記だけで、認証情報は入れない |
 | `gui/static/` | 補助的な操作だけを担う JavaScript（押したことがすぐ分かる表示の `busy.js` は、ログイン後のすべての画面で読み込む） |
 
-テンプレートはすべての値を自動でエスケープし、渡し忘れた変数はエラーになります。HTML を文字列で組み立てたり、`Markup` でエスケープを外したりしないでください。値の整形と分岐の判断は Python 側で行い、テンプレートは構造だけを受け持ちます。`tests/test_gui_escaping.py` は、特殊文字を含む値が各画面でエスケープされることを確かめます。
+テンプレートはすべての値を自動でエスケープし、渡し忘れた変数はエラーになります。HTML を文字列で組み立てたり、`Markup` でエスケープを外したりしないでください。例外は、ごはんの相談の AI の回答だけです。`gui/markdown_text.answer_html` が、markdown-it-py で生の HTML を無効にして（`html: False`）Markdown を HTML にし、nh3 で `ALLOWED_TAGS` のタグと https の絶対 URL のリンクだけに絞ってから `Markup` にします。画像・`style`・`class`・`title` などの属性は捨てます。CSP の `style-src` には `'unsafe-inline'` があり、インラインの style を止めないので、nh3 で落とすことが唯一の守りです。変換後が `MAX_HTML_LENGTH`（100,000文字）を超えた回答は、文字のまま出します。家族が書いた質問は、これまでどおり文字のまま出します。`Markup` を作るのはこの関数だけにし、許すタグを増やすときは `tests/test_markdown_text.py` に危ない入力の例を足してください。値の整形と分岐の判断は Python 側で行い、テンプレートは構造だけを受け持ちます。`tests/test_gui_escaping.py` は、特殊文字を含む値が各画面でエスケープされることを確かめます。
 
 ルートが使うストアや鍵は `GuiApp` にまとめ、`Exchange.app` からルートへ渡します。ルートの関数は同期の関数で、Starlette がスレッドプールで呼びます。ルートを足すときは、`gui/routes.py` に関数を1つ書いて `@get("/path")` か `@post("/path")` を付けます。管理者だけの操作には `role="admin"` を付けます（`@get("/manage", role="admin")`）。`asgi.dispatch` が、ルートの表に宣言した役割（`routes.required_role`）を持たない人を 403 で断ります。同じルートの中で役割によって分かれる操作（動画の保護の解除）は、ルートの中で `routes.is_admin` で確かめます。テンプレートは `viewer_admin` で管理者だけの入口を出し分けますが、拒否はサーバーで行います。管理者だけの画面は `/manage` の下に置き、`gui/navigation.py` の管理のメニューに加えます。`tests/test_gui_roles.py` は、ルートの表のすべてのルートで、宣言した役割が権限の表と一致し、一般ユーザーが管理者のルートを断られることを確かめます。管理者の操作は `routes.audit` で監査ログに残します。
 

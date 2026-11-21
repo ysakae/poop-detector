@@ -77,6 +77,9 @@ def test_answer_prompt_includes_guide_and_records(store) -> None:
     assert "2800" in text or "2.8" in text
     assert "テストフード" in text
     assert "もも" in text
+    # 画面は回答を Markdown として表示するので、使える書き方を伝える。
+    assert "Markdown" in text
+    assert "HTML と画像は使わない" in text
     assert "量はこれで足りますか" in text
     assert {d: (f, u) for d, f, u in context.excretions}[date(2026, 11, 20)] == (1, 1)
     assert len(context.excretions) == 14
