@@ -1,5 +1,6 @@
 """判定器の呼び出しの記録（judge_runs）と、期間別の回数の集計を検証する。"""
 
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -145,3 +146,38 @@ def test_unknown_failure_kind_is_refused(tmp_path):
     runs = ClipStore(tmp_path).judge_runs
     with pytest.raises(ValueError, match="種類"):
         runs.record("codex", None, "review", failed=True, failure="secret text")
+
+
+def test_trailing_failures_count_only_after_the_last_success(tmp_path):
+    runs = ClipStore(tmp_path).judge_runs
+    assert runs.trailing_failures() == 0
+    runs.record("codex", None, "review", failed=True, at=at(2026, 11, 14, 8, 0))
+    runs.record("codex", None, "review", failed=True, at=at(2026, 11, 14, 8, 1))
+    # 成功がまだなければ、失敗をすべて数える。
+    assert runs.trailing_failures() == 2
+    runs.record("codex", None, "review", failed=False, at=at(2026, 11, 14, 8, 2))
+    assert runs.trailing_failures() == 0
+    # 同じ時刻の記録は、あとに書いたほうを新しいとみなす。
+    runs.record("codex", None, "review", failed=True, at=at(2026, 11, 14, 8, 2))
+    runs.record("codex", None, "review", failed=True, at=at(2026, 11, 14, 8, 3))
+    # 別の用途（比較）の失敗と成功は数えない。
+    runs.record("codex", None, "benchmark", failed=False, at=at(2026, 11, 14, 8, 4))
+    assert runs.trailing_failures() == 2
+    assert runs.trailing_failures("benchmark") == 0
+
+
+def test_trailing_failures_stay_fast_with_many_runs(tmp_path):
+    # 呼び出しの記録が増えても、行の組み合わせを数えずに求める（2万件でもすぐ終わる）。
+    runs = ClipStore(tmp_path).judge_runs
+    stamps = [
+        f"2026-11-{1 + i // 1440:02d}T{i // 60 % 24:02d}:{i % 60:02d}:00+00:00"
+        for i in range(20000)
+    ]
+    with runs.connect() as db:
+        db.executemany(
+            "INSERT INTO judge_runs (provider, model, purpose, ran_at, failed) VALUES (?,?,?,?,?)",
+            [("codex", None, "review", stamp, int(i >= 19997)) for i, stamp in enumerate(stamps)],
+        )
+    started = time.perf_counter()
+    assert runs.trailing_failures() == 3
+    assert time.perf_counter() - started < 1
