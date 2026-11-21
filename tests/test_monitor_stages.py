@@ -321,7 +321,7 @@ def test_sleep_extension_breaks_only_on_disconnect():
     assert calls == [("update", [(1, 2, 3, 4)], 1.0), "interrupt"]
 
 
-def test_standard_extensions_adds_sleep_sharing_one_prediction():
+def test_standard_extensions_adds_sleep_sharing_one_prediction(tmp_path):
     from poop_detector.features.monitoring import SharedPredict, SleepExtension, standard_extensions
 
     predictions = []
@@ -341,7 +341,7 @@ def test_standard_extensions_adds_sleep_sharing_one_prediction():
     extensions = standard_extensions(
         ROI(0, 0, 1, 1),
         EMPTY,
-        Config(),
+        Config(data_dir=str(tmp_path)),
         SilentNotifier(),
         Clock(),
         dog_observer=Observer(),

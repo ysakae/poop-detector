@@ -19,7 +19,6 @@ from ..records.care import (
     save_entry,
 )
 from ..records.events import EXCRETION_TYPES
-from ..records.export import in_period
 from ..records.feeding_plans import plans_for_day, save_plan, stop_plan
 from ..records.weights import Weight, parse_day, weights
 from ..timezones import local_now, local_today, to_local
@@ -116,7 +115,7 @@ def _render(
             ),
         )
         return
-    records = in_period(store.records(), day, day)
+    records = store.records_between(day, day)
     food, grams, food_history = feeding_history(store.database)
     if edit:
         food, grams = edit.food, edit.grams

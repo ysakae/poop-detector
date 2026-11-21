@@ -661,6 +661,15 @@ def migrate_to_v31(db: sqlite3.Connection) -> None:
 
 
 def migrate_to_v32(db: sqlite3.Connection) -> None:
+    """確定した記録を開始の時刻で探す索引を足す（ホーム・お世話・相談が期間で読む）。"""
+    # 式は Store.RECORD_START と同じにする。違うと SQLite は索引を使わない。
+    db.execute(
+        "CREATE INDEX events_records_by_start ON events"
+        "(julianday(COALESCE(NULLIF(actual_start,''),timestamp))) WHERE feedback=1"
+    )
+
+
+def migrate_to_v33(db: sqlite3.Connection) -> None:
     """シートの汚れの積み重なり（交換どきの目安）を記録する表を追加する。"""
     db.execute(
         """CREATE TABLE sheet_wear (
@@ -708,6 +717,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v30,
     migrate_to_v31,
     migrate_to_v32,
+    migrate_to_v33,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

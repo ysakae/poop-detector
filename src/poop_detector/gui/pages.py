@@ -258,21 +258,13 @@ def _care_row(label: str, icon: str, entry: CareEntry | None, today: date) -> La
     return LastCare(label, icon, list_time(entry.at.isoformat(), today), amount, care_url(entry))
 
 
-def _last_care(store: Store, records: Sequence[EventRow], today: date) -> list[LastCare]:
+def _last_care(store: Store, today: date) -> list[LastCare]:
     """お世話の種類ごとに、ホームに出す最後の実施時刻と、直す画面の URL をそろえる。"""
     entries = latest_entries(store.database)
     result = [_care_row("ごはん", "food", entries.get("feeding"), today)]
     now = local_now()
     for label, kind in (("うんち", "feces"), ("おしっこ", "urine")):
-        row = next(
-            (
-                row
-                for row in reversed(records)
-                if row["excretion_type"] in (kind, "both")
-                and to_local(row["actual_start"] or row["timestamp"]) <= now
-            ),
-            None,
-        )
+        row = store.last_record((kind, "both"), now)
         if row is None:
             result.append(LastCare(label, kind, None, "", ""))
         else:
@@ -297,9 +289,8 @@ def render_home(
 
     recorded は、ホームから記録した直後のお世話の記録の ID（知らせと「直す」の入口を出す）。
     """
-    records = store.records()
     today = local_today()
-    daily, _, _ = summarize_records(records, today, today)
+    daily, _, _ = summarize_records(store.records_between(today, today), today, today)
     cared = care_entries(store.database, today)
     fed = [entry.amount_dg for entry in cared if entry.amount_dg]
     last = last_feeding(store.database)
@@ -312,7 +303,7 @@ def render_home(
             "location": RECORD_LOCATIONS.get(row["location"] or "", "場所不明"),
             "url": event_url(row["id"]),
         }
-        for row in reversed(records[-RECENT_RECORDS:])
+        for row in reversed(store.latest_records(RECENT_RECORDS))
     ]
     return render_template(
         "home.html",
@@ -332,7 +323,7 @@ def render_home(
             (plan for plan in plans_for_day(store.database, today) if not plan.recorded), None
         ),
         recent=recent,
-        last_care=_last_care(store, records, today),
+        last_care=_last_care(store, today),
         sheet=sheet,
         timezone=timezone_label(),
     )
