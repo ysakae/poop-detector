@@ -89,8 +89,12 @@ def compute_advice(
         missing.append("生年月日を入れてください")
     if latest is None:
         missing.append("体重を記録してください")
-    if profile.birth is not None and latest is not None and profile.birth > latest.day:
+    if profile.birth is not None and (
+        profile.birth > today or (latest is not None and profile.birth > latest.day)
+    ):
         missing.append("生年月日を確かめてください")
+    if latest is not None and latest.day > today:
+        missing.append("体重の測定日を確かめてください")
     if missing or profile.birth is None or latest is None:
         return Advice(None, (), tuple(missing))
 
@@ -112,16 +116,28 @@ def compute_advice(
     age = (today - latest.day).days
     if age > (STALE_GROWTH_DAYS if stage == "growth" else STALE_ADULT_DAYS):
         warnings.append(f"体重の記録が{age}日前のものです。量り直すと目安が正確になります。")
-    if source != "profile" or (stage == "growth" and adult is None):
+    if adult is None:
         warnings.append("犬種か成犬時の予想体重を入れると目安が正確になります。")
     if not known:
         warnings.append("フードのカロリーが分からないので、量（g）は出せません。")
     if months < MIN_MONTHS:
         warnings.append("生後2か月未満の目安はこの計算の対象外です。獣医師に相談してください。")
     guide = Guide(
-        months, latest.grams, latest.day, size, source, adult, ratio, stage,
-        rer, factor, kcal, per_day, per_meal, meals,
-    )  # fmt: skip
+        months=months,
+        weight_grams=latest.grams,
+        weight_day=latest.day,
+        size_class=size,
+        size_source=source,
+        adult_grams=adult,
+        ratio=ratio,
+        stage=stage,
+        rer=rer,
+        factor=factor,
+        kcal_per_day=kcal,
+        grams_per_day=per_day,
+        grams_per_meal=per_meal,
+        meals=meals,
+    )
     return Advice(guide, tuple(warnings), ())
 
 
@@ -143,7 +159,7 @@ def intake_summary(
     kcal_by_food: Mapping[str, int],
     days: Sequence[date],
 ) -> tuple[DayIntake, ...]:
-    """日ごとの給餌量（g）と、すべてのフードが台帳にある日のカロリー。"""
+    """日ごとの給餌量（g）と、すべてのフードが台帳にある日のカロリー。記録のない日は 0 g・0 kcal。"""
     summary = []
     for day in days:
         foods = totals.get(day, {})

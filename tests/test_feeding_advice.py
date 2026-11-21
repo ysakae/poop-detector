@@ -119,7 +119,7 @@ def test_breed_table_supplies_adult_weight() -> None:
     assert advice.guide.size_source == "estimated"
     assert advice.guide.adult_grams == breed.adult_grams
     assert advice.guide.size_class == breed.size_class
-    assert SIZE_WARNING in advice.warnings
+    assert SIZE_WARNING not in advice.warnings
 
 
 def test_stale_weight_and_missing_kcal_warn_but_still_compute() -> None:
@@ -220,3 +220,20 @@ def test_feeding_totals_excludes_deleted_and_amountless(tmp_path: Path) -> None:
     add("2024-03-04T00:00", "feeding", "A", 2)
     totals = feeding_totals(database, date(2024, 3, 1), date(2024, 3, 3))
     assert totals == {date(2024, 3, 1): {"A": 500, "B": 100}, date(2024, 3, 2): {"A": 50}}
+
+
+def test_entered_adult_weight_suppresses_adult_weight_warning() -> None:
+    p = profile(size_class=None, adult_grams=5000)
+    advice = compute_advice(p, weight(3200), 3850, 3, TODAY)
+    assert advice.guide is not None
+    assert advice.guide.size_source == "estimated"
+    assert SIZE_WARNING not in advice.warnings
+
+
+def test_future_birth_or_weight_day_is_rejected() -> None:
+    future_birth = compute_advice(profile(birth=date(2026, 11, 22)), weight(3200), 3850, 3, TODAY)
+    assert future_birth.guide is None
+    assert future_birth.missing == ("生年月日を確かめてください",)
+    future_weight = compute_advice(profile(), weight(3200, date(2026, 11, 22)), 3850, 3, TODAY)
+    assert future_weight.guide is None
+    assert future_weight.missing == ("体重の測定日を確かめてください",)
