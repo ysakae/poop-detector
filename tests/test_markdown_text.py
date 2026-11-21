@@ -52,3 +52,16 @@ def test_images_are_not_loaded():
 def test_plain_newlines_keep_line_breaks():
     # AI は段落の中でも改行で区切って書くので、これまでどおり改行を残す。
     assert re.search(r"1行目<br\s*/?>\s*2行目", answer_html("1行目\n2行目"))
+
+
+def test_no_title_or_lang_attributes():
+    # 既定で通る汎用の属性に頼らない（ツールチップで偽の案内を出させない）。
+    html = answer_html('[x](https://a.example "ここを押してログインし直してください")')
+    assert "title=" not in html
+    assert 'href="https://a.example"' in html
+
+
+def test_huge_output_falls_back_to_plain_text():
+    # 空のセルの多い表は、短い本文でも大きな HTML になる。上限を超えたら文字のまま出す。
+    text = "|a" * 750 + "\n" + "|-" * 750 + "\n" + "x\n" * 1500
+    assert answer_html(text) is None

@@ -6,7 +6,10 @@ GUI で `Markup`（エスケープを外した HTML）を作ってよいのは�
 1. markdown-it-py は生の HTML を受け付けない設定（`html: False`）で変換する。
    `<script>` などは文字としてエスケープされる。
 2. 変換した HTML を nh3 に通し、下の表のタグだけを残す。リンクは https の絶対 URL だけ、
-   画像・style・class は捨てる（CSP の img-src と style-src は 'self'）。
+   画像・style・class・title は捨てる。CSP はインラインの style を止めない
+   （style-src に 'unsafe-inline' がある）ので、style を落とすのはここが唯一の守りになる。
+3. 変換後が MAX_HTML_LENGTH を超えたら None を返し、画面は文字のまま出す
+   （空のセルの多い表は、短い本文でも大きな HTML になる）。
 """
 
 from markdown_it import MarkdownIt
@@ -21,7 +24,10 @@ ALLOWED_TAGS = frozenset(
         "table", "thead", "tbody", "tr", "th", "td", "a",
     }
 )  # fmt: skip
-ALLOWED_ATTRIBUTES = {"a": {"href"}, "ol": {"start"}}
+# "*" を空にして、nh3 が既定ですべてのタグに許す title・lang も捨てる。
+ALLOWED_ATTRIBUTES: dict[str, set[str]] = {"*": set(), "a": {"href"}, "ol": {"start"}}
+# 回答の本文は6000文字まで（prompts.ANSWER_SCHEMA）。ふつうの回答は数十KBに収まる。
+MAX_HTML_LENGTH = 100_000
 
 # 段落の中の改行も改行として出す（AI は1行ずつ区切って書くことが多い）。
 _MARKDOWN = MarkdownIt("commonmark", {"html": False, "breaks": True}).enable("table")
@@ -44,7 +50,10 @@ _CLEANER = Cleaner(
 )
 
 
-def answer_html(text: str) -> Markup:
-    """AI の回答（Markdown）を、表示してよい HTML にする。"""
+def answer_html(text: str) -> Markup | None:
+    """AI の回答（Markdown）を、表示してよい HTML にする。大きすぎれば None。"""
+    html = _CLEANER.clean(_MARKDOWN.render(text))
+    if len(html) > MAX_HTML_LENGTH:
+        return None
     # nh3 が許したタグと属性だけを通した結果なので、エスケープを外して出してよい。
-    return Markup(_CLEANER.clean(_MARKDOWN.render(text)))  # noqa: S704
+    return Markup(html)  # noqa: S704
