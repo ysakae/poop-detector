@@ -44,12 +44,20 @@ def format_kcal(kcal_dk: int) -> str:
     return f"{whole}.{tenth}" if tenth else str(whole)
 
 
+def _safe_url(url: str) -> str:
+    """表示に使える https の URL だけを返す。ほかは空（リンクにしない）。"""
+    try:
+        return parse_source_url(url)
+    except InvalidInputError:
+        return ""
+
+
 def _food(food: Food) -> dict[str, object]:
     return {
         "id": food.id,
         "name": food.name,
         "kcal": format_kcal(food.kcal_dk),
-        "source_url": food.source_url,
+        "source_url": _safe_url(food.source_url),
     }
 
 
@@ -62,7 +70,7 @@ def _lookup(lookup: Lookup) -> dict[str, object]:
         "product_name": lookup.product_name,
         "maker": lookup.maker,
         "kcal": "" if lookup.kcal_dk is None else format_kcal(lookup.kcal_dk),
-        "source_url": lookup.source_url,
+        "source_url": _safe_url(lookup.source_url),
         "note": lookup.note,
         "failure": FAILURES.get(lookup.failure or "", "探せませんでした") if lookup.failure else "",
     }
@@ -84,7 +92,13 @@ def _lookup_problem(handler: "Handler") -> str | None:
     return None
 
 
-def _render(handler: "Handler", *, error: str = "", fields: dict[str, str] | None = None) -> None:
+def _render(
+    handler: "Handler",
+    *,
+    error: str = "",
+    fields: dict[str, str] | None = None,
+    lookup_name: str = "",
+) -> None:
     database = handler.app.store.database
     page = render_template(
         "advice_foods.html",
@@ -95,6 +109,7 @@ def _render(handler: "Handler", *, error: str = "", fields: dict[str, str] | Non
         names=unregistered_names(database),
         lookup_problem=_lookup_problem(handler),
         values=fields or {},
+        lookup_name=lookup_name,
         error=error,
     )
     handler.respond(400 if error else 200, page)
@@ -114,7 +129,7 @@ def lookup_food(handler: "Handler", form: Form) -> None:
     try:
         request_lookup(handler.app.store.database, form.fields.get("name", ""), _user_id(handler))
     except InvalidInputError as error:
-        _render(handler, error=str(error))
+        _render(handler, error=str(error), lookup_name=form.fields.get("name", ""))
         return
     handler.redirect(FOODS)
 

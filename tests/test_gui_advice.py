@@ -1,6 +1,7 @@
 """フードの画面（カロリー探しと手入力）を検証する。"""
 
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 
 import pytest
 from support import request, submit
@@ -9,6 +10,7 @@ from poop_detector.features.advice.jobs import LookupResult, finish_lookup
 from poop_detector.records.foods import active_foods, recent_lookups
 
 PAGE = "/advice/foods"
+FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 URL = "https://example.com/puppy"
 
 
@@ -75,3 +77,33 @@ def test_food_lookup_failure_is_shown_in_japanese(gui, judge_ready):
 def test_advice_foods_requires_login(gui):
     server, _, _ = gui
     assert request(server, "GET", PAGE, auth=False)[0] == 403
+
+
+def test_lookup_draft_text_is_escaped_and_unsafe_url_is_not_linked(gui, judge_ready):
+    server, store, _ = gui
+    hostile = "<script>\"&'"
+    with store.database.connect() as db:
+        db.execute(
+            """INSERT INTO food_lookups (id, name, status, product_name, maker, kcal_dk,
+            source_url, note, requested_at) VALUES ('x', 'n', 'done', ?, ?, 3850,
+            'javascript:alert(1)', ?, '2026-11-21T00:00:00+00:00')""",
+            (hostile, hostile, hostile),
+        )
+    html = request(server, "GET", PAGE)[1].decode()
+    assert "&lt;script&gt;" in html
+    assert "<script>" not in html
+    assert "javascript:" not in html
+
+
+def test_food_post_without_csrf_is_refused(gui):
+    server, _, _ = gui
+    body = urlencode({"name": "x", "kcal": "385"})
+    assert request(server, "POST", PAGE, body, FORM)[0] == 403
+    assert request(server, "POST", PAGE, urlencode({"csrf": "wrong"}), FORM)[0] == 403
+
+
+def test_empty_lookup_name_keeps_form_and_returns_400(gui, judge_ready):
+    server, _, _ = gui
+    status, body = submit(server, "/advice/foods/lookup", {"name": "   "}, page=PAGE)
+    assert status == 400
+    assert 'action="/advice/foods/lookup"' in body.decode()

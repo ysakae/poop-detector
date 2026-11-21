@@ -18,7 +18,7 @@
 {% else %}
 <p class="note">AI がウェブで探した値は下書きです。出典を確かめてから登録してください。</p>
 <form method="post" action="/advice/foods/lookup" class="settings-form">{{ csrf_field(token) }}
-<div class="settings-field"><label>フードの名前<input name="name" maxlength="80" required list="food-names"></label></div>
+<div class="settings-field"><label>フードの名前<input name="name" maxlength="80" required list="food-names" value="{{ lookup_name }}"></label></div>
 <datalist id="food-names">{% for name in names %}<option value="{{ name }}">{% endfor %}</datalist>
 <p class="toolbar"><button>カロリーを探す</button></p>
 </form>
