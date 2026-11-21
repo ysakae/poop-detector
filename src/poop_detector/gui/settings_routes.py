@@ -47,6 +47,7 @@ SECTION_TITLES = {
     "early_alert": "見守り通知",
     "sleep": "睡眠の記録",
     "watchdog": "監視の停止・カメラの不調の通知",
+    "sheet": "シートの交換どき",
     "reentry": "排泄後の再侵入の見守り",
     "review": "動画の自動判定",
     "gui": "GUI",

@@ -253,7 +253,7 @@ def test_monitor_factory_records_candidate_and_reentry_with_shared_inference(tmp
 
     dog = DogObserver(Detector())
     collector = Collector()
-    dog_extension, reentry = standard_extensions(
+    *_, dog_extension, reentry = standard_extensions(
         roi,
         baseline,
         config,
@@ -422,7 +422,7 @@ def _reentry_extension(tmp_path):
         def trigger(self, *, source):
             return None
 
-    _, reentry = standard_extensions(
+    *_, reentry = standard_extensions(
         roi,
         roi.crop(empty),
         config,

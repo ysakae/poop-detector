@@ -108,6 +108,15 @@ class ToiletNotifier:
         path = _clip_notice_path(clip_id)
         return self._display(message, path=path)
 
+    def send_sheet_due(self, events: int, ratio: float) -> bool:
+        """前回の交換からの排泄の回数か、汚れの割合が上限に達したことを知らせる。"""
+        count = f"排泄{events}回、" if events else ""
+        message = (
+            f"{self.owner}トイレのシートがそろそろ交換どきです。"
+            f"前回の交換から{count}汚れは監視範囲の約{ratio:.0%}です。"
+        )
+        return self._display(message, path="/")
+
     def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> Delivery:
         detail, risk = {
             "reentry": ("未回収の排泄候補があるトレーに再侵入", "MEDIUM"),

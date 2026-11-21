@@ -678,3 +678,22 @@ def test_save_birth_date_after_profile_columns_are_added(tmp_path):
     database = Database(tmp_path / "birth.sqlite3")
     save_birth_date(database, "2026-06-15")
     assert birth_date(database) == date(2026, 6, 15)
+
+
+def test_v31_database_keeps_care_entries_and_adds_sheet_wear(tmp_path):
+    path = tmp_path / "sheet-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:31]:
+            migration(db)
+        db.execute("PRAGMA user_version = 31")
+        db.execute(
+            "INSERT INTO care_entries (id, at, kind, actor, note) "
+            "VALUES ('c1', '2026-11-01T00:00:00+00:00', 'sheet', '家族', '')"
+        )
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT id FROM care_entries").fetchone()[0] == "c1"
+        assert db.execute("SELECT COUNT(*) FROM sheet_wear").fetchone()[0] == 0
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO sheet_wear (at, kind, ratio) VALUES ('t', 'event', 2)")

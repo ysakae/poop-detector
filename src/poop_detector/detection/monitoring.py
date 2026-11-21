@@ -18,7 +18,7 @@ import sqlite3
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 import psutil
 
@@ -108,6 +108,17 @@ class MonitorExtension:
         self, db: sqlite3.Connection, event_id: str, view: FrameView, detector: IncrementalDetector
     ) -> None:
         """排泄候補を記録した直後のフレームと更新前の基準を受け取る。"""
+
+    def on_reference(
+        self,
+        view: FrameView,
+        detector: IncrementalDetector,
+        reason: Literal["event", "settled"],
+    ) -> None:
+        """通知済み状態を更新した直後に、更新後の基準を受け取る。
+
+        reason は、排泄候補の記録（event）か、清掃・乾燥で空が続いたこと（settled）。
+        """
 
     def log_status(self) -> None:
         """稼働ログ（HEALTH_LOG_SECONDS ごと）に、機能ごとの状態を書く。"""
@@ -314,6 +325,8 @@ class Monitor:
             record_details=record_details,
         )
         self.detector.accept(view.crop)
+        for extension in self.extensions:
+            extension.on_reference(view, self.detector, "event")
         self.state.machine = self._new_machine()
         self.state.started_at = None
         self.state.settled_since = None
@@ -336,6 +349,8 @@ class Monitor:
         ):
             self.store.save_reference(view.crop, self.signature)
             self.detector.accept(view.crop)
+            for extension in self.extensions:
+                extension.on_reference(view, self.detector, "settled")
 
     def _log_health(self, tick: float) -> None:
         if self.clock.monotonic() - self.last_health < HEALTH_LOG_SECONDS:

@@ -18,6 +18,7 @@ from ..video.clips import ClipStore
 from .advice_page import today_grams
 from .clip_pages import capacity_info, clips_url
 from .list_time import ListTime, by_day, list_time
+from .sheet_page import SheetSummary
 from .templating import render_template
 
 # parse_qs で読んだ問い合わせ文字列。同じ名前の値はリストになる。
@@ -290,6 +291,7 @@ def render_home(
     manual_only: bool = False,
     token: str = "",
     recorded: str = "",
+    sheet: SheetSummary | None = None,
 ) -> str:
     """ホーム。確認待ちの件数、今日の回数と給餌量、記録の入口、直近の確定記録、ライブ映像。
 
@@ -331,6 +333,7 @@ def render_home(
         ),
         recent=recent,
         last_care=_last_care(store, records, today),
+        sheet=sheet,
         timezone=timezone_label(),
     )
 
