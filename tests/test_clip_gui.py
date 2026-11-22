@@ -307,3 +307,21 @@ def test_clip_page_points_to_the_review_when_something_waits(gui):
     clips = ClipStore(store.root)
     clips.labels.save(ready_clip(clips), ClipLabel("none", None, None, "other", "", None))
     assert "確認待ちが" not in request(server, "GET", "/clips")[1].decode()
+
+
+def test_confirmation_choices_show_short_time_without_seconds(gui):
+    """保存先の選択肢は一覧と同じ短い時刻（秒なし）にし、狭い画面で欄をはみ出させない。"""
+    from poop_detector.gui.list_time import list_time
+    from poop_detector.video.clips import ClipStore
+
+    server, store, event_id = gui
+    clip = ready_clip(ClipStore(store.root), event_id=event_id)
+    (event,) = [row for row in store.list() if row["id"] == event_id]
+    when = list_time(event["timestamp"])
+    assert when is not None
+    _, body = request(server, "GET", "/clips?id=" + clip)
+    options = re.findall(rf'<option value="{event_id}"[^>]*>([^<]*)</option>'.encode(), body)
+    assert options
+    for text in options:
+        assert text.decode().startswith(when.text + " ")
+        assert when.full.encode() not in text
