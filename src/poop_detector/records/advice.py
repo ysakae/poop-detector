@@ -16,6 +16,11 @@ TITLE_ERROR = f"題名は{MAX_TITLE_LENGTH}文字以内で入力してくださ�
 QUESTION_ERROR = f"質問は{MAX_QUESTION_LENGTH}文字以内で入力してください"
 PENDING_ERROR = "前の質問の回答を待っています"
 MISSING_ERROR = "相談が見つかりません"
+PERMISSION_ERROR = "この相談を消せるのは、始めた人か管理者だけです"
+
+
+class ThreadPermissionError(InvalidInputError):
+    """始めた人でも管理者でもない人が会話を消そうとした（画面は 403 にする）。"""
 
 
 @dataclass(frozen=True)
@@ -88,7 +93,9 @@ def start_thread(
 ) -> str:
     """会話を始め、最初の質問と待ちの回答を同時に入れる。
 
-    同じ request_key で送り直されたら、新しい会話は作らず既存の会話の ID を返す。
+    同じ人が同じ request_key で送り直したら、新しい会話は作らず既存の会話の ID を返す。
+    キーがほかの人の会話か、消した会話に使われていれば、キーなしで新しい会話を始める
+    （request_key は一意なので、同じキーをもう一度は入れられない）。
     """
     title = _clean(title, MAX_TITLE_LENGTH, TITLE_ERROR)
     question = _clean(question, MAX_QUESTION_LENGTH, QUESTION_ERROR)
@@ -98,10 +105,13 @@ def start_thread(
         db.execute("BEGIN IMMEDIATE")
         if request_key:
             existing = db.execute(
-                "SELECT id FROM advice_threads WHERE request_key=?", (request_key,)
+                "SELECT id, created_by, deleted_at FROM advice_threads WHERE request_key=?",
+                (request_key,),
             ).fetchone()
             if existing is not None:
-                return str(existing["id"])
+                if existing["created_by"] == user_id and existing["deleted_at"] is None:
+                    return str(existing["id"])
+                request_key = None
         db.execute(
             """INSERT INTO advice_threads
             (id, title, created_by, created_at, updated_at, request_key)
@@ -237,5 +247,5 @@ def delete_thread(database: Database, thread_id: str, *, user_id: str, admin: bo
         if row is None:
             raise InvalidInputError(MISSING_ERROR)
         if not admin and row["created_by"] != user_id:
-            raise InvalidInputError("この相談を消せるのは、始めた人か管理者だけです")
+            raise ThreadPermissionError(PERMISSION_ERROR)
         db.execute("UPDATE advice_threads SET deleted_at=? WHERE id=?", (stamp, thread_id))
