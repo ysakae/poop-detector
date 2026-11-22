@@ -102,6 +102,11 @@ sheet:
   max_events: 6    # 前回の交換からの排泄の回数
   max_ratio: 0.3   # 汚れが監視範囲に占める割合
 
+# 留守中のまとめ。ホームで「外出中」にしている間だけ静止画を残す（7日で消す）。
+digest:
+  enabled: true
+  snapshot_seconds: 60   # 静止画を残す間隔（秒）
+
 # 移動・睡眠・排泄の回数が、2日続けていつもと違うときに知らせる（GUI のサーバーが確かめる）。
 trends:
   notify: true

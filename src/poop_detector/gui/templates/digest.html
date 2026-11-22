@@ -1,0 +1,20 @@
+{#- 1回の外出のまとめ。タイムラプスと、出来事の年表を並べる。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import chip, empty_state, icon, stat, when %}
+{% block content %}
+<h2>留守中のまとめ</h2>
+<p>{{ when(start) }} 〜 {{ when(end) }}（{{ length }}）{% if ongoing %} {{ chip("外出中", "warn") }}{% endif %}</p>
+<div class="stats">{{ stat("出来事", digest.items | length, "件", "paw") }}{% if asleep %}{{ stat("寝ていた時間", asleep, "", "user") }}{% endif %}</div>
+{% if frames %}<figure class="digest-video"><video controls preload="metadata" playsinline src="/digest-video?id={{ digest.period.id }}"></video><figcaption>静止画 {{ frames }}枚のタイムラプス（1分ごとの静止画が、1時間で約5秒）</figcaption></figure>
+{% else %}<p class="note">この外出の静止画はありません（監視が動いていなかったか、7日を過ぎて消えました）。</p>{% endif %}
+<section class="card" aria-labelledby="digest-items">
+<h3 id="digest-items">出来事</h3>
+{% if digest.items %}<ul class="timeline">
+{%- for item in digest.items -%}
+<li>{{ icon(item.icon) }}<span class="timeline-what">{{ item.text }}</span><a class="timeline-time" href="{{ item.url }}">{{ when(item.when) }}</a></li>
+{%- endfor -%}
+</ul>
+{% else %}<p>この間の記録・検知・動画はありません。</p>{% endif %}
+</section>
+<p class="note"><a href="/digest">ほかの外出のまとめ</a></p>
+{% endblock %}

@@ -238,3 +238,4 @@ main table{display:block;overflow-x:auto;max-width:100%}main th{white-space:nowr
 .floor-objects{list-style:none;margin:0;padding:0;display:grid;gap:14px}.floor-objects li.selected{outline:2px solid var(--focus)}.floor-objects img{display:block;max-width:100%;border-radius:var(--radius-small)}.floor-labels{display:flex;flex-wrap:wrap;gap:8px}
 .trends th,.trends td{white-space:nowrap;text-align:left}.trends small{margin-left:4px;color:var(--muted)}
 .presence-list{list-style:none;margin:0;padding:0;display:grid;gap:14px}.away-toggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px}.away-toggle p{margin:0}
+.digest-video video{display:block;width:100%;max-height:62vh;background:var(--media-bg)}

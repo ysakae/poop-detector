@@ -10,7 +10,7 @@ import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 from urllib.parse import urlencode, urlsplit
@@ -20,8 +20,10 @@ from ..detection.roi import ROI, outline
 from ..features.activity_map import ActivityLayout
 from ..features.tray_registration import REGISTRATION_MESSAGES, TrayRegistration
 from ..records.absences import Absences, AwayMode
+from ..records.away_periods import AwayPeriods
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow
 from ..records.floor_objects import FloorObjects
+from ..timezones import local_now
 from ..video.clips import CLIP_LABELS
 from ..video.thumbnails import ensure_thumbnail
 from .access import expired_cookie, session_ids
@@ -61,6 +63,8 @@ if TYPE_CHECKING:
     from .exchange import Exchange as Handler
 
 ASSETS = Path(__file__).with_name("static")
+# 外出から戻ってこの時間の間は、ホームに留守中のまとめの入口を出す。
+DIGEST_HOME_HOURS = 24
 # 管理の画面を /manage の下へまとめる前の URL（#86）。古いブックマークを新しい場所へ移す。
 MOVED_PAGES = {
     "/clips/storage": "/manage/storage",
@@ -168,6 +172,12 @@ def home_page(handler: "Handler", _query: Query) -> None:
     floor = FloorObjects(app.store.database, app.root).pending_count()
     trends = [] if app.manual_only else yesterday_notes(app)
     away = AwayMode(app.store.database).since() is not None
+    finished = AwayPeriods(app.store.database).latest_finished()
+    recent = (
+        finished is not None
+        and finished.ended_at is not None
+        and (local_now() - finished.ended_at < timedelta(hours=DIGEST_HOME_HOURS))
+    )
     absent = next((a for a in Absences(app.store.database).list(1) if a.ended_at is None), None)
     handler.respond(
         200,
@@ -183,6 +193,7 @@ def home_page(handler: "Handler", _query: Query) -> None:
             floor_pending=floor,
             trend_notes=trends,
             away=away,
+            digest_id=finished.id if recent and finished is not None else None,
             absent_since=absent.started_at.isoformat() if absent else None,
         ),
     )

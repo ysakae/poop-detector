@@ -770,3 +770,20 @@ def test_v35_database_keeps_trend_notices_and_adds_absences(tmp_path):
         assert db.execute("SELECT COUNT(*) FROM absences").fetchone()[0] == 0
         with pytest.raises(sqlite3.IntegrityError):
             db.execute("INSERT INTO away_mode (id) VALUES (2)")
+
+
+def test_v36_database_keeps_away_mode_and_opens_the_current_period(tmp_path):
+    path = tmp_path / "away-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:36]:
+            migration(db)
+        db.execute("PRAGMA user_version = 36")
+        db.execute(
+            "INSERT INTO away_mode (id, away_since, changed_by) "
+            "VALUES (1, '2026-11-22T00:00:00+00:00', '家族')"
+        )
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        row = db.execute("SELECT started_at, ended_at, started_by FROM away_periods").fetchone()
+        assert tuple(row) == ("2026-11-22T00:00:00+00:00", None, "家族")

@@ -293,6 +293,13 @@ def standard_extensions(
             extensions.append(_floor_extension(floor, roi, config, notifier, predict))
         if floor is not None and config.presence_enabled:
             extensions.append(_presence_extension(floor, config, notifier, predict))
+    if config.digest_enabled:
+        from ..records.away_periods import AwayPeriods
+        from .digest import DigestSnapshots, SnapshotExtension
+
+        periods = AwayPeriods(events_database(config.data_dir))
+        snapshots = DigestSnapshots(config.data_dir)
+        extensions.append(SnapshotExtension(periods, snapshots, config.digest_snapshot_seconds))
     if config.sheet_enabled:
         log = SheetWearLog(events_database(config.data_dir))
         signature = scene_signature(baseline, roi)

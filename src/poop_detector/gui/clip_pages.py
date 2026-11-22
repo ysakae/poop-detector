@@ -540,6 +540,11 @@ def stream_video(handler: "Exchange", root: str | Path, clip_id: str) -> None:
     path = store.video_path(store.get(clip_id))
     if path is None:
         return handler.respond(404, "動画が見つかりません")
+    return stream_file(handler, path)
+
+
+def stream_file(handler: "Exchange", path: Path) -> None:
+    """MP4 のファイルを Range 要求に対応して返す（録画とタイムラプスで使う）。"""
     stat = path.stat()
     size = stat.st_size
     # 同じ録画を見返すときに取り直さないよう、端末に預けてもらう。書き換わったら（大きさか
@@ -548,7 +553,7 @@ def stream_video(handler: "Exchange", root: str | Path, clip_id: str) -> None:
     cache = {"Cache-Control": VIDEO_CACHE, "ETag": tag, "Accept-Ranges": "bytes"}
     if handler.headers.get("If-None-Match") == tag:
         handler.respond(304, b"", "video/mp4", cache)
-        return None
+        return
     start, end = 0, size - 1
     range_header = handler.headers.get("Range")
     if range_header:
@@ -569,12 +574,12 @@ def stream_video(handler: "Exchange", root: str | Path, clip_id: str) -> None:
                 raise ValueError
         except ValueError:
             handler.respond(416, b"", "video/mp4", {"Content-Range": f"bytes */{size}"})
-            return None
+            return
     headers = {**cache, "Content-Length": str(max(0, end - start + 1))}
     if range_header:
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
     handler.stream(206 if range_header else 200, read_range(path, start, end), "video/mp4", headers)
-    return None
+    return
 
 
 def read_range(path: Path, start: int, end: int) -> Iterator[bytes]:

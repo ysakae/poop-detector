@@ -1,0 +1,13 @@
+{#- 留守中のまとめの一覧。外出中にしていた区間を新しい順に並べる。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import chip, empty_state, when %}
+{% block content %}
+<h2>留守中のまとめ</h2>
+<p class="note">ホームで「外出中にする」を押してから「在宅に戻す」までの間の出来事と、1分ごとの静止画のタイムラプスです。静止画は7日で消えます。</p>
+{% if rows %}<ul class="timeline">
+{%- for row in rows -%}
+<li><span class="timeline-what"><a href="/digest?id={{ row.id }}">{{ when(row.start) }} 〜 {% if row.end %}{{ when(row.end) }}{% else %}{{ chip("外出中", "warn") }}{% endif %}</a></span></li>
+{%- endfor -%}
+</ul>
+{% else %}{{ empty_state("留守中のまとめはまだありません", "出かけるときにホームで「外出中にする」を押すと、帰ってから見られます。") }}{% endif %}
+{% endblock %}

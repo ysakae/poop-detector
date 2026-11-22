@@ -335,6 +335,22 @@ SETTINGS: tuple[Setting, ...] = (
         "1〜240 の数（分。外出中に不在がこの時間続いたら知らせる）",
     ),
     Setting(
+        "digest_enabled",
+        "digest",
+        "enabled",
+        bool,
+        _always,
+        "true または false（外出中の間だけ静止画を残し、留守中のまとめを作る）",
+    ),
+    Setting(
+        "digest_snapshot_seconds",
+        "digest",
+        "snapshot_seconds",
+        float,
+        _number(10, 600),
+        "10〜600 の数（秒。外出中に静止画を残す間隔）",
+    ),
+    Setting(
         "trends_notify",
         "trends",
         "notify",
@@ -619,6 +635,8 @@ class Config:
     sheet_max_ratio: float = 0.3
     floor_notify: bool = True
     trends_notify: bool = True
+    digest_enabled: bool = True
+    digest_snapshot_seconds: float = 60
     presence_min_minutes: float = 3
     presence_away_minutes: float = 10
     dog_enabled: bool = False
