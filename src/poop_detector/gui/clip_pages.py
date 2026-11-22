@@ -314,7 +314,7 @@ def render_clips(
     queue は確認待ちの列。選んだ動画が列にあれば、どこから開いても残りの件数の帯を出し、
     保存すると次の件へ進む。focused は確認待ちから開いたとき（一覧を出さず、その件だけを見せる）。
     """
-    from .pages import APP_TITLE, local_time
+    from .pages import APP_TITLE
 
     store = ClipStore(root)
     rows = store.list(include_assessments=True)
@@ -353,7 +353,7 @@ def render_clips(
                 cast("Mapping[str, Any] | None", raw_assessment), row["label"] is not None
             ),
             form=form,
-            confirmation=confirmation_info(store, row, local_time, form["location"])
+            confirmation=confirmation_info(store, row, form["location"])
             if row["status"] == "ready"
             else None,
             benchmark=benchmark_form(store, row, candidates.get(row["id"])),
@@ -492,10 +492,15 @@ def render_storage(
     )
 
 
+def short_time(value: str | None) -> str:
+    """一覧と同じ短い時刻（今日・きのう・月日と時分）。空なら空文字。"""
+    when = list_time(value)
+    return when.text if when else ""
+
+
 def confirmation_info(
     store: ClipStore,
     clip: Mapping[str, Any],
-    local_time: Callable[[str | None], str],
     location: str | None,
 ) -> dict[str, Any]:
     """動画のラベルと一緒に、排泄の確定記録を保存する欄。保存先の記録を選ばせる。"""
@@ -516,7 +521,8 @@ def confirmation_info(
                 "location": known_location,
                 "selected": record["id"] == original and not disabled,
                 "disabled": disabled,
-                "time": local_time(record["actual_start"] or record["timestamp"]),
+                # 選択肢は狭い画面でも欄に収まるよう、一覧と同じ短い時刻（秒なし）にする。
+                "time": short_time(record["actual_start"] or record["timestamp"]),
                 "label": label,
             }
         )
