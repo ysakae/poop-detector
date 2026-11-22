@@ -170,3 +170,28 @@ def test_retry_refuses_while_another_answer_is_pending(database):
     with pytest.raises(InvalidInputError, match="前の質問の回答を待っています"):
         advice.retry(database, failed.id)
     assert advice.messages(database, thread_id)[1].status == "failed"
+
+
+def test_delete_permission_error_has_its_own_type(database):
+    # 画面は文言ではなく型で 403 を決める。
+    mine = start(database)
+    with pytest.raises(advice.ThreadPermissionError):
+        advice.delete_thread(database, mine, user_id="b", admin=False)
+    # 見つからないときは権限の誤りではない。
+    with pytest.raises(InvalidInputError) as missing:
+        advice.delete_thread(database, "none", user_id="a", admin=False)
+    assert not isinstance(missing.value, advice.ThreadPermissionError)
+
+
+def test_request_key_only_reuses_my_live_thread(database):
+    mine = start(database, request_key="k1", now=T0)
+    # ほかの人が同じキーで送っても、その人の会話へ移さない。
+    other = advice.start_thread(
+        database, title="別", question="q", user_id="b", basis="", request_key="k1", now=T0
+    )
+    assert other != mine
+    # 消した会話へは移さず、新しい会話を始める。
+    advice.delete_thread(database, mine, user_id="a", admin=False)
+    again = start(database, request_key="k1", now=T0)
+    assert again not in (mine, other)
+    assert {t.id for t in advice.threads(database)} == {other, again}
