@@ -51,6 +51,7 @@ PURPOSE_NAMES = {
     "benchmark": "判定器の比較",
     "advice": "ごはんの相談",
     "food_lookup": "フードのカロリー探し",
+    "floor": "床の候補の判定",
 }
 
 

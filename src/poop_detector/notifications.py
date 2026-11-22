@@ -135,6 +135,15 @@ class ToiletNotifier:
         )
         return self._display(message, path="/trends?" + urlencode({"day": day.isoformat()}))
 
+    def send_floor_judgement(self, label: str, object_id: str, repeat: int) -> bool:
+        """判定器が床の候補を嘔吐・下痢らしい跡としたことを知らせる。repeat は24時間での回数。"""
+        again = f"24時間で{repeat}回目です。" if repeat > 1 else ""
+        message = (
+            f"{self.owner}サークルの床に、{label}らしい跡があります（判定器による）。"
+            f"{again}画像を確かめ、続くときは獣医師に相談してください。"
+        )
+        return self._display(message, path="/floor?" + urlencode({"id": object_id}))
+
     def send_absence(self, since: datetime, minutes: float) -> bool:
         """外出中に、犬がサークルにいない時間が続いていることを知らせる。"""
         start = since.astimezone().strftime("%H:%M")

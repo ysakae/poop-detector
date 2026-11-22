@@ -27,13 +27,13 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `features.sleep_store.SleepStore`：睡眠の記録（`sleep_minutes`・`sleep_detection_hours`）
   - `records.foods`・`records.advice`・`records.profile`：ごはんの量の目安と相談の台帳（`foods`：フードのカロリー、`food_lookups`：カロリー探しの依頼、`advice_threads`・`advice_messages`：家族で共有する相談の会話、`pet_profile`：犬種・体格・成犬時の予想体重・去勢の有無・主に食べているフード）。どれも秘密ではないので `SECRET_TABLES` には入れず、バックアップに含める
   - `records.sheet_wear.SheetWearLog`：シートの汚れの積み重なり（`sheet_wear`）。数え直しは、自動の行（`reset`）とシート交換のお世話の記録の新しいほうから
-  - `records.floor_objects.FloorObjects`：床の候補と人のラベル（`floor_objects`）。枠を描いた画像は `floor-objects/` に置き、バックアップの `ALLOWED` に入れる
+  - `records.floor_objects.FloorObjects`：床の候補と人のラベル（`floor_objects`）。判定器の結果（`judge_status`・`judge_label`・`judge_reason`。版38）も同じ行に持つ。枠を描いた画像は `floor-objects/` に置き、バックアップの `ALLOWED` に入れる
   - `features.daily_trends.TrendNotices`：いつもと違う日が続いたことを知らせた（日, 指標）（`trend_notices`）
   - `records.absences.Absences`・`AwayMode`：犬がサークルにいなかった区間と人のラベル（`absences`）、家族の「外出中」の切り替え（`away_mode`）
   - `records.away_periods.AwayPeriods`：家族が外出中にしていた区間（`away_periods`）。外出中の切り替え（`AwayMode.set_away`）が同じトランザクションで始め、閉じる
   - `video.clips.ClipStore`：動画の保存要求と状態
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
-  - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否と失敗の種類だけ。用途は `review`・`benchmark` に加えて、相談の `advice` とカロリー探しの `food_lookup`）
+  - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否と失敗の種類だけ。用途は `review`・`benchmark` に加えて、相談の `advice`、カロリー探しの `food_lookup`、床の候補の判定の `floor`）
   - `video.clip_reviews.CirclingReviews`：旋回候補
   - `video.clip_screenings.ScreeningStore`：判定の前のふるい分けの指標（`clip_screenings`。記録だけで、判定には使わない）
   - `video.clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
@@ -186,6 +186,10 @@ OpenCV のネットはスレッド間で共有しないので、`ClipScreener` �
 日ごとの移動（行動マップのマス目の通過回数を、観測できた時間から1日分に直す）・睡眠の時間（1日の80%以上を観測できた日）・排便と排尿の回数（確定記録）を `gather` が集めます。行動マップのデータベースがなければ作りません。`deviation` は、その日より前の `USUAL_DAYS`（14日）のうち値のある日の中央値と、散らばり（中央絶対偏差の `MAD_SCALE` 倍・指標ごとの下限・中央値の `SPREAD_RATIO` 倍の大きいほう）から外れの度合いを求め、`THRESHOLD` を超えた日に印を付けます。値のある日が `MIN_DAYS` に満たないうちは判断しません。
 
 知らせるのは GUI のサーバーです（`commands/context.trend_watch`。`gui` と `run --gui` で、監視の停止の見張りと同じ通知先を使う）。`TREND_CHECK_SECONDS` ごとに、昨日とおとといが同じ指標・同じ向きに外れていれば `ToiletNotifier.send_trend` で一度だけ知らせ、`trend_notices` に残します。送れなかったときは残さず、次の確認でまた試します。画面は `gui/trends_page.py`・`gui/trends_routes.py`（`/trends`）です。
+
+## 床の候補の判定（`features/floor_judge.py`）
+
+`floor.judge` を有効にすると、GUI のサーバーの見張り（`commands/context.floor_judge_watch`。`gui` と `run --gui` で、監視の停止の見張りと同じ通知先を使う）が `FLOOR_JUDGE_SECONDS` ごとに `FloorJudgeWorker.poll_once` を呼びます。`FloorObjects.claim_unjudged` が、`RESUME_HOURS` 以内に見つけた未判定の候補を `BEGIN IMMEDIATE` の中で1件 `running` にして取り出し、`JUDGE_STALE_SECONDS` を過ぎた `running` は `failed` にします。判定器には全体の画像と枠の周りの拡大を渡し、`FLOOR_SCHEMA` に沿ったラベルと根拠を受け取ります。呼び出しは `judge_runs` に用途 `floor` で残し、1時間に `HOURLY_LIMIT` 回までに抑えます（動画の判定の上限の `REVIEW_PURPOSES` には入れない）。嘔吐・下痢のときだけ `ToiletNotifier.send_floor_judgement` で知らせます。作業用の一時フォルダー `floor-work/` はデータの保存先に作り、バックアップに入れません。
 
 ## 監視の停止とカメラの不調の見張り
 

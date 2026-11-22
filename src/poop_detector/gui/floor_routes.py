@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from ..records.floor_objects import FLOOR_LABELS, FloorObjects
+from ..records.floor_objects import FLOOR_LABELS, FloorObject, FloorObjects
 from .assets import IMAGE_CACHE
 from .list_time import list_time
 from .pages import Query
@@ -14,10 +14,22 @@ if TYPE_CHECKING:
     from .server import GuiApp
 
 FLOOR_PAGE = "/floor"
+JUDGE_LABEL_TEXT = {**FLOOR_LABELS, "unknown": "分からない"}
 
 
 def floor_objects(app: "GuiApp") -> FloorObjects:
     return FloorObjects(app.store.database, app.root)
+
+
+def _judge_text(row: FloorObject) -> str:
+    """判定器の結果の短い表示（判定していなければ空）。"""
+    if row.judge_status == "running":
+        return "判定器：判定中"
+    if row.judge_status == "failed":
+        return "判定器：判定できませんでした"
+    if row.judge_label:
+        return f"判定器：{JUDGE_LABEL_TEXT.get(row.judge_label, row.judge_label)}"
+    return ""
 
 
 @get(FLOOR_PAGE)
@@ -29,6 +41,8 @@ def floor_page(handler: "Handler", query: Query) -> None:
             "when": list_time(row.detected_at),
             "label": FLOOR_LABELS.get(row.label or ""),
             "percent": f"{row.area_ratio:.1%}",
+            "judge": _judge_text(row),
+            "judge_reason": row.judge_reason or "",
         }
         for row in floor_objects(handler.app).list()
     ]
