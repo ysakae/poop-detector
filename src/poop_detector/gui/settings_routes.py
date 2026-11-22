@@ -48,6 +48,7 @@ SECTION_TITLES = {
     "sleep": "睡眠の記録",
     "watchdog": "監視の停止・カメラの不調の通知",
     "sheet": "シートの交換どき",
+    "floor": "床の候補",
     "reentry": "排泄後の再侵入の見守り",
     "review": "動画の自動判定",
     "gui": "GUI",

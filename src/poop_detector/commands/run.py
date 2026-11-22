@@ -63,6 +63,7 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
         detect_outside=args.detect_outside,
         dog=args.dog,
         sleep=args.sleep,
+        floor_objects=args.floor_objects,
     )
     context = replace(context, config=check_monitor_features(config))
     config = context.config
@@ -82,12 +83,15 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
     )
 
 
-def load_activity_recorder(context: CommandContext) -> ActivityRecorder:
+def load_activity_layout(context: CommandContext) -> ActivityLayout:
     try:
-        layout = ActivityLayout.load(context.root)
+        return ActivityLayout.load(context.root)
     except (OSError, ValueError, TypeError, KeyError):
         raise CommandError("先に setup-activity-map で床面を登録してください") from None
-    return ActivityRecorder(ActivityStore(context.root), layout)
+
+
+def load_activity_recorder(context: CommandContext) -> ActivityRecorder:
+    return ActivityRecorder(ActivityStore(context.root), load_activity_layout(context))
 
 
 def judge_source(config_path: str, config: Config, judge: "VideoJudge") -> "JudgeSource":
@@ -200,6 +204,8 @@ def watch(
 ) -> int:
     """監視に必要なものを開き、終わったら逆順に閉じる。"""
     config = context.config
+    # 床の候補は、行動マップと同じ床面の登録を使う。
+    floor = load_activity_layout(context).roi if config.floor_objects_enabled else None
     with ExitStack() as stack:
         if activity is not None:
             stack.enter_context(activity.store.recording_lock())
@@ -289,6 +295,7 @@ def watch(
                 outside_roi=outside_roi,
                 activity_map=activity,
                 sleep=sleep,
+                floor=floor,
             )
             return [*extensions, *watchdog]
 

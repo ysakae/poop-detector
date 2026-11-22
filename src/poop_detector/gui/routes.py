@@ -20,6 +20,7 @@ from ..detection.roi import ROI, outline
 from ..features.activity_map import ActivityLayout
 from ..features.tray_registration import REGISTRATION_MESSAGES, TrayRegistration
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow
+from ..records.floor_objects import FloorObjects
 from ..video.clips import CLIP_LABELS
 from ..video.thumbnails import ensure_thumbnail
 from .access import expired_cookie, session_ids
@@ -162,6 +163,7 @@ def home_page(handler: "Handler", _query: Query) -> None:
     pending = len(review_items(app.store, app.clips))
     config = Config.load(app.config_path) if app.config_path is not None else Config()
     sheet = None if app.manual_only else sheet_summary(app.store.database, config)
+    floor = FloorObjects(app.store.database, app.root).pending_count()
     handler.respond(
         200,
         render_home(
@@ -173,6 +175,7 @@ def home_page(handler: "Handler", _query: Query) -> None:
             token=handler.csrf,
             recorded=recorded,
             sheet=sheet,
+            floor_pending=floor,
         ),
     )
 

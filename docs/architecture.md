@@ -13,7 +13,7 @@
 | `records/` | 中核 | 検知イベントと排泄の記録の台帳、集計、CSV の書き出しと期間の集計（`export.py`）、バックアップと復元（`backup.py`）、SQLite の接続とスキーマの版 |
 | `video/` | 中核・任意 | 動画の台帳・録画・保持（中核）、動画の自動判定と判定器（任意） |
 | `features/` | 任意 | 犬の検出、見守り通知、トレー追従、行動マップ、睡眠の記録 |
-| `experimental/` | 実験的 | トレー外検知（`outside.py`）、旋回分析（`circling.py`）、軌跡の特徴量（`trajectory.py`）と旋回の比較（`circling_compare.py`）、判定の前のふるい分けの指標（`screening.py`） |
+| `experimental/` | 実験的 | トレー外検知（`outside.py`）、床の候補（`floor_objects.py`）、旋回分析（`circling.py`）、軌跡の特徴量（`trajectory.py`）と旋回の比較（`circling_compare.py`）、判定の前のふるい分けの指標（`screening.py`） |
 | `commands/`・`gui/` | — | CLI のサブコマンドと、GUI |
 
 最上位には、設定（`config.py`）、通知（`notifications.py`）、画像の型（`frames.py`）、時刻（`timezones.py`）、対応 OS の判定（`platform_support.py`）、CLI の入口（`main.py`）を置いています。監視ループの本体（`detection.monitoring.Monitor`）は、任意・実験的な機能に依存しません。それらは `MonitorExtension` として差し込み、`features/monitoring.py` の `standard_extensions` が設定に応じて組み立てます。検知ループ自身が通知先に求めるのは、差分検知を伝える `send` だけです。
@@ -27,6 +27,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `features.sleep_store.SleepStore`：睡眠の記録（`sleep_minutes`・`sleep_detection_hours`）
   - `records.foods`・`records.advice`・`records.profile`：ごはんの量の目安と相談の台帳（`foods`：フードのカロリー、`food_lookups`：カロリー探しの依頼、`advice_threads`・`advice_messages`：家族で共有する相談の会話、`pet_profile`：犬種・体格・成犬時の予想体重・去勢の有無・主に食べているフード）。どれも秘密ではないので `SECRET_TABLES` には入れず、バックアップに含める
   - `records.sheet_wear.SheetWearLog`：シートの汚れの積み重なり（`sheet_wear`）。数え直しは、自動の行（`reset`）とシート交換のお世話の記録の新しいほうから
+  - `records.floor_objects.FloorObjects`：床の候補と人のラベル（`floor_objects`）。枠を描いた画像は `floor-objects/` に置き、バックアップの `ALLOWED` に入れる
   - `video.clips.ClipStore`：動画の保存要求と状態
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
   - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否と失敗の種類だけ。用途は `review`・`benchmark` に加えて、相談の `advice` とカロリー探しの `food_lookup`）
@@ -88,6 +89,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `ActivityExtension` | `--activity-map` | 位置合わせ前の映像で犬の位置を記録する。中断は接続の途切れだけで区切る |
 | `SleepExtension` | `--sleep` | 位置合わせ前の映像で犬の在室と静止を1秒ごとに観測し、1分ごとの睡眠の状態を記録する。犬検出の推論は行動マップと共有する（`SharedPredict`）。中断は接続の途切れだけで区切る |
 | `SheetWearExtension` | `sheet.enabled`（既定で有効） | 通知済み状態の更新のたびに汚れの割合（`IncrementalDetector.wear_ratio`）を記録し、交換どきを一度だけ知らせる（`features/sheet_wear.py`） |
+| `FloorObjectExtension` | `--floor-objects` | 位置合わせ前の映像で、犬のいない場面の背景と比べて床に新しく現れて動かない物を候補にし、記録して知らせる（`experimental/floor_objects.py`）。犬検出の推論は行動マップ・睡眠と共有する |
 | `CameraWatchdogExtension` | `watchdog.enabled`（既定で有効） | 位置合わせ前の映像が届かない時間を数え、カメラの不調として知らせる（`features/watchdog.py`） |
 
 新しい機能は `monitor(..., extensions=[...])` に渡せば、`Monitor` を変えずに足せます。
@@ -201,6 +203,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/pages.py`・`gui/clip_pages.py`・`gui/activity_page.py`・`gui/sleep_page.py` | 画面に出す値を整え、テンプレートに渡す（ホーム、記録と記録の詳細、動画、行動マップ、睡眠の草） |
 | `gui/advice_routes.py`・`gui/advice_page.py`・`gui/advice_worker.py` | ごはんの目安と相談（`/advice`・`/advice/foods`）。ルートは、プロフィールの保存・フードの登録と停止・相談の質問・再質問・削除・状態の問い合わせを受け付ける。`advice_page.py` が画面の値（目安・実績・会話）とホームの「今日の目安」（`today_grams`）を整え、`advice_worker.py` が GUI の稼働中に作業スレッドを動かす |
 | `gui/markdown_text.py` | AI の回答の Markdown を、許したタグと https のリンクだけの HTML にする（`Markup` を作る唯一の場所） |
+| `gui/floor_routes.py` | 床の候補（`/floor`）の一覧・画像・ラベルの保存 |
 | `gui/clip_routes.py` | 録画要求、ラベル付け、確定、保護、評価候補の選択、録画整理の各 POST を受け付ける |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル（先頭にデザインの変数） |
 | `gui/templating.py` | テンプレートの環境（自動エスケープ、`StrictUndefined`）。見ている人（`VIEWER`）から共通の枠の値を渡す |

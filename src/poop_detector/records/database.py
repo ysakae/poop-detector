@@ -683,6 +683,23 @@ def migrate_to_v33(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v34(db: sqlite3.Connection) -> None:
+    """床に新しく現れた物の候補（実験的）と、人のラベルを記録する表を追加する。"""
+    db.execute(
+        """CREATE TABLE floor_objects (
+            id TEXT PRIMARY KEY,
+            detected_at TEXT NOT NULL,
+            x1 REAL NOT NULL, y1 REAL NOT NULL, x2 REAL NOT NULL, y2 REAL NOT NULL,
+            area_ratio REAL NOT NULL,
+            label TEXT CHECK(label IN ('foreign', 'vomit', 'diarrhea', 'toy', 'false')),
+            labeled_at TEXT,
+            labeled_by TEXT,
+            notified_at TEXT
+        )"""
+    )
+    db.execute("CREATE INDEX floor_objects_by_time ON floor_objects(detected_at)")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -718,6 +735,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v31,
     migrate_to_v32,
     migrate_to_v33,
+    migrate_to_v34,
 )
 LATEST_VERSION = len(MIGRATIONS)
 
