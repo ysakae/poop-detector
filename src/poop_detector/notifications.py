@@ -135,6 +135,22 @@ class ToiletNotifier:
         )
         return self._display(message, path="/trends?" + urlencode({"day": day.isoformat()}))
 
+    def send_absence(self, since: datetime, minutes: float) -> bool:
+        """外出中に、犬がサークルにいない時間が続いていることを知らせる。"""
+        start = since.astimezone().strftime("%H:%M")
+        message = (
+            f"外出中ですが、{self.owner}姿が{start}から約{minutes:.0f}分サークルに見えません。"
+            "脱走していないか確かめてください。"
+        )
+        return self._display(message, path="/presence")
+
+    def send_return(self, minutes: float) -> bool:
+        """外出中に知らせた不在のあと、サークルに戻ったことを知らせる。"""
+        return self._display(
+            f"{self.owner}姿がサークルに戻りました。約{minutes:.0f}分見えませんでした。",
+            path="/presence",
+        )
+
     def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> Delivery:
         detail, risk = {
             "reentry": ("未回収の排泄候補があるトレーに再侵入", "MEDIUM"),

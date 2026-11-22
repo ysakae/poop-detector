@@ -65,6 +65,7 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
         dog=args.dog,
         sleep=args.sleep,
         floor_objects=args.floor_objects,
+        presence=args.presence,
     )
     context = replace(context, config=check_monitor_features(config))
     config = context.config
@@ -205,8 +206,9 @@ def watch(
 ) -> int:
     """監視に必要なものを開き、終わったら逆順に閉じる。"""
     config = context.config
-    # 床の候補は、行動マップと同じ床面の登録を使う。
-    floor = load_activity_layout(context).roi if config.floor_objects_enabled else None
+    # 床の候補と不在の記録は、行動マップと同じ床面の登録を使う。
+    uses_floor = config.floor_objects_enabled or config.presence_enabled
+    floor = load_activity_layout(context).roi if uses_floor else None
     with ExitStack() as stack:
         if activity is not None:
             stack.enter_context(activity.store.recording_lock())

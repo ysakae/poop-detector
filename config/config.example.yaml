@@ -24,6 +24,9 @@ features:
   # 床に新しく現れて動かない物（異物・嘔吐の跡など）の候補を記録する（実験的。
   # setup-activity-map の床面の登録が必要。犬の検出を自動で有効にする）
   floor_objects: false
+  # 犬がサークルにいない区間を記録し、外出中に続いたら知らせる（setup-activity-map の床面の
+  # 登録が必要。犬の検出を自動で有効にする）
+  presence: false
 
 # 犬の睡眠の記録（犬の検出を自動で有効にする。床面を登録していれば、その中だけで動きを見る）
 sleep:
@@ -102,6 +105,11 @@ sheet:
 # 移動・睡眠・排泄の回数が、2日続けていつもと違うときに知らせる（GUI のサーバーが確かめる）。
 trends:
   notify: true
+
+# 不在の記録（features.presence を有効にして使う）
+presence:
+  min_minutes: 3     # これより短い不在は記録しない（分）
+  away_minutes: 10   # 外出中に不在がこの時間続いたら知らせる（分）
 
 # 床の候補（実験的。features.floor_objects を有効にして使う）。false なら記録だけで通知しない。
 floor:

@@ -19,6 +19,7 @@ from ..config import Config
 from ..detection.roi import ROI, outline
 from ..features.activity_map import ActivityLayout
 from ..features.tray_registration import REGISTRATION_MESSAGES, TrayRegistration
+from ..records.absences import Absences, AwayMode
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES, EventRow
 from ..records.floor_objects import FloorObjects
 from ..video.clips import CLIP_LABELS
@@ -166,6 +167,8 @@ def home_page(handler: "Handler", _query: Query) -> None:
     sheet = None if app.manual_only else sheet_summary(app.store.database, config)
     floor = FloorObjects(app.store.database, app.root).pending_count()
     trends = [] if app.manual_only else yesterday_notes(app)
+    away = AwayMode(app.store.database).since() is not None
+    absent = next((a for a in Absences(app.store.database).list(1) if a.ended_at is None), None)
     handler.respond(
         200,
         render_home(
@@ -179,6 +182,8 @@ def home_page(handler: "Handler", _query: Query) -> None:
             sheet=sheet,
             floor_pending=floor,
             trend_notes=trends,
+            away=away,
+            absent_since=absent.started_at.isoformat() if absent else None,
         ),
     )
 

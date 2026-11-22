@@ -29,6 +29,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `records.sheet_wear.SheetWearLog`：シートの汚れの積み重なり（`sheet_wear`）。数え直しは、自動の行（`reset`）とシート交換のお世話の記録の新しいほうから
   - `records.floor_objects.FloorObjects`：床の候補と人のラベル（`floor_objects`）。枠を描いた画像は `floor-objects/` に置き、バックアップの `ALLOWED` に入れる
   - `features.daily_trends.TrendNotices`：いつもと違う日が続いたことを知らせた（日, 指標）（`trend_notices`）
+  - `records.absences.Absences`・`AwayMode`：犬がサークルにいなかった区間と人のラベル（`absences`）、家族の「外出中」の切り替え（`away_mode`）
   - `video.clips.ClipStore`：動画の保存要求と状態
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
   - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否と失敗の種類だけ。用途は `review`・`benchmark` に加えて、相談の `advice` とカロリー探しの `food_lookup`）
@@ -91,6 +92,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `SleepExtension` | `--sleep` | 位置合わせ前の映像で犬の在室と静止を1秒ごとに観測し、1分ごとの睡眠の状態を記録する。犬検出の推論は行動マップと共有する（`SharedPredict`）。中断は接続の途切れだけで区切る |
 | `SheetWearExtension` | `sheet.enabled`（既定で有効） | 通知済み状態の更新のたびに汚れの割合（`IncrementalDetector.wear_ratio`）を記録し、交換どきを一度だけ知らせる（`features/sheet_wear.py`） |
 | `FloorObjectExtension` | `--floor-objects` | 位置合わせ前の映像で、犬のいない場面の背景と比べて床に新しく現れて動かない物を候補にし、記録して知らせる（`experimental/floor_objects.py`）。犬検出の推論は行動マップ・睡眠と共有する |
+| `PresenceExtension` | `--presence` | 位置合わせ前の映像で、睡眠の記録と同じ `MotionSampler` で1秒ごとに在室を観測し、`left` が続いた区間を不在として記録する。外出中（`AwayMode`）に `presence.away_minutes` 続いたら一度だけ知らせ、戻ったら知らせる（`features/presence.py`） |
 | `CameraWatchdogExtension` | `watchdog.enabled`（既定で有効） | 位置合わせ前の映像が届かない時間を数え、カメラの不調として知らせる（`features/watchdog.py`） |
 
 新しい機能は `monitor(..., extensions=[...])` に渡せば、`Monitor` を変えずに足せます。
@@ -211,6 +213,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/advice_routes.py`・`gui/advice_page.py`・`gui/advice_worker.py` | ごはんの目安と相談（`/advice`・`/advice/foods`）。ルートは、プロフィールの保存・フードの登録と停止・相談の質問・再質問・削除・状態の問い合わせを受け付ける。`advice_page.py` が画面の値（目安・実績・会話）とホームの「今日の目安」（`today_grams`）を整え、`advice_worker.py` が GUI の稼働中に作業スレッドを動かす |
 | `gui/markdown_text.py` | AI の回答の Markdown を、許したタグと https のリンクだけの HTML にする（`Markup` を作る唯一の場所） |
 | `gui/trends_page.py`・`gui/trends_routes.py` | いつもとの違い（`/trends`）の表と、ホームの「昨日はいつもと違いました」 |
+| `gui/presence_routes.py` | 不在の記録（`/presence`）とラベル、家族の「外出中」の切り替え（`/away`。ホームにも出す） |
 | `gui/floor_routes.py` | 床の候補（`/floor`）の一覧・画像・ラベルの保存 |
 | `gui/clip_routes.py` | 録画要求、ラベル付け、確定、保護、評価候補の選択、録画整理の各 POST を受け付ける |
 | `gui/templates/` | Jinja2 のテンプレート。`base.html` が共通の枠、`_macros.html` が部品、`style.css` がスタイル（先頭にデザインの変数） |

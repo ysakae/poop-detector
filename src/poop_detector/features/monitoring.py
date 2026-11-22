@@ -16,7 +16,7 @@ from ..detection.monitoring import (
     MonitorExtension,
     SystemClock,
 )
-from ..detection.roi import AnyROI
+from ..detection.roi import ROI, AnyROI
 from ..detection.scene import scene_signature
 from ..frames import Frame
 from ..records.database import events_database
@@ -48,6 +48,8 @@ class MonitorNotifier(DetectionNotifier, Protocol):
     ) -> "Delivery": ...
     def send_sheet_due(self, events: int, ratio: float) -> bool: ...
     def send_floor_object(self, object_id: str, detected_at: str) -> bool: ...
+    def send_absence(self, since: datetime, minutes: float) -> bool: ...
+    def send_return(self, minutes: float) -> bool: ...
 
 
 class EarlyAlertExtension(MonitorExtension):
@@ -235,6 +237,27 @@ def _floor_extension(
     return FloorObjectExtension(watch, predict, objects, notifier, notify=config.floor_notify)
 
 
+def _presence_extension(
+    floor: AnyROI, config: Config, notifier: MonitorNotifier, predict: "Predict"
+) -> MonitorExtension:
+    import numpy as np
+
+    from ..records.absences import Absences, AwayMode
+    from .presence import PresenceExtension, PresenceTracker
+    from .sleep_motion import MotionSampler
+
+    database = events_database(config.data_dir)
+    tracker = PresenceTracker(Absences(database), AwayMode(database), config, notifier)
+    # 在室の観測は、睡眠の記録と同じく床面の中だけで犬の動きを見る（正規化した頂点）。
+    if isinstance(floor, ROI):
+        x, y, w, h = floor.x, floor.y, floor.width, floor.height
+        points = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+    else:
+        points = floor.points
+    sampler = MotionSampler(np.array(points, dtype=np.float32))
+    return PresenceExtension(tracker, sampler, predict)
+
+
 def standard_extensions(
     roi: AnyROI,
     baseline: Frame,
@@ -250,8 +273,8 @@ def standard_extensions(
     sleep: SleepRecorder | None = None,
     floor: AnyROI | None = None,
 ) -> list[MonitorExtension]:
-    """CLI の --early-alert・--dog・--detect-outside・--activity-map・--sleep・--floor-objects に
-    対応する拡張を作る。floor は床の候補に使う床面（行動マップの登録）。
+    """CLI の --early-alert・--dog・--detect-outside・--activity-map・--sleep・--floor-objects・
+    --presence に対応する拡張を作る。floor は床の候補と不在の記録に使う床面（行動マップの登録）。
     """
     extensions: list[MonitorExtension] = []
     if dog_observer is None and config.dog_enabled:
@@ -266,8 +289,10 @@ def standard_extensions(
             extensions.append(ActivityExtension(activity_map, predict))
         if sleep is not None:
             extensions.append(SleepExtension(sleep, predict))
-        if floor is not None:
+        if floor is not None and config.floor_objects_enabled:
             extensions.append(_floor_extension(floor, roi, config, notifier, predict))
+        if floor is not None and config.presence_enabled:
+            extensions.append(_presence_extension(floor, config, notifier, predict))
     if config.sheet_enabled:
         log = SheetWearLog(events_database(config.data_dir))
         signature = scene_signature(baseline, roi)

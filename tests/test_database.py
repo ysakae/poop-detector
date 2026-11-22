@@ -754,3 +754,19 @@ def test_v34_database_keeps_floor_objects_and_adds_trend_notices(tmp_path):
         db.execute("INSERT INTO trend_notices VALUES ('2026-11-20', 'sleep', 'low', 't')")
         with pytest.raises(sqlite3.IntegrityError):
             db.execute("INSERT INTO trend_notices VALUES ('2026-11-20', 'sleep', 'low', 't')")
+
+
+def test_v35_database_keeps_trend_notices_and_adds_absences(tmp_path):
+    path = tmp_path / "absence-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:35]:
+            migration(db)
+        db.execute("PRAGMA user_version = 35")
+        db.execute("INSERT INTO trend_notices VALUES ('2026-11-20', 'sleep', 'low', 't')")
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT metric FROM trend_notices").fetchone()[0] == "sleep"
+        assert db.execute("SELECT COUNT(*) FROM absences").fetchone()[0] == 0
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO away_mode (id) VALUES (2)")
