@@ -455,3 +455,48 @@ def test_frame_size_change_while_undetected_drops_location():
     bigger = np.zeros((HEIGHT * 2, WIDTH, 3), dtype=np.uint8)
     assert sampler.sample(bigger, []) == ("unknown", False)
     assert sampler.sample(bigger, []) == ("unknown", False)
+
+
+def lit(frame: np.ndarray, level: int) -> np.ndarray:
+    """カメラの夜間モードへの切り替えのように、画面全体の明るさを変える。"""
+    return np.clip(frame.astype(np.int16) // 2 + level, 0, 255).astype(np.uint8)
+
+
+def test_lighting_switch_keeps_the_sleeping_dog():
+    # カラーから赤外線の白黒への切り替えで床面の画素がほぼすべて変わっても、犬の動きとはみなさない
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    night = lit(scene(DOG), 60)
+    assert sampler.sample(night, []) == ("unknown", False)
+    # 居場所を保ち、切り替え後の映像を犬の姿として覚え直すので、静かなら still に戻る
+    for _ in range(3):
+        assert sampler.sample(night, []) == ("still", False)
+
+
+def test_repeated_exposure_steps_keep_the_dog():
+    # 切り替えのあと露出の調整で何度か明るさが跳んでも、居場所を保つ
+    sampler = MotionSampler(FLOOR)
+    settled(sampler)
+    for level in (60, 100, 70):
+        frame = lit(scene(DOG), level)
+        assert sampler.sample(frame, []) == ("unknown", False)
+        assert sampler.sample(frame, []) == ("still", False)
+
+
+def test_lighting_switch_without_location_does_not_create_one():
+    # 画面全体の明るさの変化を、そこに犬が現れた動きとみなさない
+    sampler = MotionSampler(FLOOR)
+    sampler.sample(scene(), [])
+    night = lit(scene(), 60)
+    assert sampler.sample(night, []) == ("unknown", False)
+    for _ in range(3):
+        assert sampler.sample(night, []) == ("unknown", False)
+
+
+def test_lighting_switch_after_left_keeps_left():
+    sampler = MotionSampler(FLOOR)
+    left_near_edge(sampler)
+    night = lit(scene(OUTSIDE), 60)
+    assert sampler.sample(night, []) == ("unknown", False)
+    for _ in range(3):
+        assert sampler.sample(night, []) == ("left", False)
