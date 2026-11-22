@@ -9,6 +9,7 @@
 """
 
 import sqlite3
+import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -738,6 +739,29 @@ def migrate_to_v36(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v37(db: sqlite3.Connection) -> None:
+    """家族が外出中にしていた区間（留守中のダイジェストの単位）を記録する表を追加する。
+
+    いま外出中なら、その始まりから続く区間を1つ作る。
+    """
+    db.execute(
+        """CREATE TABLE away_periods (
+            id TEXT PRIMARY KEY,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            started_by TEXT NOT NULL DEFAULT '',
+            ended_by TEXT NOT NULL DEFAULT ''
+        )"""
+    )
+    db.execute("CREATE INDEX away_periods_by_start ON away_periods(started_at)")
+    row = db.execute("SELECT away_since, changed_by FROM away_mode WHERE id = 1").fetchone()
+    if row is not None and row[0]:
+        db.execute(
+            "INSERT INTO away_periods (id, started_at, started_by) VALUES (?, ?, ?)",
+            (uuid.uuid4().hex, row[0], row[1]),
+        )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -776,6 +800,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v34,
     migrate_to_v35,
     migrate_to_v36,
+    migrate_to_v37,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

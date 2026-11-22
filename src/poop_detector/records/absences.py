@@ -1,9 +1,11 @@
 """犬がサークルにいなかった区間（不在）と、家族の「外出中」の切り替えを保存する。"""
 
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import uuid4
 
+from .away_periods import switch
 from .database import Database
 from .events import utcnow
 
@@ -100,11 +102,20 @@ class AwayMode:
     def since(self) -> datetime | None:
         """外出中ならその始まりの時刻、在宅なら None。"""
         with self.database.connect() as db:
-            row = db.execute("SELECT away_since FROM away_mode WHERE id = 1").fetchone()
+            return self._since(db)
+
+    @staticmethod
+    def _since(db: sqlite3.Connection) -> datetime | None:
+        row = db.execute("SELECT away_since FROM away_mode WHERE id = 1").fetchone()
         return datetime.fromisoformat(row[0]) if row and row[0] else None
 
     def set_away(self, away: bool, user: str = "") -> None:
+        """外出中を切り替える。外出中の区間（away_periods）も同じトランザクションで更新する。"""
         with self.database.connect() as db:
+            if (self._since(db) is not None) == away:
+                # 押し直しでは、外出中の始まりの時刻を変えない。
+                return
+            switch(db, away, user)
             db.execute(
                 "INSERT INTO away_mode (id, away_since, changed_by) VALUES (1, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET away_since=excluded.away_since, "
