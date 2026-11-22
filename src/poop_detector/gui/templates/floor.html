@@ -11,6 +11,7 @@
 <p>{{ when(row.when) }} {% if row.label %}{{ chip(row.label, "ok") }}{% else %}{{ chip("未確認", "warn") }}{% endif %}</p>
 <img src="/floor-image?id={{ row.id }}" alt="床の候補の画像（赤い枠が候補の場所）" loading="lazy">
 <p class="note">床面に占める割合 {{ row.percent }}</p>
+{% if row.judge %}<p>{{ chip(row.judge, "warn" if row.judge.endswith(("嘔吐", "下痢")) else "off") }}{% if row.judge_reason %} <span class="note">{{ row.judge_reason }}</span>{% endif %}</p>{% endif %}
 <form method="post" action="/floor/label" class="floor-labels">{{ csrf_field(token) }}
 <input type="hidden" name="id" value="{{ row.id }}">
 {%- for value, text in labels.items() -%}

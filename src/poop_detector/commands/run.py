@@ -31,6 +31,7 @@ from .context import (
     CommandError,
     build_notifier,
     camera_source,
+    floor_judge_watch,
     load_outside_roi,
     load_tray_tracker,
     monitor_watchdog,
@@ -267,6 +268,7 @@ def watch(
             # 同じプロセスの GUI からも、監視ループが止まっていないかを見張る。
             stack.enter_context(monitor_watchdog(context, notifier))
             stack.enter_context(trend_watch(context, notifier))
+            stack.enter_context(floor_judge_watch(context, notifier))
             web = WebOptions.from_config(config, port=args.gui_port)
             stack.enter_context(
                 background_gui(

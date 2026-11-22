@@ -359,6 +359,15 @@ SETTINGS: tuple[Setting, ...] = (
         "true または false（移動・睡眠・排泄の回数が2日続けていつもと違うときに知らせる）",
     ),
     Setting(
+        "floor_judge",
+        "floor",
+        "judge",
+        bool,
+        _always,
+        "true または false（床の候補の画像を判定器に渡し、嘔吐・下痢らしい跡か確かめる。"
+        "画像を提供元に送る）",
+    ),
+    Setting(
         "floor_notify",
         "floor",
         "notify",
@@ -634,6 +643,7 @@ class Config:
     sheet_max_events: int = 6
     sheet_max_ratio: float = 0.3
     floor_notify: bool = True
+    floor_judge: bool = False
     trends_notify: bool = True
     digest_enabled: bool = True
     digest_snapshot_seconds: float = 60

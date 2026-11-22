@@ -119,6 +119,9 @@ presence:
 # 床の候補（実験的。features.floor_objects を有効にして使う）。false なら記録だけで通知しない。
 floor:
   notify: true
+  # 床の候補の画像を判定器（review.provider）に渡し、嘔吐・下痢らしい跡かを確かめる。
+  # 画像を提供元に送るので既定は false。GUI のサーバー（gui か run --gui）が判定する
+  judge: false
 
 # 排泄後の再侵入。固定トレー・動画保存・登録済みの reentry-layout.json が必要。
 reentry:

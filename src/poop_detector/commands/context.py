@@ -34,6 +34,9 @@ from ..web_push import PushKeys, PushSubscriptions, WebPushNotifier, push_subjec
 logger = logging.getLogger(__name__)
 # いつもと違う日が続いていないかを確かめる間隔（秒）。
 TREND_CHECK_SECONDS = 1800
+# 床の候補を判定器で確かめる間隔（秒）と、作業用の一時フォルダー（データの保存先の下）。
+FLOOR_JUDGE_SECONDS = 60
+FLOOR_WORKDIR = "floor-work"
 
 
 class CommandError(UserError):
@@ -167,6 +170,39 @@ def trend_watch(context: CommandContext, notifier: ToiletNotifier) -> Iterator[N
         notices.notify(days, today, notifier)
 
     with watching(check, TREND_CHECK_SECONDS):
+        yield
+
+
+@contextmanager
+def floor_judge_watch(context: CommandContext, notifier: ToiletNotifier) -> Iterator[None]:
+    """GUI のサーバーの間、床の候補を判定器で確かめる（floor.judge が true のときだけ）。"""
+    config = context.config
+    if not config.floor_judge:
+        yield
+        return
+    from ..features.floor_judge import FloorJudgeWorker
+    from ..features.watchdog import watching
+    from ..records.floor_objects import FloorObjects
+    from ..video.judge_runs import JudgeRunLog
+    from ..video.providers import build_judge
+
+    database = events_database(context.root)
+    judge = build_judge(config.review_provider, config.review_model)
+    worker = FloorJudgeWorker(
+        FloorObjects(database, context.root),
+        JudgeRunLog(database),
+        lambda: (judge, config.review_provider, config.review_model or None),
+        notifier,
+        context.root / FLOOR_WORKDIR,
+        pet_name=config.pet_name,
+    )
+
+    def check() -> None:
+        # 待っている候補を、上限まで続けて判定する。
+        while worker.poll_once():
+            pass
+
+    with watching(check, FLOOR_JUDGE_SECONDS):
         yield
 
 

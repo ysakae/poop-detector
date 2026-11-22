@@ -7,7 +7,14 @@ from datetime import datetime
 from ..errors import InvalidInputError
 from ..records.events import Store
 from ..web_address import WebOptions
-from .context import CommandContext, build_notifier, monitor_watchdog, trend_watch, with_web_push
+from .context import (
+    CommandContext,
+    build_notifier,
+    floor_judge_watch,
+    monitor_watchdog,
+    trend_watch,
+    with_web_push,
+)
 
 
 def require_timezones(args: argparse.Namespace) -> None:
@@ -90,6 +97,7 @@ def gui(args: argparse.Namespace, context: CommandContext) -> int:
             notifier = with_web_push(primary, context)
             stack.enter_context(monitor_watchdog(context, notifier))
             stack.enter_context(trend_watch(context, notifier))
+            stack.enter_context(floor_judge_watch(context, notifier))
         serve(
             context.root,
             web.port,

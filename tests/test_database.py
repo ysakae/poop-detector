@@ -787,3 +787,31 @@ def test_v36_database_keeps_away_mode_and_opens_the_current_period(tmp_path):
         assert schema_version(db) == LATEST_VERSION
         row = db.execute("SELECT started_at, ended_at, started_by FROM away_periods").fetchone()
         assert tuple(row) == ("2026-11-22T00:00:00+00:00", None, "家族")
+
+
+def test_v37_database_keeps_judge_runs_and_accepts_floor_purpose(tmp_path):
+    path = tmp_path / "floor-judge-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:37]:
+            migration(db)
+        db.execute("PRAGMA user_version = 37")
+        db.execute(
+            "INSERT INTO judge_runs (provider, purpose, ran_at, failed) "
+            "VALUES ('codex', 'advice', '2026-11-22T00:00:00+00:00', 0)"
+        )
+        db.execute(
+            "INSERT INTO floor_objects (id, detected_at, x1, y1, x2, y2, area_ratio) "
+            "VALUES ('a', 't', 0, 0, 1, 1, 0.1)"
+        )
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT purpose FROM judge_runs").fetchone()[0] == "advice"
+        db.execute(
+            "INSERT INTO judge_runs (provider, purpose, ran_at, failed) VALUES ('codex', 'floor', 't', 0)"
+        )
+        assert db.execute("SELECT judge_status FROM floor_objects").fetchone()[0] is None
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("UPDATE floor_objects SET judge_label='cake'")
+        indexes = {r[1] for r in db.execute("PRAGMA index_list(judge_runs)")}
+        assert "judge_runs_by_time" in indexes
