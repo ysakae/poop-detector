@@ -713,6 +713,31 @@ def migrate_to_v35(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v36(db: sqlite3.Connection) -> None:
+    """犬がサークルにいなかった区間と、家族の「外出中」の切り替えを記録する表を追加する。"""
+    db.execute(
+        """CREATE TABLE absences (
+            id TEXT PRIMARY KEY,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            away INTEGER NOT NULL DEFAULT 0 CHECK(away IN (0, 1)),
+            interrupted INTEGER NOT NULL DEFAULT 0 CHECK(interrupted IN (0, 1)),
+            label TEXT CHECK(label IN ('walk', 'out', 'escape', 'false')),
+            labeled_at TEXT,
+            labeled_by TEXT,
+            notified_at TEXT
+        )"""
+    )
+    db.execute("CREATE INDEX absences_by_start ON absences(started_at)")
+    db.execute(
+        """CREATE TABLE away_mode (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            away_since TEXT,
+            changed_by TEXT NOT NULL DEFAULT ''
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -750,6 +775,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v33,
     migrate_to_v34,
     migrate_to_v35,
+    migrate_to_v36,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

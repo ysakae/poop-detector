@@ -126,6 +126,11 @@ def _monitor_commands(commands: CommandGroup) -> None:
         help="床に新しく現れて動かない物の候補を記録（実験的。features.floor_objects と同じ）",
     )
     run_command.add_argument(
+        "--presence",
+        action="store_true",
+        help="犬がサークルにいない区間を記録し、外出中に続いたら知らせる（features.presence と同じ）",
+    )
+    run_command.add_argument(
         "--sleep",
         action="store_true",
         help="犬の睡眠を1分ごとに記録（sleep.enabled と同じ。犬の検出を自動で有効にする）",

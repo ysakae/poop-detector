@@ -319,6 +319,22 @@ SETTINGS: tuple[Setting, ...] = (
         "0〜1 の数（汚れが監視範囲に占める割合。0 なら割合では知らせない）",
     ),
     Setting(
+        "presence_min_minutes",
+        "presence",
+        "min_minutes",
+        float,
+        _number(1, 120),
+        "1〜120 の数（分。これより短い不在は記録しない）",
+    ),
+    Setting(
+        "presence_away_minutes",
+        "presence",
+        "away_minutes",
+        float,
+        _number(1, 240),
+        "1〜240 の数（分。外出中に不在がこの時間続いたら知らせる）",
+    ),
+    Setting(
         "trends_notify",
         "trends",
         "notify",
@@ -449,6 +465,14 @@ SETTINGS: tuple[Setting, ...] = (
         bool,
         _always,
         "true または false（--detect-outside と同じ）",
+    ),
+    Setting(
+        "presence_enabled",
+        "features",
+        "presence",
+        bool,
+        _always,
+        "true または false（run --presence と同じ。床面の登録と犬の検出が必要）",
     ),
     Setting(
         "floor_objects_enabled",
@@ -595,6 +619,8 @@ class Config:
     sheet_max_ratio: float = 0.3
     floor_notify: bool = True
     trends_notify: bool = True
+    presence_min_minutes: float = 3
+    presence_away_minutes: float = 10
     dog_enabled: bool = False
     dog_fps: float = 1
     dog_confidence: float = 0.4
@@ -615,6 +641,7 @@ class Config:
     detect_outside_enabled: bool = False
     sleep_enabled: bool = False
     floor_objects_enabled: bool = False
+    presence_enabled: bool = False
     sleep_still_minutes: float = 5
     sleep_stir_seconds: float = 10
     sleep_daytime: str = "09:00-18:00"
@@ -687,6 +714,7 @@ class Config:
             "detect_outside_enabled": "トレー外検知",
             "sleep_enabled": "睡眠の記録",
             "floor_objects_enabled": "床の候補",
+            "presence_enabled": "不在の記録",
             "notifications": "通知",
         }
         return [text for attr, text in names.items() if getattr(self, attr)]
@@ -743,6 +771,7 @@ def with_flags(
     dog: bool = False,
     sleep: bool = False,
     floor_objects: bool = False,
+    presence: bool = False,
 ) -> Config:
     """コマンドラインのフラグで有効にした機能を、設定に重ねる（フラグは有効にするだけ）。"""
     return replace(
@@ -755,6 +784,7 @@ def with_flags(
         dog_enabled=config.dog_enabled or dog,
         sleep_enabled=config.sleep_enabled or sleep,
         floor_objects_enabled=config.floor_objects_enabled or floor_objects,
+        presence_enabled=config.presence_enabled or presence,
     )
 
 
@@ -782,8 +812,11 @@ def check_monitor_features(config: Config) -> Config:
         or config.detect_outside_enabled
         or config.sleep_enabled
         or config.floor_objects_enabled
+        or config.presence_enabled
     )
     if needs_dog and not config.dog_enabled:
-        logger.info("行動マップ・トレー外検知・睡眠の記録・床の候補のため、犬の検出を有効にします")
+        logger.info(
+            "行動マップ・トレー外検知・睡眠の記録・床の候補・不在の記録のため、犬の検出を有効にします"
+        )
         return replace(config, dog_enabled=True)
     return config

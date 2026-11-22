@@ -1,0 +1,26 @@
+{#- 不在の記録。犬がサークルにいなかった区間に、散歩などのラベルを付ける。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import away_toggle, chip, csrf_field, empty_state, when %}
+{% block content %}
+<h2>不在の記録</h2>
+{% if saved %}<p class="message" role="status">ラベルを保存しました。</p>{% endif %}
+{{ away_toggle(away, token, "/presence") }}
+<p class="note">犬がサークルから出ていった様子が見えてから、戻るまでの区間です。外出中に始まった区間には印が付き、続くと通知します。丸まって寝ているだけのときは数えないようにしていますが、間違えることがあります。</p>
+{% if rows %}<ul class="presence-list">
+{%- for row in rows -%}
+<li id="absence-{{ row.id }}" class="card">
+<p>{{ when(row.when) }} から {{ row.length }}
+{% if row.away %}{{ chip("外出中", "warn") }}{% endif %}
+{% if row.interrupted %}{{ chip("映像が途切れた", "off") }}{% endif %}
+{% if row.label %}{{ chip(row.label, "ok") }}{% endif %}</p>
+<form method="post" action="/presence/label" class="floor-labels">{{ csrf_field(token) }}
+<input type="hidden" name="id" value="{{ row.id }}">
+{%- for value, text in labels.items() -%}
+<button class="secondary" name="label" value="{{ value }}">{{ text }}</button>
+{%- endfor -%}
+</form>
+</li>
+{%- endfor -%}
+</ul>
+{% else %}{{ empty_state("不在の記録はまだありません", "犬がサークルから出ていくと、ここに並びます。") }}{% endif %}
+{% endblock %}

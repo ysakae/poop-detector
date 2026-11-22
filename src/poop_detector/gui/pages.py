@@ -286,6 +286,8 @@ def render_home(
     sheet: SheetSummary | None = None,
     floor_pending: int = 0,
     trend_notes: Sequence[str] = (),
+    away: bool = False,
+    absent_since: str | None = None,
 ) -> str:
     """ホーム。確認待ちの件数、今日の回数と給餌量、記録の入口、直近の確定記録、ライブ映像。
 
@@ -329,6 +331,8 @@ def render_home(
         sheet=sheet,
         floor_pending=floor_pending,
         trend_notes=list(trend_notes),
+        away=away,
+        absent=list_time(absent_since) if absent_since else None,
         timezone=timezone_label(),
     )
 

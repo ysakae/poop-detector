@@ -314,7 +314,7 @@ def test_standard_extensions_add_floor_watch_sharing_dog_inference(tmp_path):
             calls.append(1)
             return []
 
-    config = Config(data_dir=str(tmp_path), sheet_enabled=False)
+    config = Config(data_dir=str(tmp_path), sheet_enabled=False, floor_objects_enabled=True)
     built = standard_extensions(
         TRAY, floor(), config, Notifier(), None, dog_observer=Observer(), floor=FLOOR
     )
