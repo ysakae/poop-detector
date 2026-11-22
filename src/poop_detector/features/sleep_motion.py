@@ -29,6 +29,10 @@ MIN_MOTION_AREA = 24
 # 物の動き（人工画像の6×6の塊で約60画素）では移さない。昨晩の実映像では、寝返りで約80画素、
 # 歩くと数百画素の塊になった。
 MIN_RELOCATE_AREA = 72
+# 床面の画素のうちこの割合より多くが一度に変わったら、犬の動きではなく明るさの切り替え
+# （カメラの夜間モードへの切り替えや露出の調整、照明）とみなす。実映像では、夜間モードへの
+# 切り替えで床面のほぼ100%が変わり、それが約15秒の間に数回起きた。犬が歩いても1割ほど。
+LIGHTING_CHANGE_RATIO = 0.5
 # 犬の大きさを（幅, 高さ）の画面に対する割合で。動きから居場所を作るとき、寝返りの一部分だけの
 # 小さな塊を犬の大きさの枠に広げる。検出が当たれば、その枠の大きさに置き換える。
 # 既定値は、俯瞰の実映像で横になった犬の検出枠（1280×720で約260×290画素）から決めた。
@@ -164,9 +168,14 @@ class MotionSampler:
     def _without_box(
         self, gray: NDArray[Any], changed: NDArray[Any] | None, shape: tuple[int, ...]
     ) -> Presence:
+        location = self._location
+        if changed is not None and self._lighting_changed(changed):
+            # 居場所と出口は保ち、切り替え後の映像を犬の姿として覚え直す。この1秒は判断できない。
+            if location is not None:
+                self._snapshot = gray[_box_slices(location, shape, gray.shape, 0)].copy()
+            return "unknown"
         motion = None if changed is None else self._motion(changed)
         quiet = motion is not None and not motion.any()
-        location = self._location
         if location is None:
             return self._after_left(motion)
         region = _box_slices(location, shape, gray.shape, 0)
@@ -263,6 +272,11 @@ class MotionSampler:
         if motion is not None and _area(motion) >= MIN_RELOCATE_AREA and self._shape is not None:
             return self._relocate(motion, self._shape)
         return "unknown"
+
+    def _lighting_changed(self, changed: NDArray[Any]) -> bool:
+        """床面の大部分が一度に変わったか（明るさの切り替え）。"""
+        floor, _ = self._regions(changed.shape)
+        return bool(floor.any()) and float(changed[floor].mean()) > LIGHTING_CHANGE_RATIO
 
     def _gone(self, region: NDArray[Any]) -> bool:
         """最後に見えた犬の画像と比べ、枠の中の大部分が変わったか。"""
