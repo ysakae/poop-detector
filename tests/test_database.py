@@ -815,3 +815,20 @@ def test_v37_database_keeps_judge_runs_and_accepts_floor_purpose(tmp_path):
             db.execute("UPDATE floor_objects SET judge_label='cake'")
         indexes = {r[1] for r in db.execute("PRAGMA index_list(judge_runs)")}
         assert "judge_runs_by_time" in indexes
+
+
+def test_v38_database_adds_vocal_episodes(tmp_path):
+    path = tmp_path / "vocal-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:38]:
+            migration(db)
+        db.execute("PRAGMA user_version = 38")
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT COUNT(*) FROM vocal_episodes").fetchone()[0] == 0
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO vocal_episodes (started_at, ended_at, loud_seconds, peak_db) "
+                "VALUES ('t', 't', -1, 0)"
+            )

@@ -805,6 +805,20 @@ def migrate_to_v38(db: sqlite3.Connection) -> None:
     db.execute("CREATE INDEX judge_runs_by_time ON judge_runs(ran_at)")
 
 
+def migrate_to_v39(db: sqlite3.Connection) -> None:
+    """犬が鳴いていた区間を記録する表を追加する（音声そのものは保存しない）。"""
+    db.execute(
+        """CREATE TABLE vocal_episodes (
+            id INTEGER PRIMARY KEY,
+            started_at TEXT NOT NULL,
+            ended_at TEXT NOT NULL,
+            loud_seconds REAL NOT NULL CHECK(loud_seconds >= 0),
+            peak_db REAL NOT NULL
+        )"""
+    )
+    db.execute("CREATE INDEX vocal_episodes_by_start ON vocal_episodes(started_at)")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -845,6 +859,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v36,
     migrate_to_v37,
     migrate_to_v38,
+    migrate_to_v39,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

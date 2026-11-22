@@ -10,6 +10,7 @@ from ..records.absences import Absences
 from ..records.away_periods import AwayPeriod
 from ..records.events import EXCRETION_TYPES
 from ..records.floor_objects import FloorObjects
+from ..records.vocal_episodes import VocalEpisodes
 from ..timezones import local_now
 from .clip_pages import SOURCES
 from .list_time import ListTime, list_time
@@ -86,6 +87,9 @@ def _others(app: "GuiApp", start: datetime, end: datetime) -> list[TimelineItem]
             items.append(
                 _item(absence.started_at, "user", f"サークルにいない（{length}）", "/presence")
             )
+    for vocal in VocalEpisodes(app.store.database).between(start, end):
+        text = f"鳴き声（{round(vocal.loud_seconds)}秒）"
+        items.append(_item(vocal.started_at, "user", text, "/vocal"))
     for found in FloorObjects(app.store.database, app.root).list(200):
         at = _within(found.detected_at, start, end)
         if at is not None:

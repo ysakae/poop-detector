@@ -52,6 +52,7 @@ from . import (
     review_routes,  # noqa: F401
     settings_routes,  # noqa: F401
     trends_routes,  # noqa: F401
+    vocal_routes,  # noqa: F401
     weight_routes,  # noqa: F401
 )
 from .access import (

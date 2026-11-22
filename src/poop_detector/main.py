@@ -74,7 +74,10 @@ def parser() -> argparse.ArgumentParser:
 
 
 def _monitor_commands(commands: CommandGroup) -> None:
-    commands.add("check-camera", setup.check_camera, help="映像を1フレーム取得")
+    check = commands.add("check-camera", setup.check_camera, help="映像を1フレーム取得")
+    check.add_argument(
+        "--audio", action="store_true", help="映像に音声があるかも確かめる（鳴き声の記録に必要）"
+    )
     roi = commands.add("setup-roi", setup.setup_roi, help="監視領域を選択")
     roi.add_argument("--replace", action="store_true", help="既存設定を明示的に更新")
     roi.add_argument("--outside", action="store_true", help="トレーと周囲の床を囲む")
@@ -124,6 +127,11 @@ def _monitor_commands(commands: CommandGroup) -> None:
         "--floor-objects",
         action="store_true",
         help="床に新しく現れて動かない物の候補を記録（実験的。features.floor_objects と同じ）",
+    )
+    run_command.add_argument(
+        "--audio",
+        action="store_true",
+        help="カメラの音声から鳴いていた時間を記録（実験的。features.audio と同じ）",
     )
     run_command.add_argument(
         "--presence",

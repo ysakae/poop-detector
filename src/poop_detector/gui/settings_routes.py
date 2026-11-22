@@ -50,6 +50,7 @@ SECTION_TITLES = {
     "sheet": "シートの交換どき",
     "floor": "床の候補",
     "trends": "いつもとの違い",
+    "audio": "鳴き声の記録",
     "digest": "留守中のまとめ",
     "presence": "不在の記録",
     "reentry": "排泄後の再侵入の見守り",

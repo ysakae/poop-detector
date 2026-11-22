@@ -40,9 +40,19 @@ def capture_frame(context: CommandContext) -> Frame:
     return frame
 
 
-def check_camera(_args: argparse.Namespace, context: CommandContext) -> int:
+def check_camera(args: argparse.Namespace, context: CommandContext) -> int:
     frame = capture_frame(context)
     print(f"フレーム取得成功: {frame.shape[1]}x{frame.shape[0]}")
+    if getattr(args, "audio", False):
+        from ..experimental.vocal import probe_audio
+
+        codec = probe_audio(camera_source(load_connection_settings()))
+        if codec is None:
+            print(
+                "音声: 見つかりません（鳴き声の記録は使えません。カメラの音声の設定を確認してください）"
+            )
+        else:
+            print(f"音声: あり（{codec}）")
     return 0
 
 

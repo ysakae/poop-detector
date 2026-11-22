@@ -3,7 +3,7 @@
 import argparse
 import logging
 from collections.abc import Callable
-from contextlib import ExitStack
+from contextlib import AbstractContextManager, ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -67,6 +67,7 @@ def run(args: argparse.Namespace, context: CommandContext) -> int:
         sleep=args.sleep,
         floor_objects=args.floor_objects,
         presence=args.presence,
+        audio=args.audio,
     )
     context = replace(context, config=check_monitor_features(config))
     config = context.config
@@ -283,6 +284,8 @@ def watch(
                 )
             )
         watchdog = camera_watchdog(context, notifier)
+        if config.audio_enabled:
+            stack.enter_context(audio_recording(context, source, notifier))
         live = stack.enter_context(LatestCamera(open_camera(source, config), on_frame))
         live.wait_ready(config.timeout_ms / 1000 + 1)
 
@@ -330,6 +333,19 @@ def watch(
         # 自分で終了したことを残し、GUI の見張りが停止として知らせないようにする。
         preview.mark_stopped()
     return 0
+
+
+def audio_recording(
+    context: CommandContext, source: str, notifier: "ToiletNotifier"
+) -> AbstractContextManager[None]:
+    """カメラの音声から鳴いていた区間を記録する（--audio）。音声そのものは保存しない。"""
+    from ..experimental.vocal import VocalRecorder, audio_watch
+    from ..records.absences import AwayMode
+    from ..records.vocal_episodes import VocalEpisodes
+
+    database = events_database(context.root)
+    recorder = VocalRecorder(VocalEpisodes(database), AwayMode(database), notifier, context.config)
+    return audio_watch(source, recorder, context.config.audio_threshold_db)
 
 
 def judge_watchdog(context: CommandContext, notifier: "ToiletNotifier") -> "JudgeWatchdog | None":

@@ -351,6 +351,22 @@ SETTINGS: tuple[Setting, ...] = (
         "10〜600 の数（秒。外出中に静止画を残す間隔）",
     ),
     Setting(
+        "audio_threshold_db",
+        "audio",
+        "threshold_db",
+        float,
+        _number(6, 40),
+        "6〜40 の数（dB。周りの静かなときの音量よりこれだけ大きい音を鳴き声の候補にする）",
+    ),
+    Setting(
+        "audio_notify_seconds",
+        "audio",
+        "notify_seconds",
+        float,
+        _number(10, 600),
+        "10〜600 の数（秒。外出中に10分のうちこれだけ鳴いていたら知らせる）",
+    ),
+    Setting(
         "trends_notify",
         "trends",
         "notify",
@@ -490,6 +506,14 @@ SETTINGS: tuple[Setting, ...] = (
         bool,
         _always,
         "true または false（--detect-outside と同じ）",
+    ),
+    Setting(
+        "audio_enabled",
+        "features",
+        "audio",
+        bool,
+        _always,
+        "true または false（run --audio と同じ。カメラの音声から鳴いていた時間を記録する。実験的）",
     ),
     Setting(
         "presence_enabled",
@@ -645,6 +669,8 @@ class Config:
     floor_notify: bool = True
     floor_judge: bool = False
     trends_notify: bool = True
+    audio_threshold_db: float = 15
+    audio_notify_seconds: float = 60
     digest_enabled: bool = True
     digest_snapshot_seconds: float = 60
     presence_min_minutes: float = 3
@@ -670,6 +696,7 @@ class Config:
     sleep_enabled: bool = False
     floor_objects_enabled: bool = False
     presence_enabled: bool = False
+    audio_enabled: bool = False
     sleep_still_minutes: float = 5
     sleep_stir_seconds: float = 10
     sleep_daytime: str = "09:00-18:00"
@@ -743,6 +770,7 @@ class Config:
             "sleep_enabled": "睡眠の記録",
             "floor_objects_enabled": "床の候補",
             "presence_enabled": "不在の記録",
+            "audio_enabled": "鳴き声の記録",
             "notifications": "通知",
         }
         return [text for attr, text in names.items() if getattr(self, attr)]
@@ -800,6 +828,7 @@ def with_flags(
     sleep: bool = False,
     floor_objects: bool = False,
     presence: bool = False,
+    audio: bool = False,
 ) -> Config:
     """コマンドラインのフラグで有効にした機能を、設定に重ねる（フラグは有効にするだけ）。"""
     return replace(
@@ -813,6 +842,7 @@ def with_flags(
         sleep_enabled=config.sleep_enabled or sleep,
         floor_objects_enabled=config.floor_objects_enabled or floor_objects,
         presence_enabled=config.presence_enabled or presence,
+        audio_enabled=config.audio_enabled or audio,
     )
 
 
