@@ -471,6 +471,39 @@ def test_run_with_presence_requires_floor(cli_env, capsys):
     assert "setup-activity-map" in capsys.readouterr().err
 
 
+def test_check_camera_reports_audio(cli_env, capsys, monkeypatch):
+    from poop_detector.experimental import vocal
+
+    use_camera(cli_env, spot_scene()[0])
+    monkeypatch.setattr(vocal, "probe_audio", lambda source: "aac")
+    assert cli_env.run("check-camera", "--audio") == 0
+    assert "音声: あり（aac）" in capsys.readouterr().out
+    monkeypatch.setattr(vocal, "probe_audio", lambda source: None)
+    assert cli_env.run("check-camera", "--audio") == 0
+    assert "音声: 見つかりません" in capsys.readouterr().out
+    assert cli_env.run("check-camera") == 0
+    assert "音声" not in capsys.readouterr().out
+
+
+def test_run_with_audio_starts_the_audio_recording(cli_env, monkeypatch):
+    from contextlib import nullcontext
+
+    from poop_detector.commands import run
+
+    write_config(cli_env, "clips: {enabled: false}\nfeatures: {audio: true}\n")
+    use_camera(cli_env, register_scene(cli_env))
+    started = []
+
+    def audio_recording(context, source, notifier):
+        started.append(source)
+        return nullcontext()
+
+    monkeypatch.setattr(run, "audio_recording", audio_recording)
+    monkeypatch.setattr(run.Monitor, "run", lambda self, max_frames: 0)
+    assert cli_env.run("run", "--max-frames", "1") == 0
+    assert len(started) == 1
+
+
 # --- 犬検出モデル ---
 
 

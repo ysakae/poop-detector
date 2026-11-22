@@ -144,6 +144,19 @@ class ToiletNotifier:
         )
         return self._display(message, path="/floor?" + urlencode({"id": object_id}))
 
+    def send_vocal(self, loud_seconds: float, minutes: int) -> bool:
+        """外出中に、minutes 分のうち loud_seconds 秒ほど鳴いていたことを知らせる。"""
+        loud = (
+            f"約{max(1, round(loud_seconds / 60))}分"
+            if loud_seconds >= 60
+            else f"約{round(loud_seconds)}秒"
+        )
+        message = (
+            f"外出中に、{self.owner}鳴き声らしい音がこの{minutes}分で{loud}続いています。"
+            "ライブ映像で様子を確かめてください。"
+        )
+        return self._display(message, path="/vocal")
+
     def send_absence(self, since: datetime, minutes: float) -> bool:
         """外出中に、犬がサークルにいない時間が続いていることを知らせる。"""
         start = since.astimezone().strftime("%H:%M")

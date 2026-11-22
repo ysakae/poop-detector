@@ -1,0 +1,26 @@
+{#- 鳴き声の記録。カメラの音声から見つけた、鳴いていた時間を日ごとに並べる。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state, when %}
+{% block content %}
+<h2>鳴き声の記録</h2>
+<p class="note">カメラの音声で、周りより大きく鳴き声らしい音が続いた時間です（実験的な機能）。音声そのものは保存していません。テレビや掃除機、インターホンの音も数えることがあります。</p>
+<div class="card table-scroll">
+<table class="data-table trends">
+<thead><tr><th scope="col">日付</th><th scope="col">回数</th><th scope="col">鳴いていた時間</th></tr></thead>
+<tbody>
+{%- for row in days -%}
+<tr><th scope="row">{{ row.day.strftime("%m/%d") }}{% if row.day == today %}<small>（途中）</small>{% endif %}</th><td>{{ row.count }}回</td><td>{{ row.loud }}</td></tr>
+{%- endfor -%}
+</tbody>
+</table>
+</div>
+<section class="card" aria-labelledby="vocal-recent">
+<h3 id="vocal-recent">最近の鳴き声</h3>
+{% if recent %}<ul class="timeline">
+{%- for item in recent -%}
+<li><span class="timeline-what">{{ item.loud }}<small>最大 {{ item.peak }} dBFS</small></span><span class="timeline-time">{{ when(item.when) }}</span></li>
+{%- endfor -%}
+</ul>
+{% else %}{{ empty_state("鳴き声の記録はまだありません", "run --audio で監視すると、鳴いていた時間がここに並びます。") }}{% endif %}
+</section>
+{% endblock %}
