@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 from urllib.parse import urlencode, urlsplit
 
+from ..config import Config
 from ..detection.roi import ROI, outline
 from ..features.activity_map import ActivityLayout
 from ..features.tray_registration import REGISTRATION_MESSAGES, TrayRegistration
@@ -49,6 +50,7 @@ from .pages import (
 )
 from .passkeys import PasskeyError
 from .review_queue import NEXT_PAGE, review_bar, review_items
+from .sheet_page import sheet_summary
 from .sleep_page import render_sleep
 from .templating import render_template
 
@@ -158,6 +160,8 @@ def home_page(handler: "Handler", _query: Query) -> None:
         return
     app = handler.app
     pending = len(review_items(app.store, app.clips))
+    config = Config.load(app.config_path) if app.config_path is not None else Config()
+    sheet = None if app.manual_only else sheet_summary(app.store.database, config)
     handler.respond(
         200,
         render_home(
@@ -168,6 +172,7 @@ def home_page(handler: "Handler", _query: Query) -> None:
             manual_only=app.manual_only,
             token=handler.csrf,
             recorded=recorded,
+            sheet=sheet,
         ),
     )
 

@@ -697,3 +697,22 @@ def test_v31_database_gains_the_records_index_and_keeps_events(tmp_path):
         assert db.execute("SELECT id FROM events").fetchone()[0] == "e1"
         indexes = {r[1] for r in db.execute("PRAGMA index_list(events)")}
         assert "events_records_by_start" in indexes
+
+
+def test_v32_database_keeps_care_entries_and_adds_sheet_wear(tmp_path):
+    path = tmp_path / "sheet-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:32]:
+            migration(db)
+        db.execute("PRAGMA user_version = 32")
+        db.execute(
+            "INSERT INTO care_entries (id, at, kind, actor, note) "
+            "VALUES ('c1', '2026-11-01T00:00:00+00:00', 'sheet', '家族', '')"
+        )
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT id FROM care_entries").fetchone()[0] == "c1"
+        assert db.execute("SELECT COUNT(*) FROM sheet_wear").fetchone()[0] == 0
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO sheet_wear (at, kind, ratio) VALUES ('t', 'event', 2)")

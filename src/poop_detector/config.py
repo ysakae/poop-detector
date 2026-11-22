@@ -294,6 +294,30 @@ SETTINGS: tuple[Setting, ...] = (
         lambda v: not v or all(h in {str(i) for i in range(24)} for h in v.split(",")),
         "0〜23の時をカンマ区切りにした文字列",
     ),
+    Setting(
+        "sheet_enabled",
+        "sheet",
+        "enabled",
+        bool,
+        _always,
+        "true または false（シートの交換どきを知らせる）",
+    ),
+    Setting(
+        "sheet_max_events",
+        "sheet",
+        "max_events",
+        int,
+        _number(0, 100),
+        "0〜100 の整数（前回の交換からの排泄の回数。0 なら回数では知らせない）",
+    ),
+    Setting(
+        "sheet_max_ratio",
+        "sheet",
+        "max_ratio",
+        float,
+        _number(0, 1),
+        "0〜1 の数（汚れが監視範囲に占める割合。0 なら割合では知らせない）",
+    ),
     Setting("dog_enabled", "dog", "enabled", bool, _always, "true または false"),
     Setting("dog_fps", "dog", "fps", float, _number(0.2, 10), "0.2〜10 の数"),
     Setting(
@@ -542,6 +566,9 @@ class Config:
     reentry_uncollected_minutes: float = 30
     reentry_notice: str = "medium"
     reentry_quiet_hours: str = ""
+    sheet_enabled: bool = True
+    sheet_max_events: int = 6
+    sheet_max_ratio: float = 0.3
     dog_enabled: bool = False
     dog_fps: float = 1
     dog_confidence: float = 0.4

@@ -127,6 +127,12 @@ class IncrementalDetector(Detector):
             frame, self.threshold, self.min_area, self.occupied_ratio, self.color_threshold
         )
 
+    def wear_ratio(self, valid_mask: Mask | None = None) -> float:
+        """通知済み状態が空の基準と違う画素の割合（シートの汚れの積み重なりの目安）。"""
+        valid = self.valid_region(self.reference_image, valid_mask)
+        mask = self.difference_mask(self.reference_image, valid)
+        return float(np.count_nonzero(mask)) / np.count_nonzero(valid)
+
     def strength(self, frame: Frame) -> NDArray[np.floating[Any]]:
         gray: NDArray[np.floating[Any]] = (
             cv2.absdiff(self.gray(frame), self.baseline).astype(np.float32) / self.threshold

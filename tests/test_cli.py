@@ -622,12 +622,17 @@ def test_run_switches_tray_in_the_same_camera_session(cli_env, monkeypatch, caps
     assert cli_env.run("run", "--early-alert", "--max-frames", "8") == 0
     # トレーを交換しても、カメラの見張りは続ける。
     from poop_detector.features.monitoring import EarlyAlertExtension
+    from poop_detector.features.sheet_wear import SheetWearExtension
 
     assert len(assembled) == 2
     assert assembled[0][0] != new_roi
-    assert assembled[1] == (new_roi, new_roi.crop(new_baseline).shape, [EarlyAlertExtension])
+    assert assembled[1] == (
+        new_roi,
+        new_roi.crop(new_baseline).shape,
+        [SheetWearExtension, EarlyAlertExtension],
+    )
     assert assembled[0][2] == assembled[1][2]
-    assert replaced == [[EarlyAlertExtension, CameraWatchdogExtension]]
+    assert replaced == [[SheetWearExtension, EarlyAlertExtension, CameraWatchdogExtension]]
     assert cli_env.run("tray-registration", "status") == 0
     assert "反映しました" in capsys.readouterr().out
     context_after = context.CommandContext(Config(data_dir=str(cli_env.root)))
@@ -642,6 +647,7 @@ def test_run_watches_the_camera_and_marks_a_clean_stop(cli_env, monkeypatch, ena
     """監視は、カメラの見張り（#91）を拡張として差し込み、終了したことを GUI の見張りへ残す。"""
     from poop_detector.capture.live_preview import LivePreview
     from poop_detector.commands import run
+    from poop_detector.features.sheet_wear import SheetWearExtension
     from poop_detector.features.watchdog import CameraWatchdogExtension
 
     write_config(
@@ -656,7 +662,9 @@ def test_run_watches_the_camera_and_marks_a_clean_stop(cli_env, monkeypatch, ena
 
     monkeypatch.setattr(run.Monitor, "run", monitor)
     assert cli_env.run("run", "--max-frames", "1") == 0
-    assert seen == [[CameraWatchdogExtension] if enabled else []]
+    assert seen == [
+        [SheetWearExtension, CameraWatchdogExtension] if enabled else [SheetWearExtension]
+    ]
     assert LivePreview(cli_env.root).monitor_heartbeat()[0] == "stopped"
 
 

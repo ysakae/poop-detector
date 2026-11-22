@@ -669,6 +669,20 @@ def migrate_to_v32(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v33(db: sqlite3.Connection) -> None:
+    """シートの汚れの積み重なり（交換どきの目安）を記録する表を追加する。"""
+    db.execute(
+        """CREATE TABLE sheet_wear (
+            id INTEGER PRIMARY KEY,
+            at TEXT NOT NULL,
+            scene_signature TEXT,
+            kind TEXT NOT NULL CHECK(kind IN ('event', 'settled', 'reset', 'notified')),
+            ratio REAL CHECK(ratio BETWEEN 0 AND 1),
+            source TEXT
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -703,6 +717,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v30,
     migrate_to_v31,
     migrate_to_v32,
+    migrate_to_v33,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

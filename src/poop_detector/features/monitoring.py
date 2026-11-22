@@ -17,11 +17,15 @@ from ..detection.monitoring import (
     SystemClock,
 )
 from ..detection.roi import AnyROI
+from ..detection.scene import scene_signature
 from ..frames import Frame
+from ..records.database import events_database
 from ..records.events import utcnow
+from ..records.sheet_wear import SheetWearLog
 from ..video.recording import ClipCollector
 from .activity_map import ActivityRecorder
 from .early_alert import EarlyAlert
+from .sheet_wear import SheetWearExtension
 from .sleep import SleepRecorder
 from .tray_tracking import TrayTracker
 
@@ -42,6 +46,7 @@ class MonitorNotifier(DetectionNotifier, Protocol):
     def send_reentry(
         self, kind: str, event_id: str, at: datetime, clip_id: str | None
     ) -> "Delivery": ...
+    def send_sheet_due(self, events: int, ratio: float) -> bool: ...
 
 
 class EarlyAlertExtension(MonitorExtension):
@@ -246,6 +251,10 @@ def standard_extensions(
             extensions.append(ActivityExtension(activity_map, predict))
         if sleep is not None:
             extensions.append(SleepExtension(sleep, predict))
+    if config.sheet_enabled:
+        log = SheetWearLog(events_database(config.data_dir))
+        signature = scene_signature(baseline, roi)
+        extensions.append(SheetWearExtension(log, signature, config, notifier))
     if early_alert:
         extensions.append(EarlyAlertExtension(EarlyAlert(baseline, config), notifier, collector))
     if dog_observer is not None:

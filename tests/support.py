@@ -51,6 +51,9 @@ class SilentNotifier:
         self.sent += 1
         return False
 
+    def send_sheet_due(self, events, ratio):
+        return False
+
 
 def login(server, name=None, role="admin"):
     """ユーザーを作ってセッションを始め、その Cookie ヘッダーを返す（パスキーでのログインの代わり）。

@@ -40,7 +40,12 @@
 {%- endfor -%}
 </ul>
 </section>
-<section class="card" aria-labelledby="recent-title">
+{% if sheet %}<section class="card" aria-labelledby="sheet-title">
+<h2 id="sheet-title">シートの使用</h2>
+<p>{% if sheet.due %}{{ chip("そろそろ交換どきです", "warn") }}{% else %}{{ chip("まだ使えます", "ok") }}{% endif %}</p>
+<p class="note">前回の交換から 排泄 {{ sheet.events }}回・汚れ {{ sheet.percent }}%（監視範囲に占める差分の割合の目安）。替えたら「シート交換をした」を押してください。</p>
+</section>
+{% endif %}<section class="card" aria-labelledby="recent-title">
 <h2 id="recent-title">最近の確定記録</h2>
 {% if recent %}<ul class="timeline">
 {%- for record in recent -%}

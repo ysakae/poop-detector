@@ -26,6 +26,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `records.events.Store`：検知イベントと排泄の記録。画面は確定記録を期間（`records_between`）や件数（`latest_records`・`last_record`）で絞って読み、全件を読む `records` は CLI と記録の一覧だけが使う。絞り込みは索引 `events_records_by_start`（版32）の式 `Store.RECORD_START` と同じ式で比べる
   - `features.sleep_store.SleepStore`：睡眠の記録（`sleep_minutes`・`sleep_detection_hours`）
   - `records.foods`・`records.advice`・`records.profile`：ごはんの量の目安と相談の台帳（`foods`：フードのカロリー、`food_lookups`：カロリー探しの依頼、`advice_threads`・`advice_messages`：家族で共有する相談の会話、`pet_profile`：犬種・体格・成犬時の予想体重・去勢の有無・主に食べているフード）。どれも秘密ではないので `SECRET_TABLES` には入れず、バックアップに含める
+  - `records.sheet_wear.SheetWearLog`：シートの汚れの積み重なり（`sheet_wear`）。数え直しは、自動の行（`reset`）とシート交換のお世話の記録の新しいほうから
   - `video.clips.ClipStore`：動画の保存要求と状態
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
   - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否と失敗の種類だけ。用途は `review`・`benchmark` に加えて、相談の `advice` とカロリー探しの `food_lookup`）
@@ -78,7 +79,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 フレームをまたぐ状態は `LoopState` にまとめてあり、中断時のリセットは `LoopState.interrupt` の1か所で行います。時刻は `Clock`（既定は `SystemClock`）から読むので、テストでは偽の時計を渡せます。
 
-任意の機能は `MonitorExtension` の派生クラスとして差し込みます。呼び出し口は、位置合わせ前の映像（`on_camera_frame`）、中断（`on_interrupt`）、観測後のフレーム（`on_frame`）、稼働ログ（`log_status`）の4つです。
+任意の機能は `MonitorExtension` の派生クラスとして差し込みます。呼び出し口は、位置合わせ前の映像（`on_camera_frame`）、中断（`on_interrupt`）、観測後のフレーム（`on_frame`）、排泄候補の記録（`on_event`）、通知済み状態の更新（`on_reference`。理由は `event` か `settled`）、稼働ログ（`log_status`）です。
 
 | 拡張 | オプション | 内容 |
 |---|---|---|
@@ -86,6 +87,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `DogExtension` | `--dog`、`--detect-outside` | 犬が ROI に重なる間や推論エラーの間は `occupied` に上書きし、入退場とトレー外の滞在で動画を保存する。トレー外の滞在は、犬がトレーに重なっている間と離れてから `TRAY_GRACE_SECONDS` の間は数えず、前の録画と時間が重ならない時刻まで延ばして録る（`_record_outside`） |
 | `ActivityExtension` | `--activity-map` | 位置合わせ前の映像で犬の位置を記録する。中断は接続の途切れだけで区切る |
 | `SleepExtension` | `--sleep` | 位置合わせ前の映像で犬の在室と静止を1秒ごとに観測し、1分ごとの睡眠の状態を記録する。犬検出の推論は行動マップと共有する（`SharedPredict`）。中断は接続の途切れだけで区切る |
+| `SheetWearExtension` | `sheet.enabled`（既定で有効） | 通知済み状態の更新のたびに汚れの割合（`IncrementalDetector.wear_ratio`）を記録し、交換どきを一度だけ知らせる（`features/sheet_wear.py`） |
 | `CameraWatchdogExtension` | `watchdog.enabled`（既定で有効） | 位置合わせ前の映像が届かない時間を数え、カメラの不調として知らせる（`features/watchdog.py`） |
 
 新しい機能は `monitor(..., extensions=[...])` に渡せば、`Monitor` を変えずに足せます。

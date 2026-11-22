@@ -69,6 +69,9 @@ def run_frames(root, frames):
         def send(self, *, clip_id=None, detected_at=None):
             return False
 
+        def send_sheet_due(self, events, ratio):
+            return False
+
     config = Config(data_dir=str(root), fps=100, verify_seconds=0.01, clear_seconds=0.01)
     monitor(Camera(), ROI(0, 0, 1, 1), clean, config, Silent(), max_frames=len(frames))
 

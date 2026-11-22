@@ -90,6 +90,12 @@ dog:
   exit_seconds: 2
   clip_cooldown_seconds: 60
 
+# シートの交換どき。通知済みの跡の積み重なりから知らせる（0 の目安は使わない）。
+sheet:
+  enabled: true
+  max_events: 6    # 前回の交換からの排泄の回数
+  max_ratio: 0.3   # 汚れが監視範囲に占める割合
+
 # 排泄後の再侵入。固定トレー・動画保存・登録済みの reentry-layout.json が必要。
 reentry:
   enabled: false
