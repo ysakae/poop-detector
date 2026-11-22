@@ -417,3 +417,14 @@ def test_extension_stops_before_the_memory_limit_instead_of_failing(tmp_path):
         run_until(c, 41, 120)
         c.drain()
         assert c.store.get(first)["status"] == "ready"
+
+
+def test_request_whose_prebuffer_would_start_soon_after_the_previous_end_is_merged(tmp_path):
+    # 新しい動画は要求の30秒前から録るので、要求が録画の終わりの45秒後でも、
+    # 別に録ると前の動画の終わりから15秒で始まる。同じ滞在として1本にまとめる。
+    with ClipCollector(tmp_path, before=30, after=30, fps=1, encoder=stub_encode) as c:
+        run_until(c, 0, 0)
+        first = c.trigger(source="dog_enter", now=0)
+        run_until(c, 1, 75)
+        assert c.trigger(source="dog_enter", now=75) == first
+        assert c.jobs[first]["end"] == 105
