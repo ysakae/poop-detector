@@ -7,7 +7,16 @@ from uuid import uuid4
 from ..config import Config
 from ..errors import InvalidInputError
 from ..features.advice.context import basis_text
-from ..records.advice import ask, delete_thread, messages, retry, start_thread, thread, threads
+from ..records.advice import (
+    ThreadPermissionError,
+    ask,
+    delete_thread,
+    messages,
+    retry,
+    start_thread,
+    thread,
+    threads,
+)
 from ..records.breeds import BREEDS, SIZE_CLASSES, SIZE_NAMES, find_breed
 from ..records.foods import (
     Food,
@@ -197,7 +206,6 @@ def stop_registered_food(handler: "Handler", form: Form) -> None:
 
 ADVICE = "/advice"
 THREAD = "/advice/thread"
-PERMISSION_ERROR = "この相談を消せるのは"
 NEUTERED = (("1", "済み"), ("0", "まだ"), ("", "未入力"))
 
 
@@ -387,9 +395,11 @@ def delete_route(handler: "Handler", form: Form) -> None:
             user_id=_user_id(handler),
             admin=is_admin(handler),
         )
+    except ThreadPermissionError as error:
+        _render_advice(handler, error=str(error), status=403)
+        return
     except InvalidInputError as error:
-        denied = str(error).startswith(PERMISSION_ERROR)
-        _render_advice(handler, error=str(error), status=403 if denied else 400)
+        _render_advice(handler, error=str(error), status=400)
         return
     handler.redirect(ADVICE)
 
