@@ -319,6 +319,14 @@ SETTINGS: tuple[Setting, ...] = (
         "0〜1 の数（汚れが監視範囲に占める割合。0 なら割合では知らせない）",
     ),
     Setting(
+        "trends_notify",
+        "trends",
+        "notify",
+        bool,
+        _always,
+        "true または false（移動・睡眠・排泄の回数が2日続けていつもと違うときに知らせる）",
+    ),
+    Setting(
         "floor_notify",
         "floor",
         "notify",
@@ -586,6 +594,7 @@ class Config:
     sheet_max_events: int = 6
     sheet_max_ratio: float = 0.3
     floor_notify: bool = True
+    trends_notify: bool = True
     dog_enabled: bool = False
     dog_fps: float = 1
     dog_confidence: float = 0.4

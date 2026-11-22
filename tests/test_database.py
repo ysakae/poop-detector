@@ -735,3 +735,22 @@ def test_v33_database_keeps_sheet_wear_and_adds_floor_objects(tmp_path):
                 "INSERT INTO floor_objects (id, detected_at, x1, y1, x2, y2, area_ratio, label) "
                 "VALUES ('a', 't', 0, 0, 1, 1, 0.1, 'bad')"
             )
+
+
+def test_v34_database_keeps_floor_objects_and_adds_trend_notices(tmp_path):
+    path = tmp_path / "trend-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:34]:
+            migration(db)
+        db.execute("PRAGMA user_version = 34")
+        db.execute(
+            "INSERT INTO floor_objects (id, detected_at, x1, y1, x2, y2, area_ratio) "
+            "VALUES ('a', 't', 0, 0, 1, 1, 0.1)"
+        )
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT id FROM floor_objects").fetchone()[0] == "a"
+        db.execute("INSERT INTO trend_notices VALUES ('2026-11-20', 'sleep', 'low', 't')")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO trend_notices VALUES ('2026-11-20', 'sleep', 'low', 't')")

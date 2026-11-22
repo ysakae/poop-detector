@@ -54,6 +54,7 @@ from .review_queue import NEXT_PAGE, review_bar, review_items
 from .sheet_page import sheet_summary
 from .sleep_page import render_sleep
 from .templating import render_template
+from .trends_page import yesterday_notes
 
 if TYPE_CHECKING:
     from .exchange import Exchange as Handler
@@ -164,6 +165,7 @@ def home_page(handler: "Handler", _query: Query) -> None:
     config = Config.load(app.config_path) if app.config_path is not None else Config()
     sheet = None if app.manual_only else sheet_summary(app.store.database, config)
     floor = FloorObjects(app.store.database, app.root).pending_count()
+    trends = [] if app.manual_only else yesterday_notes(app)
     handler.respond(
         200,
         render_home(
@@ -176,6 +178,7 @@ def home_page(handler: "Handler", _query: Query) -> None:
             recorded=recorded,
             sheet=sheet,
             floor_pending=floor,
+            trend_notes=trends,
         ),
     )
 

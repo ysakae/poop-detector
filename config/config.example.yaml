@@ -99,6 +99,10 @@ sheet:
   max_events: 6    # 前回の交換からの排泄の回数
   max_ratio: 0.3   # 汚れが監視範囲に占める割合
 
+# 移動・睡眠・排泄の回数が、2日続けていつもと違うときに知らせる（GUI のサーバーが確かめる）。
+trends:
+  notify: true
+
 # 床の候補（実験的。features.floor_objects を有効にして使う）。false なら記録だけで通知しない。
 floor:
   notify: true

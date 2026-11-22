@@ -700,6 +700,19 @@ def migrate_to_v34(db: sqlite3.Connection) -> None:
     db.execute("CREATE INDEX floor_objects_by_time ON floor_objects(detected_at)")
 
 
+def migrate_to_v35(db: sqlite3.Connection) -> None:
+    """いつもと違う日が続いたことを知らせた記録（同じ日の同じ指標を繰り返し知らせない）。"""
+    db.execute(
+        """CREATE TABLE trend_notices (
+            day TEXT NOT NULL,
+            metric TEXT NOT NULL,
+            direction TEXT NOT NULL CHECK(direction IN ('high', 'low')),
+            notified_at TEXT NOT NULL,
+            PRIMARY KEY(day, metric)
+        )"""
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -736,6 +749,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v32,
     migrate_to_v33,
     migrate_to_v34,
+    migrate_to_v35,
 )
 LATEST_VERSION = len(MIGRATIONS)
 
