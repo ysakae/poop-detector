@@ -30,6 +30,13 @@ class ClipLabel:
     stool_condition: str | None = None
 
 
+def _validated_stool_condition(clip_label: ClipLabel) -> str | None:
+    condition = clip_label.stool_condition or None
+    if condition is not None and condition not in STOOL_CONDITIONS:
+        raise ValueError("便の状態を確認してください")
+    return condition if clip_label.label in ("feces", "both") else None
+
+
 class ClipLabels:
     """clips のラベルの列と clip_confirmations テーブル（動画と確定記録のひも付け）。"""
 
@@ -114,11 +121,7 @@ class ClipLabels:
             if len(note) > 2000:
                 raise ValueError("メモは2000文字以内です")
             validate_location(location)
-            condition = clip_label.stool_condition or None
-            if condition is not None and condition not in STOOL_CONDITIONS:
-                raise ValueError("便の状態を確認してください")
-            if label not in ("feces", "both"):
-                condition = None
+            condition = _validated_stool_condition(clip_label)
             location = row["location"] if location is None else location or None
             if label in ("none", "uncertain"):
                 start = end = location = None

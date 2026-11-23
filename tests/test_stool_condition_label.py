@@ -67,3 +67,12 @@ def test_clip_page_has_the_condition_field_and_saves_it(gui):
     )
     assert status == 303
     assert clips.get(clip_id)["stool_condition"] == "soft"
+
+
+def test_stool_condition_is_validated_before_it_is_discarded():
+    from poop_detector.video.clip_labels import _validated_stool_condition
+
+    assert _validated_stool_condition(ClipLabel("urine", stool_condition="soft")) is None
+    assert _validated_stool_condition(ClipLabel("both", stool_condition="soft")) == "soft"
+    with pytest.raises(ValueError, match="便の状態"):
+        _validated_stool_condition(ClipLabel("urine", stool_condition="invalid"))
