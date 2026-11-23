@@ -29,6 +29,9 @@ CLIP_LABELS = {
     "none": "排泄なし",
     "uncertain": "判断できない",
 }
+# 新たに出た便の状態（#294）。normal: 形がある、soft: やわらかい、diarrhea: 形のない下痢、
+# unknown: 見分けられない。自動判定（review）と人のラベル（clip_labels）で使う。
+STOOL_CONDITIONS = ("normal", "soft", "diarrhea", "unknown")
 ACTIVITIES = {
     "other": "その他・未分類",
     "feeding": "食事",

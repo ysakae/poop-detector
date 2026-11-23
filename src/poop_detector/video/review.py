@@ -29,7 +29,7 @@ from ..frames import Frame, Mask
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES
 from .clip_reviews import Assessment
 from .clip_storage import REVIEW_LOCK
-from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
+from .clips import ACTIVITIES, CLIP_LABELS, STOOL_CONDITIONS, ClipRow, ClipStore
 from .judge_runs import RecordingJudge
 from .judge_source import FixedJudge, JudgeChoice, JudgeSource
 
@@ -95,9 +95,6 @@ stool_clear_seconds は、便がないことをトレー全体の遮蔽物のな
 犬や物で一部が隠れている、暗くて見分けられないなど、確認できない項目には null を入れてください。
 時刻は画像に表示された秒数をそのまま使ってください。"""
 STOOL_FIELDS = ("stool_seen_seconds", "stool_clear_seconds")
-# 動画中に新たに出た便の状態（#294）。normal: 形がある、soft: やわらかい、
-# diarrhea: 形のない下痢、unknown: 見分けられない。
-STOOL_CONDITIONS = ("normal", "soft", "diarrhea", "unknown")
 STOOL_CONDITION_PROMPT = """label が feces か both のときは、動画中に新たに出た便の状態を
 stool_condition に次から選んでください。normal は形のある便、soft は形はあるがやわらかい便、
 diarrhea は形がなく広がった下痢、unknown は遮蔽や暗さ・シートの色で見分けられない場合です。

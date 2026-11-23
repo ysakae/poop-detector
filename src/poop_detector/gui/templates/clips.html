@@ -48,7 +48,7 @@
 {% endif %}
 {% if assessment %}
 {% if assessment.error %}<div class="message message-error">{{ assessment.error }}</div>{% else %}
-<div class="message message-info"><strong>自動判定の候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %} ／ {{ assessment.activity }}</strong><br>{{ assessment.reason }}
+<div class="message message-info"><strong>自動判定の候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %} ／ {{ assessment.activity }}{% if assessment.stool_condition %} ／ 便の状態：{{ assessment.stool_condition }}{% endif %}</strong><br>{{ assessment.reason }}
 {%- for seek in assessment.seeks -%}
 <p><button class="secondary" type="button" data-video-seek="{{ seek.value }}">{{ seek.text }}（{{ seek.shown }}秒）</button></p>
 {%- endfor -%}
@@ -81,6 +81,10 @@
 </div></fieldset><div class="times">{{ location_field(locations, form.location) }}<label>動作<select name="activity">
 {%- for value, text in activities -%}
 <option value="{{ value }}" {% if value == form.activity %}selected{% endif %}>{{ text }}</option>
+{%- endfor -%}
+</select></label><label>便の状態（排便のとき）<select name="stool_condition"><option value="">選ばない</option>
+{%- for value, text in stool_conditions -%}
+<option value="{{ value }}" {% if value == form.stool_condition %}selected{% endif %}>{{ text }}</option>
 {%- endfor -%}
 </select></label></div><p class="note">再生位置を開始・完了として指定できます。映っていない時刻は空欄にしてください。</p><div class="times">
 {%- for name, text, value, button in form.offsets -%}
