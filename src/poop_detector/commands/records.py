@@ -9,13 +9,8 @@ from ..records.events import Store
 from ..web_address import WebOptions
 from .context import (
     CommandContext,
-    away_reminder_watch,
     build_notifier,
-    digest_summary_watch,
-    floor_judge_watch,
-    monitor_watchdog,
-    night_watch,
-    trend_watch,
+    gui_background_tasks,
     with_web_push,
 )
 
@@ -98,12 +93,7 @@ def gui(args: argparse.Namespace, context: CommandContext) -> int:
         if not args.manual_only:
             primary, _ = build_notifier(context.config, load_connection_settings(), sends=True)
             notifier = with_web_push(primary, context)
-            stack.enter_context(monitor_watchdog(context, notifier))
-            stack.enter_context(trend_watch(context, notifier))
-            stack.enter_context(floor_judge_watch(context, notifier))
-            stack.enter_context(digest_summary_watch(context))
-            stack.enter_context(away_reminder_watch(context, notifier))
-            stack.enter_context(night_watch(context, notifier))
+            stack.enter_context(gui_background_tasks(context, notifier))
         serve(
             context.root,
             web.port,

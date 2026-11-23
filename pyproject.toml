@@ -73,7 +73,7 @@ source = ["poop_detector"]
 [tool.coverage.report]
 # 実測は95.21%（ごはんの目安と相談の追加後）。これまでの経緯: 94.33%（トレー滞在時間の集計）、94.56%（睡眠の画面）、94.65%（判定器の失敗の種類の記録）、94.82%（ふるい分けの指標の記録）。CI は手元より0.02%ほど低い。
 precision = 2
-fail_under = 95.1
+fail_under = 95.5
 show_missing = true
 skip_covered = true
 [tool.mypy]

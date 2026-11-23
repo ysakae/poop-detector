@@ -4,7 +4,7 @@ import argparse
 import logging
 import platform
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import cached_property
@@ -321,3 +321,16 @@ def build_notifier(
     if config.notifications and not on_mac and sends:
         logger.warning("macOS 以外では、.env に POOP_NTFY_TOPIC を設定しないと通知は届きません")
     return MacNotifier(config.notifications and on_mac, pet_name=config.pet_name), False
+
+
+@contextmanager
+def gui_background_tasks(context: CommandContext, notifier: ToiletNotifier) -> Iterator[None]:
+    """GUI と一緒に動く監視・通知処理を起動し、終了時は逆順に閉じる。"""
+    with ExitStack() as stack:
+        stack.enter_context(monitor_watchdog(context, notifier))
+        stack.enter_context(trend_watch(context, notifier))
+        stack.enter_context(floor_judge_watch(context, notifier))
+        stack.enter_context(digest_summary_watch(context))
+        stack.enter_context(away_reminder_watch(context, notifier))
+        stack.enter_context(night_watch(context, notifier))
+        yield
