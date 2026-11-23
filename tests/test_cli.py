@@ -815,3 +815,39 @@ def test_run_with_sleep_builds_a_recorder_and_closes_it(cli_env, monkeypatch):
     assert SleepExtension in seen[0]
     assert closed == [1]
     assert (cli_env.root / "events.sqlite3").exists()
+
+
+def test_gui_background_tasks_close_in_reverse_order_on_failure(monkeypatch, tmp_path):
+    from contextlib import contextmanager
+
+    names = (
+        "monitor_watchdog",
+        "trend_watch",
+        "floor_judge_watch",
+        "digest_summary_watch",
+        "away_reminder_watch",
+        "night_watch",
+    )
+    events = []
+
+    @contextmanager
+    def watch(name):
+        events.append(("開始", name))
+        try:
+            yield
+        finally:
+            events.append(("終了", name))
+
+    for name in names:
+        monkeypatch.setattr(context, name, lambda *args, name=name: watch(name))
+
+    command_context = context.CommandContext(Config(data_dir=str(tmp_path)))
+    with (
+        pytest.raises(RuntimeError, match="GUI 起動失敗"),
+        context.gui_background_tasks(command_context, None),
+    ):
+        raise RuntimeError("GUI 起動失敗")
+
+    assert events == [("開始", name) for name in names] + [
+        ("終了", name) for name in reversed(names)
+    ]

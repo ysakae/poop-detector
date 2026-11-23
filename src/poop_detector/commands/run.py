@@ -29,18 +29,13 @@ from ..web_address import WebOptions
 from .context import (
     CommandContext,
     CommandError,
-    away_reminder_watch,
     build_notifier,
     camera_source,
-    digest_summary_watch,
-    floor_judge_watch,
+    gui_background_tasks,
     load_outside_roi,
     load_tray_tracker,
-    monitor_watchdog,
-    night_watch,
     open_camera,
     outage_tracker,
-    trend_watch,
     with_web_push,
 )
 from .review import ready_judge
@@ -269,13 +264,7 @@ def watch(
             )
             stack.enter_context(review.watch(judge_watchdog(context, notifier)))
         if args.gui:
-            # 同じプロセスの GUI からも、監視ループが止まっていないかを見張る。
-            stack.enter_context(monitor_watchdog(context, notifier))
-            stack.enter_context(trend_watch(context, notifier))
-            stack.enter_context(floor_judge_watch(context, notifier))
-            stack.enter_context(digest_summary_watch(context))
-            stack.enter_context(away_reminder_watch(context, notifier))
-            stack.enter_context(night_watch(context, notifier))
+            stack.enter_context(gui_background_tasks(context, notifier))
             web = WebOptions.from_config(config, port=args.gui_port)
             stack.enter_context(
                 background_gui(
