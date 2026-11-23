@@ -14,6 +14,7 @@ from .context import (
     digest_summary_watch,
     floor_judge_watch,
     monitor_watchdog,
+    night_watch,
     trend_watch,
     with_web_push,
 )
@@ -102,6 +103,7 @@ def gui(args: argparse.Namespace, context: CommandContext) -> int:
             stack.enter_context(floor_judge_watch(context, notifier))
             stack.enter_context(digest_summary_watch(context))
             stack.enter_context(away_reminder_watch(context, notifier))
+            stack.enter_context(night_watch(context, notifier))
         serve(
             context.root,
             web.port,

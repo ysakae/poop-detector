@@ -891,3 +891,17 @@ def test_v41_database_keeps_assessments_and_adds_stool_condition(tmp_path):
         assert schema_version(db) == LATEST_VERSION
         columns = {row[1] for row in db.execute("PRAGMA table_info(video_assessments)")}
         assert "stool_condition" in columns
+
+
+def test_v42_database_adds_night_notices(tmp_path):
+    path = tmp_path / "night-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:42]:
+            migration(db)
+        db.execute("PRAGMA user_version = 42")
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        db.execute("INSERT INTO night_notices VALUES ('2026-11-22', 't')")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO night_notices VALUES ('2026-11-22', 't')")

@@ -139,6 +139,16 @@ def parse_daytime(value: str) -> tuple[clock_time, clock_time]:
     return start, end
 
 
+def _night_hours(value: Any) -> bool:
+    from .features.night import parse_hours
+
+    try:
+        parse_hours(value)
+    except (ValueError, TypeError):
+        return False
+    return True
+
+
 def _daytime(value: Any) -> bool:
     try:
         parse_daytime(value)
@@ -389,6 +399,30 @@ SETTINGS: tuple[Setting, ...] = (
         float,
         _number(0, 72),
         "0〜72 の数（時間。外出中にしてからこの時間たったら、在宅に戻し忘れを知らせる。0 なら知らせない）",
+    ),
+    Setting(
+        "night_enabled",
+        "night",
+        "enabled",
+        bool,
+        _always,
+        "true または false（夜の間だけ静止画を残し、夜ごとの夜間のまとめを作る）",
+    ),
+    Setting(
+        "night_hours",
+        "night",
+        "hours",
+        str,
+        _night_hours,
+        "HH:MM-HH:MM の形の夜の時間帯（日をまたいでよい。例: 22:00-07:00）",
+    ),
+    Setting(
+        "night_notify",
+        "night",
+        "notify",
+        bool,
+        _always,
+        "true または false（朝に昨夜のまとめを知らせる）",
     ),
     Setting(
         "trends_notify",
@@ -693,6 +727,9 @@ class Config:
     floor_notify: bool = True
     floor_judge: bool = False
     trends_notify: bool = True
+    night_enabled: bool = False
+    night_hours: str = "22:00-07:00"
+    night_notify: bool = False
     away_reminder_hours: float = 12
     audio_threshold_db: float = 15
     audio_notify_seconds: float = 60

@@ -6,10 +6,11 @@ KEEP_DAYS より古い区間の静止画は消す。バックアップの ALLOWE
 """
 
 import logging
+import os
 import re
 import shutil
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -35,7 +36,8 @@ TIMELAPSE_NAME = "timelapse.mp4"
 TIMELAPSE_SECONDS_PER_FRAME = 0.05
 # 古い区間を消すかを確かめる間隔（秒）。
 CLEANUP_SECONDS = 3600
-_ID = re.compile(r"[0-9a-f]{32}")
+# 外出の区間の ID（32桁の16進数）か、夜の名前（night-YYYYMMDD。features.night）。
+_ID = re.compile(r"[0-9a-f]{32}|night-\d{8}")
 
 
 class DigestSnapshots:
@@ -48,6 +50,27 @@ class DigestSnapshots:
         if not _ID.fullmatch(period_id):
             raise KeyError(period_id)
         return self.base / period_id
+
+    def save_many(self, period_ids: Sequence[str], frame: Frame, at: datetime) -> list[Path]:
+        """複数の区間（夜と外出が重なったとき）に、1回だけ書いて同じファイルを共有する。
+
+        2つ目からはハードリンクにし、作れないファイルシステムでは写す。
+        """
+        if not period_ids:
+            return []
+        first = self.save(period_ids[0], frame, at)
+        paths = [first]
+        for period_id in period_ids[1:]:
+            folder = self.folder(period_id)
+            folder.mkdir(parents=True, exist_ok=True)
+            target = folder / first.name
+            if not target.exists():
+                try:
+                    os.link(first, target)
+                except OSError:
+                    shutil.copyfile(first, target)
+            paths.append(target)
+        return paths
 
     def save(self, period_id: str, frame: Frame, at: datetime) -> Path:
         """frame を縮めて保存する。名前は撮った時刻（UTC のミリ秒）なので、名前の順が時刻の順。"""
@@ -102,7 +125,7 @@ def timelapse(snapshots: DigestSnapshots, period_id: str) -> Path | None:
 
 
 class SnapshotExtension(MonitorExtension):
-    """外出中の間だけ、位置合わせ前の映像を interval 秒ごとに静止画として残す。"""
+    """外出中の間と、night_hours の夜の間だけ、位置合わせ前の映像を interval 秒ごとに残す。"""
 
     def __init__(
         self,
@@ -111,7 +134,9 @@ class SnapshotExtension(MonitorExtension):
         interval: float,
         *,
         clock: Callable[[], datetime] = local_now,
+        night_hours: str | None = None,
     ) -> None:
+        self.night_hours = night_hours
         self.periods, self.snapshots, self.interval, self.clock = (
             periods,
             snapshots,
@@ -130,8 +155,11 @@ class SnapshotExtension(MonitorExtension):
             if tick - self.last_cleanup >= CLEANUP_SECONDS:
                 self.last_cleanup = tick
                 self.snapshots.cleanup()
+            from .night import snapshot_targets
+
             period = self.periods.current()
-            if period is not None:
-                self.snapshots.save(period.id, raw, self.clock())
+            now = self.clock()
+            targets = snapshot_targets(self.night_hours, now, period.id if period else None)
+            self.snapshots.save_many(list(targets), raw, now)
         except (OSError, cv2.error):
             logger.warning("留守中の静止画を保存できませんでした")

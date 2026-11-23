@@ -172,6 +172,9 @@ def home_page(handler: "Handler", _query: Query) -> None:
     floor = FloorObjects(app.store.database, app.root).pending_count()
     trends = [] if app.manual_only else yesterday_notes(app)
     away = AwayMode(app.store.database).since() is not None
+    from . import night_routes  # night_routes は routes を読むので、ここで読む
+
+    night = None if app.manual_only else night_routes.home_night(app)
     finished = AwayPeriods(app.store.database).latest_finished()
     recent = (
         finished is not None
@@ -193,6 +196,7 @@ def home_page(handler: "Handler", _query: Query) -> None:
             floor_pending=floor,
             trend_notes=trends,
             away=away,
+            night=night,
             digest_id=finished.id if recent and finished is not None else None,
             absent_since=absent.started_at.isoformat() if absent else None,
         ),

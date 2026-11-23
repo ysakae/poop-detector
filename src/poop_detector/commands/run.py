@@ -37,6 +37,7 @@ from .context import (
     load_outside_roi,
     load_tray_tracker,
     monitor_watchdog,
+    night_watch,
     open_camera,
     outage_tracker,
     trend_watch,
@@ -274,6 +275,7 @@ def watch(
             stack.enter_context(floor_judge_watch(context, notifier))
             stack.enter_context(digest_summary_watch(context))
             stack.enter_context(away_reminder_watch(context, notifier))
+            stack.enter_context(night_watch(context, notifier))
             web = WebOptions.from_config(config, port=args.gui_port)
             stack.enter_context(
                 background_gui(

@@ -289,6 +289,7 @@ def render_home(
     away: bool = False,
     absent_since: str | None = None,
     digest_id: str | None = None,
+    night: date | None = None,
 ) -> str:
     """ホーム。確認待ちの件数、今日の回数と給餌量、記録の入口、直近の確定記録、ライブ映像。
 
@@ -334,6 +335,7 @@ def render_home(
         trend_notes=list(trend_notes),
         away=away,
         digest_id=digest_id,
+        night=night,
         absent=list_time(absent_since) if absent_since else None,
         timezone=timezone_label(),
     )

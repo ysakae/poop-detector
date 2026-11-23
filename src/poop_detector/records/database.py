@@ -889,6 +889,11 @@ def migrate_to_v42(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v43(db: sqlite3.Connection) -> None:
+    """朝に昨夜のまとめを知らせた夜を記録する表を追加する（同じ夜を繰り返し知らせない）。"""
+    db.execute("CREATE TABLE night_notices (night TEXT PRIMARY KEY, notified_at TEXT NOT NULL)")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -933,6 +938,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v40,
     migrate_to_v41,
     migrate_to_v42,
+    migrate_to_v43,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

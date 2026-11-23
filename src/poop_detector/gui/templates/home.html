@@ -7,7 +7,8 @@
 {% if not manual_only %}{% include "_live_panel.html" %}
 {% if absent %}<p class="message" role="status"><a href="/presence">{{ when(absent) }} からサークルに姿が見えません</a></p>{% endif %}
 {{ away_toggle(away, token) }}
-{% if digest_id %}<p class="note"><a href="/digest?id={{ digest_id }}">留守中のまとめを見る</a></p>{% endif %}{% endif %}
+{% if digest_id %}<p class="note"><a href="/digest?id={{ digest_id }}">留守中のまとめを見る</a></p>{% endif %}
+{% if night %}<p class="note"><a href="/night?day={{ night }}">昨夜のまとめを見る</a></p>{% endif %}{% endif %}
 <section class="card home-review" aria-labelledby="review-title">
 <h2 id="review-title">確認待ち</h2>
 {% if trend_notes %}<p class="note"><a href="/trends">昨日はいつもと違いました（{{ trend_notes | join("、") }}）</a></p>

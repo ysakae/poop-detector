@@ -175,6 +175,15 @@ class ToiletNotifier:
         )
         return self._display(message, path="/")
 
+    def send_night_summary(self, night: date, asleep_minutes: int, awakenings: int) -> bool:
+        """朝に、昨夜寝ていた時間と起きた回数を知らせる（睡眠の記録からの目安）。"""
+        hours, rest = divmod(asleep_minutes, 60)
+        message = (
+            f"昨夜の{self.owner}様子です。寝ていた時間は約{hours}時間{rest:02d}分、"
+            f"起きたのは{awakenings}回でした（目安）。夜間のまとめを見られます。"
+        )
+        return self._display(message, path="/night?" + urlencode({"day": night.isoformat()}))
+
     def send_absence(self, since: datetime, minutes: float) -> bool:
         """外出中に、犬がサークルにいない時間が続いていることを知らせる。"""
         start = since.astimezone().strftime("%H:%M")
