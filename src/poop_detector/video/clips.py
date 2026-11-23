@@ -225,7 +225,8 @@ class ClipStore:
         query = "SELECT * FROM clips ORDER BY requested_at DESC"
         if include_assessments:
             query = """SELECT c.*, a.label AS review_label, a.error AS review_error,
-                a.location AS review_location, d.clip_id IS NOT NULL AS review_dismissed
+                a.location AS review_location, a.stool_condition AS review_stool_condition,
+                d.clip_id IS NOT NULL AS review_dismissed
                 FROM clips c LEFT JOIN video_assessments a ON a.clip_id=c.id
                 LEFT JOIN review_dismissals d ON d.clip_id=c.id
                 ORDER BY c.requested_at DESC"""

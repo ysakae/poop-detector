@@ -3,6 +3,7 @@
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from ..records.database import Database
@@ -34,6 +35,8 @@ class Assessment:
     endpoint_change: float | None = field(default=None, compare=False)
     stool_seen_seconds: float | None = None
     stool_clear_seconds: float | None = None
+    # 動画中に新たに出た便の状態（review.STOOL_CONDITIONS。排便のときだけ）。
+    stool_condition: str | None = None
 
 
 class AssessmentStore:
@@ -48,6 +51,16 @@ class AssessmentStore:
                 "SELECT * FROM video_assessments WHERE clip_id=?", (clip_id,)
             ).fetchone()
         return cast(AssessmentRow, dict(row)) if row else None
+
+    def count_condition(self, condition: str, since: datetime) -> int:
+        """since 以降に判定した動画のうち、便の状態が condition のものの数。"""
+        with self.connect() as db:
+            count: int = db.execute(
+                "SELECT COUNT(*) FROM video_assessments WHERE stool_condition=? "
+                "AND julianday(assessed_at) >= julianday(?)",
+                (condition, since.astimezone(UTC).isoformat()),
+            ).fetchone()[0]
+        return count
 
     def latest(self) -> dict[str, Any] | None:
         with self.connect() as db:
@@ -175,15 +188,16 @@ class AssessmentStore:
             return (
                 db.execute(
                     """INSERT INTO video_assessments
-                (clip_id,label,activity,start_seconds,end_seconds,reason,observed_at,error,assessed_at,location,provider,model,endpoint_change,stool_seen_at,stool_clear_at)
-                SELECT id,?,?,?,?,?,?,?,?,?,?,?,?,?,? FROM clips WHERE id=? AND label IS NULL AND status='ready'
+                (clip_id,label,activity,start_seconds,end_seconds,reason,observed_at,error,assessed_at,location,provider,model,endpoint_change,stool_seen_at,stool_clear_at,stool_condition)
+                SELECT id,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? FROM clips WHERE id=? AND label IS NULL AND status='ready'
                 ON CONFLICT(clip_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,
                 start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds,
                 reason=excluded.reason,observed_at=excluded.observed_at,error=excluded.error,
                 assessed_at=excluded.assessed_at,location=excluded.location,
                 provider=excluded.provider,model=excluded.model,
                 endpoint_change=excluded.endpoint_change,stool_seen_at=excluded.stool_seen_at,
-                stool_clear_at=excluded.stool_clear_at WHERE video_assessments.error IS NOT NULL""",
+                stool_clear_at=excluded.stool_clear_at,stool_condition=excluded.stool_condition
+                WHERE video_assessments.error IS NOT NULL""",
                     (
                         label,
                         activity,
@@ -199,6 +213,7 @@ class AssessmentStore:
                         values.endpoint_change,
                         stool_seen_at,
                         stool_clear_at,
+                        values.stool_condition,
                         clip_id,
                     ),
                 ).rowcount

@@ -50,7 +50,9 @@ def _entry(item: ReviewItem) -> dict[str, Any]:
         "when": list_time(item.at),
         "what": what,
         "kind": item.kind,
-        "assessment": clip_assessment_summary(item.review_label, item.location, item.review_failed),
+        "assessment": clip_assessment_summary(
+            item.review_label, item.location, item.review_failed, item.stool_condition
+        ),
         "thumbnail": thumbnail,
         "icon": "camera" if item.kind == "event" else "video",
         "url": item.url,
