@@ -1,4 +1,4 @@
-"""選択した CLI に切り出し済みの画像と判定条件を渡す。"""
+"""選択したサービスに切り出し済みの画像と判定条件を渡す。"""
 
 import asyncio
 import base64
@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from .agy_workspace import antigravity_workspace
 from .codex_cli import JUDGE_TIMEOUT, LOOKUP_TIMEOUT, CodexCliJudge
+from .gemini_api import GeminiApiJudge
 from .judge_failures import JudgeCallError, mentions_rate_limit, rate_limited
 from .token_usage import TokenUsage, parse_claude
 
@@ -427,6 +428,7 @@ PROVIDER_NAMES = {
     "codex": CodexCliJudge.name,
     "claude": ClaudeCodeJudge.name,
     "gemini": AntigravityJudge.name,
+    "gemini-api": GeminiApiJudge.name,
 }
 
 
@@ -446,4 +448,8 @@ def build_judge(provider: str, model: str = "", effort: str = "") -> "VideoJudge
         if effort:
             raise ValueError("Antigravity CLI の推論の深さは、モデル名で選んでください")
         return AntigravityJudge(model)
-    raise ValueError("判定器には codex、claude、gemini のいずれかを指定してください")
+    if provider == "gemini-api":
+        if effort:
+            raise ValueError("Gemini API の判定器では推論の深さを指定できません")
+        return GeminiApiJudge(model)
+    raise ValueError(f"判定器には {'、'.join(PROVIDER_NAMES)} のいずれかを指定してください")

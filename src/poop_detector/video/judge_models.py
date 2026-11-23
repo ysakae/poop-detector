@@ -8,6 +8,7 @@ from collections.abc import Iterable
 
 from ..config import valid_review_model
 from .codex_cli import app_server_request
+from .gemini_api import GEMINI_API_MODELS
 from .providers import RESPONSE_LIMIT, _cli_environment, _executable
 
 TIMEOUT = 8
@@ -85,7 +86,9 @@ def _antigravity() -> Iterable[object]:
 
 
 def list_models(provider: str) -> tuple[str, ...]:
-    """設定に保存できるモデル名を、CLI の並び順で重複なしに返す。"""
+    """設定に保存できるモデル名を重複なしに返す。"""
+    if provider == "gemini-api":
+        return GEMINI_API_MODELS
     readers = {"codex": _codex, "claude": _claude, "gemini": _antigravity}
     try:
         models = tuple(

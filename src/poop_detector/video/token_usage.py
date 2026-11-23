@@ -1,7 +1,7 @@
-"""判定器の CLI が1回の呼び出しで使ったトークン数。CLI の出力から数だけを取り出す。
+"""判定器が1回の呼び出しで使ったトークン数を取り出す。
 
 Codex CLI は `codex exec --json` の turn.completed、Claude Code CLI は結果の usage に数を出す。
-Antigravity CLI は出さないので記録しない。型と範囲を確かめた数だけを持ち、応答の本文は持たない。
+Gemini API は usageMetadata に数を出す。Antigravity CLI は出さないので記録しない。型と範囲を確かめた数だけを持ち、応答の本文は持たない。
 """
 
 import json
@@ -82,3 +82,16 @@ def parse_claude(values: object) -> TokenUsage | None:
     if fresh is None or read is None or written is None:
         return None
     return _usage(fresh + read + written, read, _count(values, "output_tokens", required=True))
+
+
+def parse_gemini(values: object) -> TokenUsage | None:
+    """Gemini API の使用量。入力にはキャッシュ分を含め、出力には推論分を足す。"""
+    output = _count(values, "candidatesTokenCount", required=True)
+    thoughts = _count(values, "thoughtsTokenCount")
+    if output is None or thoughts is None:
+        return None
+    return _usage(
+        _count(values, "promptTokenCount", required=True),
+        _count(values, "cachedContentTokenCount"),
+        output + thoughts,
+    )

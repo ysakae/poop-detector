@@ -1,7 +1,7 @@
 """管理 › 判定器とモデル。動画の自動判定の判定器と、犬検出モデルの状態を示し、判定器を選び直す。
 
 判定器の選び直しは、管理 › 設定と同じ設定ファイルの書き換え（settings_file.write）と検証を使う。
-判定器が使える状態かは、監視と同じ check（選択した CLI の起動とログイン）で確かめ、
+判定器が使える状態かは、監視と同じ check（選択した判定器の認証）で確かめ、
 キーやトークンの値は出さない。比較（video-benchmark）、評価セットの作成と固定（benchmark-dataset）、
 モデルの取得（setup-dog-model）、処理負荷の確認（check-dog）は時間がかかるか送信を伴うので CLI に
 残し、ここでは保存済みの結果と評価セットを読むだけ。録画ごとの回答は、台帳にある録画だけを出す。
@@ -98,7 +98,7 @@ def _failure_breakdown(clips: ClipStore, now: datetime) -> str:
 
 
 def _tokens(usage: JudgeRunUsage) -> str:
-    """直近30日の、1回の呼び出しあたりのトークン数の平均。CLI が数を出した呼び出しがなければ「―」。"""
+    """直近30日の、1回の呼び出しあたりのトークン数の平均。使用量を取得できた呼び出しがなければ「―」。"""
     if not usage.measured:
         return "―"
     average = [

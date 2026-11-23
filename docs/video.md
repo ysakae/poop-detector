@@ -62,8 +62,8 @@ GUI では使用量と上限までの残りを表示し、使用率が75％・90
 
 ## 動画の自動判定と通知を使う
 
-保存した動画を判定器に見せ、新しい便や尿の根拠を確かめます。既定は Codex CLI です。設定の `review.provider` で `codex`、`claude`、`gemini` を選べます。
-[判定器とモデルを選ぶ](#判定器とモデルを選ぶ)を参照し、使う CLI にログインします。
+保存した動画を判定器に見せ、新しい便や尿の根拠を確かめます。既定は Codex CLI です。設定の `review.provider` で `codex`、`claude`、`gemini`、`gemini-api` を選べます。
+[判定器とモデルを選ぶ](#判定器とモデルを選ぶ)を参照し、使う判定器の認証を設定します。
 監視に使っているターミナルで監視を停止し、次のコマンドで起動します。動画の保存を有効にしておく必要があります。
 
 ```bash
@@ -87,13 +87,14 @@ uv run poop-detector run --dog --video-review
 
 ### 判定器とモデルを選ぶ
 
-`config/config.yaml` の `review.provider` で CLI を選びます。監視を実行するユーザーの環境でコマンドを PATH に追加し、先にログインしてください。
+`config/config.yaml` の `review.provider` で判定器を選びます。CLI を使う場合は、監視を実行するユーザーの環境でコマンドを PATH に追加し、先にログインしてください。
 
-| `provider` | 判定器 | ログイン |
+| `provider` | 判定器 | 認証 |
 | --- | --- | --- |
 | `codex`（既定） | Codex CLI | `codex login` |
 | `claude` | [Claude Code CLI](https://code.claude.com/docs/en/cli-reference) | `claude auth login` |
 | `gemini` | [Antigravity CLI](https://antigravity.google/docs/cli/acp/)（`agy`、1.5.0 以上） | `agy acp --login` |
+| `gemini-api` | [Gemini API](https://aistudio.google.com/docs/api-key) | `.env` または環境変数に `GEMINI_API_KEY` |
 
 ```yaml
 review:
@@ -101,13 +102,29 @@ review:
   model: ""
 ```
 
-`model` が空欄なら選んだ CLI の既定を使います。指定する場合は、画像入力に対応する CLI 上のモデル名を使ってください。Antigravity のモデル名は `agy models` で確認できます。以前の Claude / Gemini API 用のモデル名で選択に失敗した場合は、空欄に戻すか CLI 上のモデル名に更新してください。認証は CLI のログインを使うため、`.env` の API キーは不要です。
+`model` が空欄なら選んだ判定器の既定を使います。指定する場合は、画像入力と構造化出力に対応するモデル名を使ってください。Antigravity のモデル名は `agy models` で確認できます。
 
-各 CLI は同じ切り出し画像と判定指示を提供元に送ります。起動前に `uv run poop-detector diagnose` で設定した判定器の状態を確認できます。
+各判定器は同じ切り出し画像と判定指示を提供元に送ります。起動前に `uv run poop-detector diagnose` で設定した判定器の状態を確認できます。
 
 Antigravity CLI を使うときは、判定や利用可否の確認ごとに専用の一時ディレクトリを作ります。CLI がそこに保存したセッション履歴と添付画像は、CLI の終了後にアプリが整理します。アプリが強制終了した場合は、専用の保存先に残った24時間以上前の一時ディレクトリを、使われていないことを確かめて次回の呼び出しで回収します。設定変更後は `diagnose` でログイン済みの CLI が使えることを確認してください。
 
 GUI の「管理 › 判定器とモデル」（管理者だけ）でも、いまの判定器が使える状態かを確かめ、`provider` と `model` を選び直せます。保存した判定器とモデルは、動いている監視（`run --video-review`）が次の動画の判定から使います。新しい判定器を使えない（未ログインなど）ときは、前の判定器のまま判定を続け、ログに警告を出します。ほかの設定項目は、これまでどおり監視を起動し直すと反映されます。
+
+### Google AI Pro の開発者クレジットで Gemini API を使う
+
+1. [Google Developer Program の特典](https://developers.google.com/profile/help/benefits?hl=en)で、開発者クレジットを利用する Cloud Billing アカウントに適用します。
+2. [Google AI Studio](https://aistudio.google.com/api-keys) で、その請求先に紐づくプロジェクトの API キーを作成し、監視を起動するディレクトリの `.env` に `GEMINI_API_KEY` を設定します。同じ名前の環境変数があればそちらを優先します。
+3. 設定ファイルで次のように指定するか、GUI の「管理 › 判定器とモデル」で `gemini-api` を選びます。
+
+```yaml
+review:
+  provider: gemini-api
+  model: ""
+```
+
+既定モデルは `gemini-3.8-flash` です。設定後は `uv run poop-detector diagnose` で API キーとモデルを確認できます。この確認はモデル情報の取得だけを行います。判定の利用量やクレジットの適用は、実際の判定後に [Google AI Studio の請求画面](https://aistudio.google.com/billing)で確認してください。
+
+Prepay の場合は、開発者クレジットを使うためにも AI Studio の前払い残高が必要です。適用対象の Google Cloud クレジットは前払い残高より先に使われます。詳細は [Gemini API の請求仕様](https://aistudio.google.com/docs/billing#cloud-credits-prepay)を参照してください。
 
 ### 予備の判定器に切り替える
 
@@ -119,8 +136,8 @@ review:
   fallback: "claude,gemini"
 ```
 
-- 呼び出しが3回続けて失敗すると、書いた順に次の判定器へ切り替えます。インストールとログインが済んでいない判定器は飛ばします。切り替えた先も失敗したら、さらに次へ進みます。
-- 予備の判定器は、その CLI の既定のモデルで使います。
+- 呼び出しが3回続けて失敗すると、書いた順に次の判定器へ切り替えます。認証や接続の確認に失敗した判定器は飛ばします。切り替えた先も失敗したら、さらに次へ進みます。
+- 予備の判定器は、その判定器の既定のモデルで使います。
 - 切り替えてから1時間たつと、`provider` の判定器に戻して試します。まだ失敗するなら、もう一度切り替えます。
 - 判定器によって判定の傾向が違います。どの判定器で判定したかは、動画ごとに判定の台帳（`video_assessments`）に記録します。判定器ごとの呼び出しの回数は「管理 › 判定器とモデル」で確かめられます。精度は `video-benchmark` で比べてから並べてください。
 - 切り替えはログに残します。すべての判定器が失敗し続けたときは、[判定器の停止](notifications.md#監視の停止とカメラの不調を知らせる)として知らせます。
