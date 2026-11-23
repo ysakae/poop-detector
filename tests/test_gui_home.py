@@ -263,7 +263,7 @@ def test_home_shows_todays_guide_only_when_available(gui):
     assert "今日の目安" not in page(server, "/", cookie)
     setup_guide(server, store)
     html = page(server, "/", cookie)
-    assert "今日の目安 109 g" in html
+    assert "今日の目安 104 g" in html
 
 
 def test_home_guide_notes_when_the_advice_has_warnings(gui):
@@ -278,7 +278,7 @@ def test_home_guide_notes_when_the_advice_has_warnings(gui):
     with store.database.connect() as db:
         db.execute("UPDATE weights SET day=?", ((local_today() - timedelta(days=20)).isoformat(),))
     html = page(server, "/", cookie)
-    assert "今日の目安 109 g（確かめてください）" in html
+    assert "今日の目安 104 g（確かめてください）" in html
 
 
 def test_home_last_care_links_to_editing_each_record(gui):

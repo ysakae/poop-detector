@@ -75,6 +75,7 @@ def test_answer_prompt_includes_guide_and_records(store) -> None:
     assert context.advice.guide is not None
     assert f"{context.advice.guide.grams_per_day:.0f}" in text
     assert "2800" in text or "2.8" in text
+    assert "計算方法: FEDIAFの成長期の式" in text
     assert "テストフード" in text
     assert "もも" in text
     # 画面は回答を Markdown として表示するので、使える書き方を伝える。

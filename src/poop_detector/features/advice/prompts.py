@@ -76,6 +76,7 @@ def _guide_lines(context: AdviceContext) -> list[str]:
     lines = [
         f"月齢: {guide.months}か月 / 体重: {guide.weight_grams} g（{guide.weight_day.isoformat()}）",
         f"体格の分類: {guide.size_class}（{guide.size_source}） / 時期: {guide.stage}",
+        f"計算方法: {guide.formula_label}",
         f"安静時エネルギー(RER): {guide.rer:.0f} kcal / 係数: {guide.factor}",
         f"1日の目安: {guide.kcal_per_day:.0f} kcal",
         "1日の量: " + ("不明（フードのカロリー未登録）" if grams is None else f"{grams:.0f} g"),

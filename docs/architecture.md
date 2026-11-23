@@ -179,6 +179,8 @@ OpenCV のネットはスレッド間で共有しないので、`ClipScreener` �
 
 目安の計算（`records/feeding_advice.py`）は副作用のない関数で、判定器がなくても動きます。相談の回答とフードのカロリー探しだけが、判定器の CLI を使います。
 
+成犬時の予想体重が分かる生後8週以降の犬は、設定上の成犬月齢が12か月以内なら、[FEDIAF 2025の成長期の式（表VII-8b）](https://www.europeanpetfood.org/wp-content/uploads/2025/09/FEDIAF-Nutritional-Guidelines_2025.pdf)で必要カロリーを求めます。成犬月齢に達する28日前から、日数に応じて成犬用のカロリーの比重を0%から100%へ上げ、最後にフードのカロリー密度でグラムへ換算します。生まれた日と同じ日付が月内にない場合は、月末にその月齢に達します。予想体重を超えた場合は体重比を100%として成長係数を計算し、予想体重の確認を促します。予想体重が不明な場合、成犬月齢が12か月を超える場合、生後8週未満の場合は従来の成長期の計算を使います。
+
 - 質問とカロリー探しの依頼は、`advice_messages`・`food_lookups` に `queued` の行を入れるだけで、すぐ応答します。仕事の取り出しと書き戻しは `features/advice/jobs.py` が受け持ちます。取り出しは `BEGIN IMMEDIATE` の中で行い、同じ仕事を2つの処理が取りません。`running` のまま `STALE_SECONDS` を過ぎた仕事は取り残しとして `failed`（`timeout`）にします。
 - 作業スレッド（`gui/advice_worker.py` の `advice_worker`）は GUI の稼働中だけ動き、`features/advice/worker.py` の `AdviceWorker.poll_once` が1件ずつ処理します。相談の判定器は設定（`review.provider`・`review.model`）から作ります。カロリー探しは、主の判定器、`review.fallback` の順にウェブ検索に対応するもの（`supports_lookup`）を選びます（`configured_lookup_judge`。予備には主のモデル名を渡しません）。フードの画面も同じ選び方で、探す欄を出すかを決めます。呼び出しは `judge_runs` に用途 `advice`・`food_lookup` で記録します。回答の本文と指示文はログに出しません。
 - 1時間あたりの回数は `HOURLY_LIMIT` で抑えます。動画の自動判定の上限（`review.max_per_hour`）が数えるのは用途 `review`・`benchmark` だけで（`JudgeRunLog.count_since` の `purposes`）、相談やカロリー探しの呼び出しは動画の判定の枠を使いません。

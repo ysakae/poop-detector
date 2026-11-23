@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, timedelta
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -43,12 +44,12 @@ def test_puppy_guide_matches_hand_calculation() -> None:
     assert guide is not None
     assert guide.months == 5
     assert guide.stage == "growth"
-    assert guide.factor == 2.5
+    assert guide.factor == pytest.approx(167.7 / 70)
     assert guide.size_source == "profile"
     assert guide.rer == pytest.approx(167.48, abs=0.01)
-    assert guide.kcal_per_day == pytest.approx(418.70, abs=0.01)
-    assert guide.grams_per_day == pytest.approx(108.75, abs=0.01)
-    assert guide.grams_per_meal == pytest.approx(36.25, abs=0.01)
+    assert guide.kcal_per_day == pytest.approx(401.23, abs=0.01)
+    assert guide.grams_per_day == pytest.approx(104.22, abs=0.01)
+    assert guide.grams_per_meal == pytest.approx(34.74, abs=0.01)
     assert advice.warnings == ()
     assert advice.missing == ()
 
@@ -63,14 +64,82 @@ def test_months_are_full_calendar_months() -> None:
     assert on.guide.months == 5
 
 
-@pytest.mark.parametrize(("ratio", "factor"), [(0.49, 3.0), (0.5, 2.5), (0.79, 2.5), (0.8, 2.0)])
-def test_ratio_thresholds(ratio: float, factor: float) -> None:
-    advice = compute_advice(
-        profile(adult_grams=10000), weight(round(ratio * 10000)), 3850, 3, TODAY
-    )
+def test_toy_poodle_fediaf_guide_matches_example() -> None:
+    pet = profile(birth=date(2026, 8, 21), size_class="toy", adult_grams=2500)
+    guide = compute_advice(pet, weight(1268), 3884, 3, TODAY).guide
+    assert guide is not None
+    assert guide.kcal_per_day == pytest.approx(221.81, abs=0.01)
+    assert guide.grams_per_day == pytest.approx(57.11, abs=0.01)
+
+
+@pytest.mark.parametrize("boundary", [1250, 2000])
+def test_fediaf_guide_is_continuous_at_old_ratio_thresholds(boundary: int) -> None:
+    pet = profile(size_class="toy", adult_grams=2500)
+    before = compute_advice(pet, weight(boundary - 1), 3884, 3, TODAY).guide
+    after = compute_advice(pet, weight(boundary + 1), 3884, 3, TODAY).guide
+    assert before is not None
+    assert after is not None
+    assert before.kcal_per_day == pytest.approx(after.kcal_per_day, abs=0.2)
+
+
+@pytest.mark.parametrize("neutered", [True, False])
+def test_fediaf_transition_joins_both_estimates_over_28_days(neutered: bool) -> None:
+    pet = profile(birth=date(2026, 4, 30), size_class="toy", adult_grams=2500, neutered=neutered)
+    adult_day = date(2027, 2, 28)
+    start = adult_day - timedelta(days=28)
+    estimated_growth = 236.79
+    estimated_adult = 222.68 if neutered else 250.51
+    daily_kcal = []
+    formula_labels = []
+    for offset in range(-1, 30):
+        today = start + timedelta(days=offset)
+        guide = compute_advice(pet, weight(2500, today), 3884, 3, today).guide
+        assert guide is not None
+        assert guide.stage == ("growth" if offset < 28 else "adult")
+        assert guide.months == (9 if offset < 28 else 10)
+        daily_kcal.append(guide.kcal_per_day)
+        formula_labels.append(guide.formula_label)
+
+    assert daily_kcal[:2] == pytest.approx([estimated_growth] * 2, abs=0.01)
+    assert daily_kcal[15] == pytest.approx((estimated_growth + estimated_adult) / 2, abs=0.01)
+    assert daily_kcal[-2:] == pytest.approx([estimated_adult] * 2, abs=0.01)
+    assert formula_labels[0] == "FEDIAFの成長期の式"
+    assert formula_labels[15] == "FEDIAFの成長期の式から移行中（成犬用 50%）"
+    assert formula_labels[-1] == "成犬用の式"
+    daily_pairs = pairwise(daily_kcal)
+    assert max(abs(right - left) for left, right in daily_pairs) < 1
+
+
+@pytest.mark.parametrize("size", ["large", "giant"])
+@pytest.mark.parametrize("birth", [date(2026, 6, 21), date(2025, 10, 21)])
+def test_later_maturing_sizes_keep_existing_growth_guide(size: str, birth: date) -> None:
+    pet = profile(birth=birth, size_class=size, adult_grams=40000)
+    guide = compute_advice(pet, weight(24000), 3884, 3, TODAY).guide
+    assert guide is not None
+    assert (guide.stage, guide.factor) == ("growth", 2.5)
+
+
+def test_fediaf_uses_eight_weeks_as_lower_age_limit() -> None:
+    pet = profile(birth=TODAY - timedelta(weeks=8), adult_grams=5000)
+    yesterday = TODAY - timedelta(days=1)
+    before = compute_advice(pet, weight(1500, yesterday), 3884, 3, yesterday)
+    on = compute_advice(pet, weight(1500, TODAY), 3884, 3, TODAY)
+    assert before.guide is not None
+    assert on.guide is not None
+    assert before.guide.factor == 3.0
+    assert before.warnings
+    assert on.guide.factor == pytest.approx((254.1 - 135 * 0.3) / 70)
+    assert on.warnings == ()
+
+
+def test_fediaf_caps_growth_ratio_when_weight_exceeds_adult_estimate() -> None:
+    advice = compute_advice(profile(adult_grams=1000), weight(2200), 3884, 3, TODAY)
     assert advice.guide is not None
-    assert advice.guide.ratio == pytest.approx(ratio)
-    assert advice.guide.factor == factor
+    assert advice.guide.ratio == 2.2
+    assert advice.guide.factor == pytest.approx(119.1 / 70)
+    assert advice.warnings == (
+        "現在の体重が成犬時の予想体重を超えています。予想体重を確かめてください。",
+    )
 
 
 @pytest.mark.parametrize(
@@ -148,14 +217,12 @@ def test_zero_meals_gives_no_per_meal_amount() -> None:
     assert advice.guide.grams_per_meal is None
 
 
-def test_under_two_months_warns() -> None:
+def test_under_eight_weeks_warns() -> None:
     p = profile(birth=date(2026, 10, 1))
     advice = compute_advice(p, weight(1200), 3850, 3, TODAY)
     assert advice.guide is not None
     assert advice.guide.months == 1
-    assert (
-        "生後2か月未満の目安はこの計算の対象外です。獣医師に相談してください。" in advice.warnings
-    )
+    assert "生後8週未満の目安はこの計算の対象外です。獣医師に相談してください。" in advice.warnings
 
 
 def test_missing_birth_or_weight_gives_no_guide() -> None:

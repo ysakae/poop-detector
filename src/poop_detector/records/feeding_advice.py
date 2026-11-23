@@ -1,5 +1,6 @@
 """月齢・体重・体格から、1日のごはんの量の目安を計算する。"""
 
+from calendar import monthrange
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -12,7 +13,9 @@ from .weights import Weight
 STALE_GROWTH_DAYS = 14
 STALE_ADULT_DAYS = 60
 GAIN_WINDOW_DAYS = 28
-MIN_MONTHS = 2
+FEDIAF_MIN_AGE_DAYS = 56
+FEDIAF_MAX_AGE_MONTHS = 12
+ADULT_TRANSITION_DAYS = 28
 EARLY_MONTHS = 4
 DEFAULT_SIZE: SizeClass = "medium"
 
@@ -35,6 +38,15 @@ class Guide:
     grams_per_day: float | None
     grams_per_meal: float | None
     meals: int
+    fediaf_adult_share: float | None = None
+
+    @property
+    def formula_label(self) -> str:
+        if self.fediaf_adult_share is None:
+            return "成犬用の式" if self.stage == "adult" else "従来の成長期の式"
+        if self.fediaf_adult_share == 0:
+            return "FEDIAFの成長期の式"
+        return f"FEDIAFの成長期の式から移行中（成犬用 {self.fediaf_adult_share:.0%}）"
 
 
 @dataclass(frozen=True)
@@ -55,9 +67,15 @@ class DayIntake:
     kcal: float | None
 
 
+def _month_anniversary(birth: date, months: int) -> date:
+    years, month_index = divmod(birth.month - 1 + months, 12)
+    year, month = birth.year + years, month_index + 1
+    return date(year, month, min(birth.day, monthrange(year, month)[1]))
+
+
 def _full_months(birth: date, today: date) -> int:
     months = (today.year - birth.year) * 12 + today.month - birth.month
-    return months - (1 if today.day < birth.day else 0)
+    return months - (1 if today < _month_anniversary(birth, months) else 0)
 
 
 def _size(
@@ -93,7 +111,7 @@ def _missing_inputs(birth: date | None, latest: Weight | None, today: date) -> t
     return tuple(missing)
 
 
-def _guide_warnings(guide: Guide, today: date) -> tuple[str, ...]:
+def _guide_warnings(guide: Guide, today: date, age_days: int) -> tuple[str, ...]:
     warnings = []
     age = (today - guide.weight_day).days
     if age > (STALE_GROWTH_DAYS if guide.stage == "growth" else STALE_ADULT_DAYS):
@@ -102,8 +120,10 @@ def _guide_warnings(guide: Guide, today: date) -> tuple[str, ...]:
         warnings.append("犬種か成犬時の予想体重を入れると目安が正確になります。")
     if guide.grams_per_day is None:
         warnings.append("フードのカロリーが分からないので、量（g）は出せません。")
-    if guide.months < MIN_MONTHS:
-        warnings.append("生後2か月未満の目安はこの計算の対象外です。獣医師に相談してください。")
+    if age_days < FEDIAF_MIN_AGE_DAYS:
+        warnings.append("生後8週未満の目安はこの計算の対象外です。獣医師に相談してください。")
+    if guide.fediaf_adult_share is not None and guide.ratio is not None and guide.ratio > 1:
+        warnings.append("現在の体重が成犬時の予想体重を超えています。予想体重を確かめてください。")
     return tuple(warnings)
 
 
@@ -116,13 +136,28 @@ def compute_advice(
         return Advice(None, (), missing)
 
     months = _full_months(profile.birth, today)
+    age_days = (today - profile.birth).days
     size, source, adult = _size(profile)
     ratio = latest.grams / adult if adult else None
-    stage: Literal["growth", "adult"] = "growth" if months < ADULT_MONTHS[size] else "adult"
-    if stage == "growth":
-        factor = _growth_factor(months, ratio)
+    adult_months = ADULT_MONTHS[size]
+    adult_factor = 1.8 if profile.neutered is False else 1.6
+    stage: Literal["growth", "adult"] = "growth" if months < adult_months else "adult"
+    adult_share = None
+    if stage == "adult":
+        factor = adult_factor
+    elif (
+        ratio is not None
+        and age_days >= FEDIAF_MIN_AGE_DAYS
+        and adult_months <= FEDIAF_MAX_AGE_MONTHS
+    ):
+        adult_day = _month_anniversary(profile.birth, adult_months)
+        days_to_adult = (adult_day - today).days
+        adult_share = max(0.0, 1 - days_to_adult / ADULT_TRANSITION_DAYS)
+        # 成犬時の予想体重を超えている場合は、成長期の係数を成犬体重相当で止める。
+        growth_factor = (254.1 - 135.0 * min(ratio, 1.0)) / 70
+        factor = growth_factor * (1 - adult_share) + adult_factor * adult_share
     else:
-        factor = 1.8 if profile.neutered is False else 1.6
+        factor = _growth_factor(months, ratio)
     rer = 70 * (latest.grams / 1000) ** 0.75
     kcal = rer * factor
     per_day = kcal / (kcal_dk / 1000) if kcal_dk is not None and kcal_dk > 0 else None
@@ -143,8 +178,9 @@ def compute_advice(
         grams_per_day=per_day,
         grams_per_meal=per_meal,
         meals=meals,
+        fediaf_adult_share=adult_share,
     )
-    return Advice(guide, _guide_warnings(guide, today), ())
+    return Advice(guide, _guide_warnings(guide, today, age_days), ())
 
 
 def weekly_gain(rows: Sequence[Weight], today: date) -> float | None:
