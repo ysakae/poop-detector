@@ -257,7 +257,11 @@ def _review_commands(commands: CommandGroup) -> None:
         help="保存動画の、判定の前のふるい分けの指標を記録（判定・通知なし）",
     )
     screening.add_argument("--limit", type=int, default=5, help="処理上限（1〜50件）")
-    screening.add_argument("--clip", help="動画のID。指定した動画は求め直します")
+    screening_mode = screening.add_mutually_exclusive_group()
+    screening_mode.add_argument("--clip", help="動画のID。指定した動画は求め直します")
+    screening_mode.add_argument(
+        "--evaluate-endpoint", help="固定した評価セットの JSON で前後差分のしきい値を比較"
+    )
     screening.add_argument("--track-tray", action="store_true", help="動画内でトレーの位置に追従")
     compare = commands.add(
         "circling-compare",
