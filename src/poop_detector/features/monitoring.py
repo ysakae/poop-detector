@@ -258,6 +258,36 @@ def _presence_extension(
     return PresenceExtension(tracker, sampler, predict)
 
 
+def _shared_frame_extensions(
+    roi: AnyROI,
+    config: Config,
+    notifier: MonitorNotifier,
+    dog_observer: "DogObserver | None",
+    *,
+    activity_map: ActivityRecorder | None,
+    sleep: SleepRecorder | None,
+    floor: AnyROI | None,
+) -> list[MonitorExtension]:
+    """位置合わせ前の映像を使う拡張で、同じコマの犬検出を共有する。"""
+    if activity_map is None and sleep is None and floor is None:
+        return []
+    extensions: list[MonitorExtension] = []
+    if dog_observer is None:
+        raise ValueError("行動マップ・睡眠の記録・床の候補には犬の検出が必要です")
+    # 同じ映像を処理する拡張の間で、犬検出の推論を共有する。
+    predict = SharedPredict(dog_observer.predict)
+    # 位置合わせ前の映像を使うので、カメラの読み込み直後に呼ばれる。
+    if activity_map is not None:
+        extensions.append(ActivityExtension(activity_map, predict))
+    if sleep is not None:
+        extensions.append(SleepExtension(sleep, predict))
+    if floor is not None and config.floor_objects_enabled:
+        extensions.append(_floor_extension(floor, roi, config, notifier, predict))
+    if floor is not None and config.presence_enabled:
+        extensions.append(_presence_extension(floor, config, notifier, predict))
+    return extensions
+
+
 def standard_extensions(
     roi: AnyROI,
     baseline: Frame,
@@ -276,23 +306,11 @@ def standard_extensions(
     """CLI の --early-alert・--dog・--detect-outside・--activity-map・--sleep・--floor-objects・
     --presence に対応する拡張を作る。floor は床の候補と不在の記録に使う床面（行動マップの登録）。
     """
-    extensions: list[MonitorExtension] = []
     if dog_observer is None and config.dog_enabled:
         dog_observer = dog_observer_from_config(config)
-    if activity_map is not None or sleep is not None or floor is not None:
-        if dog_observer is None:
-            raise ValueError("行動マップ・睡眠の記録・床の候補には犬の検出が必要です")
-        # 同じ映像を処理する拡張の間で、犬検出の推論を共有する。
-        predict = SharedPredict(dog_observer.predict)
-        # 位置合わせ前の映像を使うので、カメラの読み込み直後に呼ばれる。
-        if activity_map is not None:
-            extensions.append(ActivityExtension(activity_map, predict))
-        if sleep is not None:
-            extensions.append(SleepExtension(sleep, predict))
-        if floor is not None and config.floor_objects_enabled:
-            extensions.append(_floor_extension(floor, roi, config, notifier, predict))
-        if floor is not None and config.presence_enabled:
-            extensions.append(_presence_extension(floor, config, notifier, predict))
+    extensions = _shared_frame_extensions(
+        roi, config, notifier, dog_observer, activity_map=activity_map, sleep=sleep, floor=floor
+    )
     if config.digest_enabled or config.night_enabled:
         from ..records.away_periods import AwayPeriods
         from .digest import DigestSnapshots, SnapshotExtension
