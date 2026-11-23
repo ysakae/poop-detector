@@ -18,7 +18,7 @@
     pending?.abort();
     const request = new AbortController();
     pending = request;
-    status.textContent = "CLI からモデル一覧を取得しています…";
+    status.textContent = "モデル候補を取得しています…";
     try {
       const response = await fetch(form.dataset.catalog, {
         method: "POST",

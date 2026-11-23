@@ -28,6 +28,8 @@ from .web_address import (
 )
 
 CONNECTION_KEYS = ("POOP_RTSP_URL", "POOP_NTFY_TOPIC", "POOP_NTFY_EARLY_TOPIC", "POOP_NTFY_SERVER")
+REVIEW_PROVIDERS = ("codex", "claude", "gemini", "gemini-api")
+_REVIEW_PROVIDER_NAMES = "、".join(REVIEW_PROVIDERS)
 PET_NAME_MAX_LENGTH = 32
 # 以前の GUI のデザインテーマ。デザインを1つにしたので使わないが、書いてある設定ファイルは受け付ける。
 THEME_NAMES = ("professional", "dog")
@@ -512,8 +514,8 @@ SETTINGS: tuple[Setting, ...] = (
         "review",
         "provider",
         str,
-        lambda value: value in ("codex", "claude", "gemini"),
-        "codex、claude、gemini のいずれか",
+        lambda value: value in REVIEW_PROVIDERS,
+        f"{_REVIEW_PROVIDER_NAMES} のいずれか",
     ),
     Setting(
         "review_model",
@@ -521,17 +523,15 @@ SETTINGS: tuple[Setting, ...] = (
         "model",
         str,
         valid_review_model,
-        "英数字で始まるモデル名（空なら選んだ CLI の既定）",
+        "英数字で始まるモデル名（空なら選んだ判定器の既定）",
     ),
     Setting(
         "review_fallback",
         "review",
         "fallback",
         str,
-        lambda value: all(
-            name.strip() in ("codex", "claude", "gemini") for name in value.split(",") if value
-        ),
-        "codex、claude、gemini をカンマで区切った並び（空なら切り替えない）",
+        lambda value: all(name.strip() in REVIEW_PROVIDERS for name in value.split(",") if value),
+        f"{_REVIEW_PROVIDER_NAMES} をカンマで区切った並び（空なら切り替えない）",
     ),
     Setting(
         "review_max_per_hour",

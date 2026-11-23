@@ -114,7 +114,7 @@ def test_model_menu_offers_cli_default(models_gui):
     html = page(server, login(server))
     menu = re.search(r'<select name="model">(.*?)</select>', html, re.DOTALL)
     assert menu is not None
-    assert '<option value="" selected>CLI の既定</option>' in menu[1]
+    assert '<option value="" selected>判定器の既定</option>' in menu[1]
 
 
 def test_model_catalog_reads_only_the_selected_cli_without_saving(models_gui, monkeypatch):
@@ -250,18 +250,23 @@ def test_plan_usage_is_asked_only_when_requested(models_gui):
     assert "secret-output" not in html
 
 
-def test_choosing_a_judge_writes_the_settings_and_the_audit_log(models_gui):
+def test_choosing_a_judge_writes_the_settings_and_the_audit_log(models_gui, monkeypatch):
     server, path = models_gui
+    monkeypatch.setattr("poop_detector.video.gemini_api.GeminiApiJudge.check", lambda self: None)
     admin = login(server, "管理者")
-    status, headers, _ = post(server, admin, {"provider": "gemini", "model": "gemini-x"})
+    status, headers, _ = post(
+        server, admin, {"provider": "gemini-api", "model": "gemini-3.8-flash"}
+    )
     assert (status, headers["Location"]) == (303, f"{PAGE}?saved=1")
     config = Config.load(path)
-    assert (config.review_provider, config.review_model) == ("gemini", "gemini-x")
+    assert (config.review_provider, config.review_model) == ("gemini-api", "gemini-3.8-flash")
     assert "# 手で書いたコメント" in path.read_text()
     entry = server.app.accounts.audit.recent()[0]
     assert (entry.actor, entry.action) == ("管理者", "judge.select")
-    assert "review.provider: codex → gemini" in entry.detail
+    assert "review.provider: codex → gemini-api" in entry.detail
     html = page(server, admin, f"{PAGE}?saved=1")
+    assert '<option value="gemini-api" selected>' in html
+    assert "使える状態です" in html
     assert "保存しました" in html
     assert "次の動画の判定から新しい判定器を使います" in html
 
@@ -272,7 +277,7 @@ def test_invalid_choices_and_conflicts_are_refused(models_gui):
     before = path.read_text()
     status, _, html = post(server, admin, {"provider": "other", "model": ""})
     assert status == 400
-    assert "codex、claude、gemini のいずれか" in html
+    assert "codex、claude、gemini、gemini-api のいずれか" in html
     status, _, html = post(server, admin, {"provider": "codex", "model": "bad model!"})
     assert status == 400
     assert "英数字で始まるモデル名" in html

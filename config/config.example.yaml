@@ -157,8 +157,9 @@ reentry:
 
 # 動画の自動判定器（features.video_review を有効にして使う）
 review:
-  provider: codex   # codex（Codex CLI）、claude（Claude Code CLI）、gemini（Antigravity CLI）
-  model: ""         # 空欄は選んだ CLI の既定。指定する場合は画像入力対応のモデル名
+  # codex（Codex CLI）、claude（Claude Code CLI）、gemini（Antigravity CLI）、gemini-api（Gemini API）
+  provider: codex
+  model: ""         # 空欄は選んだ判定器の既定。指定する場合は画像入力対応のモデル名
   # 判定器の呼び出しが失敗し続けたとき（利用上限など）に切り替える予備の判定器。
   # カンマ区切りで、書いた順に試す（例: "claude,gemini"）。空なら切り替えない
   fallback: ""

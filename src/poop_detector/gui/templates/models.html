@@ -12,7 +12,7 @@
 <tr><th scope="row">状態</th><td>{% if problem %}<span class="state state-warn">{{ problem }}</span>{% else %}<span class="state state-ok">使える状態です</span>{% endif %}</td></tr>
 <tr><th scope="row">自動判定</th><td>{% if review_enabled %}有効（features.video_review）{% else %}無効（有効にするには設定の features.video_review か run --video-review）{% endif %}</td></tr>
 </tbody></table>
-<p class="note">監視するマシンで、選んだ判定器の CLI にログインしてください。</p>
+<p class="note">監視するマシンで、CLI を使う場合はログインし、Gemini API を使う場合は <code>.env</code> に <code>GEMINI_API_KEY</code> を設定してください。</p>
 </section>
 <section class="settings-section" aria-labelledby="review-status-title"><h3 id="review-status-title">監視中の判定の状況</h3>
 <table><tbody>
@@ -25,7 +25,7 @@
 <tr><th scope="row">予備の判定器</th><td>{{ review_status.fallback }}</td></tr>
 </tbody></table>
 <p class="note">判定器を呼ぶ回数は、1時間あたりの上限（<code>review.max_per_hour</code>）で抑えています。上限の半分を超えるとトレー外の滞在、4分の3を超えると犬の出入りの動画を後回しにし、余裕が戻ってから判定します。監視を起動し直す前の動画は、<code>video-review</code> で判定してください。</p>
-<p class="note">失敗の内訳は、失敗した呼び出しを種類ごとに数えます。「利用制限・混雑」は CLI の応答や標準エラーの言い回しから判断します。CLI の出力そのものは残しません。「不明」は種類を記録する前の失敗です。</p>
+<p class="note">失敗の内訳は、失敗した呼び出しを種類ごとに数えます。「利用制限・混雑」は判定器の応答から判断します。応答の本文や CLI の出力は保存しません。「不明」は種類を記録する前の失敗です。</p>
 </section>
 <section class="settings-section" aria-labelledby="tray-stay-title"><h3 id="tray-stay-title">犬の出入りとトレー滞在時間（直近7日間）</h3>
 <div class="table-scroll"><table><thead><tr><th scope="col">滞在時間</th><th scope="col">動画</th><th scope="col">判定完了</th><th scope="col">排泄候補</th></tr></thead><tbody>
@@ -43,7 +43,7 @@
 {%- for value, name in providers -%}<option value="{{ value }}"{% if value == provider %} selected{% endif %}>{{ value }}（{{ name }}）</option>{%- endfor -%}
 </select></label></div>
 <div class="settings-field"><label><code>review.model</code><select name="model">
-<option value=""{% if not model %} selected{% endif %}>CLI の既定</option>
+<option value=""{% if not model %} selected{% endif %}>判定器の既定</option>
 <option value="{{ custom_model }}"{% if model %} selected{% endif %}>モデル名を入力</option>
 </select></label><small id="judge-model-status" role="status"></small></div>
 <div class="settings-field" id="judge-custom-model"><label>モデル名<input name="custom_model" value="{{ model }}" maxlength="128"></label></div>
@@ -60,7 +60,7 @@
 <tr><td>{{ judge.provider }}</td><td>{{ judge.model }}</td><td>{{ judge.purpose }}</td>{% for count in judge.counts %}<td class="count">{{ count }}</td>{% endfor %}<td class="count">{{ judge.failures }}</td><td>{{ judge.last_at }}（{% if judge.last_failed %}失敗{% else %}成功{% endif %}）</td><td>{{ judge.tokens }}</td></tr>
 {%- endfor -%}
 </tbody></table></div>
-<p class="note">判定器の CLI を呼んだ回数です（失敗は全期間）。7日と30日は今の時刻からさかのぼり、今日と今月は暦で区切ります。この版より前の判定は、台帳の動画1本につき1回として数えています。トークン数は、CLI が数を出した呼び出し（Codex CLI と Claude Code CLI）だけの平均です。入力は、キャッシュから読んだ分と、CLI が自動で足す指示の分を含みます。</p>
+<p class="note">判定器を呼んだ回数です（失敗は全期間）。7日と30日は今の時刻からさかのぼり、今日と今月は暦で区切ります。この版より前の判定は、台帳の動画1本につき1回として数えています。トークン数は、Codex CLI、Claude Code CLI、Gemini API が数を返した呼び出しの平均です。入力にはキャッシュから読んだ分を含みます。</p>
 {% else %}<p>まだ判定していません。</p>{% endif %}
 </section>
 <section class="settings-section" aria-labelledby="plan-title"><h3 id="plan-title">プランの使用量</h3>
@@ -84,7 +84,7 @@
 <p class="note">{{ plans.checked_at }} に問い合わせた消費の割合です。</p>
 {% else %}<p>まだ問い合わせていません。</p>{% endif %}
 <form method="post" action="{{ plan_action }}">{{ csrf_field(token) }}<button data-busy-label="CLI に問い合わせています…">CLI に問い合わせる</button></form>
-<p class="note">監視するマシンの各 CLI に、ログイン中のアカウントのサブスクリプションの使用量を問い合わせます。モデルは呼ばず、数秒かかります。判定以外の使い方の分も含みます。Claude Code CLI は戻る時刻を出しません。「制限なし」はその制限がないことを示します。棒の色は、70% 以上で注意、90% 以上で警告に変わります。</p>
+<p class="note">監視するマシンの各 CLI に、ログイン中のアカウントのサブスクリプションの使用量を問い合わせます。モデルは呼ばず、数秒かかります。判定以外の使い方の分も含みます。Gemini API の請求状況とクレジット残高は Google AI Studio で確認できます。Claude Code CLI は戻る時刻を出しません。「制限なし」はその制限がないことを示します。棒の色は、70% 以上で注意、90% 以上で警告に変わります。</p>
 </section>
 <section class="settings-section" aria-labelledby="benchmark-title"><h3 id="benchmark-title">判定器・モデルの比較</h3>
 <p class="note">ラベル付きの動画での比較は時間がかかるので、監視するマシンで <code>video-benchmark</code> を実行します。<code>--output</code> を省くと、結果をこの画面に出します。数は適合率 / 再現率です。</p>

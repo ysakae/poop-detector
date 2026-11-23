@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..config import (
+    REVIEW_PROVIDERS,
     SETTINGS,
     THEME_NAMES,
     Config,
@@ -59,7 +60,7 @@ SECTION_TITLES = {
     "review": "動画の自動判定",
     "gui": "GUI",
 }
-CHOICES = {"review_provider": ("codex", "claude", "gemini"), "gui_theme": THEME_NAMES}
+CHOICES = {"review_provider": REVIEW_PROVIDERS, "gui_theme": THEME_NAMES}
 CONNECTION_LABELS = {
     "POOP_RTSP_URL": "カメラの RTSP URL",
     "POOP_NTFY_TOPIC": "ntfy の通知トピック",
