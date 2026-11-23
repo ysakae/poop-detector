@@ -2,7 +2,7 @@
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 import pytest
@@ -445,3 +445,81 @@ def test_answer_markdown_is_rendered_but_question_stays_plain(gui, judge_ready):
     assert "<li><strong>朝</strong> 36 g</li>" in html
     assert 'href="https://maker.example/p" rel="noopener noreferrer"' in html
     assert "**質問の記号**はそのまま" in html
+
+
+def test_treat_budget_tracks_main_food_and_edits(gui):
+    from poop_detector.records.care import entries, last_feeding
+    from poop_detector.records.foods import save_food
+    from poop_detector.records.profile import save_profile
+    from poop_detector.records.weights import save_birth_date, save_weight, weights
+    from poop_detector.timezones import local_today
+
+    server, store, _ = gui
+    setup_guide(server, store)
+    today = local_today()
+    (food,) = active_foods(store.database)
+    save_food_id = food.id
+
+    save_food(
+        store.database,
+        name=food.name,
+        kcal_dk=3884,
+        source_url="",
+        user_id=first_user(store),
+        food_id=save_food_id,
+    )
+    save_profile(
+        store.database,
+        breed="トイ・プードル",
+        size_class="toy",
+        adult_grams=2500,
+        neutered="",
+        food_id=save_food_id,
+    )
+    save_birth_date(store.database, (today - timedelta(days=100)).isoformat())
+    save_weight(store.database, weights(store.database)[0].id, today, 1268, "")
+    assert "主食だけなら" in request(server, "GET", ADVICE)[1].decode()
+    at = f"{today}T00:00"
+
+    def record(**fields):
+        return submit(server, "/care", {"kind": "feeding", "at": at, **fields}, page="/care")
+
+    form = request(server, "GET", "/care?treat=1")[1].decode()
+    assert 'value="treat" selected' in form
+    assert 'name="food" value=""' in form
+    status, error_page = record(energy_kcal="abc", meal_type="treat")
+    assert status == 400
+    assert "カロリーは0.1 kcal単位の正の数で入力してください" in error_page.decode()
+    assert 'name="energy_kcal" value="abc"' in error_page.decode()
+
+    assert record(food=food.name, grams="20")[0] == 303
+    assert record(food="おやつA", energy_kcal="10", meal_type="treat")[0] == 303
+    assert last_feeding(store.database) == (food.name, 200)
+    treat = next(row for row in entries(store.database, today) if row.is_treat)
+    assert treat.energy_dk == 100
+    html = request(server, "GET", ADVICE)[1].decode()
+    assert "主食の1日分の目安 54.5 g" in html
+    assert "残りの主食の目安 34.5 g" in html
+    assert "おやつ 10.0 kcal" in html
+    edit_page = request(server, "GET", f"/care?day={today}&id={treat.id}")[1].decode()
+    assert 'value="treat" selected' in edit_page
+    assert 'name="energy_kcal" value="10"' in edit_page
+
+    assert record(id=treat.id, food=food.name, grams="3", meal_type="treat")[0] == 303
+    html = request(server, "GET", ADVICE)[1].decode()
+    assert "残りの主食の目安 34.1 g" in html
+
+    assert record(id=treat.id, food="不明なおやつ", meal_type="treat")[0] == 303
+    html = request(server, "GET", ADVICE)[1].decode()
+    assert "カロリー不明の記録が1件" in html
+    assert "77.7 kcal" in html
+    assert "残りの主食の目安" not in html
+
+    assert record(id=treat.id, energy_kcal="25", meal_type="treat")[0] == 303
+    html = request(server, "GET", ADVICE)[1].decode()
+    assert "おやつが1日の目安の10%を超えています" in html
+    assert "残りの主食の目安" not in html
+
+    assert submit(server, "/care/delete", {"id": treat.id}, page="/care")[0] == 303
+    html = request(server, "GET", ADVICE)[1].decode()
+    assert "残りの主食の目安 37.1 g" in html

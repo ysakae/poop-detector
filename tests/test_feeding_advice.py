@@ -256,11 +256,13 @@ def test_weekly_gain_uses_last_28_days() -> None:
 
 def test_intake_summary_kcal_only_when_all_foods_known() -> None:
     days = [date(2026, 11, 19), date(2026, 11, 20), date(2026, 11, 21)]
-    totals = {
-        days[0]: {"A": 600, "B": 400},
-        days[1]: {"A": 500, "謎": 100},
-    }
-    summary = intake_summary(totals, {"A": 4000, "B": 3500}, days)
+    rows = [
+        CareEntry("", parse_local("2026-11-19T09:00"), "feeding", "家族", "", "A", 600),
+        CareEntry("", parse_local("2026-11-19T09:00"), "feeding", "家族", "", "B", 400),
+        CareEntry("", parse_local("2026-11-20T09:00"), "feeding", "家族", "", "A", 500),
+        CareEntry("", parse_local("2026-11-20T09:00"), "feeding", "家族", "", "謎", 100),
+    ]
+    summary = intake_summary(rows, {"A": 4000, "B": 3500}, days)
     assert [s.day for s in summary] == days
     assert summary[0].grams == pytest.approx(100.0)
     assert summary[0].kcal == pytest.approx(60 * 4.0 + 40 * 3.5)

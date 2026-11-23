@@ -20,6 +20,7 @@ from ..records.care import (
 )
 from ..records.events import EXCRETION_TYPES
 from ..records.feeding_plans import plans_for_day, save_plan, stop_plan
+from ..records.foods import active_foods
 from ..records.weights import Weight, parse_day, weights
 from ..timezones import local_now, local_today, to_local
 from .pages import Query, message_page
@@ -46,14 +47,17 @@ def _timeline(
     items: list[tuple[str, dict[str, str]]] = []
     for row in rows:
         amount = f"{row.grams} g" if row.grams else ""
-        detail = " ／ ".join(part for part in (row.food, amount, row.actor, row.note) if part)
+        energy = f"{format_grams(row.energy_dk)} kcal" if row.energy_dk is not None else ""
+        detail = " ／ ".join(
+            part for part in (row.food, amount, energy, row.actor, row.note) if part
+        )
         items.append(
             (
                 row.at.strftime("%H:%M:%S"),
                 {
                     "time": row.at.strftime("%H:%M"),
                     "icon": CARE_ICONS[row.kind],
-                    "what": KINDS[row.kind],
+                    "what": "おやつ" if row.is_treat else KINDS[row.kind],
                     "detail": detail,
                     "url": f"/care?day={day.isoformat()}&id={row.id}",
                 },
@@ -95,6 +99,7 @@ def _render(
     submitted: dict[str, str] | None = None,
     selected_plan: str = "",
     deleted: bool = False,
+    treat: bool = False,
 ) -> None:
     store = handler.app.store
     rows = entries(store.database, day)
@@ -119,8 +124,10 @@ def _render(
     food, grams, food_history = feeding_history(store.database)
     if edit:
         food, grams = edit.food, edit.grams
+    elif treat:
+        food, grams = "", ""
     kinds = (edit.kind,) if edit else tuple(KINDS)
-    amounts = [row.amount_dg for row in rows if row.amount_dg is not None]
+    amounts = [row.amount_dg for row in rows if not row.is_treat and row.amount_dg is not None]
     page = render_template(
         "care.html",
         title=handler.app.title,
@@ -135,6 +142,9 @@ def _render(
         food=food,
         grams=grams,
         food_history=food_history,
+        registered_foods=active_foods(store.database),
+        meal_type="treat" if (edit.is_treat if edit else treat) else "main",
+        energy_kcal=format_grams(edit.energy_dk) if edit else "",
         submitted=submitted or {},
         recorded_grams=format_grams(sum(amounts)) if amounts else "0",
         sheet_count=sum(row.kind == "sheet" for row in rows),
@@ -161,6 +171,7 @@ def care_page(handler: "Handler", query: Query) -> None:
         selected=first(query, "id"),
         selected_plan=first(query, "plan"),
         deleted=first(query, "deleted") == "1",
+        treat=first(query, "treat") == "1",
     )
 
 
@@ -191,6 +202,9 @@ def save_care(handler: "Handler", form: Form) -> None:
         stamp = care_time(values.get("at", ""))
         day = min(day, stamp.astimezone().date())
         kind = values.get("kind", "")
+        meal_type = values.get("meal_type", "main")
+        if kind == "feeding" and meal_type not in {"main", "treat"}:
+            raise InvalidInputError("主食かおやつを選んでください")
         entry = CareEntry(
             values.get("id", ""),
             stamp,
@@ -199,6 +213,12 @@ def save_care(handler: "Handler", form: Form) -> None:
             values.get("note", "").strip(),
             values.get("food", "") if kind == "feeding" else "",
             parse_amount(values.get("grams", "")) if kind == "feeding" else None,
+            is_treat=meal_type == "treat",
+            energy_dk=(
+                parse_amount(values.get("energy_kcal", ""), label="カロリー", unit="kcal")
+                if kind == "feeding"
+                else None
+            ),
         )
         plan_id = values.get("plan_id") or None
         view_day = values.get("view_day")

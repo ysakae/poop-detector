@@ -298,7 +298,7 @@ def render_home(
     today = local_today()
     daily, _, _ = summarize_records(store.records_between(today, today), today, today)
     cared = care_entries(store.database, today)
-    fed = [entry.amount_dg for entry in cared if entry.amount_dg]
+    fed = [entry.amount_dg for entry in cared if entry.amount_dg and not entry.is_treat]
     last = last_feeding(store.database)
     done = next((entry for entry in cared if recorded and entry.id == recorded), None)
     recent = [

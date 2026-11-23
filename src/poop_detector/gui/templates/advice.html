@@ -7,7 +7,7 @@
 <h3>ごはんの目安</h3>
 {% if guide %}
 <p class="advice-headline">{{ guide.headline }}</p>
-<p class="advice-amount">{% if guide.grams is not none %}1日 <strong>{{ guide.grams }} g</strong>{{ guide.meal }}{% else %}1日 <strong>{{ guide.kcal }} kcal</strong>{% endif %}</p>
+<p class="advice-amount">{% if guide.grams is not none %}主食だけなら1日 <strong>{{ guide.grams }} g</strong>{{ guide.meal }}{% else %}1日 <strong>{{ guide.kcal }} kcal</strong>{% endif %}</p>
 {% if guide.food %}<p class="note">フード：{{ guide.food }}</p>{% endif %}
 <p class="note">{{ guide.formula }}（{{ guide.kcal }} kcal/日）</p>
 {% endif %}
@@ -15,6 +15,14 @@
 {% for text in warnings %}<p class="message message-error" role="alert">{{ text }}</p>{% endfor %}
 {% if gain %}<p>体重の伸び：{{ gain }}</p>{% endif %}
 <p class="note">{{ disclaimer }}</p>
+<h4>今日の食事</h4>
+<p>主食 {{ budget.main }} kcal ／ おやつ {{ budget.treat }} kcal{% if budget.treat_limit is defined %}（目安は {{ budget.treat_limit }} kcal まで）{% endif %}</p>
+<p>{{ "分かっている分の合計" if budget.unknown else "合計" }} {{ budget.total }} kcal</p>
+{% if budget.unknown %}<p class="note">カロリー不明の記録が{{ budget.unknown }}件あります。</p>{% endif %}
+{% if budget.over_limit %}<p class="message message-error" role="alert">おやつが1日の目安の10%を超えています。主食の残り量は表示していません。</p>{% endif %}
+{% if budget.adjusted is defined %}<p>主食の1日分の目安 {{ budget.adjusted }} g</p>{% endif %}
+{% if budget.remaining is defined %}<p><strong>残りの主食の目安 {{ budget.remaining }} g</strong></p>{% endif %}
+<p><a href="/care?treat=1#feeding">おやつを記録</a></p>
 <h4>直近7日の実績</h4>
 <table class="weight-table"><thead><tr><th>日</th><th>量</th><th>カロリー</th></tr></thead>
 <tbody>{% for row in intake %}<tr><td>{{ row.day }}</td><td>{{ row.grams }}</td><td>{{ row.kcal }}</td></tr>{% endfor %}</tbody></table>

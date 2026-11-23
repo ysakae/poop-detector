@@ -95,7 +95,9 @@ def _weight_lines(context: AdviceContext) -> list[str]:
 def _intake_lines(context: AdviceContext) -> list[str]:
     lines = []
     for index, day in enumerate(context.intake):
-        kcal = "不明" if day.kcal is None else f"{day.kcal:.0f} kcal"
+        kcal = f"{day.known_kcal:.1f} kcal（主食 {day.main_kcal:.1f}、おやつ {day.treat_kcal:.1f}）"
+        if day.unknown_count:
+            kcal += f"、カロリー不明 {day.unknown_count}件"
         names = context.intake_foods[index] if index < len(context.intake_foods) else ()
         foods = "、".join(f"{_data(name)} {grams:.1f} g" for name, grams in names)
         suffix = f" / {foods}" if foods else ""

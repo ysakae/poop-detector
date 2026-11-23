@@ -34,6 +34,11 @@
 {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
 <div class="settings-field"><label>実施した日時<input type="datetime-local" name="at" value="{{ submitted.get('at', at) if retry else at }}" required></label></div>
 {% if kind == "feeding" %}
+{% set meal_choice = submitted.get("meal_type", meal_type) if retry else meal_type %}
+<div class="settings-field"><label>区分<select name="meal_type" id="feeding-meal-type">
+<option value="main"{% if meal_choice == "main" %} selected{% endif %}>主食</option>
+<option value="treat"{% if meal_choice == "treat" %} selected{% endif %}>おやつ</option>
+</select></label></div>
 {% if feeding_plans and not edit %}
 {% set chosen = submitted.get("plan_id", selected_plan) %}
 <div class="settings-field"><label>ごはんの予定<select name="plan_id">
@@ -49,9 +54,11 @@
 {% for name in food_history %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
 </select></label>
 </div>{% endif %}
-<div class="settings-field"><label>フードの銘柄（任意）<input id="feeding-food" name="food" value="{{ submitted.get('food', '') if retry else food }}" maxlength="120"></label></div>
-<div class="settings-field"><label>給餌量（g・任意）<input name="grams" value="{{ submitted.get('grams', '') if retry else grams }}" inputmode="decimal" maxlength="12"></label></div>
-{% if not edit and (food or grams) %}<p class="note">直近の給餌記録から銘柄・量を入力済みです。変更して保存できます。</p>{% endif %}
+<div class="settings-field"><label>フードの銘柄（任意）<input id="feeding-food" name="food" value="{{ submitted.get('food', '') if retry else food }}" list="registered-feeding-foods" maxlength="120"></label></div>
+<datalist id="registered-feeding-foods">{% for item in registered_foods %}<option value="{{ item.name }}">{% endfor %}</datalist>
+<div class="settings-field"><label>給餌量（g・任意）<input id="feeding-grams" name="grams" value="{{ submitted.get('grams', '') if retry else grams }}" inputmode="decimal" maxlength="12"></label></div>
+<div class="settings-field"><label>食べた分のカロリー（kcal・任意）<input name="energy_kcal" value="{{ submitted.get('energy_kcal', '') if retry else energy_kcal }}" inputmode="decimal" maxlength="12"></label><small>入力すると、銘柄と量から求めたカロリーの代わりに使います。</small></div>
+{% if not edit and not retry and (food or grams) %}<p class="note" id="feeding-default-note">直近の給餌記録から銘柄・量を入力済みです。変更して保存できます。</p>{% endif %}
 {% endif %}
 <div class="settings-field"><label>メモ（任意）<input name="note" maxlength="500" value="{{ submitted.get('note', '') if retry else (edit.note if edit else '') }}"></label></div>
 <p class="toolbar">

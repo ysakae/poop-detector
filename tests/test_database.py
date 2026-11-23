@@ -945,3 +945,22 @@ def test_v44_database_keeps_vocal_episodes_and_adds_model_columns(tmp_path):
         assert tuple(row) == (2.0, None, None)
         with pytest.raises(sqlite3.IntegrityError):
             db.execute("UPDATE vocal_episodes SET label='cat'")
+
+
+def test_v45_care_entries_migrate_as_main_food(tmp_path):
+    path = tmp_path / "treat-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:45]:
+            migration(db)
+        db.execute("PRAGMA user_version = 45")
+        db.execute(
+            "INSERT INTO care_entries (id, at, kind, actor, note, food, amount_dg) "
+            "VALUES ('meal', '2024-03-01T09:00:00+00:00', 'feeding', '家族', '', 'A', 200)"
+        )
+    with Database(path).connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert tuple(
+            db.execute(
+                "SELECT food, amount_dg, is_treat, energy_dk FROM care_entries WHERE id='meal'"
+            ).fetchone()
+        ) == ("A", 200, 0, None)

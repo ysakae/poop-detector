@@ -1,12 +1,14 @@
 """月齢・体重・体格から、1日のごはんの量の目安を計算する。"""
 
 from calendar import monthrange
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
 
 from .breeds import ADULT_MONTHS, SizeClass, find_breed, size_from_adult
+from .care import CareEntry
 from .profile import PetProfile
 from .weights import Weight
 
@@ -64,7 +66,17 @@ class DayIntake:
 
     day: date
     grams: float
-    kcal: float | None
+    main_kcal: float
+    treat_kcal: float
+    unknown_count: int
+
+    @property
+    def known_kcal(self) -> float:
+        return self.main_kcal + self.treat_kcal
+
+    @property
+    def kcal(self) -> float | None:
+        return None if self.unknown_count else self.known_kcal
 
 
 def _month_anniversary(birth: date, months: int) -> date:
@@ -197,17 +209,32 @@ def weekly_gain(rows: Sequence[Weight], today: date) -> float | None:
 
 
 def intake_summary(
-    totals: Mapping[date, Mapping[str, int]],
+    entries: Sequence[CareEntry],
     kcal_by_food: Mapping[str, int],
     days: Sequence[date],
 ) -> tuple[DayIntake, ...]:
-    """日ごとの給餌量（g）と、すべてのフードが台帳にある日のカロリー。記録のない日は 0 g・0 kcal。"""
+    """日ごとの摂取量を、主食とおやつ、カロリーが不明な記録に分ける。"""
+    by_day: dict[date, list[CareEntry]] = defaultdict(list)
+    for row in entries:
+        if row.kind == "feeding":
+            by_day[row.at.date()].append(row)
     summary = []
     for day in days:
-        foods = totals.get(day, {})
-        grams = sum(foods.values()) / 10
-        kcal = None
-        if all(food in kcal_by_food for food in foods):
-            kcal = sum(dg / 10 * kcal_by_food[food] / 1000 for food, dg in foods.items())
-        summary.append(DayIntake(day, grams, kcal))
+        grams = main_kcal = treat_kcal = 0.0
+        unknown = 0
+        for row in by_day[day]:
+            grams += (row.amount_dg or 0) / 10
+            rate = kcal_by_food.get(row.food)
+            if row.energy_dk is not None:
+                kcal = row.energy_dk / 10
+            elif row.amount_dg is not None and rate is not None:
+                kcal = row.amount_dg * rate / 10_000
+            else:
+                unknown += 1
+                continue
+            if row.is_treat:
+                treat_kcal += kcal
+            else:
+                main_kcal += kcal
+        summary.append(DayIntake(day, grams, main_kcal, treat_kcal, unknown))
     return tuple(summary)
