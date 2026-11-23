@@ -210,8 +210,9 @@ def test_night_pages_show_numbers_timeline_and_home_link(gui, monkeypatch):
 
     server, store, _ = gui
     monkeypatch.setattr(night_routes, "night_config", lambda app: Config(night_enabled=True))
-    today = datetime.now().astimezone().date()
-    night = today - timedelta(days=1)
+    today = NIGHT + timedelta(days=1)
+    monkeypatch.setattr(night_routes, "local_now", lambda: local(today, 12))
+    night = NIGHT
     sleep_night(store, night)
     store.add_excretion("urine", local(night, 23, 30).isoformat())
     snapshots = DigestSnapshots(server.app.root)
