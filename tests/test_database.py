@@ -860,3 +860,20 @@ def test_v39_database_keeps_judge_runs_and_accepts_digest_purpose(tmp_path):
         )
         indexes = {r[1] for r in db.execute("PRAGMA index_list(judge_runs)")}
         assert "judge_runs_by_time" in indexes
+
+
+def test_v40_database_keeps_users_and_adds_household_and_reminder(tmp_path):
+    path = tmp_path / "household-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:40]:
+            migration(db)
+        db.execute("PRAGMA user_version = 40")
+        db.execute(
+            "INSERT INTO away_periods (id, started_at) VALUES ('p', '2026-11-23T00:00:00+00:00')"
+        )
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT reminded_at FROM away_periods").fetchone()[0] is None
+        columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
+        assert "push_household" in columns

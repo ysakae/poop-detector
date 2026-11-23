@@ -157,6 +157,14 @@ class ToiletNotifier:
         )
         return self._display(message, path="/vocal")
 
+    def send_away_reminder(self, hours: float) -> bool:
+        """外出中にしてから hours 時間たったことを知らせる（在宅に戻し忘れの確認）。"""
+        message = (
+            f"外出中にしてから{hours:g}時間たちました。帰宅していたら、"
+            "ホームで「在宅に戻す」を押してください。"
+        )
+        return self._display(message, path="/")
+
     def send_absence(self, since: datetime, minutes: float) -> bool:
         """外出中に、犬がサークルにいない時間が続いていることを知らせる。"""
         start = since.astimezone().strftime("%H:%M")

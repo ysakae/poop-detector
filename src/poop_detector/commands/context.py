@@ -38,6 +38,8 @@ TREND_CHECK_SECONDS = 1800
 FLOOR_JUDGE_SECONDS = 60
 FLOOR_WORKDIR = "floor-work"
 DIGEST_WORKDIR = "digest-work"
+# 外出中のままの押し忘れを確かめる間隔（秒）。
+AWAY_REMINDER_SECONDS = 600
 
 
 class CommandError(UserError):
@@ -171,6 +173,23 @@ def trend_watch(context: CommandContext, notifier: ToiletNotifier) -> Iterator[N
         notices.notify(days, today, notifier)
 
     with watching(check, TREND_CHECK_SECONDS):
+        yield
+
+
+@contextmanager
+def away_reminder_watch(context: CommandContext, notifier: ToiletNotifier) -> Iterator[None]:
+    """GUI のサーバーの間、外出中のままの押し忘れを確かめる（away.reminder_hours が 0 なら何もしない）。"""
+    hours = context.config.away_reminder_hours
+    if hours <= 0:
+        yield
+        return
+    from ..features.away_reminder import AwayReminder
+    from ..features.watchdog import watching
+    from ..records.away_periods import AwayPeriods
+    from ..timezones import local_now
+
+    reminder = AwayReminder(AwayPeriods(events_database(context.root)), notifier, hours)
+    with watching(lambda: reminder.check(local_now()), AWAY_REMINDER_SECONDS):
         yield
 
 

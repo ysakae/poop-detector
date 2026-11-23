@@ -73,6 +73,7 @@ def _account_page(
         push_alerts=user.push_alerts,
         push_early=user.push_early,
         push_watchdog=user.push_watchdog,
+        push_household=user.push_household,
         push_feeding=user.push_feeding,
         admin=user.role == "admin",
         push_devices=len(app.push_subscriptions.for_user(user.id)),

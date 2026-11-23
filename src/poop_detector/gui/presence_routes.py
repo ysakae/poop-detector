@@ -3,13 +3,17 @@
 from typing import TYPE_CHECKING
 
 from ..records.absences import ABSENCE_LABELS, Absences, AwayMode
+from ..records.away_periods import AwayPeriods
+from ..web_push import WebPushNotifier, push_subject
 from .list_time import list_time
 from .pages import Query
 from .routes import Form, first, get, post
 from .templating import render_template
 
 if TYPE_CHECKING:
+    from .accounts import User
     from .exchange import Exchange as Handler
+    from .server import GuiApp
 
 PRESENCE_PAGE = "/presence"
 
@@ -59,6 +63,16 @@ def label_absence(handler: "Handler", form: Form) -> None:
     handler.redirect(f"{PRESENCE_PAGE}?saved=1#absence-{identifier}")
 
 
+def notify_return(app: "GuiApp", user: "User | None", period_id: str) -> None:
+    """在宅に戻したことを、押した人以外の家族に Web Push で知らせる（ntfy には送らない）。"""
+    if user is None:
+        return
+    notifier = WebPushNotifier(
+        app.push_subscriptions, app.push_keys, subject=push_subject(app.site.public_base or "")
+    )
+    notifier.send_return_home(user.name, period_id, exclude_user=user.id)
+
+
 @post("/away")
 def set_away(handler: "Handler", form: Form) -> None:
     """家族の「外出中」を切り替え、もとの画面へ戻す。"""
@@ -67,6 +81,11 @@ def set_away(handler: "Handler", form: Form) -> None:
         handler.respond(400, "外出中か在宅かを選んでください")
         return
     user = handler.user.name if handler.user is not None else ""
-    AwayMode(handler.app.store.database).set_away(away == "1", user)
+    database = handler.app.store.database
+    returning = away == "0" and AwayMode(database).since() is not None
+    AwayMode(database).set_away(away == "1", user)
+    finished = AwayPeriods(database).latest_finished() if returning else None
+    if finished is not None:
+        notify_return(handler.app, handler.user, finished.id)
     back = form.fields.get("back", "/")
     handler.redirect(back if back in ("/", PRESENCE_PAGE) else "/")
