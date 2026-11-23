@@ -1001,3 +1001,25 @@ def test_prompt_explains_multiple_sheets_and_their_differences(tmp_path):
         )
         assert "2枚に分かれ" in prepared.prompt
         assert "続く2枚" in prepared.prompt
+
+
+def test_sheet_pages_use_the_same_frame_and_timestamp_slices(tmp_path, monkeypatch):
+    from poop_detector.video import review
+
+    tiles = [np.full((2, 2, 3), i, np.uint8) for i in range(5)]
+    timestamps = [0.0, 2.5, 5.0, 7.5, 10.0]
+    calls = []
+
+    def save(path, frames, seconds):
+        calls.append((path.name, [frame[0, 0, 0] for frame in frames], seconds))
+
+    monkeypatch.setattr(review, "save_sheet", save)
+    names = review._save_sheet_pages(
+        tmp_path / "difference.jpg", tiles, timestamps, review._pages(len(tiles), 3)
+    )
+
+    assert names == ("difference.jpg", "difference-2.jpg")
+    assert calls == [
+        ("difference.jpg", [0, 1, 2], [0.0, 2.5, 5.0]),
+        ("difference-2.jpg", [3, 4], [7.5, 10.0]),
+    ]

@@ -391,6 +391,17 @@ def _sheet_mask(roi: AnyROI, frame: Frame, tile: Frame) -> Mask:
     return np.full(tile.shape[:2], 255, np.uint8)
 
 
+def _save_sheet_pages(
+    destination: Path, tiles: Sequence[Frame], timestamps: Sequence[float], layout: Sequence[slice]
+) -> tuple[str, ...]:
+    names = []
+    for number, page in enumerate(layout, start=1):
+        target = _page_path(destination, number)
+        save_sheet(target, tiles[page], timestamps[page])
+        names.append(target.name)
+    return tuple(names)
+
+
 def write_sheets(
     path: Path,
     destination: Path,
@@ -443,26 +454,18 @@ def write_sheets(
     if tray_tracker is not None and len(tiles) < max(2, math.ceil(count * 2 / 3)):
         raise TrayNotVisibleError("位置を確認できるフレームが不足しています")
     layout = _pages(len(tiles), sheet.max_frames)
-    images = []
-    for number, page in enumerate(layout, start=1):
-        target = _page_path(destination, number)
-        save_sheet(target, tiles[page], timestamps[page])
-        images.append(target.name)
-    differences = []
+    images = _save_sheet_pages(destination, tiles, timestamps, layout)
+    differences: tuple[str, ...] = ()
     if compare and len(tiles) >= 4 and difference_path is not None and mask is not None:
         # 比較の基準（最初の3コマ）は、シートを分けても動画の最初にそろえる。
         compared = difference_tiles(tiles, mask)
-        for number, page in enumerate(layout, start=1):
-            if compared is None:
-                break
-            target = _page_path(difference_path, number)
-            save_sheet(target, compared[page], timestamps[page])
-            differences.append(target.name)
+        if compared is not None:
+            differences = _save_sheet_pages(difference_path, compared, timestamps, layout)
     return Sheets(
         timestamps,
         None if mask is None else endpoint_change(tiles, mask),
-        tuple(images),
-        tuple(differences),
+        images,
+        differences,
     )
 
 
