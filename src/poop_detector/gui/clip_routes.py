@@ -83,6 +83,7 @@ def _save_label(handler: Exchange, form: Form, record_id: str | None) -> str:
         fields.get("activity", "other"),
         fields.get("note", ""),
         fields.get("location"),
+        fields.get("stool_condition") or None,
     )
     handler.app.clips.labels.save(clip_id, label, record_id=record_id)
     return clip_id

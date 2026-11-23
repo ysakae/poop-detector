@@ -119,6 +119,8 @@ def clip_list_item(
     review_waiting: bool = False,
 ) -> dict[str, Any]:
     label = CLIP_LABELS.get(item["label"], "")
+    if label and item.get("stool_condition") in STOOL_CONDITION_TEXT:
+        label += f"（{STOOL_CONDITION_TEXT[item['stool_condition']]}）"
     if label and item["location"]:
         label += " ／ " + EXCRETION_LOCATIONS.get(item["location"], "場所不明")
     return {
@@ -227,6 +229,7 @@ def assessment_detail(assessment: Mapping[str, Any] | None, labeled: bool) -> di
         if assessment["location"] is not None
         else "",
         activity=ACTIVITIES[cast(str, assessment["activity"])],
+        stool_condition=STOOL_CONDITION_TEXT.get(assessment.get("stool_condition") or "", ""),
         seeks=[
             {"value": seconds, "text": text, "shown": f"{seconds:g}"}
             for seconds, text in (
@@ -278,10 +281,12 @@ def label_form(row: Mapping[str, Any], assessment: Mapping[str, Any] | None) -> 
     ]:
         value = row["actual_" + name + "_offset"]
         offsets.append((name, text, "" if value is None else str(value), button))
+    condition = row.get("stool_condition") if row["label"] is not None else None
     return {
         "label": row["label"] or draft.get("label", "uncertain"),
         "location": draft.get("location", row["location"]),
         "activity": draft.get("activity", row["activity"]),
+        "stool_condition": condition or draft.get("stool_condition") or "",
         "offsets": offsets,
     }
 
@@ -425,6 +430,7 @@ def render_clips(
         waiting=len(queue),
         clip_labels=list(CLIP_LABELS.items()),
         activities=list(ACTIVITIES.items()),
+        stool_conditions=list(STOOL_CONDITION_TEXT.items()),
         locations=list(EXCRETION_LOCATIONS.items()),
         review=review,
         focused=focused,

@@ -894,6 +894,14 @@ def migrate_to_v43(db: sqlite3.Connection) -> None:
     db.execute("CREATE TABLE night_notices (night TEXT PRIMARY KEY, notified_at TEXT NOT NULL)")
 
 
+def migrate_to_v44(db: sqlite3.Connection) -> None:
+    """人が動画のラベルで付ける便の状態（自動判定の stool_condition を直すため）を足す。"""
+    db.execute(
+        "ALTER TABLE clips ADD COLUMN stool_condition TEXT "
+        "CHECK(stool_condition IN ('normal', 'soft', 'diarrhea', 'unknown'))"
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -939,6 +947,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v41,
     migrate_to_v42,
     migrate_to_v43,
+    migrate_to_v44,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

@@ -123,7 +123,10 @@ def test_new_database_is_created_at_the_latest_version(tmp_path):
         "stool_notice_claimed",
         "stool_condition",
     ]
-    added_columns = {"codex_assessments": assessment_columns, "clips": ["tray_stay_seconds"]}
+    added_columns = {
+        "codex_assessments": assessment_columns,
+        "clips": ["tray_stay_seconds", "stool_condition"],
+    }
     for table, expected in TABLES_V1.items():
         extra = added_columns.get(table, [])
         assert columns(path, renamed.get(table, table)) == [name for name, _ in expected] + extra
@@ -168,7 +171,7 @@ def test_database_before_location_column_gains_missing_columns_and_tables(tmp_pa
     store = Store(tmp_path)
 
     assert "location" in columns(path, "events")
-    assert columns(path, "clips")[-2:] == ["location", "tray_stay_seconds"]
+    assert columns(path, "clips")[-3:] == ["location", "tray_stay_seconds", "stool_condition"]
     (event,) = store.list()
     assert event["location"] is None
     assert event["note"] == "朝の記録"
@@ -905,3 +908,21 @@ def test_v42_database_adds_night_notices(tmp_path):
         db.execute("INSERT INTO night_notices VALUES ('2026-11-22', 't')")
         with pytest.raises(sqlite3.IntegrityError):
             db.execute("INSERT INTO night_notices VALUES ('2026-11-22', 't')")
+
+
+def test_v43_database_keeps_clips_and_adds_the_human_stool_condition(tmp_path):
+    path = tmp_path / "clip-stool-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:43]:
+            migration(db)
+        db.execute("PRAGMA user_version = 43")
+        db.execute(
+            "INSERT INTO clips (id, source, requested_at, status) "
+            "VALUES ('c1', 'manual', '2026-11-23T00:00:00+00:00', 'ready')"
+        )
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT stool_condition FROM clips").fetchone()[0] is None
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("UPDATE clips SET stool_condition='liquid'")
