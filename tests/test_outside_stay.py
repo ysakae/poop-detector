@@ -83,7 +83,7 @@ def test_video_confirmation_records_outside_separately_from_tray_event(gui):
     assert record["id"] != tray_event
     assert record["location"] == "outside"
     assert clips.get(clip)["location"] == "outside"
-    _, page = request(server, "GET", "/records")
+    _, page = request(server, "GET", "/records?record_end=2026-11-09")
     assert "トレー外".encode() in page
 
 

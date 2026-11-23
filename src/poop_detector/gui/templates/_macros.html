@@ -16,6 +16,16 @@
 <input type="hidden" name="csrf" value="{{ token }}">
 {%- endmacro %}
 
+{% macro hidden_fields(fields) -%}
+{%- for name, value in fields.items() -%}
+<input type="hidden" name="{{ name }}" value="{{ value }}">
+{%- endfor -%}
+{%- endmacro %}
+
+{% macro records_back(filters) -%}
+<p><a class="button ghost" href="/records{% if filters %}?{{ filters|urlencode }}{% endif %}">記録に戻る</a></p>
+{%- endmacro %}
+
 {% macro capacity_status(capacity) -%}
 <p>録画容量 {{ "{:,.1f}".format(capacity.used_mib) }} / {{ "{:,}".format(capacity.disk_mb) }} MiB（{{ "%.1f"|format(capacity.percentage) }}％） ／ 上限まで残り {{ "{:,.1f}".format(capacity.remaining_mib) }} MiB</p>
 {%- if capacity.warning %}<p class="capacity-warning" role="status">{{ capacity.warning }}</p>{% endif %}
@@ -59,8 +69,9 @@
 {%- endmacro %}
 
 {#- 家族の「外出中」の切り替え。back は押したあとに戻る画面。 -#}
-{% macro away_toggle(away, token, back="/", show_home=false) -%}
+{% macro away_toggle(away, token, back="/", show_home=false, filters=none) -%}
 <form method="post" action="/away" class="away-toggle">{{ csrf_field(token) }}<input type="hidden" name="back" value="{{ back }}">
+{% if filters %}{{ hidden_fields(filters) }}{% endif %}
 {% if away %}<p>{{ chip("外出中", "warn") }}</p><button class="secondary" name="away" value="0">在宅に戻す</button>
 <p class="note away-help">犬がサークルにいない時間が続くと知らせます。</p>
 {% else %}{% if show_home %}<p>{{ chip("在宅", "ok") }}</p>{% endif %}<button class="secondary" name="away" value="1">外出中にする</button>{% endif %}

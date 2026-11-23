@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, TypeAlias
 from urllib.parse import urlencode
 
@@ -24,6 +24,10 @@ from .templating import render_template
 # parse_qs で読んだ問い合わせ文字列。同じ名前の値はリストになる。
 Query: TypeAlias = Mapping[str, list[str]]
 STATS_PERIODS = ("7", "30", "90")
+RECORD_DAYS = 7
+# SQL で使うローカル深夜を UTC に直し、終了日の翌日も求められる範囲。
+FIRST_RECORD_DAY = date(1, 1, 2)
+LAST_RECORD_DAY = date.max - timedelta(days=1)
 EVENTS_PAGE = "/records/events"
 # 目視で確認した排泄を記録する画面。
 NEW_RECORD_PAGE = "/records/new"
@@ -383,17 +387,50 @@ def busiest_hours(hourly: Sequence[Mapping[str, int]], kind: str) -> str:
     return "、".join(f"{hour}時台（{count}件）" for hour, count in top[:BUSIEST])
 
 
-def record_stats(records: Iterable[EventRow], query: Query) -> dict[str, Any]:
-    """記録の画面の、1日の件数と時間帯別の件数。"""
+def _record_day(value: str) -> date | None:
     try:
-        day = date.fromisoformat(query.get("date", [""])[0])
+        day = date.fromisoformat(value)
     except ValueError:
-        day = local_today()
+        return None
+    return day if FIRST_RECORD_DAY <= day <= LAST_RECORD_DAY else None
+
+
+def record_filters(query: Query) -> dict[str, str]:
+    """関連ページを往復するときに引き継ぐ、記録ページの日付と集計期間。"""
+    filters: dict[str, str] = {}
+    for name in ("date", "days", "record_end"):
+        value = query.get(name, [""])[0]
+        if name == "days":
+            if value in STATS_PERIODS:
+                filters[name] = value
+        elif (day := _record_day(value)) is not None:
+            filters[name] = day.isoformat()
+    return filters
+
+
+def _period_start(end: date, length: int) -> date:
+    return date.fromordinal(max(FIRST_RECORD_DAY.toordinal(), end.toordinal() - length + 1))
+
+
+def saved_record_url(event_id: str, start: str) -> str:
+    """目視で登録した記録を確認できる画面へ戻す。"""
+    today = local_today()
+    day = to_local(start).date()
+    if not FIRST_RECORD_DAY <= day <= today:
+        return event_url(event_id) + "&saved=1"
+    if day < _period_start(today, RECORD_DAYS):
+        return RECORDS_PAGE + "?" + urlencode({"saved": "1", "record_end": day.isoformat()})
+    return RECORDS_PAGE + "?saved=1"
+
+
+def record_stats(store: Store, query: Query) -> dict[str, Any]:
+    """記録の画面の、1日の件数と時間帯別の件数。"""
+    day = _record_day(query.get("date", [""])[0]) or local_today()
     period = query.get("days", ["30"])[0]
     if period not in STATS_PERIODS:
         period = "30"
-    start = date.fromordinal(max(1, day.toordinal() - int(period) + 1))
-    daily, hourly, recorded_days = summarize_records(records, start, day)
+    start = _period_start(day, int(period))
+    daily, hourly, recorded_days = summarize_records(store.records_between(start, day), start, day)
     scale = max(1, *(counts[kind] for counts in hourly for kind in CHART_KINDS))
     busiest = {EXCRETION_TYPES[kind]: busiest_hours(hourly, kind) for kind in CHART_KINDS}
     return {
@@ -433,13 +470,29 @@ def record_row(row: EventRow, videos: Sequence[str]) -> dict[str, Any]:
 def render_records(
     store: Store, clips: ClipStore, query: Query, *, title: str | None = None
 ) -> str:
-    records = store.records()
+    today = local_today()
+    end = min(_record_day(query.get("record_end", [""])[0]) or today, today)
+    start = _period_start(end, RECORD_DAYS)
+    previous = _period_start(end, RECORD_DAYS + 1) if start > FIRST_RECORD_DAY else None
+    following = min(end + timedelta(days=RECORD_DAYS), today) if end < today else None
+    stats = record_stats(store, query)
+    stats_filters = {"date": stats["day"].isoformat(), "days": stats["period"]}
+    current_filters = {**stats_filters, "record_end": end.isoformat()}
+    records = store.records_between(start, end)
     video_links = clips.labels.record_videos()
     return render_template(
         "records.html",
         saved=bool(query.get("saved")),
         title=title or APP_TITLE,
-        stats=record_stats(records, query),
+        stats=stats,
+        stats_filters=stats_filters,
+        record_filters=current_filters,
+        record_start=start,
+        record_end=end,
+        first_record_day=FIRST_RECORD_DAY,
+        previous_end=previous,
+        following_end=following,
+        today=today,
         timezone=timezone_label(),
         groups=by_day(record_row(row, video_links.get(row["id"], [])) for row in reversed(records)),
     )

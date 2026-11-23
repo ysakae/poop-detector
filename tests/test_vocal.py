@@ -306,4 +306,4 @@ def test_vocal_page_and_digest_timeline(gui):
     _, _, body = exchange(server, "GET", f"/digest?id={period.id}", headers=cookie, auth=False)
     assert "鳴き声（75秒）" in body.decode()
     _, _, body = exchange(server, "GET", "/records", headers=cookie, auth=False)
-    assert 'href="/vocal"' in body.decode()
+    assert 'href="/vocal?date=' in body.decode()

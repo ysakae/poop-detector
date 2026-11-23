@@ -1,9 +1,22 @@
 {#- 確定記録と、日別・時間帯別の集計。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state, icon, stat, when %}
+{% from "_macros.html" import empty_state, hidden_fields, icon, stat, when %}
 {% block content %}
-<h2>排便・排尿の記録</h2>{% if saved %}<div class="message" role="status">記録しました。</div>{% endif %}<p class="toolbar"><a class="button secondary" href="/records/new">排泄を記録</a><a class="button ghost" href="/clips?show=detected">差分検知の動画</a></p>
-<section class="record-stats" aria-labelledby="daily-stats-title"><h3 id="daily-stats-title">1日の排便・排尿回数</h3><form method="get" action="/records" class="toolbar field-toolbar"><label>集計日<input type="date" name="date" value="{{ stats.day }}" required></label><label>時間帯別の集計期間<select name="days">
+<div class="records-heading"><h2>記録</h2><a class="button" href="/records/new">{{ icon("plus") }} 排泄を記録</a></div>
+{% if saved %}<div class="message" role="status">記録しました。</div>{% endif %}
+<nav aria-label="関連する記録" class="record-shortcuts">
+{% set related = [
+  ("/trends", "trend", "いつもとの違い", "移動・睡眠・排泄の推移"),
+  ("/presence", "paw", "不在の記録", "サークルにいなかった時間"),
+  ("/vocal", "waveform", "鳴き声の記録", "鳴いていた時間"),
+  ("/night", "sleep", "夜間のまとめ", "一晩の睡眠と出来事"),
+] %}
+{% for path, symbol, name, description in related %}
+<a href="{{ path }}?{{ record_filters|urlencode }}"><span class="record-shortcut-icon">{{ icon(symbol) }}</span><span><strong>{{ name }}</strong><small>{{ description }}</small></span></a>
+{% endfor %}
+</nav>
+<div class="records-heading"><h3>排便・排尿の記録</h3><a href="/clips?show=detected">差分検知の動画</a></div>
+<section class="record-stats" aria-labelledby="daily-stats-title"><h4 id="daily-stats-title">1日の排便・排尿回数</h4><form method="get" action="/records" class="toolbar field-toolbar"><input type="hidden" name="record_end" value="{{ record_end }}"><label>集計日<input type="date" name="date" value="{{ stats.day }}" required></label><label>時間帯別の集計期間<select name="days">
 {%- for value in stats.periods -%}
 <option value="{{ value }}"{% if value == stats.period %} selected{% endif %}>{{ value }}日間</option>
 {%- endfor -%}
@@ -37,10 +50,22 @@
 </tr>
 {%- endfor -%}
 </tbody></table></div></details></section>
-<h3>確定記録一覧（全期間）</h3>
+<section aria-labelledby="confirmed-records">
+<h4 id="confirmed-records">確定記録一覧</h4>
+<nav class="toolbar record-period" aria-label="確定記録の表示期間">
+{% if previous_end %}<a class="button secondary" href="/records?{{ stats_filters|urlencode }}&amp;record_end={{ previous_end }}#confirmed-records">前の7日間</a>{% endif %}
+<strong>{{ record_start }}〜{{ record_end }}</strong>
+{% if following_end %}<a class="button secondary" href="/records?{{ stats_filters|urlencode }}&amp;record_end={{ following_end }}#confirmed-records">次の7日間</a>{% endif %}
+</nav>
+<form method="get" action="/records#confirmed-records" class="toolbar field-toolbar">
+{{ hidden_fields(stats_filters) }}
+<label>一覧の終了日<input type="date" name="record_end" min="{{ first_record_day }}" max="{{ today }}" value="{{ record_end }}" required></label>
+<button class="secondary">一覧を表示</button>
+{% if following_end %}<a class="button ghost" href="/records?{{ stats_filters|urlencode }}#confirmed-records">今日に戻る</a>{% endif %}
+</form>
 {% if groups %}
 {%- for group in groups %}
-<h3 class="day-heading">{{ group.day }}</h3>
+<h5 class="day-heading">{{ group.day }}</h5>
 <ul class="timeline record-list">
 {%- for record in group.rows -%}
 <li>{{ icon(record.icon) }}<span class="timeline-what">{{ record.type }}<small>{{ record.location }} ／ {{ record.source }}{% if record.note %} ／ {{ record.note }}{% endif %}</small></span><span class="timeline-time">{{ when(record.when, clock=true) }}{% if record.end %}〜{{ when(record.end, clock=record.end_clock) }}{% endif %}{% if record.start_unknown %}（動画時刻・開始不明）{% endif %}</span>
@@ -51,9 +76,6 @@
 {%- endfor -%}
 </ul>
 {%- endfor %}
-{% else %}<div class="card">{{ empty_state("確定記録はまだありません", "動画や検知を確かめるか、目視で見た排泄を記録すると、ここに並びます。", "/records/new", "排泄を記録", "secondary") }}</div>{% endif %}
-<p class="note"><a href="/trends">いつもとの違い（移動・睡眠・排泄の回数の推移）</a></p>
-<p class="note"><a href="/presence">不在の記録（散歩・外出中の不在）</a></p>
-<p class="note"><a href="/vocal">鳴き声の記録</a></p>
-<p class="note"><a href="/night">夜間のまとめ</a></p>
+{% else %}<div class="card">{{ empty_state("この期間の確定記録はありません", "前後の期間に移動するか、一覧の終了日を指定できます。") }}</div>{% endif %}
+</section>
 {% endblock %}

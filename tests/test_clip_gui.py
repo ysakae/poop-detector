@@ -138,7 +138,7 @@ def test_video_confirmation_converts_offsets_and_reuses_existing_record(gui):
     )
     assert store.records() == [record]
 
-    _, page = request(server, "GET", "/records")
+    _, page = request(server, "GET", "/records?record_end=2026-11-09")
     for clip_id in (clip, other):
         assert f'href="/clips?id={clip_id}"'.encode() in page
 
