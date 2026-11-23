@@ -95,7 +95,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `SheetWearExtension` | `sheet.enabled`（既定で有効） | 通知済み状態の更新のたびに汚れの割合（`IncrementalDetector.wear_ratio`）を記録し、交換どきを一度だけ知らせる（`features/sheet_wear.py`） |
 | `FloorObjectExtension` | `--floor-objects` | 位置合わせ前の映像で、犬のいない場面の背景と比べて床に新しく現れて動かない物を候補にし、記録して知らせる（`experimental/floor_objects.py`）。犬検出の推論は行動マップ・睡眠と共有する |
 | `PresenceExtension` | `--presence` | 位置合わせ前の映像で、睡眠の記録と同じ `MotionSampler` で1秒ごとに在室を観測し、`left` が続いた区間を不在として記録する。外出中（`AwayMode`）に `presence.away_minutes` 続いたら一度だけ知らせ、戻ったら知らせる（`features/presence.py`） |
-| `SnapshotExtension` | `digest.enabled`（既定で有効） | 外出中の区間がある間だけ、位置合わせ前の映像を縮めた静止画を `digest/<区間の ID>/` に残し、`KEEP_DAYS` より古い区間を消す（`features/digest.py`）。タイムラプスは GUI が開かれたときに `encode_mp4` で作る |
+| `SnapshotExtension` | `digest.enabled`（既定で有効） | 外出中の区間がある間だけ、位置合わせ前の映像を縮めた静止画を `digest/<区間の ID>/` に残し、`KEEP_DAYS` より古い区間を消す（`features/digest.py`）。タイムラプスは GUI が開かれたときに `encode_mp4` で作り、打ち切りの時間を静止画の枚数に比例させる（`TIMELAPSE_SECONDS_PER_FRAME`。最低は録画と同じ `ENCODE_TIMEOUT`） |
 | `CameraWatchdogExtension` | `watchdog.enabled`（既定で有効） | 位置合わせ前の映像が届かない時間を数え、カメラの不調として知らせる（`features/watchdog.py`） |
 
 新しい機能は `monitor(..., extensions=[...])` に渡せば、`Monitor` を変えずに足せます。

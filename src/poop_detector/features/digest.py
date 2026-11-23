@@ -20,7 +20,7 @@ from ..detection.monitoring import MonitorExtension
 from ..frames import Frame
 from ..records.away_periods import AwayPeriods
 from ..timezones import local_now
-from ..video.recording import encode_mp4
+from ..video.recording import ENCODE_TIMEOUT, encode_mp4
 
 logger = logging.getLogger(__name__)
 DIGEST_DIR = "digest"
@@ -29,6 +29,10 @@ KEEP_DAYS = 7
 # タイムラプスの再生の速さ（1秒に何枚）。1分ごとの静止画なら、1時間が5秒になる。
 TIMELAPSE_FPS = 12
 TIMELAPSE_NAME = "timelapse.mp4"
+# 変換を打ち切る秒数は、静止画1枚につきこの秒数（最低は録画と同じ ENCODE_TIMEOUT）。
+# 1日分（1440枚）で72秒。手元の Apple Silicon では1日分が1秒ほどで終わるが、
+# 何日も続いた外出や、遅いマシン（Docker・Linux）でも打ち切らないよう大きめにとる。
+TIMELAPSE_SECONDS_PER_FRAME = 0.05
 # 古い区間を消すかを確かめる間隔（秒）。
 CLEANUP_SECONDS = 3600
 _ID = re.compile(r"[0-9a-f]{32}")
@@ -91,7 +95,8 @@ def timelapse(snapshots: DigestSnapshots, period_id: str) -> Path | None:
         (index / TIMELAPSE_FPS, "", frame.read_bytes()) for index, frame in enumerate(frames)
     ]
     temporary = path.with_suffix(".tmp.mp4")
-    encode_mp4(samples, temporary, TIMELAPSE_FPS)
+    timeout = max(ENCODE_TIMEOUT, len(frames) * TIMELAPSE_SECONDS_PER_FRAME)
+    encode_mp4(samples, temporary, TIMELAPSE_FPS, timeout=timeout)
     temporary.replace(path)
     return path
 
