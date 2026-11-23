@@ -143,8 +143,9 @@ def test_advice_page_shows_guide_from_records(gui):
     server, store, _ = gui
     setup_guide(server, store)
     html = request(server, "GET", ADVICE)[1].decode()
-    assert "109 g" in html
-    assert "36 g" in html
+    assert "104 g" in html
+    assert "35 g" in html
+    assert "FEDIAFの成長期の式" in html
     assert "獣医師の指示があればそちらを優先してください" in html
 
 
@@ -153,7 +154,7 @@ def test_advice_page_guides_missing_inputs(gui):
     setup_guide(server, store, birth=False)
     html = request(server, "GET", ADVICE)[1].decode()
     assert "生年月日を入れてください" in html
-    assert "109 g" not in html
+    assert "104 g" not in html
 
 
 def test_inactive_profile_food_is_treated_as_none(gui):
@@ -161,7 +162,7 @@ def test_inactive_profile_food_is_treated_as_none(gui):
     setup_guide(server, store, food_active=False)
     html = request(server, "GET", ADVICE)[1].decode()
     assert "フードのカロリーが分からないので" in html
-    assert "109 g" not in html
+    assert "104 g" not in html
 
 
 def test_profile_breed_fills_size_and_adult_weight(gui):
@@ -328,7 +329,7 @@ def test_today_grams(gui):
     server, store, _ = gui
     assert today_grams(store.database, local_today()) is None
     setup_guide(server, store)
-    assert today_grams(store.database, local_today()) == (109, False)
+    assert today_grams(store.database, local_today()) == (104, False)
 
 
 def test_advice_status_for_unknown_thread_is_404(gui):

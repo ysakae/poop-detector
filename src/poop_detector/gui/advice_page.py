@@ -81,7 +81,7 @@ def guide_view(guide: Guide | None, food_text: str) -> dict[str, object] | None:
         "meal": _meal_text(guide),
         "food": food_text,
         "formula": (
-            f"安静時 {guide.rer:.0f} kcal × 係数 {guide.factor:g}"
+            f"{guide.formula_label}・安静時 {guide.rer:.0f} kcal × 係数 {guide.factor:.3g}"
             + (f"（成犬の予想体重の {guide.ratio:.0%}）" if guide.ratio is not None else "")
         ),
     }
