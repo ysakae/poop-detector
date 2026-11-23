@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from threading import Thread
 
 import numpy as np
+import pytest
 from support import request, submit
 
 from poop_detector.gui.server import make_server
@@ -401,8 +402,8 @@ def test_extension_stops_before_the_memory_limit_instead_of_failing(tmp_path):
     from poop_detector.video.recording import encode_frame
 
     size = len(encode_frame(FRAME, 1280))
-    # 前後の待ち時間を含めて、およそ60コマ分のメモリーしかない。
-    memory_mb = size * 60 / MEBIBYTE
+    # 秒0から秒50まで延ばすには51コマ分が必要だが、45コマ分しか収まらない。
+    memory_mb = size * 45 / MEBIBYTE
     with ClipCollector(
         tmp_path, before=2, after=10, fps=1, memory_mb=memory_mb, encoder=stub_encode
     ) as c:
@@ -417,6 +418,41 @@ def test_extension_stops_before_the_memory_limit_instead_of_failing(tmp_path):
         run_until(c, 41, 120)
         c.drain()
         assert c.store.get(first)["status"] == "ready"
+
+
+@pytest.mark.parametrize(
+    ("after", "second_request", "frame_budget"),
+    [(4, 4, 9), (10, 40, 51)],
+)
+def test_recording_extends_when_the_already_retained_frames_fit(
+    tmp_path, after, second_request, frame_budget
+):
+    from poop_detector.video.recording import encode_frame
+
+    size = len(encode_frame(FRAME, 1280))
+    with ClipCollector(
+        tmp_path,
+        before=2,
+        after=after,
+        fps=1,
+        memory_mb=size * frame_budget / MIB,
+        encoder=stub_encode,
+    ) as collector:
+        run_until(collector, 0, 2)
+        first = collector.trigger(source="dog_enter", now=2)
+        run_until(collector, 3, second_request)
+        assert collector.trigger(source="dog_exit", now=second_request) == first
+        last = second_request + after
+        run_until(collector, second_request + 1, last)
+        collector.poll(now=last + MERGE_GRACE_SECONDS)
+        collector.drain()
+        (visit,) = collector.store.list()
+        assert (visit["status"], visit["source"], visit["duration"]) == (
+            "ready",
+            "dog_visit",
+            frame_budget,
+        )
+        assert not visit["interrupted"]
 
 
 def test_request_whose_prebuffer_would_start_soon_after_the_previous_end_is_merged(tmp_path):

@@ -195,9 +195,11 @@ class ClipCollector:
             self.maintenance = paused
 
     def _bytes(self) -> int:
-        return sum(len(s[2]) for s in self.buffer) + sum(
-            sum(len(s[2]) for s in job["samples"]) for job in self.jobs.values()
-        )
+        # 待機バッファと複数の録画は同じ JPEG を参照するので、実体を1回ずつ数える。
+        sizes = {id(jpeg): len(jpeg) for _, _, jpeg in self.buffer}
+        for job in self.jobs.values():
+            sizes.update((id(jpeg), len(jpeg)) for _, _, jpeg in job["samples"])
+        return sum(sizes.values())
 
     def feed(self, frame: Frame | None, now: float | None = None, generation: int = 0) -> None:
         """カメラのフレームを受け取り、clip_fps の間隔で JPEG にして保持する。"""
@@ -318,11 +320,12 @@ class ClipCollector:
         上限を超えると録画ごと失敗になるので、収まらなければ延ばさずに別の動画にする。
         """
         samples = job["samples"]
-        extra = end - job["end"]
-        if not samples or extra <= 0:
+        if not samples or end <= job["end"]:
             return True
+        # 確定待ちの間に受け取ったコマも保持済みなので、最後に取得したコマから先だけを見積もる。
+        remaining = max(0.0, end - samples[-1][0])
         per_frame = sum(len(sample[2]) for sample in samples) / len(samples)
-        return bool(self._bytes() + per_frame * self.fps * extra <= self.memory_limit)
+        return bool(self._bytes() + per_frame * self.fps * remaining <= self.memory_limit)
 
     def poll(self, now: float | None = None, force: bool = False) -> None:
         """GUI からの保存要求を拾い、録画の終わった要求を変換に回す。"""
