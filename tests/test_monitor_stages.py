@@ -358,3 +358,30 @@ def test_standard_extensions_adds_sleep_sharing_one_prediction(tmp_path):
         standard_extensions(
             ROI(0, 0, 1, 1), EMPTY, Config(), SilentNotifier(), Clock(), sleep=Recorder()
         )
+
+
+def test_camera_frame_extensions_share_prediction_in_registration_order(monkeypatch):
+    from types import SimpleNamespace
+
+    from poop_detector.features import monitoring
+
+    floor, presence = object(), object()
+    shared = []
+    monkeypatch.setattr(
+        monitoring, "_floor_extension", lambda *args: shared.append(args[-1]) or floor
+    )
+    monkeypatch.setattr(
+        monitoring, "_presence_extension", lambda *args: shared.append(args[-1]) or presence
+    )
+    roi = ROI(0, 0, 1, 1)
+    config = Config(floor_objects_enabled=True, presence_enabled=True)
+    observer = SimpleNamespace(predict=lambda frame: [])
+
+    activity, sleep, *remaining = monitoring._shared_frame_extensions(
+        roi, config, SilentNotifier(), observer, activity_map=object(), sleep=object(), floor=roi
+    )
+
+    assert isinstance(activity, monitoring.ActivityExtension)
+    assert isinstance(sleep, monitoring.SleepExtension)
+    assert remaining == [floor, presence]
+    assert activity.predict is sleep.predict is shared[0] is shared[1]
