@@ -237,3 +237,12 @@ def test_future_birth_or_weight_day_is_rejected() -> None:
     future_weight = compute_advice(profile(), weight(3200, date(2026, 11, 22)), 3850, 3, TODAY)
     assert future_weight.guide is None
     assert future_weight.missing == ("体重の測定日を確かめてください",)
+
+
+def test_missing_inputs_reports_both_future_dates_in_order() -> None:
+    from poop_detector.records.feeding_advice import _missing_inputs
+
+    assert _missing_inputs(date(2026, 11, 23), weight(3000, date(2026, 11, 22)), TODAY) == (
+        "生年月日を確かめてください",
+        "体重の測定日を確かめてください",
+    )

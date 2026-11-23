@@ -80,23 +80,40 @@ def _growth_factor(months: int, ratio: float | None) -> float:
     return 2.5 if ratio < 0.8 else 2.0
 
 
+def _missing_inputs(birth: date | None, latest: Weight | None, today: date) -> tuple[str, ...]:
+    missing = []
+    if birth is None:
+        missing.append("生年月日を入れてください")
+    if latest is None:
+        missing.append("体重を記録してください")
+    if birth is not None and (birth > today or (latest is not None and birth > latest.day)):
+        missing.append("生年月日を確かめてください")
+    if latest is not None and latest.day > today:
+        missing.append("体重の測定日を確かめてください")
+    return tuple(missing)
+
+
+def _guide_warnings(guide: Guide, today: date) -> tuple[str, ...]:
+    warnings = []
+    age = (today - guide.weight_day).days
+    if age > (STALE_GROWTH_DAYS if guide.stage == "growth" else STALE_ADULT_DAYS):
+        warnings.append(f"体重の記録が{age}日前のものです。量り直すと目安が正確になります。")
+    if guide.adult_grams is None:
+        warnings.append("犬種か成犬時の予想体重を入れると目安が正確になります。")
+    if guide.grams_per_day is None:
+        warnings.append("フードのカロリーが分からないので、量（g）は出せません。")
+    if guide.months < MIN_MONTHS:
+        warnings.append("生後2か月未満の目安はこの計算の対象外です。獣医師に相談してください。")
+    return tuple(warnings)
+
+
 def compute_advice(
     profile: PetProfile, latest: Weight | None, kcal_dk: int | None, meals: int, today: date
 ) -> Advice:
     """プロフィールと最新の体重から目安を求める。kcal_dk は 100 g あたり 0.1 kcal 単位。"""
-    missing = []
-    if profile.birth is None:
-        missing.append("生年月日を入れてください")
-    if latest is None:
-        missing.append("体重を記録してください")
-    if profile.birth is not None and (
-        profile.birth > today or (latest is not None and profile.birth > latest.day)
-    ):
-        missing.append("生年月日を確かめてください")
-    if latest is not None and latest.day > today:
-        missing.append("体重の測定日を確かめてください")
+    missing = _missing_inputs(profile.birth, latest, today)
     if missing or profile.birth is None or latest is None:
-        return Advice(None, (), tuple(missing))
+        return Advice(None, (), missing)
 
     months = _full_months(profile.birth, today)
     size, source, adult = _size(profile)
@@ -108,20 +125,9 @@ def compute_advice(
         factor = 1.8 if profile.neutered is False else 1.6
     rer = 70 * (latest.grams / 1000) ** 0.75
     kcal = rer * factor
-    known = kcal_dk is not None and kcal_dk > 0
-    per_day = kcal / (kcal_dk / 1000) if kcal_dk and known else None
+    per_day = kcal / (kcal_dk / 1000) if kcal_dk is not None and kcal_dk > 0 else None
     per_meal = per_day / meals if per_day is not None and meals >= 1 else None
 
-    warnings = []
-    age = (today - latest.day).days
-    if age > (STALE_GROWTH_DAYS if stage == "growth" else STALE_ADULT_DAYS):
-        warnings.append(f"体重の記録が{age}日前のものです。量り直すと目安が正確になります。")
-    if adult is None:
-        warnings.append("犬種か成犬時の予想体重を入れると目安が正確になります。")
-    if not known:
-        warnings.append("フードのカロリーが分からないので、量（g）は出せません。")
-    if months < MIN_MONTHS:
-        warnings.append("生後2か月未満の目安はこの計算の対象外です。獣医師に相談してください。")
     guide = Guide(
         months=months,
         weight_grams=latest.grams,
@@ -138,7 +144,7 @@ def compute_advice(
         grams_per_meal=per_meal,
         meals=meals,
     )
-    return Advice(guide, tuple(warnings), ())
+    return Advice(guide, _guide_warnings(guide, today), ())
 
 
 def weekly_gain(rows: Sequence[Weight], today: date) -> float | None:
