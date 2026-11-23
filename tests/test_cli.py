@@ -504,6 +504,27 @@ def test_run_with_audio_starts_the_audio_recording(cli_env, monkeypatch):
     assert len(started) == 1
 
 
+def test_setup_vocal_model_uses_the_models_folder(cli_env, monkeypatch, capsys):
+    from poop_detector.experimental import vocal_model
+
+    seen = []
+    monkeypatch.setattr(
+        vocal_model, "setup_vocal_model", lambda directory: seen.append(directory) or directory
+    )
+    assert cli_env.run("setup-vocal-model") == 0
+    assert seen == [cli_env.root / "models" / "yamnet"]
+    assert "鳴き声のモデルを確認しました" in capsys.readouterr().out
+
+
+def test_run_with_audio_model_needs_the_model(cli_env, capsys):
+    write_config(
+        cli_env, "clips: {enabled: false}\nfeatures: {audio: true}\naudio: {model: true}\n"
+    )
+    use_camera(cli_env, register_scene(cli_env))
+    assert cli_env.run("run", "--max-frames", "1") == 2
+    assert "setup-vocal-model" in capsys.readouterr().err
+
+
 # --- 犬検出モデル ---
 
 

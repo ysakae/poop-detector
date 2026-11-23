@@ -425,6 +425,22 @@ SETTINGS: tuple[Setting, ...] = (
         "true または false（朝に昨夜のまとめを知らせる）",
     ),
     Setting(
+        "audio_model",
+        "audio",
+        "model",
+        bool,
+        _always,
+        "true または false（鳴き声らしさを YAMNet で確かめる。setup-vocal-model と uv sync --extra audio-model が要る）",
+    ),
+    Setting(
+        "audio_keep_days",
+        "audio",
+        "keep_days",
+        int,
+        _number(0, 30),
+        "0〜30 の整数（日。鳴き声の区間の音を評価用に残す日数。0 なら残さない）",
+    ),
+    Setting(
         "trends_notify",
         "trends",
         "notify",
@@ -733,6 +749,8 @@ class Config:
     away_reminder_hours: float = 12
     audio_threshold_db: float = 15
     audio_notify_seconds: float = 60
+    audio_model: bool = False
+    audio_keep_days: int = 0
     digest_enabled: bool = True
     digest_snapshot_seconds: float = 60
     digest_summary: bool = False

@@ -359,14 +359,37 @@ def watch(
 def audio_recording(
     context: CommandContext, source: str, notifier: "ToiletNotifier"
 ) -> AbstractContextManager[None]:
-    """カメラの音声から鳴いていた区間を記録する（--audio）。音声そのものは保存しない。"""
+    """カメラの音声から鳴いていた区間を記録する（--audio）。
+
+    音声そのものは、audio.keep_days のときだけ評価用に残す。audio.model のときは、
+    区間の音を鳴き声のモデル（YAMNet）にかけて犬らしさも記録する。
+    """
     from ..experimental.vocal import VocalRecorder, audio_watch
     from ..records.absences import AwayMode
     from ..records.vocal_episodes import VocalEpisodes
 
+    config = context.config
+    classifier = None
+    if config.audio_model:
+        from ..experimental.vocal_model import YamnetClassifier
+
+        try:
+            classifier = YamnetClassifier(context.vocal_model_dir)
+        except (OSError, ValueError) as error:
+            raise CommandError(
+                "鳴き声のモデルを読めません。setup-vocal-model と "
+                "uv sync --extra audio-model を実行してください"
+            ) from error
     database = events_database(context.root)
-    recorder = VocalRecorder(VocalEpisodes(database), AwayMode(database), notifier, context.config)
-    return audio_watch(source, recorder, context.config.audio_threshold_db)
+    recorder = VocalRecorder(
+        VocalEpisodes(database),
+        AwayMode(database),
+        notifier,
+        config,
+        classifier=classifier,
+        root=context.root,
+    )
+    return audio_watch(source, recorder, config.audio_threshold_db)
 
 
 def judge_watchdog(context: CommandContext, notifier: "ToiletNotifier") -> "JudgeWatchdog | None":

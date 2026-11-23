@@ -1,4 +1,4 @@
-"""犬検出モデルの取得と、静止画での動作確認。"""
+"""犬検出モデル・鳴き声のモデルの取得と、静止画での犬検出の動作確認。"""
 
 import argparse
 import json
@@ -16,6 +16,13 @@ def setup_dog_model(_args: argparse.Namespace, context: CommandContext) -> int:
     from ..features.dog import setup_model
 
     print(f"犬検出モデルを確認しました: {setup_model(context.dog_model_dir)}")
+    return 0
+
+
+def setup_vocal_model(_args: argparse.Namespace, context: CommandContext) -> int:
+    from ..experimental.vocal_model import setup_vocal_model as setup
+
+    print(f"鳴き声のモデルを確認しました: {setup(context.vocal_model_dir)}")
     return 0
 
 

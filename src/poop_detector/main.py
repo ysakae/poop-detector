@@ -305,6 +305,11 @@ def _management_commands(commands: CommandGroup) -> None:
     gui.add_argument("--no-browser", action="store_true", help="ブラウザを自動で開かない")
     gui.add_argument("--manual-only", action="store_true", help="カメラなしで手動記録の画面を開く")
     commands.add(
+        "setup-vocal-model",
+        dog_model.setup_vocal_model,
+        help="鳴き声のモデル（YAMNet）を固定版・ハッシュ確認付きで取得（実験的）",
+    )
+    commands.add(
         "setup-dog-model",
         dog_model.setup_dog_model,
         help="犬検出モデルを固定版・ハッシュ確認付きで取得",
