@@ -9,6 +9,7 @@ from ..records.events import Store
 from ..web_address import WebOptions
 from .context import (
     CommandContext,
+    away_reminder_watch,
     build_notifier,
     digest_summary_watch,
     floor_judge_watch,
@@ -100,6 +101,7 @@ def gui(args: argparse.Namespace, context: CommandContext) -> int:
             stack.enter_context(trend_watch(context, notifier))
             stack.enter_context(floor_judge_watch(context, notifier))
             stack.enter_context(digest_summary_watch(context))
+            stack.enter_context(away_reminder_watch(context, notifier))
         serve(
             context.root,
             web.port,

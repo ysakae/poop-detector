@@ -16,6 +16,8 @@ class AwayPeriod:
     id: str
     started_at: datetime
     ended_at: datetime | None
+    # 在宅に戻し忘れを知らせたか（features.away_reminder）。
+    reminded: bool = False
 
 
 def _period(row: sqlite3.Row) -> AwayPeriod:
@@ -24,6 +26,7 @@ def _period(row: sqlite3.Row) -> AwayPeriod:
         row["id"],
         datetime.fromisoformat(row["started_at"]),
         datetime.fromisoformat(ended) if ended else None,
+        row["reminded_at"] is not None,
     )
 
 
@@ -48,6 +51,10 @@ class AwayPeriods:
                 "SELECT * FROM away_periods ORDER BY started_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [_period(row) for row in rows]
+
+    def mark_reminded(self, identifier: str) -> None:
+        with self.database.connect() as db:
+            db.execute("UPDATE away_periods SET reminded_at=? WHERE id=?", (utcnow(), identifier))
 
     def latest_finished(self) -> AwayPeriod | None:
         with self.database.connect() as db:

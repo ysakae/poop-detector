@@ -29,6 +29,7 @@ from ..web_address import WebOptions
 from .context import (
     CommandContext,
     CommandError,
+    away_reminder_watch,
     build_notifier,
     camera_source,
     digest_summary_watch,
@@ -272,6 +273,7 @@ def watch(
             stack.enter_context(trend_watch(context, notifier))
             stack.enter_context(floor_judge_watch(context, notifier))
             stack.enter_context(digest_summary_watch(context))
+            stack.enter_context(away_reminder_watch(context, notifier))
             web = WebOptions.from_config(config, port=args.gui_port)
             stack.enter_context(
                 background_gui(

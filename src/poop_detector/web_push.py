@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 import http_ece
@@ -161,13 +161,22 @@ class PushSubscriptions:
         return [self._subscription(row) for row in rows]
 
     def recipients(
-        self, *, early_alert: bool = False, watchdog: bool = False, feeding: bool = False
+        self,
+        *,
+        early_alert: bool = False,
+        watchdog: bool = False,
+        feeding: bool = False,
+        household: bool = False,
+        exclude_user: str | None = None,
     ) -> list[Subscription]:
         """通知を受け取る有効な人の購読。見守り通知は、見守りも選んだ人だけ。
 
         watchdog（監視の停止とカメラの不調）は、受け取りを選んだ管理者だけ。
+        household（家族が在宅に戻した）は受け取りを選んだ人で、exclude_user（押した本人）を除く。
         """
-        if feeding:
+        if household:
+            condition = "u.push_household = 1"
+        elif feeding:
             condition = "u.push_feeding = 1"
         elif watchdog:
             condition = "u.role = 'admin' AND u.push_watchdog = 1"
@@ -179,7 +188,11 @@ class PushSubscriptions:
                 "SELECT s.* FROM push_subscriptions s JOIN users u ON u.id = s.user_id "  # noqa: S608
                 f"WHERE u.disabled_at IS NULL AND {condition} ORDER BY s.created_at"
             ).fetchall()
-        return [self._subscription(row) for row in rows]
+        return [
+            self._subscription(row)
+            for row in rows
+            if exclude_user is None or row["user_id"] != exclude_user
+        ]
 
     @staticmethod
     def _subscription(row: Any) -> Subscription:
@@ -268,6 +281,13 @@ class WebPushNotifier(ToiletNotifier):
         vapid = self.keys.vapid()
         results = [self.send_to(subscription, payload, vapid) for subscription in recipients]
         return any(results)
+
+    def send_return_home(self, name: str, period_id: str, *, exclude_user: str) -> bool:
+        """name さんが在宅に戻したことを、本人以外で受け取りを選んだ家族に知らせる。"""
+        recipients = self.subscriptions.recipients(household=True, exclude_user=exclude_user)
+        message = f"{name}さんが在宅に戻しました。留守中のまとめを見られます。"
+        url = "/digest?" + urlencode({"id": period_id})
+        return self._push(recipients, self.title(), message, url)
 
     def send_feeding_reminder(self, subscription: Subscription, clock: str, day: date) -> Delivery:
         """指定の端末へごはんの予定を知らせ、お世話の画面を開く。"""

@@ -30,7 +30,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `records.floor_objects.FloorObjects`：床の候補と人のラベル（`floor_objects`）。判定器の結果（`judge_status`・`judge_label`・`judge_reason`。版38）も同じ行に持つ。枠を描いた画像は `floor-objects/` に置き、バックアップの `ALLOWED` に入れる
   - `features.daily_trends.TrendNotices`：いつもと違う日が続いたことを知らせた（日, 指標）（`trend_notices`）
   - `records.absences.Absences`・`AwayMode`：犬がサークルにいなかった区間と人のラベル（`absences`）、家族の「外出中」の切り替え（`away_mode`）
-  - `records.away_periods.AwayPeriods`：家族が外出中にしていた区間（`away_periods`）。外出中の切り替え（`AwayMode.set_away`）が同じトランザクションで始め、閉じる
+  - `records.away_periods.AwayPeriods`：家族が外出中にしていた区間（`away_periods`）。外出中の切り替え（`AwayMode.set_away`）が同じトランザクションで始め、閉じる。押し忘れを知らせたら `reminded_at` を残す（`features/away_reminder.py`、GUI のサーバーの見張り `commands/context.away_reminder_watch`）。在宅に戻したときは `gui/presence_routes.notify_return` が、押した人以外で `users.push_household` を選んだ家族に Web Push で知らせる
   - `records.vocal_episodes.VocalEpisodes`：犬が鳴いていた区間（`vocal_episodes`。時刻・長さ・最大の音量だけで、音声は保存しない）
   - `records.digest_summaries.DigestSummaries`：留守中のまとめの判定器による要約（`digest_summaries`。外出の区間ごとに1行）
   - `video.clips.ClipStore`：動画の保存要求と状態

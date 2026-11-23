@@ -383,6 +383,14 @@ SETTINGS: tuple[Setting, ...] = (
         "10〜600 の数（秒。外出中に10分のうちこれだけ鳴いていたら知らせる）",
     ),
     Setting(
+        "away_reminder_hours",
+        "away",
+        "reminder_hours",
+        float,
+        _number(0, 72),
+        "0〜72 の数（時間。外出中にしてからこの時間たったら、在宅に戻し忘れを知らせる。0 なら知らせない）",
+    ),
+    Setting(
         "trends_notify",
         "trends",
         "notify",
@@ -685,6 +693,7 @@ class Config:
     floor_notify: bool = True
     floor_judge: bool = False
     trends_notify: bool = True
+    away_reminder_hours: float = 12
     audio_threshold_db: float = 15
     audio_notify_seconds: float = 60
     digest_enabled: bool = True

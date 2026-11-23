@@ -875,6 +875,12 @@ def migrate_to_v40(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v41(db: sqlite3.Connection) -> None:
+    """家族が在宅に戻したときの通知の受け取り（users）と、押し忘れの通知の記録（away_periods）。"""
+    db.execute("ALTER TABLE users ADD COLUMN push_household INTEGER NOT NULL DEFAULT 1")
+    db.execute("ALTER TABLE away_periods ADD COLUMN reminded_at TEXT")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -917,6 +923,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v38,
     migrate_to_v39,
     migrate_to_v40,
+    migrate_to_v41,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

@@ -98,6 +98,8 @@ class User:
     # 管理者が Web Push で受け取る、監視の停止とカメラの不調の通知。
     push_watchdog: bool = True
     push_feeding: bool = False
+    # ほかの家族が在宅に戻したときの Web Push。
+    push_household: bool = True
 
     @property
     def active(self) -> bool:
@@ -159,6 +161,7 @@ class UserStore:
             bool(row["push_early"]),
             bool(row["push_watchdog"]),
             bool(row["push_feeding"]),
+            bool(row["push_household"]),
         )
 
     def create(
@@ -220,17 +223,19 @@ class UserStore:
         early: bool,
         watchdog: bool | None = None,
         feeding: bool | None = None,
+        household: bool | None = None,
     ) -> None:
         """Web Push で受け取る通知を保存する（その人のすべての端末に効く）。
 
-        watchdog（監視の異常の通知）が None なら変えない。
+        watchdog（監視の異常の通知）・feeding・household が None なら変えない。
         """
         with self.database.connect() as db:
             changed = db.execute(
                 "UPDATE users SET push_alerts = ?, push_early = ?, "
                 "push_watchdog = coalesce(?, push_watchdog), "
-                "push_feeding = coalesce(?, push_feeding) WHERE id = ?",
-                (int(alerts), int(early), watchdog, feeding, user_id),
+                "push_feeding = coalesce(?, push_feeding), "
+                "push_household = coalesce(?, push_household) WHERE id = ?",
+                (int(alerts), int(early), watchdog, feeding, household, user_id),
             ).rowcount
         if not changed:
             raise InvalidInputError("ユーザーが見つかりません")
