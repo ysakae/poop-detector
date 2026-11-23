@@ -108,6 +108,9 @@ sheet:
 digest:
   enabled: true
   snapshot_seconds: 60   # 静止画を残す間隔（秒）
+  # 判定器（review.provider）による短い文章の要約。年表の文字を提供元に送るので既定は false
+  summary: false
+  summary_images: false  # 要約に静止画を4枚まで添える（静止画を提供元に送る）
 
 # 鳴き声の記録（features.audio を有効にして使う）
 audio:

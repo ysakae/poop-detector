@@ -1,11 +1,21 @@
 {#- 1回の外出のまとめ。タイムラプスと、出来事の年表を並べる。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import chip, empty_state, icon, stat, when %}
+{% from "_macros.html" import chip, csrf_field, empty_state, icon, stat, when %}
 {% block content %}
 <h2>留守中のまとめ</h2>
 <p>{{ when(start) }} 〜 {{ when(end) }}（{{ length }}）{% if ongoing %} {{ chip("外出中", "warn") }}{% endif %}</p>
 <div class="stats">{{ stat("出来事", digest.items | length, "件", "paw") }}{% if asleep %}{{ stat("寝ていた時間", asleep, "", "user") }}{% endif %}</div>
-{% if frames %}<figure class="digest-video"><video controls preload="metadata" playsinline src="/digest-video?id={{ digest.period.id }}"></video><figcaption>静止画 {{ frames }}枚のタイムラプス（1分ごとの静止画が、1時間で約5秒）</figcaption></figure>
+{% if summary %}<section class="card" aria-labelledby="digest-summary">
+<h3 id="digest-summary">判定器による要約</h3>
+{% if summary.status == "done" %}<p>{{ summary.summary }}</p>
+{% if summary.points %}<ul>{% for point in summary.points %}<li>{{ point }}</li>{% endfor %}</ul>{% endif %}
+<p class="note">記録から判定器が作った要約で、誤りを含むことがあります。獣医師の判断の代わりにはなりません。</p>
+{% elif summary.status in ("queued", "running") %}<p>{{ chip("要約を作っています", "warn") }} しばらくしてから開き直してください。</p>
+{% elif summary.status == "failed" %}<p>{{ chip("要約を作れませんでした", "off") }}</p>
+{% elif not summary.can_request %}<p class="note">外出から戻ると、要約を作ります。</p>{% endif %}
+{% if summary.can_request %}<form method="post" action="/digest/summary">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ digest.period.id }}"><button class="secondary">{{ "作り直す" if summary.status in ("done", "failed") else "要約を作る" }}</button></form>{% endif %}
+</section>
+{% endif %}{% if frames %}<figure class="digest-video"><video controls preload="metadata" playsinline src="/digest-video?id={{ digest.period.id }}"></video><figcaption>静止画 {{ frames }}枚のタイムラプス（1分ごとの静止画が、1時間で約5秒）</figcaption></figure>
 {% else %}<p class="note">この外出の静止画はありません（監視が動いていなかったか、7日を過ぎて消えました）。</p>{% endif %}
 <section class="card" aria-labelledby="digest-items">
 <h3 id="digest-items">出来事</h3>
