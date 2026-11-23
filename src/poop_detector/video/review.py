@@ -38,6 +38,8 @@ EVIDENCE = {"feces": "new_stool", "urine": "new_wet_patch", "both": "both_visibl
 # 判定器の呼び出しに失敗した動画を、監視中に試し直す回数の上限。待ち時間を伸ばしながら
 # 試すので、5時間の利用枠が戻るまでのおよそ5時間を覆う。
 MAX_RETRIES = 16
+# 下痢らしい便が続いたかを数える時間。
+STOOL_REPEAT_HOURS = 24
 # 試し直しを待つ動画を覚えておく本数の上限。超えたら古いものから諦める。
 RETRY_BACKLOG = 500
 FAILURE_WAIT = 20
@@ -93,13 +95,21 @@ stool_clear_seconds は、便がないことをトレー全体の遮蔽物のな
 犬や物で一部が隠れている、暗くて見分けられないなど、確認できない項目には null を入れてください。
 時刻は画像に表示された秒数をそのまま使ってください。"""
 STOOL_FIELDS = ("stool_seen_seconds", "stool_clear_seconds")
+# 動画中に新たに出た便の状態（#294）。normal: 形がある、soft: やわらかい、
+# diarrhea: 形のない下痢、unknown: 見分けられない。
+STOOL_CONDITIONS = ("normal", "soft", "diarrhea", "unknown")
+STOOL_CONDITION_PROMPT = """label が feces か both のときは、動画中に新たに出た便の状態を
+stool_condition に次から選んでください。normal は形のある便、soft は形はあるがやわらかい便、
+diarrhea は形がなく広がった下痢、unknown は遮蔽や暗さ・シートの色で見分けられない場合です。
+確かでなければ unknown にしてください。label が feces・both でなければ null にしてください。"""
 TRAY_SCHEMA = {
     **SCHEMA,
     "properties": {
         **SCHEMA["properties"],
         **{name: {"type": ["number", "null"]} for name in STOOL_FIELDS},
+        "stool_condition": {"type": ["string", "null"], "enum": [*STOOL_CONDITIONS, None]},
     },
-    "required": [*SCHEMA["required"], *STOOL_FIELDS],
+    "required": [*SCHEMA["required"], *STOOL_FIELDS, "stool_condition"],
 }
 EVIDENCE_PROMPT = """動画中に新たに発生した排泄だけを判定してください。
 排便は前にはなかった便が現れたこと、排尿は尿の流れか新しい濡れ跡が発生したことが
@@ -166,6 +176,10 @@ def parse_assessment(
         _stool_offset(output.get(name), duration) if not include_location else None
         for name in STOOL_FIELDS
     )
+    # 便の状態は補足なので、想定外の値は判定ごと捨てずに None にする。
+    condition = output.get("stool_condition")
+    if include_location or label not in ("feces", "both") or condition not in STOOL_CONDITIONS:
+        condition = None
     return Assessment(
         label,
         activity,
@@ -175,6 +189,7 @@ def parse_assessment(
         location,
         stool_seen_seconds=seen,
         stool_clear_seconds=clear,
+        stool_condition=condition,
     )
 
 
@@ -532,7 +547,7 @@ def prepare_clip(
         context = TRAY_CONTEXT if outside_roi is None else OUTSIDE_CONTEXT
         prompt = context + "\n" + EVIDENCE_PROMPT
         if outside_roi is None:
-            prompt += "\n" + STOOL_PROMPT
+            prompt += "\n" + STOOL_PROMPT + "\n" + STOOL_CONDITION_PROMPT
         images = list(sheets.images)
         if len(images) > 1:
             prompt += f"\n画像は{len(images)}枚に分かれ、1枚目から順に時刻が続きます。"
@@ -614,7 +629,10 @@ def default_judge() -> VideoJudge:
 
 
 class AssessmentNotifier(Protocol):
-    """自動判定を通知する関数（NtfyNotifier.send_assessment など）。"""
+    """自動判定を通知する関数（NtfyNotifier.send_assessment など）。
+
+    stool_condition・stool_repeat は、下痢らしい便のときだけ渡す。
+    """
 
     def __call__(
         self,
@@ -625,6 +643,8 @@ class AssessmentNotifier(Protocol):
         clip_id: str = "",
         detected_at: str | None = None,
         existing_stool: bool = False,
+        stool_condition: str | None = None,
+        stool_repeat: int = 0,
     ) -> bool: ...
 
 
@@ -776,6 +796,14 @@ class Review:
             self.store.assessments.defer_stool_notice(row["id"])
             label = "urine" if label == "both" else None
         if label in EXCRETION_TYPES and self.store.assessments.claim_notice(row["id"], label):
+            extra: dict[str, Any] = {}
+            if label in ("feces", "both") and result.stool_condition == "diarrhea":
+                # 下痢らしいときだけ渡す（ほかの通知先の関数の引数を増やさない）。
+                since_day = datetime.now(UTC) - timedelta(hours=STOOL_REPEAT_HOURS)
+                extra = {
+                    "stool_condition": "diarrhea",
+                    "stool_repeat": self.store.assessments.count_condition("diarrhea", since_day),
+                }
             sent = notify(
                 label,
                 location=result.location
@@ -784,6 +812,7 @@ class Review:
                 interrupted=bool(row["interrupted"]),
                 clip_id=row["id"],
                 detected_at=observed_at,
+                **extra,
             )
             self.store.assessments.finish_notice(row["id"], sent)
         if not new_stool and stool_seen_at:

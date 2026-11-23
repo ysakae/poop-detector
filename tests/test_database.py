@@ -121,6 +121,7 @@ def test_new_database_is_created_at_the_latest_version(tmp_path):
         "stool_notified_at",
         "notice_label",
         "stool_notice_claimed",
+        "stool_condition",
     ]
     added_columns = {"codex_assessments": assessment_columns, "clips": ["tray_stay_seconds"]}
     for table, expected in TABLES_V1.items():
@@ -877,3 +878,16 @@ def test_v40_database_keeps_users_and_adds_household_and_reminder(tmp_path):
         assert db.execute("SELECT reminded_at FROM away_periods").fetchone()[0] is None
         columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
         assert "push_household" in columns
+
+
+def test_v41_database_keeps_assessments_and_adds_stool_condition(tmp_path):
+    path = tmp_path / "stool-condition-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:41]:
+            migration(db)
+        db.execute("PRAGMA user_version = 41")
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        columns = {row[1] for row in db.execute("PRAGMA table_info(video_assessments)")}
+        assert "stool_condition" in columns

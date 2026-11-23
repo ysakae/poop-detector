@@ -86,13 +86,25 @@ def clip_filters(rows: Sequence[Mapping[str, Any]], mode: str) -> list[dict[str,
     ]
 
 
-def clip_assessment_summary(label: str | None, location: str | None, error: bool) -> str:
+STOOL_CONDITION_TEXT = {
+    "normal": "ふつう",
+    "soft": "やわらかい",
+    "diarrhea": "下痢らしい",
+    "unknown": "状態は見分けられない",
+}
+
+
+def clip_assessment_summary(
+    label: str | None, location: str | None, error: bool, stool_condition: str | None = None
+) -> str:
     """動画一覧と確認待ちで使う自動判定の短い結果。"""
     if label is None:
         return "失敗" if error else ""
     result = CLIP_LABELS[label]
     if label in EXCRETION_TYPES:
         result += "の候補"
+    if stool_condition in STOOL_CONDITION_TEXT:
+        result += f"（{STOOL_CONDITION_TEXT[stool_condition]}）"
     if location:
         result += " ／ " + EXCRETION_LOCATIONS.get(location, "場所不明")
     return result
@@ -117,7 +129,10 @@ def clip_list_item(
         "status": STATES.get(item["status"], item["status"]),
         "label": label,
         "assessment": clip_assessment_summary(
-            item["review_label"], item["review_location"], bool(item["review_error"])
+            item["review_label"],
+            item["review_location"],
+            bool(item["review_error"]),
+            item.get("review_stool_condition"),
         ),
         "review_waiting": review_waiting,
         "candidate": CANDIDATE_STATES[candidate.state]

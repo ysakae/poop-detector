@@ -85,6 +85,8 @@ class ToiletNotifier:
         clip_id: str = "",
         detected_at: str | None = None,
         existing_stool: bool = False,
+        stool_condition: str | None = None,
+        stool_repeat: int = 0,
     ) -> bool:
         if label not in ("feces", "urine", "both"):
             return False
@@ -99,6 +101,14 @@ class ToiletNotifier:
             message = f"トレーの映像で便を確認しました。排便時刻は不明です。{detail}"
             if time:
                 message += f" 便を確認 {time}"
+        elif stool_condition == "diarrhea":
+            again = f"24時間で{stool_repeat}回目です。" if stool_repeat > 1 else ""
+            message = (
+                f"動画の自動判定で{place}下痢らしい便の候補が見つかりました。{again}{detail}"
+                "続くときは獣医師に相談してください。"
+            )
+            if time:
+                message += f" 検知 {time}"
         else:
             message = (
                 f"動画の自動判定で{place}{EXCRETION_TYPES[label]}の候補が見つかりました。{detail}"

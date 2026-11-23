@@ -39,6 +39,8 @@ class ReviewItem:
     image: bool = False
     review_failed: bool = False
     scene: str | None = None
+    # 自動判定が見た便の状態（動画だけ。排便のときだけ）。
+    stool_condition: str | None = None
 
     @property
     def key(self) -> str:
@@ -105,6 +107,7 @@ def pending_items(
                 _optional(clip, "review_location"),
                 review_failed=bool(_optional(clip, "review_error")),
                 scene=_optional(clip, "scene_signature"),
+                stool_condition=_optional(clip, "review_stool_condition"),
             )
         )
     items += [
