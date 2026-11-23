@@ -371,3 +371,18 @@ def test_time_field_is_to_the_minute(gui):
     identifier = re.search(rb"amp;id=([a-f0-9]+)", request(server, "GET", day_url)[1])[1].decode()
     edit = request(server, "GET", f"{day_url}&id={identifier}")[1].decode()
     assert 'name="at" value="2024-03-01T08:05"' in edit
+
+
+def test_quick_feeding_preserves_manual_main_calories_and_ignores_treat(tmp_path):
+    from poop_detector.records.care import CareEntry, entries, quick_entry, save_entry
+    from poop_detector.records.database import Database
+    from poop_detector.timezones import local_now
+
+    database = Database(tmp_path / "care.sqlite3")
+    now = local_now()
+    save_entry(database, CareEntry("", now, "feeding", "家族A", "", "主食", 200, energy_dk=800))
+    save_entry(database, CareEntry("", now, "feeding", "家族", "", "おやつ", 50, True, 100))
+    identifier = quick_entry(database, "feeding", "家族")
+    saved = next(row for row in entries(database, now.date()) if row.id == identifier)
+    assert not saved.is_treat
+    assert (saved.food, saved.amount_dg, saved.energy_dk) == ("主食", 200, 800)

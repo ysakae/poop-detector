@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from ...records.care import feeding_totals
+from ...records.care import entries, feeding_totals
 from ...records.database import Database
 from ...records.events import Store
 from ...records.feeding_advice import (
@@ -93,7 +93,7 @@ def build_context(database: Database, store: Store, pet_name: str, today: date) 
         profile=profile,
         advice=advice,
         weights=_thin(rows),
-        intake=intake_summary(totals, kcal_by_name(database), days),
+        intake=intake_summary(entries(database, days[0], today), kcal_by_name(database), days),
         meals=meals,
         excretions=_excretions(store, days),
         foods=tuple(active_foods(database)),

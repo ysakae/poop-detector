@@ -28,6 +28,9 @@ class CareEntry:
     food: str = ""
     # 0.1 g単位の整数で保持する。
     amount_dg: int | None = None
+    is_treat: bool = False
+    # 食べた分のカロリーを直接記録するときは0.1 kcal単位で保持する。
+    energy_dk: int | None = None
 
     @property
     def grams(self) -> str:
@@ -41,7 +44,7 @@ def format_grams(amount_dg: int | None) -> str:
     return f"{whole}.{tenth}" if tenth else str(whole)
 
 
-def parse_amount(value: str) -> int | None:
+def parse_amount(value: str, *, label: str = "給餌量", unit: str = "g") -> int | None:
     value = value.strip().replace(",", ".")
     if not value:
         return None
@@ -52,13 +55,13 @@ def parse_amount(value: str) -> int | None:
         if units <= 0:
             raise InvalidOperation
     except InvalidOperation:
-        raise InvalidInputError("給餌量は0.1 g単位の正の数で入力してください") from None
+        raise InvalidInputError(f"{label}は0.1 {unit}単位の正の数で入力してください") from None
     return units
 
 
 def feeding_history(database: Database) -> tuple[str, str, list[str]]:
     with database.connect() as db:
-        food, amount = _last_feeding(db) or ("", None)
+        food, amount, _ = _last_feeding(db) or ("", None, None)
         names = db.execute(
             """SELECT food FROM care_entries WHERE kind='feeding' AND food != '' AND deleted_at IS NULL
             GROUP BY food ORDER BY MAX(at) DESC, food"""
@@ -70,9 +73,10 @@ def feeding_history(database: Database) -> tuple[str, str, list[str]]:
     )
 
 
-def entries(database: Database, day: date) -> list[CareEntry]:
+def entries(database: Database, day: date, last: date | None = None) -> list[CareEntry]:
+    """削除済みを除き、ローカル日付の指定範囲（両端を含む）の記録を返す。"""
     start = datetime.combine(day, time.min).astimezone(UTC).isoformat()
-    end = datetime.combine(day + timedelta(days=1), time.min).astimezone(UTC).isoformat()
+    end = datetime.combine((last or day) + timedelta(days=1), time.min).astimezone(UTC).isoformat()
     with database.connect() as db:
         rows = db.execute(
             """SELECT * FROM care_entries WHERE at >= ? AND at < ? AND deleted_at IS NULL
@@ -110,6 +114,8 @@ def _entry(row: sqlite3.Row) -> CareEntry:
         row["note"],
         row["food"],
         row["amount_dg"],
+        bool(row["is_treat"]),
+        row["energy_dk"],
     )
 
 
@@ -119,7 +125,7 @@ def latest_entries(database: Database) -> dict[str, CareEntry]:
     with database.connect() as db:
         for kind in KINDS:
             row = db.execute(
-                """SELECT * FROM care_entries WHERE kind=? AND deleted_at IS NULL
+                """SELECT * FROM care_entries WHERE kind=? AND is_treat=0 AND deleted_at IS NULL
                 ORDER BY at DESC, rowid DESC LIMIT 1""",
                 (kind,),
             ).fetchone()
@@ -141,12 +147,16 @@ def _save_entry(db: sqlite3.Connection, entry: CareEntry, plan_id: str | None) -
         raise InvalidInputError("種類、日時、メモ（500文字以内）を確認してください")
     food = entry.food.strip() if entry.kind == "feeding" else ""
     amount = entry.amount_dg if entry.kind == "feeding" else None
+    is_treat = entry.kind == "feeding" and entry.is_treat
+    energy = entry.energy_dk if entry.kind == "feeding" else None
+    if energy is not None and energy <= 0:
+        raise InvalidInputError("カロリーは正の数で入力してください")
     if len(food) > 120:
         raise InvalidInputError("フードの銘柄は120文字以内で入力してください")
     stamp = entry.at.astimezone(UTC).isoformat()
     plan_day = entry.at.astimezone().date().isoformat()
     if plan_id:
-        if entry.kind != "feeding" or entry.id:
+        if entry.kind != "feeding" or entry.id or is_treat:
             raise InvalidInputError("新しいごはんの記録だけを予定に結び付けられます")
         existing = db.execute(
             "SELECT id FROM care_entries WHERE plan_id=? AND plan_day=? AND deleted_at IS NULL",
@@ -159,10 +169,12 @@ def _save_entry(db: sqlite3.Connection, entry: CareEntry, plan_id: str | None) -
         ).fetchone():
             raise InvalidInputError("選んだごはんの予定はありません")
     if entry.id:
+        planned_meal = entry.kind == "feeding" and not is_treat
         if not db.execute(
             """UPDATE care_entries SET at=?, kind=?, note=?, food=?, amount_dg=?,
-            plan_id=CASE WHEN ?='feeding' AND plan_day=? THEN plan_id END,
-            plan_day=CASE WHEN ?='feeding' AND plan_day=? THEN plan_day END
+            is_treat=?, energy_dk=?,
+            plan_id=CASE WHEN ? AND plan_day=? THEN plan_id END,
+            plan_day=CASE WHEN ? AND plan_day=? THEN plan_day END
             WHERE id=? AND deleted_at IS NULL""",
             (
                 stamp,
@@ -170,9 +182,11 @@ def _save_entry(db: sqlite3.Connection, entry: CareEntry, plan_id: str | None) -
                 entry.note,
                 food,
                 amount,
-                entry.kind,
+                is_treat,
+                energy,
+                planned_meal,
                 plan_day,
-                entry.kind,
+                planned_meal,
                 plan_day,
                 entry.id,
             ),
@@ -181,8 +195,8 @@ def _save_entry(db: sqlite3.Connection, entry: CareEntry, plan_id: str | None) -
         return entry.id
     identifier = uuid4().hex
     db.execute(
-        """INSERT INTO care_entries (id, at, kind, actor, note, food, amount_dg, plan_id, plan_day)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO care_entries (id, at, kind, actor, note, food, amount_dg, plan_id, plan_day,
+        is_treat, energy_dk) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             identifier,
             stamp,
@@ -193,6 +207,8 @@ def _save_entry(db: sqlite3.Connection, entry: CareEntry, plan_id: str | None) -
             amount,
             plan_id,
             plan_day if plan_id else None,
+            is_treat,
+            energy,
         ),
     )
     return identifier
@@ -214,15 +230,17 @@ def delete_entry(database: Database, identifier: str) -> date:
 def last_feeding(database: Database) -> tuple[str, int | None] | None:
     """銘柄か量を入れた直近の給餌の (銘柄, 0.1 g単位の量)。なければ None。"""
     with database.connect() as db:
-        return _last_feeding(db)
+        last = _last_feeding(db)
+    return (last[0], last[1]) if last else None
 
 
-def _last_feeding(db: sqlite3.Connection) -> tuple[str, int | None] | None:
+def _last_feeding(db: sqlite3.Connection) -> tuple[str, int | None, int | None] | None:
     row = db.execute(
-        """SELECT food, amount_dg FROM care_entries WHERE kind='feeding' AND deleted_at IS NULL
-        AND (food != '' OR amount_dg IS NOT NULL) ORDER BY at DESC, rowid DESC LIMIT 1"""
+        """SELECT food, amount_dg, energy_dk FROM care_entries
+        WHERE kind='feeding' AND deleted_at IS NULL
+        AND is_treat=0 AND (food != '' OR amount_dg IS NOT NULL) ORDER BY at DESC, rowid DESC LIMIT 1"""
     ).fetchone()
-    return (row["food"], row["amount_dg"]) if row else None
+    return (row["food"], row["amount_dg"], row["energy_dk"]) if row else None
 
 
 def feeding_text(food: str, amount_dg: int | None) -> str:
@@ -251,7 +269,7 @@ def quick_entry(
             since = (now - timedelta(seconds=DOUBLE_TAP_SECONDS)).astimezone(UTC).isoformat()
             recent = db.execute(
                 """SELECT id FROM care_entries WHERE kind=? AND actor=? AND at >= ?
-                AND plan_id IS NULL AND deleted_at IS NULL ORDER BY at DESC, rowid DESC LIMIT 1""",
+                AND plan_id IS NULL AND is_treat=0 AND deleted_at IS NULL ORDER BY at DESC, rowid DESC LIMIT 1""",
                 (kind, actor, since),
             ).fetchone()
             if recent:
@@ -259,8 +277,9 @@ def quick_entry(
         last = _last_feeding(db) if kind == "feeding" else None
         if kind == "feeding" and last is None and not plan_id:
             return None
-        food, amount = last or ("", None)
-        return _save_entry(db, CareEntry("", now, kind, actor, "", food, amount), plan_id)
+        food, amount, energy = last or ("", None, None)
+        entry = CareEntry("", now, kind, actor, "", food, amount, energy_dk=energy)
+        return _save_entry(db, entry, plan_id)
 
 
 def care_time(value: str) -> datetime:

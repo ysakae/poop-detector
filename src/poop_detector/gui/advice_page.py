@@ -2,14 +2,15 @@
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+from math import floor
 
 from ..features.advice.context import current_advice
 from ..features.advice.jobs import waiting_position
 from ..records.advice import Message, Thread
 from ..records.breeds import SIZE_NAMES
-from ..records.care import feeding_totals
+from ..records.care import entries
 from ..records.database import Database
-from ..records.feeding_advice import Advice, Guide, intake_summary, weekly_gain
+from ..records.feeding_advice import Advice, DayIntake, Guide, intake_summary, weekly_gain
 from ..records.foods import kcal_by_name
 from ..records.profile import PetProfile, load_profile
 from ..records.weights import Weight, weights
@@ -17,6 +18,7 @@ from ..timezones import to_local
 from .markdown_text import answer_html
 
 INTAKE_DAYS = 7
+TREAT_SHARE = 0.10
 DISCLAIMER = "目安です。獣医師の指示があればそちらを優先してください。"
 STATE_NAMES = {"queued": "回答待ち", "running": "回答待ち", "done": "回答済み", "failed": "失敗"}
 ANSWER_FAILURES = {
@@ -87,22 +89,46 @@ def guide_view(guide: Guide | None, food_text: str) -> dict[str, object] | None:
     }
 
 
-def intake_view(database: Database, today: date) -> tuple[list[dict[str, str]], str]:
+def intake_view(database: Database, today: date) -> tuple[list[dict[str, str]], str, DayIntake]:
     """直近7日の給餌の行と、記録のある日の平均の文。"""
     days = [today - timedelta(days=offset) for offset in range(INTAKE_DAYS - 1, -1, -1)]
-    totals = feeding_totals(database, days[0], today)
-    summary = intake_summary(totals, kcal_by_name(database), days)
+    summary = intake_summary(entries(database, days[0], today), kcal_by_name(database), days)
     rows = [
         {
             "day": f"{item.day.month}/{item.day.day}",
             "grams": f"{item.grams:g} g",
-            "kcal": "" if item.kcal is None else f"{item.kcal:.0f} kcal",
+            "kcal": f"{item.known_kcal:.0f} kcal" + ("（一部不明）" if item.kcal is None else ""),
         }
         for item in summary
     ]
     recorded = [item.grams for item in summary if item.grams > 0]
     average = f"記録のある日の平均 {sum(recorded) / len(recorded):.0f} g/日" if recorded else ""
-    return rows, average
+    return rows, average, summary[-1]
+
+
+def budget_view(intake: DayIntake, guide: Guide | None) -> dict[str, str | int | bool]:
+    """今日の記録を表示し、確認できる場合に主食を何 g 足せるか示す。"""
+    view: dict[str, str | int | bool] = {
+        "main": f"{intake.main_kcal:.1f}",
+        "treat": f"{intake.treat_kcal:.1f}",
+        "total": f"{intake.known_kcal:.1f}",
+        "unknown": intake.unknown_count,
+        "over_limit": False,
+    }
+    if guide is None:
+        return view
+    target = guide.kcal_per_day
+    limit = target * TREAT_SHARE
+    over_limit = intake.treat_kcal - limit > 1e-9
+    view.update(treat_limit=f"{floor(limit * 10) / 10:.1f}", over_limit=over_limit)
+    if over_limit or intake.unknown_count or guide.grams_per_day is None:
+        return view
+    grams_per_kcal = guide.grams_per_day / target
+    if intake.treat_kcal:
+        view["adjusted"] = f"{(target - intake.treat_kcal) * grams_per_kcal:.1f}"
+    remaining = max(0.0, target - intake.known_kcal) * grams_per_kcal
+    view["remaining"] = f"{remaining:.1f}"
+    return view
 
 
 def gain_text(rows: list[Weight], today: date) -> str:

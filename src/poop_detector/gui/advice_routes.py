@@ -36,6 +36,7 @@ from ..timezones import local_today
 from . import advice_worker
 from .advice_page import (
     DISCLAIMER,
+    budget_view,
     gain_text,
     guide_view,
     intake_view,
@@ -236,7 +237,7 @@ def _render_advice(
     food_text = (
         "" if selected is None else f"{selected.name} {format_kcal(selected.kcal_dk)} kcal/100g"
     )
-    intake, average = intake_view(database, today)
+    intake, average, today_intake = intake_view(database, today)
     page = render_template(
         "advice.html",
         title=handler.app.title,
@@ -246,6 +247,7 @@ def _render_advice(
         missing=list(current.advice.missing),
         disclaimer=DISCLAIMER,
         intake=intake,
+        budget=budget_view(today_intake, current.advice.guide),
         average=average,
         gain=gain_text(current.weights, today),
         threads=thread_rows(threads(database)),

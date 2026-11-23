@@ -914,6 +914,15 @@ def migrate_to_v45(db: sqlite3.Connection) -> None:
         db.execute(f"ALTER TABLE vocal_episodes ADD COLUMN {column}")
 
 
+def migrate_to_v46(db: sqlite3.Connection) -> None:
+    """給餌記録に主食・おやつの区分と、直接入力したカロリーを足す。"""
+    db.execute(
+        "ALTER TABLE care_entries ADD COLUMN is_treat INTEGER NOT NULL DEFAULT 0 "
+        "CHECK(is_treat IN (0, 1))"
+    )
+    db.execute("ALTER TABLE care_entries ADD COLUMN energy_dk INTEGER CHECK(energy_dk > 0)")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -961,6 +970,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v43,
     migrate_to_v44,
     migrate_to_v45,
+    migrate_to_v46,
 )
 LATEST_VERSION = len(MIGRATIONS)
 
