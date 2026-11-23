@@ -100,7 +100,7 @@ def test_clip_list_and_records_are_split_by_day(gui):
     nav = re.search(r'id="clip-list".*?</nav>', clips, re.S)[0]
     assert '<h3 class="day-heading">今日</h3>' in nav
     records = page(server, "/records", cookie)
-    assert '<h3 class="day-heading">きのう</h3>' in records
+    assert '<h5 class="day-heading">きのう</h5>' in records
     assert re.search(r'<time datetime="[^"]+" title="[^"]+">\d\d:\d\d</time>', records)
 
 

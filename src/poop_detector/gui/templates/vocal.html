@@ -1,8 +1,9 @@
 {#- 鳴き声の記録。カメラの音声から見つけた、鳴いていた時間を日ごとに並べる。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import chip, csrf_field, empty_state, when %}
+{% from "_macros.html" import chip, csrf_field, empty_state, hidden_fields, records_back, when %}
 {% block content %}
 <h2>鳴き声の記録</h2>
+{{ records_back(record_filters) }}
 {% if saved %}<p class="message" role="status">ラベルを保存しました。</p>{% endif %}
 <p class="note">カメラの音声で、周りより大きく鳴き声らしい音が続いた時間です（実験的な機能）。テレビや掃除機、インターホンの音も数えることがあります。音声そのものは、設定の audio.keep_days のときだけ評価用に残し、その日数で消します。</p>
 <div class="card table-scroll">
@@ -31,6 +32,7 @@
 {% if item.label %}{{ chip(item.label, "ok") }}{% elif item.score %}{{ chip("モデル：鳴き声らしい" if item.dog_like else "モデル：ほかの音らしい", "warn" if item.dog_like else "off") }}{% endif %}
 {% if item.clip %}<audio controls preload="none" src="/vocal-audio?id={{ item.id }}"></audio>
 <form method="post" action="/vocal/label" class="floor-labels">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ item.id }}">
+{{ hidden_fields(record_filters) }}
 {%- for value, text in labels.items() -%}<button class="secondary" name="label" value="{{ value }}">{{ text }}</button>{%- endfor -%}
 </form>{% endif %}</span><span class="timeline-time">{{ when(item.when) }}</span></li>
 {%- endfor -%}

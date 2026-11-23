@@ -261,7 +261,7 @@ def test_home_toggle_presence_page_and_labels(gui):
     status, _ = submit(server, "/presence/label", {"id": open_id, "label": "x"}, page="/presence")
     assert status == 400
     _, _, body = exchange(server, "GET", "/records", headers=cookie, auth=False)
-    assert 'href="/presence"' in body.decode()
+    assert 'href="/presence?date=' in body.decode()
     status, _ = submit(server, "/away", {"away": "0", "back": "https://evil.example"}, page="/")
     assert status == 303
     assert AwayMode(database).since() is None

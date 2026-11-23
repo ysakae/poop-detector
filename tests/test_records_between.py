@@ -44,6 +44,19 @@ def test_records_between_prefers_actual_start_over_detection_time(tmp_path):
     ]
 
 
+def test_records_between_keeps_legacy_offsets_and_fractional_seconds(tmp_path):
+    store = Store(tmp_path)
+    store.add_excretion("feces", "2026-10-31T23:59:59.999999+09:00")
+    first = store.add_excretion("feces", "2026-11-01T00:00:00+0900")
+    middle = store.add_excretion("urine", "2026-11-01T10:10:00+09")
+    last = store.add_excretion("urine", "2026-11-01T23:59:59.999999+09:00")
+    store.add_excretion("feces", "2026-11-02T00:00:00+0900")
+
+    rows = store.records_between(date(2026, 11, 1), date(2026, 11, 1))
+
+    assert [row["id"] for row in rows] == [first, middle, last]
+
+
 def test_records_between_skips_unconfirmed_and_matches_records(tmp_path):
     store = Store(tmp_path)
     _suspected(store, "2026-11-01T01:00:00+00:00", None, label="false")

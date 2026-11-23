@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from ..features.daily_trends import METRICS, USUAL_DAYS
 from ..timezones import local_today
-from .pages import Query
+from .pages import Query, record_filters
 from .routes import first, get
 from .templating import render_template
 from .trends_page import trend_rows
@@ -33,5 +33,6 @@ def trends_page(handler: "Handler", query: Query) -> None:
             rows=trend_rows(handler.app, min(last, today)),
             today=today,
             usual_days=USUAL_DAYS,
+            record_filters=record_filters(query),
         ),
     )

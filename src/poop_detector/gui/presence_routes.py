@@ -1,12 +1,13 @@
 """不在の記録（犬がサークルにいなかった区間）と、家族の「外出中」の切り替えの画面。"""
 
 from typing import TYPE_CHECKING
+from urllib.parse import urlencode
 
 from ..records.absences import ABSENCE_LABELS, Absences, AwayMode
 from ..records.away_periods import AwayPeriods
 from ..web_push import WebPushNotifier, push_subject
 from .list_time import list_time
-from .pages import Query
+from .pages import Query, record_filters
 from .routes import Form, first, get, post
 from .templating import render_template
 
@@ -47,6 +48,7 @@ def presence_page(handler: "Handler", query: Query) -> None:
             labels=ABSENCE_LABELS,
             away=AwayMode(database).since() is not None,
             saved=first(query, "saved") == "1",
+            record_filters=record_filters(query),
         ),
     )
 
@@ -60,7 +62,8 @@ def label_absence(handler: "Handler", form: Form) -> None:
     except (KeyError, ValueError):
         handler.respond(400, "不在の記録かラベルが正しくありません")
         return
-    handler.redirect(f"{PRESENCE_PAGE}?saved=1#absence-{identifier}")
+    params = urlencode({"saved": "1", **record_filters(form.values)})
+    handler.redirect(f"{PRESENCE_PAGE}?{params}#absence-{identifier}")
 
 
 def notify_return(app: "GuiApp", user: "User | None", period_id: str) -> None:
@@ -87,5 +90,8 @@ def set_away(handler: "Handler", form: Form) -> None:
     finished = AwayPeriods(database).latest_finished() if returning else None
     if finished is not None:
         notify_return(handler.app, handler.user, finished.id)
-    back = form.fields.get("back", "/")
-    handler.redirect(back if back in ("/", PRESENCE_PAGE) else "/")
+    if form.fields.get("back") == PRESENCE_PAGE:
+        params = urlencode(record_filters(form.values))
+        handler.redirect(f"{PRESENCE_PAGE}?{params}" if params else PRESENCE_PAGE)
+    else:
+        handler.redirect("/")
