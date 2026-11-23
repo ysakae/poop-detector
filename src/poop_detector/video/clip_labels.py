@@ -12,7 +12,7 @@ from ..records.events import (
     EventRow,
     validate_location,
 )
-from .clips import ACTIVITIES, CLIP_LABELS, ClipRow, ClipStore
+from .clips import ACTIVITIES, CLIP_LABELS, STOOL_CONDITIONS, ClipRow, ClipStore
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,8 @@ class ClipLabel:
     note: str = ""
     # None なら動画の既存の値を保ち、空文字なら消す。
     location: str | None = None
+    # 便の状態（review.STOOL_CONDITIONS）。排便・両方のときだけ残す。空文字か None なら付けない。
+    stool_condition: str | None = None
 
 
 class ClipLabels:
@@ -112,6 +114,11 @@ class ClipLabels:
             if len(note) > 2000:
                 raise ValueError("メモは2000文字以内です")
             validate_location(location)
+            condition = clip_label.stool_condition or None
+            if condition is not None and condition not in STOOL_CONDITIONS:
+                raise ValueError("便の状態を確認してください")
+            if label not in ("feces", "both"):
+                condition = None
             location = row["location"] if location is None else location or None
             if label in ("none", "uncertain"):
                 start = end = location = None
@@ -122,8 +129,8 @@ class ClipLabels:
                 self._dismiss_detection(db, row["event_id"])
             db.execute(
                 """UPDATE clips SET label=?,actual_start_offset=?,actual_end_offset=?,
-                activity=?,note=?,location=? WHERE id=?""",
-                (label, start, end, activity, note, location, clip_id),
+                activity=?,note=?,location=?,stool_condition=? WHERE id=?""",
+                (label, start, end, activity, note, location, condition, clip_id),
             )
 
     def _dismiss_detection(self, db: sqlite3.Connection, event_id: str) -> None:
