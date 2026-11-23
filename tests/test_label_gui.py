@@ -270,7 +270,8 @@ def test_manual_record_has_its_own_page(gui):
     assert 'name="action"' not in events
     assert "目視で確認した排便・排尿を記録する" not in events
     # 保存すると記録の画面へ戻り、足した記録が見える。
-    fields = {"action": "manual", "type": "feces", "start": "2026-11-08T23:10"}
+    start = re.search(r'name="start" value="([^"]+)"', page)[1]
+    fields = {"action": "manual", "type": "feces", "start": start}
     body = urlencode({**fields, "csrf": csrf_token(server)})
     form = {"Content-Type": "application/x-www-form-urlencoded"}
     status, headers, _ = exchange(server, "POST", "/save", body, form)

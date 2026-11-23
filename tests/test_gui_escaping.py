@@ -20,6 +20,7 @@ from poop_detector.video.clips import ClipStore
 
 EVIL = "<script>alert(\"x\")</script> & 'q' <b>太字</b>"
 RAW = ("<script>alert", "<b>太字")
+RECORDS = "/records?record_end=2026-11-10"
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def pages(server, ready, failed):
     return [
         "/",
         f"/records/events?id={server.app.store.list()[0]['id']}",
-        "/records",
+        RECORDS,
         f"/clips?id={ready}",
         f"/clips?id={failed}",
         "/manage/storage",
@@ -75,7 +76,7 @@ def test_special_characters_are_escaped_on_every_page(evil_gui):
 
 def test_escaped_values_are_still_shown(evil_gui):
     server, ready, failed = evil_gui
-    assert "&lt;script&gt;alert" in request(server, "GET", "/records")[1].decode()
+    assert "&lt;script&gt;alert" in request(server, "GET", RECORDS)[1].decode()
     assert "&lt;script&gt;alert" in request(server, "GET", f"/clips?id={ready}")[1].decode()
     assert "&lt;script&gt;alert" in request(server, "GET", f"/clips?id={failed}")[1].decode()
 

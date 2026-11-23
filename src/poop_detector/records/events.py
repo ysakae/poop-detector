@@ -182,12 +182,22 @@ class Store:
 
         records() を期間で絞ったものと同じ。日の境目は actual_start、なければ timestamp で決める。
         """
-        # 固定の SQL の断片だけを組み合わせ、値はプレースホルダーで渡す。
+        # 丸められた深夜と SQLite が読めない時差表記（+0900 など）も候補に含める。
+        # それぞれ確定記録の開始時刻の索引で絞り込む。
         sql = (
-            f"{self._SELECT} WHERE e.feedback=1 AND {self.RECORD_START} >= julianday(?)"
-            f" AND {self.RECORD_START} < julianday(?) ORDER BY {self.RECORD_START}, e.timestamp"
+            f"{self._SELECT} WHERE e.feedback=1"
+            f" AND {self.RECORD_START} BETWEEN julianday(?) AND julianday(?)"
+            f" UNION ALL {self._SELECT} WHERE e.feedback=1 AND {self.RECORD_START} IS NULL"
         )
-        return self._rows(sql, (_local_midnight(first), _local_midnight(last + timedelta(1))))
+        bounds = (_local_midnight(first), _local_midnight(last + timedelta(1)))
+        begin, end = map(datetime.fromisoformat, bounds)
+        matches = []
+        for row in self._rows(sql, bounds):
+            start = datetime.fromisoformat(row["actual_start"] or row["timestamp"])
+            if begin <= start < end:
+                matches.append((start, row))
+        matches.sort(key=lambda match: (match[0], match[1]["timestamp"]))
+        return [row for _, row in matches]
 
     def latest_records(self, limit: int) -> builtins.list[EventRow]:
         """開始の新しい確定記録を limit 件まで、records() と同じく開始の古い順に返す。"""

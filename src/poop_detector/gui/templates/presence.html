@@ -1,10 +1,11 @@
 {#- 不在の記録。犬がサークルにいなかった区間に、散歩などのラベルを付ける。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import away_toggle, chip, csrf_field, empty_state, when %}
+{% from "_macros.html" import away_toggle, chip, csrf_field, empty_state, hidden_fields, records_back, when %}
 {% block content %}
 <h2>不在の記録</h2>
+{{ records_back(record_filters) }}
 {% if saved %}<p class="message" role="status">ラベルを保存しました。</p>{% endif %}
-{{ away_toggle(away, token, "/presence") }}
+{{ away_toggle(away, token, "/presence", filters=record_filters) }}
 <p class="note">犬がサークルから出ていった様子が見えてから、戻るまでの区間です。外出中に始まった区間には印が付き、続くと通知します。丸まって寝ているだけのときは数えないようにしていますが、間違えることがあります。</p>
 {% if rows %}<ul class="presence-list">
 {%- for row in rows -%}
@@ -14,6 +15,7 @@
 {% if row.interrupted %}{{ chip("映像が途切れた", "off") }}{% endif %}
 {% if row.label %}{{ chip(row.label, "ok") }}{% endif %}</p>
 <form method="post" action="/presence/label" class="floor-labels">{{ csrf_field(token) }}
+{{ hidden_fields(record_filters) }}
 <input type="hidden" name="id" value="{{ row.id }}">
 {%- for value, text in labels.items() -%}
 <button class="secondary" name="label" value="{{ value }}">{{ text }}</button>

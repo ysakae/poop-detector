@@ -226,7 +226,7 @@ def test_trends_page_and_home_mark_an_unusual_yesterday(gui):
     status, _, body = exchange(server, "GET", "/trends?day=bad", headers=cookie, auth=False)
     assert status == 200
     _, _, body = exchange(server, "GET", "/records", headers=cookie, auth=False)
-    assert 'href="/trends"' in body.decode()
+    assert 'href="/trends?date=' in body.decode()
 
 
 def test_trend_watch_notifies_through_the_gui_watch(tmp_path, monkeypatch):

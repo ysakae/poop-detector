@@ -20,7 +20,7 @@ from ..timezones import local_now
 from .clip_pages import SOURCES
 from .digest_page import TimelineItem, timeline_item
 from .list_time import list_time
-from .pages import Query
+from .pages import Query, record_filters
 from .routes import first, get
 from .templating import render_template
 
@@ -85,6 +85,7 @@ def night_page(handler: "Handler", query: Query) -> None:
     app = handler.app
     config = night_config(app)
     hours = config.night_hours
+    filters = record_filters(query)
     text = first(query, "day")
     if text:
         try:
@@ -96,6 +97,7 @@ def night_page(handler: "Handler", query: Query) -> None:
             "night.html",
             title=app.title,
             enabled=config.night_enabled,
+            record_filters=filters,
             **_detail(app, night, hours),
         )
         handler.respond(200, page)
@@ -113,6 +115,10 @@ def night_page(handler: "Handler", query: Query) -> None:
             }
         )
     page = render_template(
-        "night_list.html", title=app.title, nights=nights, enabled=config.night_enabled
+        "night_list.html",
+        title=app.title,
+        nights=nights,
+        enabled=config.night_enabled,
+        record_filters=filters,
     )
     handler.respond(200, page)

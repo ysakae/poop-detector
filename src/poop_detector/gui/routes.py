@@ -51,6 +51,7 @@ from .pages import (
     render_new_record,
     render_records,
     save_failed_page,
+    saved_record_url,
 )
 from .passkeys import PasskeyError
 from .review_queue import NEXT_PAGE, review_bar, review_items
@@ -631,7 +632,7 @@ def live_assessment(handler: "Handler", _query: Query) -> None:
 def save_label(handler: "Handler", form: Form) -> None:
     """イベントのラベル、または手動・見逃しの記録を保存し、記録の詳細へ戻す。"""
     try:
-        _save_label(handler, form.fields)
+        manual_url = _save_label(handler, form.fields)
     except (ValueError, UnicodeError, TypeError):
         handler.respond(400, save_failed_page(handler.app.title))
         return
@@ -639,16 +640,16 @@ def save_label(handler: "Handler", form: Form) -> None:
         # 確認待ちから開いたイベントは、保存したら次の件へ進む（保留でも同じ件に戻らない）。
         handler.redirect(f"{NEXT_PAGE}?after=event:{form.fields.get('id', '')}")
         return
-    if form.fields.get("action") in ("missed", "manual"):
+    if manual_url is not None:
         # 目視の記録は、足した記録が見える記録の画面へ戻す。
-        handler.redirect("/records?saved=1")
+        handler.redirect(manual_url)
         return
     # 保存した記録の詳細に戻り、保存したラベルを見せる。
     event_id = form.fields.get("id", "")
     handler.redirect(f"{EVENTS_PAGE}?" + urlencode({"id": event_id, "saved": "1"}))
 
 
-def _save_label(handler: "Handler", fields: Mapping[str, str]) -> None:
+def _save_label(handler: "Handler", fields: Mapping[str, str]) -> str | None:
     store = handler.app.store
     event_id = fields.get("id")
     manual = fields.get("action") in ("missed", "manual")
@@ -669,7 +670,7 @@ def _save_label(handler: "Handler", fields: Mapping[str, str]) -> None:
     if manual:
         if start is None:
             raise ValueError
-        store.add_excretion(
+        event_id = store.add_excretion(
             fields.get("type", "unspecified"),
             start,
             end,
@@ -677,7 +678,7 @@ def _save_label(handler: "Handler", fields: Mapping[str, str]) -> None:
             missed=fields["action"] == "missed" and not handler.app.manual_only,
             location=fields.get("location"),
         )
-        return
+        return saved_record_url(event_id, start)
     if row is None or event_id is None:
         raise ValueError
     label = "unspecified" if fields["label"] == "true" else fields["label"]
@@ -689,3 +690,4 @@ def _save_label(handler: "Handler", fields: Mapping[str, str]) -> None:
         fields.get("note", row["note"]),
         location=fields.get("location"),
     )
+    return None

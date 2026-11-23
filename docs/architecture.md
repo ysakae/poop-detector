@@ -23,7 +23,7 @@
 GUI は `poop-detector gui` で単独起動できます。`poop-detector run --gui` では監視プロセス内の別スレッドで待ち受け、監視の終了時に閉じます。どちらの方式でも `config.data_dir`（既定 `data/`）を通じて監視と GUI がデータを共有します。
 
 - `events.sqlite3` — 次の台帳が同じファイルにテーブルを持ちます。
-  - `records.events.Store`：検知イベントと排泄の記録。画面は確定記録を期間（`records_between`）や件数（`latest_records`・`last_record`）で絞って読み、全件を読む `records` は CLI と記録の一覧だけが使う。絞り込みは索引 `events_records_by_start`（版32）の式 `Store.RECORD_START` と同じ式で比べる
+  - `records.events.Store`：検知イベントと排泄の記録。画面は確定記録を期間（`records_between`）や件数（`latest_records`・`last_record`）で絞って読む。記録ページでは一覧と集計でそれぞれ必要な期間を取得する。絞り込みは索引 `events_records_by_start`（版32）の式 `Store.RECORD_START` と同じ式で比べる
   - `features.sleep_store.SleepStore`：睡眠の記録（`sleep_minutes`・`sleep_detection_hours`）
   - `records.foods`・`records.advice`・`records.profile`：ごはんの量の目安と相談の台帳（`foods`：フードのカロリー、`food_lookups`：カロリー探しの依頼、`advice_threads`・`advice_messages`：家族で共有する相談の会話、`pet_profile`：犬種・体格・成犬時の予想体重・去勢の有無・主に食べているフード）。どれも秘密ではないので `SECRET_TABLES` には入れず、バックアップに含める
   - `records.sheet_wear.SheetWearLog`：シートの汚れの積み重なり（`sheet_wear`）。数え直しは、自動の行（`reset`）とシート交換のお世話の記録の新しいほうから

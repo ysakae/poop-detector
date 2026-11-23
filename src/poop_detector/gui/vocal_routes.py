@@ -2,11 +2,12 @@
 
 from datetime import timedelta
 from typing import TYPE_CHECKING
+from urllib.parse import urlencode
 
 from ..records.vocal_episodes import VOCAL_LABELS, VocalEpisodes
 from ..timezones import local_today
 from .list_time import list_time
-from .pages import Query
+from .pages import Query, record_filters
 from .routes import Form, first, get, post
 from .templating import render_template
 
@@ -28,7 +29,7 @@ def loud_text(seconds: float) -> str:
 
 
 @get(VOCAL_PAGE)
-def vocal_page(handler: "Handler", _query: Query) -> None:
+def vocal_page(handler: "Handler", query: Query) -> None:
     """直近の日ごとの鳴いていた時間と、最近の区間を新しい順に出す。"""
     episodes = VocalEpisodes(handler.app.store.database)
     today = local_today()
@@ -68,7 +69,8 @@ def vocal_page(handler: "Handler", _query: Query) -> None:
             today=today,
             labels=VOCAL_LABELS,
             evaluation=_evaluation(episodes),
-            saved=first(_query, "saved") == "1",
+            saved=first(query, "saved") == "1",
+            record_filters=record_filters(query),
         ),
     )
 
@@ -119,4 +121,5 @@ def label_vocal(handler: "Handler", form: Form) -> None:
     except (KeyError, ValueError):
         handler.respond(400, "鳴き声の区間かラベルが正しくありません")
         return
-    handler.redirect(f"{VOCAL_PAGE}?saved=1#vocal-{identifier}")
+    params = urlencode({"saved": "1", **record_filters(form.values)})
+    handler.redirect(f"{VOCAL_PAGE}?{params}#vocal-{identifier}")
