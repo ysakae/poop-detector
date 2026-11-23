@@ -192,6 +192,38 @@ class _TrayExchange:
         return paused
 
 
+def _start_video_review(
+    stack: ExitStack,
+    context: CommandContext,
+    config_path: str,
+    notifier: "ToiletNotifier",
+    collector: ClipCollector | None,
+    judge: "VideoJudge | None",
+    *,
+    initial: TrayScene,
+    scenes: dict[str, TrayScene],
+    outside_roi: AnyROI | None,
+) -> None:
+    """有効な自動判定を起動し、録画より先に終了するよう登録する。"""
+    config = context.config
+    if not config.video_review_enabled or judge is None:
+        return
+    if collector is None:
+        raise CommandError("動画の自動判定には動画保存（clips.enabled）を有効にしてください")
+    review = review_watcher(
+        collector,
+        initial,
+        scenes,
+        outside_roi,
+        notifier,
+        judge_source(config_path, config, judge),
+        config.review_max_per_hour,
+        # 犬検出を使うときだけ、判定の前にふるい分けの指標を記録する。
+        (context.dog_model_dir, config.dog_confidence) if config.dog_enabled else None,
+    )
+    stack.enter_context(review.watch(judge_watchdog(context, notifier)))
+
+
 def watch(
     args: argparse.Namespace,
     context: CommandContext,
@@ -246,23 +278,17 @@ def watch(
                 collector.feed(frame, generation=generation)
             preview.publish(frame)
 
-        if config.video_review_enabled and judge is not None:
-            if collector is None:
-                raise CommandError(
-                    "動画の自動判定には動画保存（clips.enabled）を有効にしてください"
-                )
-            review = review_watcher(
-                collector,
-                initial,
-                scenes,
-                outside_roi,
-                notifier,
-                judge_source(args.config, config, judge),
-                config.review_max_per_hour,
-                # 犬検出を使うときだけ、判定の前にふるい分けの指標を記録する。
-                (context.dog_model_dir, config.dog_confidence) if config.dog_enabled else None,
-            )
-            stack.enter_context(review.watch(judge_watchdog(context, notifier)))
+        _start_video_review(
+            stack,
+            context,
+            args.config,
+            notifier,
+            collector,
+            judge,
+            initial=initial,
+            scenes=scenes,
+            outside_roi=outside_roi,
+        )
         if args.gui:
             stack.enter_context(gui_background_tasks(context, notifier))
             web = WebOptions.from_config(config, port=args.gui_port)
