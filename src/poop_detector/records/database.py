@@ -902,6 +902,18 @@ def migrate_to_v44(db: sqlite3.Connection) -> None:
     )
 
 
+def migrate_to_v45(db: sqlite3.Connection) -> None:
+    """鳴いていた区間に、鳴き声のモデルの犬らしさ・近いクラスと、人のラベル（評価用）を足す。"""
+    for column in (
+        "dog_score REAL CHECK(dog_score BETWEEN 0 AND 1)",
+        "top_label TEXT",
+        "label TEXT CHECK(label IN ('dog', 'other'))",
+        "labeled_by TEXT",
+        "labeled_at TEXT",
+    ):
+        db.execute(f"ALTER TABLE vocal_episodes ADD COLUMN {column}")
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -948,6 +960,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v42,
     migrate_to_v43,
     migrate_to_v44,
+    migrate_to_v45,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

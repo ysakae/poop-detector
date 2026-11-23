@@ -14,10 +14,13 @@ import logging
 import shutil
 import subprocess
 import threading
+import time
+import wave
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
@@ -47,6 +50,9 @@ MIN_LOUD_SECONDS = 1.0
 # 外出中の通知で、鳴いていた時間を合計する範囲（分）と、次に知らせるまでの間（分）。
 NOTICE_MINUTES = 10
 NOTICE_COOLDOWN_MINUTES = 30
+# 区間の音を保つ長さの上限（秒）。モデルにかける音と、評価用に残す音の長さ。
+MAX_CLIP_SECONDS = 10
+MAX_CLIP_SAMPLES = int(MAX_CLIP_SECONDS * RATE)
 # FFmpeg が止まったとき、次に読み直すまでの秒数。
 RETRY_SECONDS = 10
 
@@ -72,6 +78,9 @@ class Episode:
     ended_at: datetime
     loud_seconds: float
     peak_db: float
+    # 区間の音（16kHz・モノラル、最長 MAX_CLIP_SECONDS）。メモリーの上だけで持ち、
+    # 判定のモデルにかけるときと、audio.keep_days で評価用に残すときだけ使う。
+    samples: NDArray[np.int16] | None = field(default=None, compare=False, repr=False)
 
 
 class VocalDetector:
@@ -82,9 +91,19 @@ class VocalDetector:
         self.background: float | None = None
         self.seen = 0
         self._open: tuple[datetime, datetime, float, float] | None = None
+        # 続いている区間の窓ごとの音と、最後に鳴いていた窓までの数。
+        self._buffer: list[NDArray[np.int16]] = []
+        self._loud_windows = 0
 
-    def update(self, loudness: float, ratio: float, now: datetime) -> list[Episode]:
-        """1窓分を受け取り、閉じた区間を返す。"""
+    def update(
+        self,
+        loudness: float,
+        ratio: float,
+        now: datetime,
+        *,
+        samples: NDArray[np.int16] | None = None,
+    ) -> list[Episode]:
+        """1窓分を受け取り、閉じた区間を返す。samples を渡すと区間の音も保つ。"""
         self.seen += 1
         background = self._learn(loudness)
         finished = self._close_if_quiet(now)
@@ -98,16 +117,27 @@ class VocalDetector:
             end = now + timedelta(seconds=WINDOW_SECONDS)
             if self._open is None:
                 self._open = (now, end, WINDOW_SECONDS, loudness)
+                self._buffer = []
             else:
                 start, _, seconds, peak = self._open
                 self._open = (start, end, seconds + WINDOW_SECONDS, max(peak, loudness))
+        if self._open is not None and samples is not None and self._buffered() < MAX_CLIP_SAMPLES:
+            self._buffer.append(samples)
+            if loud:
+                self._loud_windows = len(self._buffer)
         return finished
 
     def flush(self, now: datetime) -> list[Episode]:
         """続いている区間を閉じる（音声が途切れたときや終了のとき）。"""
         del now
         opened, self._open = self._open, None
-        return _episode(opened)
+        buffer, self._buffer = self._buffer[: self._loud_windows], []
+        self._loud_windows = 0
+        samples = np.concatenate(buffer)[:MAX_CLIP_SAMPLES] if buffer else None
+        return _episode(opened, samples)
+
+    def _buffered(self) -> int:
+        return sum(len(part) for part in self._buffer)
 
     def _learn(self, loudness: float) -> float:
         # 背景は静かな側に早く、大きな側にゆっくり寄せる（鳴いている間に背景が上がらない）。
@@ -125,10 +155,19 @@ class VocalDetector:
         return self.flush(now)
 
 
-def _episode(opened: tuple[datetime, datetime, float, float] | None) -> list[Episode]:
+def _episode(
+    opened: tuple[datetime, datetime, float, float] | None,
+    samples: NDArray[np.int16] | None = None,
+) -> list[Episode]:
     if opened is None or opened[2] < MIN_LOUD_SECONDS:
         return []
-    return [Episode(*opened)]
+    return [Episode(*opened, samples=samples)]
+
+
+class VocalClassifier(Protocol):
+    """区間の音の犬らしさを求める（experimental.vocal_model.YamnetClassifier）。"""
+
+    def classify(self, samples: NDArray[np.int16]) -> tuple[float, str]: ...
 
 
 class VocalNotifier(Protocol):
@@ -141,16 +180,63 @@ class VocalRecorder:
     """区間を記録し、外出中に NOTICE_MINUTES の間で audio.notify_seconds 鳴いていたら知らせる。"""
 
     def __init__(
-        self, episodes: VocalEpisodes, away: AwayMode, notifier: VocalNotifier, config: Config
+        self,
+        episodes: VocalEpisodes,
+        away: AwayMode,
+        notifier: VocalNotifier,
+        config: Config,
+        *,
+        classifier: VocalClassifier | None = None,
+        root: Path | None = None,
     ) -> None:
         self.episodes, self.away, self.notifier = episodes, away, notifier
         self.notify_seconds = config.audio_notify_seconds
+        self.keep_days = config.audio_keep_days
+        self.classifier, self.root = classifier, root
         self.notified_at: datetime | None = None
 
     def record(self, episode: Episode) -> None:
-        self.episodes.add(
-            episode.started_at, episode.ended_at, episode.loud_seconds, episode.peak_db
+        score, label = self._classify(episode)
+        identifier = self.episodes.add(
+            episode.started_at,
+            episode.ended_at,
+            episode.loud_seconds,
+            episode.peak_db,
+            dog_score=score,
+            top_label=label,
         )
+        self._keep_clip(identifier, episode)
+        self._notify(episode)
+
+    def _classify(self, episode: Episode) -> tuple[float | None, str | None]:
+        if self.classifier is None or episode.samples is None:
+            return None, None
+        try:
+            return self.classifier.classify(episode.samples)
+        except (ValueError, RuntimeError, OSError) as error:
+            logger.warning("鳴き声のモデルで確かめられませんでした（%s）", type(error).__name__)
+            return None, None
+
+    def _keep_clip(self, identifier: int, episode: Episode) -> None:
+        """audio.keep_days のときだけ、区間の音を評価用に WAV で残し、古いものを消す。"""
+        if self.keep_days <= 0 or self.root is None or episode.samples is None:
+            return
+        try:
+            path = self.episodes.clip_path(self.root, identifier)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with wave.open(str(path), "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(RATE)
+                audio.writeframes(episode.samples.astype("<i2").tobytes())
+            limit = time.time() - self.keep_days * 86400
+            for old in path.parent.glob("*.wav"):
+                if old.stat().st_mtime < limit:
+                    old.unlink()
+        except OSError as error:
+            logger.warning("評価用の鳴き声の音を保存できませんでした（%s）", type(error).__name__)
+
+    def _notify(self, episode: Episode) -> None:
         if self.away.since() is None:
             return
         now = episode.ended_at
@@ -236,7 +322,7 @@ def audio_watch(source: str, recorder: VocalRecorder, threshold_db: float) -> It
     detector = VocalDetector(threshold_db)
 
     def on_window(samples: NDArray[np.int16]) -> None:
-        for episode in detector.update(*measure(samples), local_now()):
+        for episode in detector.update(*measure(samples), local_now(), samples=samples):
             recorder.record(episode)
 
     reader = AudioReader(source, on_window, command=_ffmpeg_command)

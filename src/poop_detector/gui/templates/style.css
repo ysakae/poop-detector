@@ -239,3 +239,4 @@ main table{display:block;overflow-x:auto;max-width:100%}main th{white-space:nowr
 .trends th,.trends td{white-space:nowrap;text-align:left}.trends small{margin-left:4px;color:var(--muted)}
 .presence-list{list-style:none;margin:0;padding:0;display:grid;gap:14px}.away-toggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px}.away-toggle p{margin:0}
 .digest-video video{display:block;width:100%;max-height:62vh;background:var(--media-bg)}
+.vocal-item audio{display:block;width:100%;max-width:360px;margin:6px 0}

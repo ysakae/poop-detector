@@ -71,6 +71,10 @@ class CommandContext:
     def dog_model_dir(self) -> Path:
         return self.root / "models" / "dog-yolox"
 
+    @property
+    def vocal_model_dir(self) -> Path:
+        return self.root / "models" / "yamnet"
+
 
 # サブコマンドの処理。終了コード（成功 0、入力や設定の誤り 2）を返す。
 Handler = Callable[[argparse.Namespace, CommandContext], int]

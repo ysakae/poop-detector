@@ -52,6 +52,9 @@ poop-detector = "poop_detector.main:main"
 analysis = [
     "scikit-learn>=1.5,<2",
 ]
+audio-model = [
+    "ai-edge-litert>=2.3,<2.4",
+]
 [build-system]
 # license-files（PEP 639）に対応した版
 requires = ["hatchling>=1.27"]
@@ -89,8 +92,9 @@ strict_equality = true
 no_implicit_reexport = true
 
 [[tool.mypy.overrides]]
-# Web Push の暗号化と署名のライブラリは、型の情報を同梱していない。
-module = ["py_vapid", "http_ece", "sklearn", "sklearn.*"]
+# Web Push の暗号化と署名のライブラリと、任意の依存（scikit-learn・LiteRT）は、型の情報を
+# 同梱していないか、入っていないことがある。
+module = ["py_vapid", "http_ece", "sklearn", "sklearn.*", "ai_edge_litert", "ai_edge_litert.*"]
 ignore_missing_imports = true
 
 [tool.ruff]

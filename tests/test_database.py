@@ -926,3 +926,22 @@ def test_v43_database_keeps_clips_and_adds_the_human_stool_condition(tmp_path):
         assert db.execute("SELECT stool_condition FROM clips").fetchone()[0] is None
         with pytest.raises(sqlite3.IntegrityError):
             db.execute("UPDATE clips SET stool_condition='liquid'")
+
+
+def test_v44_database_keeps_vocal_episodes_and_adds_model_columns(tmp_path):
+    path = tmp_path / "vocal-model-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:44]:
+            migration(db)
+        db.execute("PRAGMA user_version = 44")
+        db.execute(
+            "INSERT INTO vocal_episodes (started_at, ended_at, loud_seconds, peak_db) "
+            "VALUES ('a', 'b', 2.0, -10.0)"
+        )
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        row = db.execute("SELECT loud_seconds, dog_score, label FROM vocal_episodes").fetchone()
+        assert tuple(row) == (2.0, None, None)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("UPDATE vocal_episodes SET label='cat'")

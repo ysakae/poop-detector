@@ -196,7 +196,7 @@ OpenCV のネットはスレッド間で共有しないので、`ClipScreener` �
 
 ## 鳴き声の記録（`experimental/vocal.py`）
 
-音声は監視ループの拡張ではなく、`run --audio` のときに `commands/run.audio_recording` が始める別のスレッド（`audio_watch`）で読みます。`AudioReader` が映像とは別の FFmpeg で RTSP の音声だけを 16kHz・モノラルの PCM にして読み、`measure` が窓（`WINDOW_SECONDS`）ごとの音量と鳴き声の帯域の割合を、`VocalDetector` が背景の音量と比べて鳴いていた区間を求めます。`VocalRecorder` が区間を `vocal_episodes` に記録し、外出中（`AwayMode`）なら `NOTICE_MINUTES` の合計で知らせます。FFmpeg が止まったら `RETRY_SECONDS` あけて読み直し、監視の終了時は FFmpeg を止めてスレッドを待ちます。RTSP URL を含むコマンドと FFmpeg の出力はログに出しません。`check-camera --audio` は `probe_audio`（ffprobe）で音声の有無を確かめます。
+音声は監視ループの拡張ではなく、`run --audio` のときに `commands/run.audio_recording` が始める別のスレッド（`audio_watch`）で読みます。`AudioReader` が映像とは別の FFmpeg で RTSP の音声だけを 16kHz・モノラルの PCM にして読み、`measure` が窓（`WINDOW_SECONDS`）ごとの音量と鳴き声の帯域の割合を、`VocalDetector` が背景の音量と比べて鳴いていた区間を求めます。`VocalRecorder` が区間を `vocal_episodes` に記録し、外出中（`AwayMode`）なら `NOTICE_MINUTES` の合計で知らせます。FFmpeg が止まったら `RETRY_SECONDS` あけて読み直し、監視の終了時は FFmpeg を止めてスレッドを待ちます。RTSP URL を含むコマンドと FFmpeg の出力はログに出しません。`check-camera --audio` は `probe_audio`（ffprobe）で音声の有無を確かめます。`VocalDetector` は続いている区間の音をメモリーに保ち（最長 `MAX_CLIP_SECONDS`）、`audio.model` のときは `experimental/vocal_model.YamnetClassifier`（LiteRT で `yamnet.tflite` を動かす。任意の依存 `audio-model`）が区間の音から犬らしさといちばん近いクラスを求めて `vocal_episodes`（版45）に足します。`audio.keep_days` のときだけ区間の音を `vocal-clips/<区間の ID>.wav` に残し、その日数で消します（バックアップの `ALLOWED` に入れない）。モデルは `setup-vocal-model` が固定の URL から SHA-256 を確かめて `models/yamnet/` に取得します。
 
 ## 留守中のまとめの要約（`features/digest_summary.py`）
 

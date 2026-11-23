@@ -120,6 +120,8 @@ digest:
 audio:
   threshold_db: 15      # 周りの静かなときの音量より、これだけ大きい音を候補にする
   notify_seconds: 60    # 外出中に10分のうちこれだけ鳴いていたら知らせる（秒）
+  model: false          # 鳴き声らしさを YAMNet で確かめる（setup-vocal-model と uv sync --extra audio-model）
+  keep_days: 0          # 鳴き声の区間の音を評価用に残す日数（0 なら残さない）
 
 # 夜間のまとめ。夜の間だけ静止画を残し（7日で消す）、夜ごとの睡眠の数字と出来事をまとめる
 night:

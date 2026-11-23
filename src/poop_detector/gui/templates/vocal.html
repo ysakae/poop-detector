@@ -1,9 +1,10 @@
 {#- 鳴き声の記録。カメラの音声から見つけた、鳴いていた時間を日ごとに並べる。 -#}
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state, when %}
+{% from "_macros.html" import chip, csrf_field, empty_state, when %}
 {% block content %}
 <h2>鳴き声の記録</h2>
-<p class="note">カメラの音声で、周りより大きく鳴き声らしい音が続いた時間です（実験的な機能）。音声そのものは保存していません。テレビや掃除機、インターホンの音も数えることがあります。</p>
+{% if saved %}<p class="message" role="status">ラベルを保存しました。</p>{% endif %}
+<p class="note">カメラの音声で、周りより大きく鳴き声らしい音が続いた時間です（実験的な機能）。テレビや掃除機、インターホンの音も数えることがあります。音声そのものは、設定の audio.keep_days のときだけ評価用に残し、その日数で消します。</p>
 <div class="card table-scroll">
 <table class="data-table trends">
 <thead><tr><th scope="col">日付</th><th scope="col">回数</th><th scope="col">鳴いていた時間</th></tr></thead>
@@ -14,11 +15,24 @@
 </tbody>
 </table>
 </div>
-<section class="card" aria-labelledby="vocal-recent">
+{% if evaluation %}<section class="card" aria-labelledby="vocal-evaluation">
+<h3 id="vocal-evaluation">今の判断と鳴き声のモデルの比較</h3>
+<p>ラベルを付けた {{ evaluation.labeled }}件（うち鳴き声 {{ evaluation.dogs }}件）で比べています。</p>
+<ul>
+<li>今の判断（音量と帯域）：鳴き声と数えたうち、本当に鳴き声だった割合 {{ evaluation.band_precision }}</li>
+<li>鳴き声のモデル（犬らしさ {{ evaluation.threshold }} 以上を鳴き声とする、{{ evaluation.model_cases }}件）：鳴き声とした中で本当に鳴き声だった割合 {{ evaluation.model_precision }}、鳴き声を見つけられた割合 {{ evaluation.model_recall }}</li>
+</ul>
+</section>
+{% endif %}<section class="card" aria-labelledby="vocal-recent">
 <h3 id="vocal-recent">最近の鳴き声</h3>
 {% if recent %}<ul class="timeline">
 {%- for item in recent -%}
-<li><span class="timeline-what">{{ item.loud }}<small>最大 {{ item.peak }} dBFS</small></span><span class="timeline-time">{{ when(item.when) }}</span></li>
+<li id="vocal-{{ item.id }}" class="vocal-item"><span class="timeline-what">{{ item.loud }}<small>最大 {{ item.peak }} dBFS{% if item.score %} ／ 犬らしさ {{ item.score }}（{{ item.top }}）{% endif %}</small>
+{% if item.label %}{{ chip(item.label, "ok") }}{% elif item.score %}{{ chip("モデル：鳴き声らしい" if item.dog_like else "モデル：ほかの音らしい", "warn" if item.dog_like else "off") }}{% endif %}
+{% if item.clip %}<audio controls preload="none" src="/vocal-audio?id={{ item.id }}"></audio>
+<form method="post" action="/vocal/label" class="floor-labels">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ item.id }}">
+{%- for value, text in labels.items() -%}<button class="secondary" name="label" value="{{ value }}">{{ text }}</button>{%- endfor -%}
+</form>{% endif %}</span><span class="timeline-time">{{ when(item.when) }}</span></li>
 {%- endfor -%}
 </ul>
 {% else %}{{ empty_state("鳴き声の記録はまだありません", "run --audio で監視すると、鳴いていた時間がここに並びます。") }}{% endif %}
