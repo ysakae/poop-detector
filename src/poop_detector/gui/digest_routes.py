@@ -8,6 +8,7 @@ from ..features.digest import DigestSnapshots, timelapse
 from ..records.away_periods import AwayPeriods
 from .clip_pages import stream_file
 from .digest_page import build_digest
+from .digest_summary_routes import summary_view
 from .list_time import list_time
 from .pages import Query
 from .routes import first, get
@@ -56,6 +57,8 @@ def digest_page(handler: "Handler", query: Query) -> None:
             length=duration_text((digest.end - period.started_at).total_seconds() / 60),
             asleep=duration_text(digest.asleep_minutes) if digest.asleep_minutes else None,
             frames=frames,
+            summary=summary_view(app, period.id, period.ended_at is not None),
+            token=handler.csrf,
         ),
     )
 

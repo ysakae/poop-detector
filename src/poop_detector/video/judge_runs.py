@@ -24,8 +24,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # 監視と video-review の判定（review）、判定器の比較（benchmark）、
-# ごはんの相談（advice）、フードのカロリー探し（food_lookup）、床の候補の判定（floor）。
-PURPOSES = ("review", "benchmark", "advice", "food_lookup", "floor")
+# ごはんの相談（advice）、フードのカロリー探し（food_lookup）、床の候補の判定（floor）、
+# 留守中のまとめの要約（digest）。
+PURPOSES = ("review", "benchmark", "advice", "food_lookup", "floor", "digest")
 # 1時間あたりの上限（review.max_per_hour）の対象にする用途。相談は数えない。
 REVIEW_PURPOSES = ("review", "benchmark")
 

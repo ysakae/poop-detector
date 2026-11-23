@@ -832,3 +832,31 @@ def test_v38_database_adds_vocal_episodes(tmp_path):
                 "INSERT INTO vocal_episodes (started_at, ended_at, loud_seconds, peak_db) "
                 "VALUES ('t', 't', -1, 0)"
             )
+
+
+def test_v39_database_keeps_judge_runs_and_accepts_digest_purpose(tmp_path):
+    path = tmp_path / "digest-summary-migration.sqlite3"
+    with sqlite3.connect(path) as db:
+        for migration in MIGRATIONS[:39]:
+            migration(db)
+        db.execute("PRAGMA user_version = 39")
+        db.execute(
+            "INSERT INTO judge_runs (provider, purpose, ran_at, failed) "
+            "VALUES ('codex', 'floor', '2026-11-23T00:00:00+00:00', 0)"
+        )
+    database = Database(path)
+    with database.connect() as db:
+        assert schema_version(db) == LATEST_VERSION
+        assert db.execute("SELECT purpose FROM judge_runs").fetchone()[0] == "floor"
+        db.execute(
+            "INSERT INTO judge_runs (provider, purpose, ran_at, failed) VALUES ('codex', 'digest', 't', 0)"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO judge_runs (provider, purpose, ran_at, failed) VALUES ('c', 'x', 't', 0)"
+            )
+        db.execute(
+            "INSERT INTO digest_summaries (period_id, status, requested_at) VALUES ('p', 'queued', 't')"
+        )
+        indexes = {r[1] for r in db.execute("PRAGMA index_list(judge_runs)")}
+        assert "judge_runs_by_time" in indexes

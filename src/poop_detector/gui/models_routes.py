@@ -52,6 +52,7 @@ PURPOSE_NAMES = {
     "advice": "ごはんの相談",
     "food_lookup": "フードのカロリー探し",
     "floor": "床の候補の判定",
+    "digest": "留守中のまとめの要約",
 }
 
 

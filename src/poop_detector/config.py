@@ -343,6 +343,22 @@ SETTINGS: tuple[Setting, ...] = (
         "true または false（外出中の間だけ静止画を残し、留守中のまとめを作る）",
     ),
     Setting(
+        "digest_summary",
+        "digest",
+        "summary",
+        bool,
+        _always,
+        "true または false（留守中のまとめに、判定器による短い文章の要約を付ける。年表を提供元に送る）",
+    ),
+    Setting(
+        "digest_summary_images",
+        "digest",
+        "summary_images",
+        bool,
+        _always,
+        "true または false（要約に静止画を4枚まで添える。静止画を提供元に送る）",
+    ),
+    Setting(
         "digest_snapshot_seconds",
         "digest",
         "snapshot_seconds",
@@ -673,6 +689,8 @@ class Config:
     audio_notify_seconds: float = 60
     digest_enabled: bool = True
     digest_snapshot_seconds: float = 60
+    digest_summary: bool = False
+    digest_summary_images: bool = False
     presence_min_minutes: float = 3
     presence_away_minutes: float = 10
     dog_enabled: bool = False

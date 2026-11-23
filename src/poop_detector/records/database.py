@@ -819,6 +819,62 @@ def migrate_to_v39(db: sqlite3.Connection) -> None:
     db.execute("CREATE INDEX vocal_episodes_by_start ON vocal_episodes(started_at)")
 
 
+def _rebuild_judge_runs(db: sqlite3.Connection, purposes: tuple[str, ...], version: str) -> None:
+    """judge_runs の用途の CHECK を purposes にする。
+
+    SQLite は CHECK 制約を書き換えられないので、表を作り直して行をすべて写す。
+    purposes と version は移行処理の中の固定の値だけで、利用者の入力は入らない。
+    """
+    allowed = ", ".join(f"'{purpose}'" for purpose in purposes)
+    old = f"judge_runs_before_{version}"
+    db.execute("DROP INDEX judge_runs_by_time")
+    db.execute(f"ALTER TABLE judge_runs RENAME TO {old}")
+    db.execute(
+        f"""CREATE TABLE judge_runs (
+        id INTEGER PRIMARY KEY,
+        provider TEXT NOT NULL,
+        model TEXT,
+        purpose TEXT NOT NULL CHECK(purpose IN ({allowed})),
+        ran_at TEXT NOT NULL,
+        failed INTEGER NOT NULL CHECK(failed IN (0, 1)),
+        input_tokens INTEGER,
+        cached_tokens INTEGER,
+        output_tokens INTEGER,
+        failure TEXT,
+        failure_detail TEXT)"""
+    )
+    db.execute(
+        f"""INSERT INTO judge_runs (id, provider, model, purpose, ran_at, failed,
+            input_tokens, cached_tokens, output_tokens, failure, failure_detail)
+        SELECT id, provider, model, purpose, ran_at, failed,
+            input_tokens, cached_tokens, output_tokens, failure, failure_detail
+        FROM {old}"""  # noqa: S608
+    )
+    db.execute(f"DROP TABLE {old}")
+    db.execute("CREATE INDEX judge_runs_by_time ON judge_runs(ran_at)")
+
+
+def migrate_to_v40(db: sqlite3.Connection) -> None:
+    """留守中のまとめの要約の表と、判定器の用途 digest（まとめの要約）を加える。"""
+    db.execute(
+        """CREATE TABLE digest_summaries (
+            period_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'done', 'failed')),
+            summary TEXT,
+            points TEXT,
+            provider TEXT,
+            model TEXT,
+            failure TEXT,
+            requested_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT
+        )"""
+    )
+    _rebuild_judge_runs(
+        db, ("review", "benchmark", "advice", "food_lookup", "floor", "digest"), "v40"
+    )
+
+
 # MIGRATIONS[i] は版 i から版 i+1 への移行。末尾に足していく。
 MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v1,
@@ -860,6 +916,7 @@ MIGRATIONS: Sequence[Callable[[sqlite3.Connection], None]] = (
     migrate_to_v37,
     migrate_to_v38,
     migrate_to_v39,
+    migrate_to_v40,
 )
 LATEST_VERSION = len(MIGRATIONS)
 

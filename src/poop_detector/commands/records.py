@@ -10,6 +10,7 @@ from ..web_address import WebOptions
 from .context import (
     CommandContext,
     build_notifier,
+    digest_summary_watch,
     floor_judge_watch,
     monitor_watchdog,
     trend_watch,
@@ -98,6 +99,7 @@ def gui(args: argparse.Namespace, context: CommandContext) -> int:
             stack.enter_context(monitor_watchdog(context, notifier))
             stack.enter_context(trend_watch(context, notifier))
             stack.enter_context(floor_judge_watch(context, notifier))
+            stack.enter_context(digest_summary_watch(context))
         serve(
             context.root,
             web.port,

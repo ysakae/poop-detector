@@ -32,9 +32,10 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `records.absences.Absences`・`AwayMode`：犬がサークルにいなかった区間と人のラベル（`absences`）、家族の「外出中」の切り替え（`away_mode`）
   - `records.away_periods.AwayPeriods`：家族が外出中にしていた区間（`away_periods`）。外出中の切り替え（`AwayMode.set_away`）が同じトランザクションで始め、閉じる
   - `records.vocal_episodes.VocalEpisodes`：犬が鳴いていた区間（`vocal_episodes`。時刻・長さ・最大の音量だけで、音声は保存しない）
+  - `records.digest_summaries.DigestSummaries`：留守中のまとめの判定器による要約（`digest_summaries`。外出の区間ごとに1行）
   - `video.clips.ClipStore`：動画の保存要求と状態
   - `video.clip_reviews.AssessmentStore`：動画の自動判定（`video_assessments`）
-  - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否と失敗の種類だけ。用途は `review`・`benchmark` に加えて、相談の `advice`、カロリー探しの `food_lookup`、床の候補の判定の `floor`）
+  - `video.judge_runs.JudgeRunLog`：判定器を呼んだ記録（`judge_runs`。判定器・モデル・用途・時刻・成否と失敗の種類だけ。用途は `review`・`benchmark` に加えて、相談の `advice`、カロリー探しの `food_lookup`、床の候補の判定の `floor`、留守中のまとめの要約の `digest`）
   - `video.clip_reviews.CirclingReviews`：旋回候補
   - `video.clip_screenings.ScreeningStore`：判定の前のふるい分けの指標（`clip_screenings`。記録だけで、判定には使わない）
   - `video.clip_labels.ClipLabels`：動画のラベルと、動画からの記録の確定
@@ -197,6 +198,10 @@ OpenCV のネットはスレッド間で共有しないので、`ClipScreener` �
 
 音声は監視ループの拡張ではなく、`run --audio` のときに `commands/run.audio_recording` が始める別のスレッド（`audio_watch`）で読みます。`AudioReader` が映像とは別の FFmpeg で RTSP の音声だけを 16kHz・モノラルの PCM にして読み、`measure` が窓（`WINDOW_SECONDS`）ごとの音量と鳴き声の帯域の割合を、`VocalDetector` が背景の音量と比べて鳴いていた区間を求めます。`VocalRecorder` が区間を `vocal_episodes` に記録し、外出中（`AwayMode`）なら `NOTICE_MINUTES` の合計で知らせます。FFmpeg が止まったら `RETRY_SECONDS` あけて読み直し、監視の終了時は FFmpeg を止めてスレッドを待ちます。RTSP URL を含むコマンドと FFmpeg の出力はログに出しません。`check-camera --audio` は `probe_audio`（ffprobe）で音声の有無を確かめます。
 
+## 留守中のまとめの要約（`features/digest_summary.py`）
+
+`digest.summary` を有効にすると、GUI のサーバーの見張り（`commands/context.digest_summary_watch`）が `DigestSummaryWorker.poll_once` を呼びます。`DigestSummaries.claim` は、`RESUME_HOURS` 以内に終わった外出でまだ要約のないものを頼んだことにし、頼まれている要約を `BEGIN IMMEDIATE` の中で1件 `running` にして取り出します。年表（`features/digest_timeline.collect`）を文字にして判定器に渡し（`digest.summary_images` なら静止画を `MAX_IMAGES` 枚まで添える）、`SUMMARY_SCHEMA` に沿った要約と気になる点を受け取ります。呼び出しは `judge_runs` に用途 `digest` で残し、1時間に `HOURLY_LIMIT` 回までに抑えます。版40では、用途の CHECK を作り直す処理を `_rebuild_judge_runs` にまとめました（それより前の移行処理は書き換えていません）。
+
 ## 監視の停止とカメラの不調の見張り
 
 止まった監視は自分で知らせられないので、見張り役を分けています（`features/watchdog.py`）。
@@ -226,7 +231,7 @@ Starlette（ASGI）のアプリを uvicorn で動かすサーバーで、HTML �
 | `gui/markdown_text.py` | AI の回答の Markdown を、許したタグと https のリンクだけの HTML にする（`Markup` を作る唯一の場所） |
 | `gui/trends_page.py`・`gui/trends_routes.py` | いつもとの違い（`/trends`）の表と、ホームの「昨日はいつもと違いました」 |
 | `gui/presence_routes.py` | 不在の記録（`/presence`）とラベル、家族の「外出中」の切り替え（`/away`。ホームにも出す） |
-| `gui/digest_page.py`・`gui/digest_routes.py` | 留守中のまとめ（`/digest`）。外出の間の記録・検知・動画・不在・床の候補・睡眠を年表にし、タイムラプス（`/digest-video`。`clip_pages.stream_file` で Range に対応）を出す |
+| `gui/digest_page.py`・`gui/digest_routes.py`・`gui/digest_summary_routes.py` | 留守中のまとめ（`/digest`）。年表は `features/digest_timeline.collect` が台帳から集め、GUI はアイコンとリンクを付ける。外出の間の記録・検知・動画・不在・床の候補・睡眠を年表にし、判定器による要約（`digest.summary`）とその作り直し（`/digest/summary`）を出し、タイムラプス（`/digest-video`。`clip_pages.stream_file` で Range に対応）を出す |
 | `gui/vocal_routes.py` | 鳴き声の記録（`/vocal`）。日ごとの回数と鳴いていた時間、最近の区間 |
 | `gui/floor_routes.py` | 床の候補（`/floor`）の一覧・画像・ラベルの保存 |
 | `gui/clip_routes.py` | 録画要求、ラベル付け、確定、保護、評価候補の選択、録画整理の各 POST を受け付ける |

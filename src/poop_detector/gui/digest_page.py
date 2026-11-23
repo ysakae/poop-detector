@@ -1,16 +1,12 @@
-"""留守中のまとめ（1回の外出の間の出来事の年表）を、台帳から集める。"""
+"""留守中のまとめの画面に出す値（年表の各行のアイコン・リンク・表示用の時刻）を整える。"""
 
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
-from ..features.sleep_store import SleepStore
-from ..records.absences import Absences
+from ..features.digest_timeline import TimelineEntry, collect
 from ..records.away_periods import AwayPeriod
-from ..records.events import EXCRETION_TYPES
-from ..records.floor_objects import FloorObjects
-from ..records.vocal_episodes import VocalEpisodes
 from ..timezones import local_now
 from .clip_pages import SOURCES
 from .list_time import ListTime, list_time
@@ -18,6 +14,15 @@ from .pages import event_url
 
 if TYPE_CHECKING:
     from .server import GuiApp
+
+ICONS = {
+    "record": "paw",
+    "detection": "paw",
+    "clip": "video",
+    "absence": "user",
+    "vocal": "user",
+    "floor": "sheet",
+}
 
 
 @dataclass(frozen=True)
@@ -41,75 +46,24 @@ class Digest:
     asleep_minutes: int | None
 
 
-def _within(stamp: str | None, start: datetime, end: datetime) -> datetime | None:
-    if not stamp:
-        return None
-    at = datetime.fromisoformat(stamp)
-    return at if start <= at < end else None
+def _url(entry: TimelineEntry) -> str:
+    if entry.kind in ("record", "detection"):
+        return event_url(entry.ref)
+    if entry.kind == "clip":
+        return "/clips?" + urlencode({"id": entry.ref})
+    if entry.kind == "floor":
+        return "/floor?" + urlencode({"id": entry.ref})
+    return {"absence": "/presence", "vocal": "/vocal"}[entry.kind]
 
 
-def _item(at: datetime, icon: str, text: str, url: str) -> TimelineItem:
-    return TimelineItem(at, list_time(at.isoformat()), icon, text, url)
-
-
-def _events(app: "GuiApp", start: datetime, end: datetime) -> list[TimelineItem]:
-    items = []
-    for row in app.store.list():
-        at = _within(row["actual_start"] or row["timestamp"], start, end)
-        if at is None:
-            continue
-        if row["feedback"] == 1 and row["excretion_type"] in EXCRETION_TYPES:
-            text = f"{EXCRETION_TYPES[row['excretion_type']]}の記録"
-            items.append(_item(at, "paw", text, event_url(row["id"])))
-        elif row["kind"] == "SUSPECTED":
-            items.append(_item(at, "paw", "トイレの変化を検知", event_url(row["id"])))
-    return items
-
-
-def _clips(app: "GuiApp", start: datetime, end: datetime) -> list[TimelineItem]:
-    items = []
-    for row in app.clips.list():
-        at = _within(row["requested_at"], start, end)
-        if at is None or row["status"] != "ready":
-            continue
-        text = f"動画（{SOURCES.get(row['source'], row['source'])}）"
-        items.append(_item(at, "video", text, "/clips?" + urlencode({"id": row["id"]})))
-    return items
-
-
-def _others(app: "GuiApp", start: datetime, end: datetime) -> list[TimelineItem]:
-    items = []
-    for absence in Absences(app.store.database).list(200):
-        if start <= absence.started_at < end:
-            length = (
-                f"約{round(absence.minutes)}分" if absence.minutes is not None else "続いている"
-            )
-            items.append(
-                _item(absence.started_at, "user", f"サークルにいない（{length}）", "/presence")
-            )
-    for vocal in VocalEpisodes(app.store.database).between(start, end):
-        text = f"鳴き声（{round(vocal.loud_seconds)}秒）"
-        items.append(_item(vocal.started_at, "user", text, "/vocal"))
-    for found in FloorObjects(app.store.database, app.root).list(200):
-        at = _within(found.detected_at, start, end)
-        if at is not None:
-            url = "/floor?" + urlencode({"id": found.id})
-            items.append(_item(at, "sheet", "床に見慣れない物", url))
-    return items
-
-
-def _asleep(app: "GuiApp", start: datetime, end: datetime) -> int | None:
-    records = SleepStore(app.store.database).minutes(start, end)
-    observed = [record for record in records if record.state != "unknown"]
-    if not observed:
-        return None
-    return sum(record.state == "asleep" for record in observed)
+def _item(entry: TimelineEntry) -> TimelineItem:
+    return TimelineItem(
+        entry.at, list_time(entry.at.isoformat()), ICONS[entry.kind], entry.text, _url(entry)
+    )
 
 
 def build_digest(app: "GuiApp", period: AwayPeriod) -> Digest:
     """外出の間（外出中ならいままで）の出来事を、時刻の順に並べる。"""
     end = period.ended_at or local_now()
-    start = period.started_at
-    items = _events(app, start, end) + _clips(app, start, end) + _others(app, start, end)
-    items.sort(key=lambda item: item.at)
-    return Digest(period, end, items, _asleep(app, start, end))
+    content = collect(app.store, app.clips, app.root, period.started_at, end, SOURCES)
+    return Digest(period, end, [_item(e) for e in content.entries], content.asleep_minutes)

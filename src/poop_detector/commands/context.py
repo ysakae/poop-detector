@@ -37,6 +37,7 @@ TREND_CHECK_SECONDS = 1800
 # 床の候補を判定器で確かめる間隔（秒）と、作業用の一時フォルダー（データの保存先の下）。
 FLOOR_JUDGE_SECONDS = 60
 FLOOR_WORKDIR = "floor-work"
+DIGEST_WORKDIR = "digest-work"
 
 
 class CommandError(UserError):
@@ -199,6 +200,47 @@ def floor_judge_watch(context: CommandContext, notifier: ToiletNotifier) -> Iter
 
     def check() -> None:
         # 待っている候補を、上限まで続けて判定する。
+        while worker.poll_once():
+            pass
+
+    with watching(check, FLOOR_JUDGE_SECONDS):
+        yield
+
+
+@contextmanager
+def digest_summary_watch(context: CommandContext) -> Iterator[None]:
+    """GUI のサーバーの間、留守中のまとめの要約を作る（digest.summary が true のときだけ）。"""
+    config = context.config
+    if not config.digest_summary:
+        yield
+        return
+    from ..features.digest_summary import DigestSummaryWorker
+    from ..features.watchdog import watching
+    from ..gui.clip_pages import SOURCES
+    from ..records.away_periods import AwayPeriods
+    from ..records.digest_summaries import DigestSummaries
+    from ..records.events import Store
+    from ..video.clips import ClipStore
+    from ..video.judge_runs import JudgeRunLog
+    from ..video.providers import build_judge
+
+    store = Store(context.root)
+    judge = build_judge(config.review_provider, config.review_model)
+    worker = DigestSummaryWorker(
+        store,
+        ClipStore(context.root),
+        context.root,
+        DigestSummaries(store.database),
+        AwayPeriods(store.database),
+        JudgeRunLog(store.database),
+        lambda: (judge, config.review_provider, config.review_model or None),
+        context.root / DIGEST_WORKDIR,
+        images=config.digest_summary_images,
+        pet_name=config.pet_name,
+        clip_labels=SOURCES,
+    )
+
+    def check() -> None:
         while worker.poll_once():
             pass
 
