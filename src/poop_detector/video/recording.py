@@ -48,6 +48,8 @@ SOURCE_RANK: dict[str, int] = {
 }
 # (取得時刻 monotonic, 取得時刻 UTC の ISO 8601, JPEG のバイト列)
 Sample: TypeAlias = tuple[float, str, bytes]
+# 録画の MP4 への変換を打ち切る秒数。
+ENCODE_TIMEOUT = 30
 Encoder: TypeAlias = Callable[[Sequence[Sample], Path, float], float]
 
 
@@ -61,8 +63,13 @@ def encode_frame(frame: Frame, max_width: int) -> bytes | None:
     return encoded.tobytes() if ok else None
 
 
-def encode_mp4(samples: Sequence[Sample], path: Path, fps: float) -> float:
-    """JPEG のサンプルを一定の FPS の MP4 にし、動画の秒数を返す。"""
+def encode_mp4(
+    samples: Sequence[Sample], path: Path, fps: float, *, timeout: float = ENCODE_TIMEOUT
+) -> float:
+    """JPEG のサンプルを一定の FPS の MP4 にし、動画の秒数を返す。
+
+    timeout 秒で FFmpeg を打ち切る（録画は既定の ENCODE_TIMEOUT、長いタイムラプスは長くする）。
+    """
     if not samples:
         raise ValueError("保存するフレームがありません")
     # カメラの揺れる取得間隔を一定FPSへ揃える。欠落区間は同じフレームで補間する。
@@ -115,7 +122,7 @@ def encode_mp4(samples: Sequence[Sample], path: Path, fps: float) -> float:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=True,
-            timeout=30,
+            timeout=timeout,
         )
     return count / fps
 

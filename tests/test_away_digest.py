@@ -222,3 +222,46 @@ def test_digest_video_reports_encoder_failure(gui, monkeypatch):
         server, "GET", f"/digest-video?id={'a' * 32}", headers=cookie, auth=False
     )
     assert status == 503
+
+
+def test_timelapse_timeout_grows_with_the_number_of_frames(tmp_path, monkeypatch):
+    from poop_detector.features import digest
+
+    seen = []
+
+    def encode(samples, path, fps, *, timeout):
+        seen.append((len(samples), timeout))
+        path.write_bytes(b"mp4")
+        return len(samples) / fps
+
+    monkeypatch.setattr(digest, "encode_mp4", encode)
+    snapshots = DigestSnapshots(tmp_path)
+    start = datetime(2026, 11, 22, 9, 0).astimezone()
+    for minute in range(3):
+        snapshots.save("a" * 32, FRAME, start + timedelta(minutes=minute))
+    digest.timelapse(snapshots, "a" * 32)
+    for minute in range(3, 1440):
+        snapshots.save("a" * 32, FRAME, start + timedelta(minutes=minute))
+    time.sleep(0.01)
+    digest.timelapse(snapshots, "a" * 32)
+    # 少ないときは録画と同じ30秒、1日分（1440枚）なら72秒まで待つ。
+    assert seen == [(3, 30), (1440, pytest.approx(72))]
+
+
+def test_encode_mp4_passes_the_timeout_to_ffmpeg(tmp_path, monkeypatch):
+    import subprocess as subprocess_module
+
+    from poop_detector.video import recording
+
+    calls = []
+
+    def run(*args, **kwargs):
+        calls.append(kwargs["timeout"])
+        return subprocess_module.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(recording.subprocess, "run", run)
+    monkeypatch.setattr(recording.shutil, "which", lambda name: "/usr/bin/ffmpeg")
+    samples = [(0.0, "", b"jpeg"), (0.1, "", b"jpeg")]
+    recording.encode_mp4(samples, tmp_path / "a.mp4", 10)
+    recording.encode_mp4(samples, tmp_path / "b.mp4", 10, timeout=90)
+    assert calls == [30, 90]
