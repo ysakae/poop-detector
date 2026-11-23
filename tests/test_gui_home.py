@@ -116,6 +116,64 @@ def test_home_records_care_in_one_tap(gui):
         )
 
 
+def test_home_groups_quick_records_and_aligns_the_button_contents(gui):
+    from poop_detector.records.care import CareEntry, save_entry
+    from poop_detector.records.feeding_plans import save_plan
+    from poop_detector.timezones import local_now
+
+    server, store, _ = gui
+    plan = save_plan(store.database, "19:15")
+    save_entry(store.database, CareEntry("", local_now(), "feeding", "家族", "", "", 210))
+    html = page(server, "/", login(server, role="member"))
+    section = re.search(r'<section [^>]*aria-labelledby="quick-title".*?</section>', html, re.S)
+    assert section, "記録操作のカードがありません"
+    assert f'name="plan_id" value="{plan}"' in section[0]
+    assert "19:15 のごはんを記録" in section[0]
+    assert 'name="kind" value="feeding"' in section[0]
+    assert "予定外のごはん" in section[0]
+    assert 'name="kind" value="sheet"' in section[0]
+    assert "シート交換をした" in section[0]
+    assert 'aria-label="記録する"' in section[0]
+    style = (GUI_DIR / "templates" / "style.css").read_text()
+    rule = re.search(r"\.quick-record button\{([^}]*)\}", style)
+    assert rule
+    assert "justify-content:flex-start" in rule[1]
+
+
+def test_home_groups_away_and_reports_under_watch(gui, monkeypatch):
+    from datetime import timedelta
+
+    from poop_detector.gui import night_routes
+    from poop_detector.records.absences import AwayMode
+    from poop_detector.records.away_periods import AwayPeriods
+    from poop_detector.timezones import local_today
+
+    server, store, _ = gui
+    cookie = login(server, role="member")
+    night = local_today() - timedelta(days=1)
+    away = AwayMode(store.database)
+
+    def watch_panel():
+        html = page(server, "/", cookie)
+        panel = re.search(r'<section [^>]*aria-labelledby="watch-title".*?</section>', html, re.S)
+        assert panel, "見守りのカードがありません"
+        return panel[0]
+
+    panel = watch_panel()
+    assert "外出中にする" in panel
+    assert 'href="/digest?' not in panel
+    assert 'href="/night?' not in panel
+    away.set_away(True)
+    assert "在宅に戻す" in watch_panel()
+    away.set_away(False)
+    finished = AwayPeriods(store.database).latest_finished()
+    assert finished is not None
+    monkeypatch.setattr(night_routes, "home_night", lambda app: night)
+    panel = watch_panel()
+    assert f'href="/digest?id={finished.id}"' in panel
+    assert f'href="/night?day={night}"' in panel
+
+
 def test_home_adds_up_todays_food(gui):
     from poop_detector.records.care import CareEntry, save_entry
     from poop_detector.timezones import local_now
@@ -250,8 +308,8 @@ def test_live_view_comes_first_with_a_short_judgment(gui):
     """カメラで見守っているときは、ライブ映像を先頭に置き、自動判定は短く添える。"""
     server, _, _ = gui
     html = page(server, "/", login(server, role="member"))
-    assert html.index('class="live-panel"') < html.index('id="review-title"')
-    panel = re.search(r'<section class="live-panel".*?</section>', html, re.S)[0]
+    assert html.index('id="live-title"') < html.index('id="review-title"')
+    panel = re.search(r'<section [^>]*aria-labelledby="live-title".*?</section>', html, re.S)[0]
     assert "直近の自動判定" in panel
     # 根拠の文は動画の画面で読むので、ホームには出さない。
     assert '<p id="live-reason" hidden>' in panel

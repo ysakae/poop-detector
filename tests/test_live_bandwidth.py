@@ -70,9 +70,15 @@ def test_live_panel_offers_a_data_saver(gui):
     server, _, _ = gui
     status, _, body = exchange(server, "GET", "/", headers=login(server), auth=False)
     assert status == 200
-    panel = re.search(r'<section class="live-panel".*?</section>', body.decode(), re.S)[0]
-    assert re.search(r'<button[^>]*id="live-saver"[^>]*aria-pressed="false"[^>]*>', panel)
-    assert 'id="live-age"' in panel
+    panel = re.search(
+        r'<section [^>]*aria-labelledby="live-title".*?</section>', body.decode(), re.S
+    )
+    assert panel
+    actions = re.search(r'<div class="live-heading">(.*?)</div>', panel[0], re.S)
+    assert actions, "映像の見出しに操作欄がありません"
+    assert 'id="live-title"' in actions[1]
+    assert re.search(r'<button[^>]*id="live-saver"[^>]*aria-pressed="false"[^>]*>', actions[1])
+    assert 'id="live-age"' in panel[0]
 
 
 def test_script_pauses_off_screen_and_lowers_the_frame_rate():

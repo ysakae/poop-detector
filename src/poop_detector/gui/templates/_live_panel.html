@@ -1,6 +1,10 @@
 {%- from "_macros.html" import icon -%}
-<section class="live-panel" aria-labelledby="live-title">
-  <h2 id="live-title">現在のカメラ映像</h2>
+<section class="live-panel card" aria-labelledby="live-title">
+  <div class="live-heading">
+    <h2 id="live-title">現在のカメラ映像</h2>
+    {#- コマ数を抑える選択は端末ごとに覚える（static/live.js）。 -#}
+    <button type="button" class="secondary" id="live-saver" aria-pressed="false">通信を節約<small>1秒に2コマ</small></button>
+  </div>
   <div class="live-grid">
     <figure class="live-view" id="live-view">
       <div class="live-stage">
@@ -16,8 +20,6 @@
       </div>
       <figcaption id="live-frame-status">監視からの映像を待っています。</figcaption>
     </figure>
-    {#- 外の回線で見るときに、映像を1秒に2コマまでに抑える。選んだ状態は端末ごとに覚える（static/live.js）。 -#}
-    <p class="live-options"><button type="button" class="secondary" id="live-saver" aria-pressed="false">通信を節約（1秒に2コマ）</button></p>
     {#- ホームの先頭に置くので、直近の自動判定は短く添える。根拠は動画の画面で読む。 -#}
     <div class="live-result">
       <p><span class="note">直近の自動判定（保存済みの動画）</span> <strong id="live-judgment">判定を読み込み中</strong> <a id="live-clip-link" href="/clips" hidden>動画を開く</a></p>

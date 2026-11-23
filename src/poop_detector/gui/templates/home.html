@@ -1,14 +1,22 @@
-{#- ホーム。先頭にライブ映像を置く。主役（塗りのボタン）は確認待ちの1つだけで、今日の数字、1回押して記録する入口、最近の記録を並べる（Issue 141）。 -#}
+{#- ホーム。ライブ映像と見守り、今日の状況、記録操作、最近の記録を並べる。 -#}
 {% extends "base.html" %}
 {% from "_macros.html" import away_toggle, capacity_panel, chip, csrf_field, empty_state, icon, stat, when %}
 {% block content %}
 {% if recorded %}<p class="message" role="status">{{ recorded.text }}を記録しました。<a href="{{ recorded.url }}">直す</a></p>{% endif %}
-{#- カメラで見守っているときは、いまの様子を最初に見せる。 -#}
-{% if not manual_only %}{% include "_live_panel.html" %}
-{% if absent %}<p class="message" role="status"><a href="/presence">{{ when(absent) }} からサークルに姿が見えません</a></p>{% endif %}
-{{ away_toggle(away, token) }}
-{% if digest_id %}<p class="note"><a href="/digest?id={{ digest_id }}">留守中のまとめを見る</a></p>{% endif %}
-{% if night %}<p class="note"><a href="/night?day={{ night }}">昨夜のまとめを見る</a></p>{% endif %}{% endif %}
+<div class="home-dashboard{% if not manual_only %} has-live{% endif %}">
+{% if not manual_only %}{% include "_live_panel.html" %}{% endif %}
+<div class="home-overview">
+{% if not manual_only %}
+<section class="card home-watch" aria-labelledby="watch-title">
+<h2 id="watch-title">見守り</h2>
+{{ away_toggle(away, token, show_home=true) }}
+{% if absent %}<p class="message message-warn" role="status"><a href="/presence">{{ when(absent) }} からサークルに姿が見えません</a></p>{% endif %}
+{% if digest_id or night %}<ul class="watch-reports">
+{% if digest_id %}<li><a href="/digest?id={{ digest_id }}">{{ icon("records") }}<span>留守中のまとめを見る</span>{{ icon("next") }}</a></li>{% endif %}
+{% if night %}<li><a href="/night?day={{ night }}">{{ icon("sleep") }}<span>昨夜のまとめを見る</span>{{ icon("next") }}</a></li>{% endif %}
+</ul>{% endif %}
+</section>
+{% endif %}
 <section class="card home-review" aria-labelledby="review-title">
 <h2 id="review-title">確認待ち</h2>
 {% if trend_notes %}<p class="note"><a href="/trends">昨日はいつもと違いました（{{ trend_notes | join("、") }}）</a></p>
@@ -23,7 +31,11 @@
 {% if guide_today %}<p class="note"><a href="/advice">今日の目安 {{ guide_today[0] }} g{% if guide_today[1] %}（確かめてください）{% endif %}</a></p>
 {% endif %}<p class="note">{{ today }}（{{ timezone }}）の確定記録です。<a href="/records">記録と集計を見る</a></p>
 </section>
-<form method="post" action="/care/quick" class="quick-record" aria-label="1回押して記録する">{{ csrf_field(token) }}
+</div>
+</div>
+<section class="card home-record" aria-labelledby="quick-title">
+<h2 id="quick-title">記録する</h2>
+<form method="post" action="/care/quick" class="quick-record" aria-label="いまの時刻で記録する" aria-describedby="quick-note">{{ csrf_field(token) }}
 {% if next_feeding %}
 <input type="hidden" name="plan_day" value="{{ today }}">
 <button class="secondary" name="plan_id" value="{{ next_feeding.id }}">{{ icon("food") }}<span>{{ next_feeding.clock }} のごはんを記録{% if quick_feed %}<small>{{ quick_feed }}</small>{% endif %}</span></button>
@@ -31,12 +43,13 @@
 {% if quick_feed %}<button class="secondary" name="kind" value="feeding">{{ icon("food") }}<span>{{ "予定外のごはん" if next_feeding else "前回と同じごはん" }}<small>{{ quick_feed }}</small></span></button>{% endif %}
 <button class="secondary" name="kind" value="sheet">{{ icon("sheet") }}<span>シート交換をした</span></button>
 </form>
-<p class="note quick-note">押すと、いまの時刻で記録します。量や時刻を変えるときは、下から開いてください。</p>
+<p class="note quick-note" id="quick-note">押すと、いまの時刻で記録します。量や時刻を指定する場合は、下のメニューから開けます。</p>
 <nav class="quick" aria-label="記録する">
 {%- for href, name, text in quick -%}
 <a href="{{ href }}">{{ icon(name) }}{{ text }}</a>
 {%- endfor -%}
 </nav>
+</section>
 <section class="card" aria-labelledby="last-care-title">
 <h2 id="last-care-title">最新のお世話</h2>
 <ul class="timeline day-list latest-care">
@@ -64,6 +77,6 @@
 {% if manual_only %}
 {% if viewer_admin %}<p><a href="/manage/areas">カメラの見守りを追加する</a></p>{% endif %}
 {% else %}
-{{ capacity_panel(capacity) }}
+<div class="note home-capacity">{{ capacity_panel(capacity) }}</div>
 {% endif %}
 {% endblock %}
