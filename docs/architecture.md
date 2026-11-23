@@ -96,7 +96,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `SheetWearExtension` | `sheet.enabled`（既定で有効） | 通知済み状態の更新のたびに汚れの割合（`IncrementalDetector.wear_ratio`）を記録し、交換どきを一度だけ知らせる（`features/sheet_wear.py`） |
 | `FloorObjectExtension` | `--floor-objects` | 位置合わせ前の映像で、犬のいない場面の背景と比べて床に新しく現れて動かない物を候補にし、記録して知らせる（`experimental/floor_objects.py`）。犬検出の推論は行動マップ・睡眠と共有する |
 | `PresenceExtension` | `--presence` | 位置合わせ前の映像で、睡眠の記録と同じ `MotionSampler` で1秒ごとに在室を観測し、`left` が続いた区間を不在として記録する。外出中（`AwayMode`）に `presence.away_minutes` 続いたら一度だけ知らせ、戻ったら知らせる（`features/presence.py`） |
-| `SnapshotExtension` | `digest.enabled`（既定で有効） | 外出中の区間がある間だけ、位置合わせ前の映像を縮めた静止画を `digest/<区間の ID>/` に残し、`KEEP_DAYS` より古い区間を消す（`features/digest.py`）。タイムラプスは GUI が開かれたときに `encode_mp4` で作り、打ち切りの時間を静止画の枚数に比例させる（`TIMELAPSE_SECONDS_PER_FRAME`。最低は録画と同じ `ENCODE_TIMEOUT`） |
+| `SnapshotExtension` | `digest.enabled`（既定で有効）・`night.enabled` | 外出中の区間がある間と夜の時間帯の間だけ、位置合わせ前の映像を縮めた静止画を `digest/<区間の ID>/` に残し、`KEEP_DAYS` より古い区間を消す（`features/digest.py`）。タイムラプスは GUI が開かれたときに `encode_mp4` で作り、打ち切りの時間を静止画の枚数に比例させる（`TIMELAPSE_SECONDS_PER_FRAME`。最低は録画と同じ `ENCODE_TIMEOUT`） |
 | `CameraWatchdogExtension` | `watchdog.enabled`（既定で有効） | 位置合わせ前の映像が届かない時間を数え、カメラの不調として知らせる（`features/watchdog.py`） |
 
 新しい機能は `monitor(..., extensions=[...])` に渡せば、`Monitor` を変えずに足せます。
@@ -201,6 +201,10 @@ OpenCV のネットはスレッド間で共有しないので、`ClipScreener` �
 ## 留守中のまとめの要約（`features/digest_summary.py`）
 
 `digest.summary` を有効にすると、GUI のサーバーの見張り（`commands/context.digest_summary_watch`）が `DigestSummaryWorker.poll_once` を呼びます。`DigestSummaries.claim` は、`RESUME_HOURS` 以内に終わった外出でまだ要約のないものを頼んだことにし、頼まれている要約を `BEGIN IMMEDIATE` の中で1件 `running` にして取り出します。年表（`features/digest_timeline.collect`）を文字にして判定器に渡し（`digest.summary_images` なら静止画を `MAX_IMAGES` 枚まで添える）、`SUMMARY_SCHEMA` に沿った要約と気になる点を受け取ります。呼び出しは `judge_runs` に用途 `digest` で残し、1時間に `HOURLY_LIMIT` 回までに抑えます。版40では、用途の CHECK を作り直す処理を `_rebuild_judge_runs` にまとめました（それより前の移行処理は書き換えていません）。
+
+## 夜間のまとめ（`features/night.py`）
+
+夜の区間は表を持たず、`night.hours` から `night_window` が時刻で決めます。夜の名前は始まった日で、静止画は `digest/night-YYYYMMDD/` に置きます（`DigestSnapshots` は外出の区間の ID とこの名前の両方を受け付ける）。`SnapshotExtension` は `snapshot_targets` が返す夜と外出のフォルダーに `save_many` で1回だけ書き、2つ目からはハードリンクで共有します。睡眠の数字は `sleep_summary`（副作用のない関数）が分ごとの睡眠の記録から求め、`sleep_deviation` が前の `USUAL_DAYS` 夜と `daily_trends.deviation` で比べます。年表は留守中のまとめと同じ `digest_timeline.collect` に、起きていた時間帯を足したものです。朝の知らせは GUI のサーバーの見張り（`commands/context.night_watch`）が `NightNotices.notify` を呼び、`night_notices`（版43）に残して同じ夜を繰り返しません。画面は `gui/night_routes.py`（`/night`）です。
 
 ## 監視の停止とカメラの不調の見張り
 

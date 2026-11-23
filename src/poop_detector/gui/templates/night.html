@@ -1,0 +1,22 @@
+{#- 1夜のまとめ。睡眠の数字、タイムラプス、出来事の年表を並べる。 -#}
+{% extends "base.html" %}
+{% from "_macros.html" import chip, icon, stat, when %}
+{% block content %}
+<h2>{{ night.strftime("%m/%d") }}の夜のまとめ</h2>
+<p>{{ when(start) }} 〜 {{ when(end) }}{% if unusual %} {{ chip(unusual, "warn") }}{% endif %}</p>
+{% if observed %}<div class="stats">{{ stat("寝ていた時間", asleep, "", "user") }}{{ stat("起きた回数", awakenings, "回", "user") }}{{ stat("続けて寝た最長", longest, "", "user") }}</div>
+<p class="note">睡眠の記録からの目安です（5分以上起きていたら1回と数えます）。</p>
+{% else %}<p class="note">この夜の睡眠の記録はありません（睡眠の記録を使うと、寝ていた時間が出ます）。</p>{% endif %}
+{% if frames %}<figure class="digest-video"><video controls preload="metadata" playsinline src="/digest-video?id={{ id }}"></video><figcaption>静止画 {{ frames }}枚のタイムラプス（1分ごとの静止画が、1時間で約5秒）</figcaption></figure>
+{% elif enabled %}<p class="note">この夜の静止画はありません（監視が動いていなかったか、7日を過ぎて消えました）。</p>{% endif %}
+<section class="card" aria-labelledby="night-items">
+<h3 id="night-items">出来事</h3>
+{% if items %}<ul class="timeline">
+{%- for item in items -%}
+<li>{{ icon(item.icon) }}<span class="timeline-what">{{ item.text }}</span><a class="timeline-time" href="{{ item.url }}">{{ when(item.when) }}</a></li>
+{%- endfor -%}
+</ul>
+{% else %}<p>この夜の記録・検知・動画はありません。</p>{% endif %}
+</section>
+<p class="note"><a href="/night">ほかの夜のまとめ</a></p>
+{% endblock %}

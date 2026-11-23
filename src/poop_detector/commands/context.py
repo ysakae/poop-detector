@@ -194,6 +194,28 @@ def away_reminder_watch(context: CommandContext, notifier: ToiletNotifier) -> It
 
 
 @contextmanager
+def night_watch(context: CommandContext, notifier: ToiletNotifier) -> Iterator[None]:
+    """GUI のサーバーの間、朝に昨夜のまとめを知らせる（night.enabled と night.notify のとき）。"""
+    config = context.config
+    if not (config.night_enabled and config.night_notify):
+        yield
+        return
+    from ..features.night import NightNotices
+    from ..features.watchdog import watching
+    from ..records.events import Store
+    from ..timezones import local_now
+
+    store = Store(context.root)
+    notices = NightNotices(store.database)
+
+    def check() -> None:
+        notices.notify(store, config.night_hours, local_now(), notifier)
+
+    with watching(check, AWAY_REMINDER_SECONDS):
+        yield
+
+
+@contextmanager
 def floor_judge_watch(context: CommandContext, notifier: ToiletNotifier) -> Iterator[None]:
     """GUI のサーバーの間、床の候補を判定器で確かめる（floor.judge が true のときだけ）。"""
     config = context.config

@@ -1,0 +1,16 @@
+{#- 夜間のまとめの一覧。直近の夜の寝ていた時間と起きた回数を並べる。 -#}
+{% extends "base.html" %}
+{% block content %}
+<h2>夜間のまとめ</h2>
+<p class="note">夜の時間帯（設定の night.hours）ごとの、寝ていた時間・起きた回数（睡眠の記録からの目安）と出来事です。{% if not enabled %}夜の静止画は、設定の night.enabled を有効にすると残ります。{% endif %}</p>
+<div class="card table-scroll">
+<table class="data-table trends">
+<thead><tr><th scope="col">夜</th><th scope="col">寝ていた時間</th><th scope="col">起きた回数</th></tr></thead>
+<tbody>
+{%- for row in nights -%}
+<tr><th scope="row"><a href="/night?day={{ row.night }}">{{ row.night.strftime("%m/%d") }}の夜</a></th><td>{{ row.asleep }}</td><td>{% if row.awakenings is not none %}{{ row.awakenings }}回{% else %}—{% endif %}</td></tr>
+{%- endfor -%}
+</tbody>
+</table>
+</div>
+{% endblock %}

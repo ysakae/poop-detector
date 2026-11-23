@@ -56,7 +56,7 @@ def _url(entry: TimelineEntry) -> str:
     return {"absence": "/presence", "vocal": "/vocal"}[entry.kind]
 
 
-def _item(entry: TimelineEntry) -> TimelineItem:
+def timeline_item(entry: TimelineEntry) -> TimelineItem:
     return TimelineItem(
         entry.at, list_time(entry.at.isoformat()), ICONS[entry.kind], entry.text, _url(entry)
     )
@@ -66,4 +66,4 @@ def build_digest(app: "GuiApp", period: AwayPeriod) -> Digest:
     """外出の間（外出中ならいままで）の出来事を、時刻の順に並べる。"""
     end = period.ended_at or local_now()
     content = collect(app.store, app.clips, app.root, period.started_at, end, SOURCES)
-    return Digest(period, end, [_item(e) for e in content.entries], content.asleep_minutes)
+    return Digest(period, end, [timeline_item(e) for e in content.entries], content.asleep_minutes)
