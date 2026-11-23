@@ -175,25 +175,29 @@ class MotionSampler:
                 self._snapshot = gray[_box_slices(location, shape, gray.shape, 0)].copy()
             return "unknown"
         motion = None if changed is None else self._motion(changed)
-        quiet = motion is not None and not motion.any()
         if location is None:
             return self._after_left(motion)
+        return self._with_last_location(gray, motion, shape, location)
+
+    def _with_last_location(
+        self,
+        gray: NDArray[Any],
+        motion: NDArray[Any] | None,
+        shape: tuple[int, ...],
+        location: Box,
+    ) -> Presence:
         region = _box_slices(location, shape, gray.shape, 0)
-        outside = None
-        if motion is not None:
-            stir = np.zeros(motion.shape, dtype=bool)
-            stir[_box_slices(location, shape, motion.shape, STIR_MARGIN)] = True
-            outside = motion & ~stir
+        outside = _outside_motion(motion, location, shape) if motion is not None else None
         if self._gone(gray[region]):
             # 枠が縁にかかっていれば、検出が外れたまま縁の外へ出ていったとみなす。
             if self._regions(gray.shape)[1][region].any():
                 return self._leave(location, shape, gray.shape)
-            # 枠の外へ動いた先があれば、そこへ移った。動きを伴わずに消えたなら分からない。
+            # 枠の外への動きがなければ、犬がどこへ移ったか分からない。
             if outside is not None and motion is not None and _area(outside) >= MIN_RELOCATE_AREA:
                 return self._relocate(motion, shape, outside)
             self._location, self._snapshot = None, None
             return "unknown"
-        if quiet:
+        if motion is not None and not motion.any():
             if self._snapshot is None:
                 # 動きで追った居場所は、止まった最初の場面の映像を犬の姿として覚える。
                 self._snapshot = gray[region].copy()
@@ -310,6 +314,15 @@ class MotionSampler:
             edge = (floor > 0) & (distance <= EDGE_MARGIN * width)
             self._areas = (floor > 0, edge)
         return self._areas
+
+
+def _outside_motion(
+    motion: NDArray[Any], location: Box, shape: tuple[int, ...]
+) -> NDArray[np.bool_]:
+    """犬の枠を広げた範囲を除き、枠外に残る動きを返す。"""
+    outside = motion.astype(bool)
+    outside[_box_slices(location, shape, motion.shape, STIR_MARGIN)] = False
+    return outside
 
 
 def _area(mask: NDArray[Any]) -> int:

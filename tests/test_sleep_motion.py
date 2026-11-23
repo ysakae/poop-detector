@@ -500,3 +500,17 @@ def test_lighting_switch_after_left_keeps_left():
     assert sampler.sample(night, []) == ("unknown", False)
     for _ in range(3):
         assert sampler.sample(night, []) == ("left", False)
+
+
+def test_motion_outside_expanded_location_ignores_stirring():
+    from poop_detector.features.sleep_motion import _outside_motion
+
+    motion = np.zeros((HEIGHT, WIDTH), dtype=bool)
+    motion[55, 55] = True
+    motion[55, 45] = True
+
+    outside = _outside_motion(motion, DOG, (HEIGHT, WIDTH))
+
+    assert not outside[55, 55]
+    assert outside[55, 45]
+    assert motion[55, 55]
