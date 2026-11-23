@@ -1,18 +1,19 @@
-"""動画判定を実行せず、各 CLI が公開するモデル名を読み取る。"""
+"""動画判定を実行せず、各判定器のモデル候補を取得する。"""
 
 import json
 import re
 import subprocess
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from functools import partial
 
 from ..config import valid_review_model
 from .codex_cli import app_server_request
-from .gemini_api import GEMINI_API_MODELS
+from .gemini_api import list_gemini_models
 from .providers import RESPONSE_LIMIT, _cli_environment, _executable
 
 TIMEOUT = 8
-UNAVAILABLE = "モデル一覧を取得できません。CLI のインストールとログイン状態を確認してください。"
+UNAVAILABLE = "モデル一覧を取得できません。判定器の認証と接続を確認してください。"
 
 
 def _run(command: list[str], data: bytes = b"") -> bytes:
@@ -87,9 +88,12 @@ def _antigravity() -> Iterable[object]:
 
 def list_models(provider: str) -> tuple[str, ...]:
     """設定に保存できるモデル名を重複なしに返す。"""
-    if provider == "gemini-api":
-        return GEMINI_API_MODELS
-    readers = {"codex": _codex, "claude": _claude, "gemini": _antigravity}
+    readers: dict[str, Callable[[], Iterable[object]]] = {
+        "codex": _codex,
+        "claude": _claude,
+        "gemini": _antigravity,
+        "gemini-api": partial(list_gemini_models, TIMEOUT),
+    }
     try:
         models = tuple(
             dict.fromkeys(

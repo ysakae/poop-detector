@@ -122,7 +122,7 @@ review:
   model: ""
 ```
 
-既定モデルは `gemini-3.8-flash` です。設定後は `uv run poop-detector diagnose` で API キーとモデルを確認できます。この確認はモデル情報の取得だけを行います。判定の利用量やクレジットの適用は、実際の判定後に [Google AI Studio の請求画面](https://aistudio.google.com/billing)で確認してください。
+既定モデルは `gemini-3.8-flash` です。GUI では設定した API キーで Gemini API の一覧を取得し、判定に使う候補をプルダウンに表示します。一覧の取得時に画像の送信や判定は行いません。設定後は `uv run poop-detector diagnose` で API キーとモデルを確認できます。この確認はモデル情報の取得だけを行います。判定の利用量やクレジットの適用は、実際の判定後に [Google AI Studio の請求画面](https://aistudio.google.com/billing)で確認してください。
 
 Prepay の場合は、開発者クレジットを使うためにも AI Studio の前払い残高が必要です。適用対象の Google Cloud クレジットは前払い残高より先に使われます。詳細は [Gemini API の請求仕様](https://aistudio.google.com/docs/billing#cloud-credits-prepay)を参照してください。
 

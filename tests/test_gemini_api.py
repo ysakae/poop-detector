@@ -58,7 +58,57 @@ def test_config_accepts_api_as_primary_and_fallback(tmp_path):
     assert config.fallback_providers == ("claude",)
     path.write_text("review: {provider: codex, fallback: 'claude, gemini-api'}\n")
     assert Config.load(path).fallback_providers == ("claude", "gemini-api")
-    assert "gemini-3.8-flash" in list_models("gemini-api")
+
+
+def test_lists_gemini_text_models_from_all_pages(gemini):
+    requests, responses = gemini
+
+    def model(name, method="generateContent"):
+        return {"name": f"models/{name}", "supportedGenerationMethods": [method]}
+
+    pages = (
+        {
+            "models": [
+                model("gemini-4-argon"),
+                model("gemini-3.1-flash-image"),
+                model("gemini-3.8-flash-tts"),
+                model("gemini-embedding-001", "embedContent"),
+                model("gemma-4"),
+                {
+                    "name": "gemini-no-resource-prefix",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+                model("gemini-invalid/id"),
+            ],
+            "nextPageToken": "next+page/2=",
+        },
+        {"models": [model("gemini-4-neon"), model("gemini-4-argon")]},
+    )
+    responses.extend(Response(200, json.dumps(page).encode()) for page in pages)
+
+    assert list_models("gemini-api") == ("gemini-4-argon", "gemini-4-neon")
+    assert [(method, path, body) for method, path, body, _ in requests] == [
+        ("GET", "/v1beta/models?pageSize=100", None),
+        ("GET", "/v1beta/models?pageSize=100&pageToken=next%2Bpage%2F2%3D", None),
+    ]
+    assert all(headers == {"x-goog-api-key": "test-key"} for _, _, _, headers in requests)
+
+
+def test_gemini_catalog_rejects_repeated_cursors(gemini):
+    requests, responses = gemini
+    responses.extend([Response(200, b'{"models":[],"nextPageToken":"repeat"}')] * 2)
+    with pytest.raises(ValueError, match="モデル一覧"):
+        list_models("gemini-api")
+    assert len(requests) == 2
+
+
+@pytest.mark.parametrize("response", [Response(403, b"private response"), Response(200, b"{}")])
+def test_gemini_catalog_reports_error_or_empty_list(gemini, response):
+    _, responses = gemini
+    responses.append(response)
+    with pytest.raises(ValueError, match="モデル一覧") as error:
+        list_models("gemini-api")
+    assert "private response" not in str(error.value)
 
 
 def test_check_fetches_model_without_generating(gemini):
