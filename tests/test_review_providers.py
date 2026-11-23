@@ -1,8 +1,11 @@
 """外部 CLI に切り出し画像を渡し、運用環境からの秘密と失敗を適切に扱う。"""
 
+import fcntl
 import json
+import os
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -130,6 +133,7 @@ def test_antigravity_cli_exchanges_acp_messages(
         "data_dir = Path(sys.argv[5])\n"
         "assert data_dir.is_dir() and data_dir.parent == Path.cwd().parent\n"
         "assert data_dir != Path.cwd() and data_dir != Path.home() / '.gemini'\n"
+        "assert data_dir.parent.parent.name == f'poop-detector-agy-{os.getuid()}'\n"
         "assert not any(data_dir.iterdir())\n"
         "assert 'GEMINI_API_KEY' not in os.environ and 'POOP_RTSP_URL' not in os.environ\n"
         "assert not (Path.cwd() / 'frames.jpg').exists()\n"
@@ -201,11 +205,11 @@ def test_antigravity_cli_exchanges_acp_messages(
     if scenario in ("auth", "model"):
         with pytest.raises(CommandError, match=expected_error):
             ready_judge(Config(review_provider="gemini", review_model="gemini-test"))
-        assert not list(tmp_path.glob("poop-agy-*"))
+        assert not list(tmp_path.glob("poop-detector-agy-*/poop-agy-*"))
         return
     judge = ready_judge(Config(review_provider="gemini", review_model="gemini-test"))
     assert judge.name == "Antigravity CLI"
-    assert not list(tmp_path.glob("poop-agy-*"))
+    assert not list(tmp_path.glob("poop-detector-agy-*/poop-agy-*"))
     if expected_error:
         with pytest.raises(ValueError, match=expected_error) as error:
             judge.judge(tmp_path, "指示", ["frames.jpg"], SCHEMA)
@@ -214,7 +218,43 @@ def test_antigravity_cli_exchanges_acp_messages(
         assert "private-key" not in str(error.value)
     else:
         assert judge.judge(tmp_path, "指示", ["frames.jpg"], SCHEMA) == RESULT
-    assert not list(tmp_path.glob("poop-agy-*"))
+    assert not list(tmp_path.glob("poop-detector-agy-*/poop-agy-*"))
+
+
+def test_antigravity_reclaims_only_abandoned_workspaces(tmp_path, monkeypatch):
+    monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/false")
+    pool = tmp_path / f"poop-detector-agy-{os.getuid()}"
+    pool.mkdir(mode=0o700)
+    abandoned, active, recent, unrelated = (
+        pool / name for name in ("poop-agy-abandoned", "poop-agy-active", "poop-agy-new", "other")
+    )
+    for folder in (abandoned, active, recent, unrelated):
+        folder.mkdir()
+        (folder / "session.db").write_bytes(b"test")
+    older = time.time() - 2 * 86400
+    for folder in (abandoned, active, unrelated):
+        os.utime(folder, (older, older))
+    link = pool / "poop-agy-link"
+    link.symlink_to(unrelated, target_is_directory=True)
+
+    judge = build_judge("gemini")
+    active_fd = os.open(active, os.O_RDONLY)
+    try:
+        fcntl.flock(active_fd, fcntl.LOCK_EX)
+        with pytest.raises(JudgeCallError):
+            judge.check()
+        assert not abandoned.exists()
+        assert (active / "session.db").is_file()
+    finally:
+        os.close(active_fd)
+
+    with pytest.raises(JudgeCallError):
+        judge.check()
+    assert not active.exists()
+    assert (recent / "session.db").is_file()
+    assert (unrelated / "session.db").is_file()
+    assert link.is_symlink()
 
 
 def test_cli_environment_keeps_the_login_name_for_the_keychain(monkeypatch):

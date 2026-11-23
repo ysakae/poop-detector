@@ -12,6 +12,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from .agy_workspace import antigravity_workspace
 from .codex_cli import JUDGE_TIMEOUT, LOOKUP_TIMEOUT, CodexCliJudge
 from .judge_failures import JudgeCallError, mentions_rate_limit, rate_limited
 from .token_usage import TokenUsage, parse_claude
@@ -339,8 +340,7 @@ class AntigravityJudge:
         self, executable: str, content: list[dict[str, str]], timeout: int
     ) -> tuple[str, str]:
         # ACP の終了後も CLI は履歴と画像を保存するため、実行ごとの一時領域に分ける。
-        with tempfile.TemporaryDirectory(prefix="poop-agy-") as folder:
-            root = Path(folder).resolve()
+        with antigravity_workspace() as (root, lease):
             workspace = root / "workspace"
             data = root / "gemini"
             workspace.mkdir()
@@ -359,6 +359,8 @@ class AntigravityJudge:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 limit=RESPONSE_LIMIT,
+                # アプリが先に終了しても CLI が動いている間は回収を止める。
+                pass_fds=(lease,),
             )
             diagnostics = asyncio.create_task(_tail(process.stderr))
             failure: JudgeCallError | None = None
