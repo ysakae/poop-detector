@@ -103,6 +103,8 @@ def test_claude_rejects_invalid_results_without_exposing_cli_output(tmp_path, mo
     ("scenario", "expected_error", "cause"),
     [
         ("ok", None, None),
+        ("crash", "応答がありません", ("connection", "eof")),
+        ("timeout", "タイムアウト", ("timeout", None)),
         ("auth", "agy acp --login", None),
         ("model", "モデル", None),
         ("tool", "ツール", ("tool_request", None)),
@@ -120,10 +122,15 @@ def test_antigravity_cli_exchanges_acp_messages(
     executable = tmp_path / "agy"
     executable.write_text(
         f"#!{sys.executable}\n"
-        "import json, os, sys\n"
+        "import json, os, sys, time\n"
         "from pathlib import Path\n"
         f"scenario = {scenario!r}\n"
-        "assert sys.argv[1:] == ['acp', '--sandbox', '--include-default-customizations=false']\n"
+        "assert sys.argv[1:4] == ['acp', '--sandbox', '--include-default-customizations=false']\n"
+        "assert sys.argv[4] == '--gemini-dir' and len(sys.argv) == 6\n"
+        "data_dir = Path(sys.argv[5])\n"
+        "assert data_dir.is_dir() and data_dir.parent == Path.cwd().parent\n"
+        "assert data_dir != Path.cwd() and data_dir != Path.home() / '.gemini'\n"
+        "assert not any(data_dir.iterdir())\n"
         "assert 'GEMINI_API_KEY' not in os.environ and 'POOP_RTSP_URL' not in os.environ\n"
         "assert not (Path.cwd() / 'frames.jpg').exists()\n"
         "def send(**message):\n"
@@ -137,6 +144,7 @@ def test_antigravity_cli_exchanges_acp_messages(
         "{'promptCapabilities': {'image': True}}}\n"
         "    elif method == 'session/new':\n"
         "        assert params == {'cwd': str(Path.cwd()), 'mcpServers': []}\n"
+        "        (data_dir / 'session.db').write_bytes(b'test')\n"
         "        if scenario == 'auth':\n"
         "            send(id=request['id'], error={'code': -32000})\n"
         "            break\n"
@@ -155,6 +163,10 @@ def test_antigravity_cli_exchanges_acp_messages(
         "        prompt, image = params['prompt']\n"
         "        assert prompt['type'] == 'text' and '指示' in prompt['text']\n"
         "        assert image == {'type': 'image', 'mimeType': 'image/jpeg', 'data': 'ZnJhbWVz'}\n"
+        "        if scenario == 'crash':\n"
+        "            sys.exit(1)\n"
+        "        if scenario == 'timeout':\n"
+        "            time.sleep(10)\n"
         "        if scenario in ('quota', 'error'):\n"
         "            message = 'Resource exhausted: check quota private-key' "
         "if scenario == 'quota' else 'internal private-key'\n"
@@ -181,15 +193,19 @@ def test_antigravity_cli_exchanges_acp_messages(
     )
     executable.chmod(0o700)
     monkeypatch.setattr("shutil.which", lambda _: str(executable))
+    monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
+    monkeypatch.setattr("poop_detector.video.providers.JUDGE_TIMEOUT", 1)
     monkeypatch.setenv("GEMINI_API_KEY", "private-key")
     monkeypatch.setenv("POOP_RTSP_URL", "private-url")
     (tmp_path / "frames.jpg").write_bytes(b"frames")
     if scenario in ("auth", "model"):
         with pytest.raises(CommandError, match=expected_error):
             ready_judge(Config(review_provider="gemini", review_model="gemini-test"))
+        assert not list(tmp_path.glob("poop-agy-*"))
         return
     judge = ready_judge(Config(review_provider="gemini", review_model="gemini-test"))
     assert judge.name == "Antigravity CLI"
+    assert not list(tmp_path.glob("poop-agy-*"))
     if expected_error:
         with pytest.raises(ValueError, match=expected_error) as error:
             judge.judge(tmp_path, "指示", ["frames.jpg"], SCHEMA)
@@ -198,6 +214,7 @@ def test_antigravity_cli_exchanges_acp_messages(
         assert "private-key" not in str(error.value)
     else:
         assert judge.judge(tmp_path, "指示", ["frames.jpg"], SCHEMA) == RESULT
+    assert not list(tmp_path.glob("poop-agy-*"))
 
 
 def test_cli_environment_keeps_the_login_name_for_the_keychain(monkeypatch):

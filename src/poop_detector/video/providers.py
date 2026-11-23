@@ -338,14 +338,21 @@ class AntigravityJudge:
     async def _exchange(
         self, executable: str, content: list[dict[str, str]], timeout: int
     ) -> tuple[str, str]:
-        # 空の作業ディレクトリを使い、判定対象は画像ブロックとしてのみ渡す。
+        # ACP の終了後も CLI は履歴と画像を保存するため、実行ごとの一時領域に分ける。
         with tempfile.TemporaryDirectory(prefix="poop-agy-") as folder:
-            cwd = str(Path(folder).resolve())
+            root = Path(folder).resolve()
+            workspace = root / "workspace"
+            data = root / "gemini"
+            workspace.mkdir()
+            data.mkdir()
+            cwd = str(workspace)
             process = await asyncio.create_subprocess_exec(
                 executable,
                 "acp",
                 "--sandbox",
                 "--include-default-customizations=false",
+                "--gemini-dir",
+                str(data),
                 cwd=cwd,
                 env=_cli_environment(),
                 stdin=asyncio.subprocess.PIPE,
