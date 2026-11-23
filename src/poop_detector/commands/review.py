@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import cv2
@@ -119,6 +120,10 @@ def video_screening(args: argparse.Namespace, context: CommandContext) -> int:
     from ..video.clips import ClipStore
     from .datasets import load_scene, scene_folders
 
+    if args.evaluate_endpoint is not None:
+        evaluate_endpoint(Path(args.evaluate_endpoint), context)
+        return 0
+
     check_limit(args.limit)
     folders = scene_folders(context.root, [])
     store = ClipStore(context.root)
@@ -160,3 +165,41 @@ def video_screening(args: argparse.Namespace, context: CommandContext) -> int:
                 flush=True,
             )
     return 2 if failed else 0
+
+
+def evaluate_endpoint(path: Path, context: CommandContext) -> None:
+    """台帳の前後差分の値を使い、犬の出入りを判定から省いた場合の見逃しを数える。"""
+    from ..video import benchmark_sets
+    from ..video.clips import ClipStore
+
+    dataset = benchmark_sets.read(path)
+    if dataset.version is None:
+        raise CommandError("benchmark-dataset freeze で評価セットを固定してください")
+
+    assessments = ClipStore(context.root).assessments
+    measurements: dict[str, list[tuple[str, float | None]]] = {
+        split: [] for split in benchmark_sets.SPLITS
+    }
+    for entry in dataset.included:
+        if entry.source in ("dog_enter", "dog_exit", "dog_visit"):
+            assessment = assessments.get(entry.id)
+            change = assessment["endpoint_change"] if assessment is not None else None
+            measurements[entry.split].append((entry.label, change))
+
+    print("評価区分\tしきい値\t対象動画\t未計測\t省略候補\t見逃す排便\t見逃す排尿")
+    for split, cases in measurements.items():
+        unknown = sum(change is None for _, change in cases)
+        for threshold in (0.0, 0.005, 0.01, 0.02, 0.05):
+            skipped = [
+                label for label, change in cases if change is not None and change <= threshold
+            ]
+            print(
+                benchmark_sets.SPLIT_NAMES[split],
+                f"{threshold * 100:g}%",
+                len(cases),
+                unknown,
+                len(skipped),
+                sum(label in ("feces", "both") for label in skipped),
+                sum(label in ("urine", "both") for label in skipped),
+                sep="\t",
+            )

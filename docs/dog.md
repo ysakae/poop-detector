@@ -193,4 +193,12 @@ uv run poop-detector video-screening --limit 20 --track-tray
 uv run poop-detector video-screening --clip 動画ID --track-tray
 ```
 
+固定した評価セットがあれば、動画の前後差分で判定を省いた場合の影響も集計できます。
+
+```bash
+uv run poop-detector video-screening --evaluate-endpoint data/benchmarks/datasets/evaluation-v1.json
+```
+
+犬の出入りの動画について、調整用・最終評価用ごとに、省略候補と見逃す排便・排尿の件数を表示します。台帳に前後差分がなければ未計測として数え、省略候補から外します。集計には保存済みの値を使うので、動画の再分析や判定器への送信は発生しません。
+
 犬はかがむと検出の確信度が下がるので、監視のしきい値（`dog.confidence`）で測るトレー滞在時間は、排泄している動画ほど短くなります。指標は低いしきい値（0.2）で求め、トレーの上で確信度の低いコマの数、それを含めた滞在時間、軌跡の特徴量を `clip_screenings` テーブルに残します。データの保存先と `tray-scenes/` の下の、登録済みの画角で撮った動画が対象です。1本あたり十数秒かかります。人のラベルや判定器の結果と見比べ、本物の排泄を落とさない条件が見つかってから、判定を省くかどうかを決めます。

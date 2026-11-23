@@ -1,4 +1,4 @@
-"""判定の前のふるい分けの指標（記録だけで、判定は省かない）を検証する。"""
+"""判定前のふるい分けに使う指標の記録と評価を検証する。"""
 
 import cv2
 import numpy as np
@@ -9,6 +9,9 @@ from poop_detector.detection.scene import save_baseline, scene_signature
 from poop_detector.experimental.screening import SAMPLE_SECONDS, Screening, summarize
 from poop_detector.features.dog import ScoredBox
 from poop_detector.main import main
+from poop_detector.video import benchmark_sets
+from poop_detector.video.clip_labels import ClipLabel
+from poop_detector.video.clip_reviews import Assessment
 from poop_detector.video.clips import ClipStore
 
 ROI_CENTER = ROI(0.25, 0.25, 0.5, 0.5)
@@ -129,6 +132,58 @@ def test_cli_records_screenings_without_judging_or_labeling(tmp_path, monkeypatc
     assert clips.assessments.get(clip_id) is None
     assert clips.get(clip_id)["label"] is None
     assert clip_id in capsys.readouterr().out
+
+
+def test_cli_evaluates_endpoint_thresholds_against_fixed_human_labels(tmp_path, capsys):
+    from datetime import date
+
+    from support import add_clip
+
+    clips = ClipStore(tmp_path / "data")
+    samples = (
+        ("01", "dog_visit", "none", 0.005),
+        ("02", "dog_exit", "feces", 0.02),
+        ("03", "dog_enter", "urine", None),
+        ("04", "dog_visit", "both", 0.0),
+        ("05", "detected", "urine", 0.0),
+    )
+    for day, source, label, change in samples:
+        clip_id = add_clip(clips, f"2026-11-{day}T00:00:00+00:00", None, source=source)
+        clips.assessments.save(clip_id, Assessment(label="none", endpoint_change=change))
+        clips.labels.save(clip_id, ClipLabel(label))
+    dataset = benchmark_sets.build(
+        clips,
+        name="eval",
+        created_at="2026-11-12T00:00:00+00:00",
+        scenes={"scene-a": "."},
+        final_since=date(2026, 11, 3),
+    )
+    manifest = tmp_path / "eval.json"
+    benchmark_sets.write_new(manifest, benchmark_sets.freeze(dataset, 1))
+    config = tmp_path / "config.yaml"
+    config.write_text(f"data_dir: {clips.root}\n")
+
+    assert (
+        main(["--config", str(config), "video-screening", "--evaluate-endpoint", str(manifest)])
+        == 0
+    )
+    lines = capsys.readouterr().out.splitlines()
+    assert "調整用\t0.5%\t2\t0\t1\t0\t0" in lines
+    assert "調整用\t2%\t2\t0\t2\t1\t0" in lines
+    assert "最終評価用\t0.5%\t2\t1\t1\t1\t1" in lines
+
+
+def test_cli_rejects_evaluation_with_a_draft_dataset(tmp_path, capsys):
+    manifest = tmp_path / "draft.json"
+    dataset = benchmark_sets.Dataset("eval", "2026-11-12T00:00:00+00:00", ())
+    benchmark_sets.write_new(manifest, dataset)
+    config = tmp_path / "config.yaml"
+    config.write_text(f"data_dir: {tmp_path / 'data'}\n")
+    assert (
+        main(["--config", str(config), "video-screening", "--evaluate-endpoint", str(manifest)])
+        == 2
+    )
+    assert "評価セットを固定してください" in capsys.readouterr().err
 
 
 def test_review_screens_each_clip_before_judging_and_survives_screening_errors(tmp_path):
