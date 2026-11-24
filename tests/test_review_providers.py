@@ -13,8 +13,10 @@ from poop_detector.commands.context import CommandError
 from poop_detector.commands.review import ready_judge
 from poop_detector.config import Config
 from poop_detector.features.advice import jobs
+from poop_detector.video.clips import ClipStore
 from poop_detector.video.codex_cli import CodexCliJudge
 from poop_detector.video.judge_failures import JudgeCallError, failure_cause
+from poop_detector.video.judge_runs import RecordingJudge
 from poop_detector.video.providers import (
     LOOKUP_TIMEOUT,
     ClaudeCodeJudge,
@@ -107,7 +109,13 @@ def test_claude_rejects_invalid_results_without_exposing_cli_output(tmp_path, mo
     [
         ("ok", None, None),
         ("crash", "応答がありません", ("connection", "eof")),
-        ("timeout", "タイムアウト", ("timeout", None)),
+        ("timeout_initialize", "タイムアウト", ("timeout", "acp:initialize")),
+        ("timeout_new", "タイムアウト", ("timeout", "acp:session_new")),
+        ("timeout_set_mode", "タイムアウト", ("timeout", "acp:session_set_mode")),
+        ("timeout_set_model", "タイムアウト", ("timeout", "acp:session_set_model")),
+        ("timeout_prompt", "タイムアウト", ("timeout", "acp:session_prompt")),
+        ("timeout_close", "タイムアウト", ("timeout", "acp:session_close")),
+        ("timeout_quota", "タイムアウト", ("rate_limited", "timeout:acp:session_prompt")),
         ("auth", "agy acp --login", None),
         ("model", "モデル", None),
         ("tool", "ツール", ("tool_request", None)),
@@ -120,7 +128,7 @@ def test_claude_rejects_invalid_results_without_exposing_cli_output(tmp_path, mo
     ],
 )
 def test_antigravity_cli_exchanges_acp_messages(
-    tmp_path, monkeypatch, scenario, expected_error, cause
+    tmp_path, monkeypatch, caplog, scenario, expected_error, cause
 ):
     executable = tmp_path / "agy"
     executable.write_text(
@@ -142,6 +150,11 @@ def test_antigravity_cli_exchanges_acp_messages(
         "for line in sys.stdin:\n"
         "    request = json.loads(line)\n"
         "    method, params = request['method'], request['params']\n"
+        "    if scenario == 'timeout_' + method.removeprefix('session/'):\n"
+        "        time.sleep(10)\n"
+        "    if scenario == 'timeout_quota' and method == 'session/prompt':\n"
+        "        print('429 RESOURCE_EXHAUSTED private-key', file=sys.stderr, flush=True)\n"
+        "        time.sleep(10)\n"
         "    if method == 'initialize':\n"
         "        assert params == {'protocolVersion': 1, 'clientCapabilities': {}}\n"
         "        result = {'protocolVersion': 1, 'agentCapabilities': "
@@ -169,8 +182,6 @@ def test_antigravity_cli_exchanges_acp_messages(
         "        assert image == {'type': 'image', 'mimeType': 'image/jpeg', 'data': 'ZnJhbWVz'}\n"
         "        if scenario == 'crash':\n"
         "            sys.exit(1)\n"
-        "        if scenario == 'timeout':\n"
-        "            time.sleep(10)\n"
         "        if scenario in ('quota', 'error'):\n"
         "            message = 'Resource exhausted: check quota private-key' "
         "if scenario == 'quota' else 'internal private-key'\n"
@@ -207,14 +218,38 @@ def test_antigravity_cli_exchanges_acp_messages(
             ready_judge(Config(review_provider="gemini", review_model="gemini-test"))
         assert not list(tmp_path.glob("poop-detector-agy-*/poop-agy-*"))
         return
-    judge = ready_judge(Config(review_provider="gemini", review_model="gemini-test"))
+    timeout = scenario.startswith("timeout_")
+    store = ClipStore(tmp_path)
+    judge = (
+        RecordingJudge(
+            build_judge("gemini", "gemini-test"),
+            store.judge_runs,
+            "gemini",
+            "gemini-test",
+            "review",
+        )
+        if timeout
+        else ready_judge(Config(review_provider="gemini", review_model="gemini-test"))
+    )
     assert judge.name == "Antigravity CLI"
     assert not list(tmp_path.glob("poop-detector-agy-*/poop-agy-*"))
     if expected_error:
         with pytest.raises(ValueError, match=expected_error) as error:
             judge.judge(tmp_path, "指示", ["frames.jpg"], SCHEMA)
         found = failure_cause(error.value)
-        assert (found.kind, found.detail) == cause
+        if timeout:
+            assert found.detail is not None
+            phase, _, elapsed = found.detail.rpartition(":")
+            assert (found.kind, phase) == cause
+            assert elapsed.endswith("ms")
+            assert int(elapsed.removesuffix("ms")) > 0
+            with store.connect() as db:
+                (saved,) = db.execute("SELECT failure, failure_detail FROM judge_runs").fetchall()
+            assert tuple(saved) == (found.kind, found.detail)
+            assert found.detail in caplog.text
+            assert "private-key" not in caplog.text
+        else:
+            assert (found.kind, found.detail) == cause
         assert "private-key" not in str(error.value)
     else:
         assert judge.judge(tmp_path, "指示", ["frames.jpg"], SCHEMA) == RESULT

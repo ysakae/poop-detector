@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from collections.abc import Sequence
 from contextlib import suppress
 from pathlib import Path
@@ -254,10 +255,12 @@ class _AntigravitySession:
     def __init__(self, writer: asyncio.StreamWriter, reader: asyncio.StreamReader) -> None:
         self.writer, self.reader = writer, reader
         self.request_id = 0
+        self.last_request = ("initialize", time.monotonic())
         self.answer: list[str] = []
         self.answer_size = 0
 
     async def request(self, method: str, **params: Any) -> dict[str, Any]:
+        self.last_request = (method, time.monotonic())
         self.request_id += 1
         request = {"jsonrpc": "2.0", "id": self.request_id, "method": method, "params": params}
         self.writer.write((json.dumps(request) + "\n").encode())
@@ -276,6 +279,17 @@ class _AntigravitySession:
             elif message.get("id") == self.request_id:
                 return message
         raise JudgeCallError("Antigravity CLI から応答がありません", "connection", "eof")
+
+    def timeout_failure(self) -> JudgeCallError:
+        method, started = self.last_request
+        elapsed_ms = round((time.monotonic() - started) * 1000)
+        # メソッド名はアプリの固定値だけを使い、応答の内容は台帳に渡さない。
+        phase = method.replace("/", "_")
+        return JudgeCallError(
+            f"Antigravity CLI の応答がタイムアウトしました（{method}、{elapsed_ms}ミリ秒）",
+            "timeout",
+            f"acp:{phase}:{elapsed_ms}ms",
+        )
 
     def _update(self, update: dict[str, Any]) -> None:
         event = update["sessionUpdate"]
@@ -372,7 +386,7 @@ class AntigravityJudge:
                 async with asyncio.timeout(timeout):
                     answer = await self._judge_in_session(session, cwd, content)
             except TimeoutError:
-                failure = JudgeCallError(f"{self.name} の応答がタイムアウトしました", "timeout")
+                failure = session.timeout_failure()
             except JudgeCallError as error:
                 failure = error
             finally:
