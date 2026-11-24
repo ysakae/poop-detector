@@ -1,6 +1,6 @@
 """床の候補が嘔吐・下痢らしい跡かを判定器で確かめる（#274）を検証する。"""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import cv2
 import numpy as np
@@ -144,7 +144,10 @@ def test_hourly_limit_stops_judging(tmp_path):
     assert objects.list()[0].judge_status is None
 
 
-def test_old_candidates_are_not_judged(tmp_path):
+def test_old_candidates_are_not_judged(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "poop_detector.records.floor_objects.utcnow", lambda: NOW.astimezone(UTC).isoformat()
+    )
     worker, objects, _, _, _ = setup(tmp_path, [vomit()], clock=lambda: NOW + timedelta(days=3))
     objects.add(frame(), (100, 80, 116, 96), 0.003)
     assert not worker.poll_once()
