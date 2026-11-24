@@ -74,9 +74,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["poop_detector"]
 [tool.coverage.report]
-# Gemini API 判定器を追加したあとの実測は95.67%。CI は手元より0.02%ほど低い。
+# Gemini API のモデル一覧を動的に取得するようにしたあとの実測は95.69%。CI は手元より0.02%ほど低い。
 precision = 2
-fail_under = 95.55
+fail_under = 95.57
 show_missing = true
 skip_covered = true
 [tool.mypy]

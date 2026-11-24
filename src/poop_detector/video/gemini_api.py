@@ -8,6 +8,7 @@ from contextlib import closing
 from http.client import HTTPException, HTTPSConnection
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from ..config import load_secret_settings
 from .codex_cli import JUDGE_TIMEOUT
@@ -17,7 +18,20 @@ from .token_usage import OUTPUT_LIMIT, TokenUsage, parse_gemini
 API_HOST = "generativelanguage.googleapis.com"
 API_KEY = "GEMINI_API_KEY"
 DEFAULT_MODEL = "gemini-3.8-flash"
-GEMINI_API_MODELS = (DEFAULT_MODEL, "gemini-3.5-flash-lite")
+MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+MODEL_PATH = "/v1beta/models"
+CATALOG_PAGE_LIMIT = 10
+# 一覧には入出力の種類がないため、モデル ID で分かる専用モデルを候補から外す。
+SPECIALIZED_MODELS = {
+    "audio",
+    "embedding",
+    "image",
+    "live",
+    "omni",
+    "robotics",
+    "transcribe",
+    "tts",
+}
 CHECK_TIMEOUT = 15
 INVALID_OUTPUT = "Gemini API から有効な判定を取得できません"
 HTTP_ERRORS = {
@@ -64,6 +78,46 @@ def _request(method: str, path: str, timeout: int, body: bytes | None = None) ->
     return result
 
 
+def _supports_generation(model: dict[str, Any]) -> bool:
+    methods = model.get("supportedGenerationMethods")
+    return isinstance(methods, list) and "generateContent" in methods
+
+
+def _catalog_model_id(model: object) -> str | None:
+    if not isinstance(model, dict) or not _supports_generation(model):
+        return None
+    name = model.get("name")
+    if not isinstance(name, str) or not name.startswith("models/gemini-"):
+        return None
+    model_id = name.removeprefix("models/")
+    if not MODEL_ID.fullmatch(model_id) or SPECIALIZED_MODELS.intersection(model_id.split("-")):
+        return None
+    return model_id
+
+
+def list_gemini_models(timeout: int) -> list[str]:
+    """API キーで取得できる Gemini のモデル候補を、API の並び順で返す。"""
+    query = {"pageSize": "100"}
+    seen_tokens: set[str] = set()
+    models: list[str] = []
+    for _ in range(CATALOG_PAGE_LIMIT):
+        response = _request("GET", f"{MODEL_PATH}?{urlencode(query)}", timeout)
+        items = response.get("models", [])
+        if not isinstance(items, list):
+            break
+        for item in items:
+            if (model_id := _catalog_model_id(item)) is not None:
+                models.append(model_id)
+        token = response.get("nextPageToken", "")
+        if token == "":
+            return models
+        if not isinstance(token, str) or token in seen_tokens:
+            break
+        seen_tokens.add(token)
+        query["pageToken"] = token
+    raise ValueError("Gemini API からモデル一覧を取得できません")
+
+
 class GeminiApiJudge:
     """Google AI Studio の API キーで Gemini を呼び出す判定器。"""
 
@@ -71,16 +125,15 @@ class GeminiApiJudge:
 
     def __init__(self, model: str) -> None:
         self.model = model or DEFAULT_MODEL
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", self.model):
+        if not MODEL_ID.fullmatch(self.model):
             raise ValueError("Gemini API のモデル名は英数字で始まるモデル ID を指定してください")
-        self.path = f"/v1beta/models/{self.model}"
+        self.path = f"{MODEL_PATH}/{self.model}"
         self.last_usage: TokenUsage | None = None
 
     def check(self) -> None:
         """生成を行わず、API キーで指定モデルの情報を取得できるか確かめる。"""
         model = _request("GET", self.path, CHECK_TIMEOUT)
-        methods = model.get("supportedGenerationMethods")
-        if not isinstance(methods, list) or "generateContent" not in methods:
+        if not _supports_generation(model):
             raise JudgeCallError(
                 "Gemini API のモデルが generateContent に対応していません", "unsupported"
             )

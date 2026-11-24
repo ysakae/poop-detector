@@ -167,6 +167,31 @@ def test_model_menu_saves_a_preset_custom_model_and_cli_default(models_gui):
         assert (config.review_provider, config.review_model) == ("claude", expected)
 
 
+def test_gemini_catalog_lists_argon_and_saves_it_as_a_preset(models_gui, monkeypatch):
+    server, path = models_gui
+    before = path.read_text()
+
+    def read(method, api_path, timeout):
+        assert (method, api_path) == ("GET", "/v1beta/models?pageSize=100")
+        return {
+            "models": [
+                {"name": "models/gemini-4-argon", "supportedGenerationMethods": ["generateContent"]}
+            ]
+        }
+
+    monkeypatch.setattr("poop_detector.video.gemini_api._request", read)
+    admin = login(server)
+    csrf = re.search(r'name="csrf" value="([^"]+)"', page(server, admin))[1]
+    body = urlencode({"provider": "gemini-api", "csrf": csrf})
+    status, _, data = exchange(server, "POST", CATALOG, body, {**FORM, **admin}, auth=False)
+    assert (status, json.loads(data)) == (200, {"models": ["gemini-4-argon"]})
+    assert path.read_text() == before
+
+    status, _, _ = post(server, admin, {"provider": "gemini-api", "model": "gemini-4-argon"})
+    assert status == 303
+    assert Config.load(path).review_model == "gemini-4-argon"
+
+
 def test_model_menu_retains_invalid_custom_input_for_correction(models_gui):
     server, _ = models_gui
     status, _, html = post(
