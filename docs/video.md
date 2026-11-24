@@ -126,6 +126,16 @@ review:
 
 Prepay の場合は、開発者クレジットを使うためにも AI Studio の前払い残高が必要です。適用対象の Google Cloud クレジットは前払い残高より先に使われます。詳細は [Gemini API の請求仕様](https://aistudio.google.com/docs/billing#cloud-credits-prepay)を参照してください。
 
+### Gemini API の開発者クレジットの使用状況を見る
+
+「管理 › 判定器とモデル › プランの使用量」の「BigQuery に問い合わせる」で、開発者クレジット1件の消費額、うち Gemini API に適用された額、付与額から消費額を引いた残高を確認できます。
+
+1. クレジットを適用した請求先で [BigQuery への標準使用料金データのエクスポート](https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-setup)を有効にします。
+2. GUI を実行する環境に [BigQuery CLI](https://docs.cloud.google.com/bigquery/docs/bq-command-line-tool) をインストールし、GUI と同じユーザーで `gcloud auth login` などを使って認証します。エクスポート先プロジェクトで BigQuery ジョブを作成する権限（`roles/bigquery.jobUser`）、データセットで読み取る権限（`roles/bigquery.dataViewer`）が必要です。
+3. `.env` の `POOP_GEMINI_BILLING_TABLE` に、標準エクスポートテーブルの完全名（`プロジェクト.データセット.gcp_billing_export_v1_…`）を設定します。[Cloud Billing のクレジット](https://console.cloud.google.com/billing/credits)で対象の付与を確認し、`POOP_GEMINI_CREDIT_ID` にクレジット ID、`POOP_GEMINI_CREDIT_AMOUNT` に付与額、`POOP_GEMINI_CREDIT_CURRENCY` に請求通貨（`JPY` など）、`POOP_GEMINI_CREDIT_START_DATE` に開始日（`YYYY-MM-DD`）を設定します。次の付与を表示するときは、その付与情報に更新します。
+
+残高には BigQuery に反映済みの同じクレジットの消費額を使い、Gemini API 以外に適用された分も差し引きます。集計の開始日は UTC 基準です。残高の精度はエクスポートが対象とする期間と、請求データの反映状況に依存します。反映には1日以上かかる場合があります。有効期限や失効の状態は Cloud Billing のクレジット画面で確認してください。ボタンを押したときだけ読み取りクエリを実行し、クエリあたりの課金対象バイト数は1 GiB を上限にします。[請求データの反映](https://docs.cloud.google.com/billing/docs/how-to/split-charging-cycle#delayed-cost-data)
+
 ### 予備の判定器に切り替える
 
 判定器の呼び出しが失敗し続けたとき（利用上限に達したときなど）に、別の判定器で判定を続けられます。`review.fallback` に、予備の判定器をカンマ区切りで書きます（既定は空で、切り替えません）。

@@ -11,6 +11,7 @@
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +23,7 @@ from ..video import benchmark_sets
 from ..video.benchmark_results import BenchmarkResult, load_results
 from ..video.benchmark_sets import LABELS, SPLIT_NAMES
 from ..video.clips import CLIP_LABELS, ClipStore
+from ..video.gemini_credits import CreditUsage
 from ..video.judge_failures import FAILURE_NAMES
 from ..video.judge_models import UNAVAILABLE, list_models
 from ..video.judge_runs import JudgeRunUsage
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
 
 PAGE = "/manage/models"
 PLAN_USAGE = f"{PAGE}/plan-usage"
+GEMINI_CREDITS = f"{PAGE}/gemini-credits"
 CATALOG = f"{PAGE}/catalog"
 CUSTOM_MODEL = ":custom"
 DOG_MODEL_DIR = Path("models") / "dog-yolox"
@@ -187,6 +190,32 @@ def _plans(board: PlanUsageBoard, now: datetime) -> dict[str, Any]:
     }
 
 
+def _credit_view(usage: CreditUsage | None, now: datetime) -> dict[str, Any] | None:
+    if usage is None:
+        return None
+
+    def money(value: Decimal | None) -> str:
+        if value is None:
+            return "―"
+        number = format(value, ",.4f").rstrip("0").rstrip(".")
+        return f"{usage.currency} {number}"
+
+    meter = None
+    if usage.used is not None:
+        percent = min(100, round(100 * usage.used / usage.granted))
+        meter = quota_view("消費割合", QuotaWindow(percent, None), now)
+    return {
+        "problem": usage.problem,
+        "checked_at": local_time(usage.checked_at.isoformat()),
+        "exported_at": local_time(usage.exported_at.isoformat()) if usage.exported_at else None,
+        "granted": money(usage.granted) if usage.currency else None,
+        "used": money(usage.used),
+        "gemini_used": money(usage.gemini_used),
+        "remaining": money(usage.remaining),
+        "meter": meter,
+    }
+
+
 ANSWER_NAMES = {**CLIP_LABELS, "uncertain": "判定不能", "error": "エラー"}
 
 
@@ -333,6 +362,8 @@ def _render(
         judges=_judges(handler),
         plans=_plans(app.plan_usage, now),
         plan_action=PLAN_USAGE,
+        credits=_credit_view(app.gemini_credits.snapshot(), now),
+        credits_action=GEMINI_CREDITS,
         benchmarks=_benchmarks(results, app.clips),
         unreadable=unreadable,
         datasets=datasets,
@@ -411,4 +442,11 @@ def model_catalog(handler: "Handler", form: Form) -> None:
 def ask_plan_usage(handler: "Handler", _form: Form) -> None:
     """各 CLI にプランの使用量を問い合わせる（モデルは呼ばない）。数秒かかるので押したときだけ。"""
     handler.app.plan_usage.refresh()
+    handler.redirect(PAGE)
+
+
+@post(GEMINI_CREDITS, role="admin")
+def ask_gemini_credits(handler: "Handler", _form: Form) -> None:
+    """管理者が操作したときだけ BigQuery の請求エクスポートを問い合わせる。"""
+    handler.app.gemini_credits.refresh()
     handler.redirect(PAGE)

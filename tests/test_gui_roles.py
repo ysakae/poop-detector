@@ -42,6 +42,7 @@ ADMIN_POST = {
     "/manage/checks",
     "/manage/models",
     "/manage/models/catalog",
+    "/manage/models/gemini-credits",
     "/manage/models/plan-usage",
     "/manage/areas",
     "/manage/areas/outside/clear",
@@ -83,8 +84,9 @@ def test_members_are_refused_admin_pages(gui, path):
 
 
 @pytest.mark.parametrize("path", sorted(ADMIN_POST))
-def test_members_are_refused_admin_operations(gui, path):
+def test_members_are_refused_admin_operations(gui, path, monkeypatch):
     server, _, _ = gui
+    monkeypatch.setattr(server.app.gemini_credits, "refresh", lambda: None)
     member = login(server, role="member")
     status, _, _ = post(server, member, path, {"action": "begin", "confirm": "1"})
     assert status == 403
