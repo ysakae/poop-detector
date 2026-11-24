@@ -87,4 +87,9 @@ def rate_limited(failure: JudgeCallError, *evidence: object) -> JudgeCallError:
     """どれかの文言が利用制限を示していれば、元の種類を詳細に移して利用制限とする。"""
     if failure.kind == "rate_limited" or not any(map(mentions_rate_limit, evidence)):
         return failure
-    return JudgeCallError(str(failure), "rate_limited", failure.kind)
+    detail = failure.kind
+    if failure.kind == "timeout" and failure.detail:
+        timed_out = f"timeout:{failure.detail}"
+        if _DETAIL.fullmatch(timed_out):
+            detail = timed_out
+    return JudgeCallError(str(failure), "rate_limited", detail)
