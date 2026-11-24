@@ -586,3 +586,49 @@ def test_readiness_is_reused_for_a_short_while(models_gui):
     path.write_text(path.read_text() + "review:\n  provider: claude\n")
     page(server, cookie)
     assert server.checked == ["Codex CLI", "Claude Code CLI"]
+
+
+def test_gemini_credit_usage_refreshes_only_on_admin_request(models_gui, monkeypatch):
+    from decimal import Decimal
+
+    from poop_detector.video import gemini_credits
+
+    server, _ = models_gui
+    reads = []
+    now = datetime(2026, 11, 25, 3, tzinfo=UTC)
+    result = gemini_credits.CreditUsage(
+        checked_at=now,
+        exported_at=now,
+        currency="JPY",
+        granted=Decimal("1500"),
+        used=Decimal("375"),
+        gemini_used=Decimal("210"),
+    )
+
+    def read():
+        reads.append(True)
+        return result
+
+    monkeypatch.setattr(gemini_credits, "read_credits", read)
+    admin = login(server)
+    html = page(server, admin)
+    assert "Gemini API の開発者クレジット" in html
+    assert not reads
+    csrf = re.search(r'name="csrf" value="([^"]+)"', html)[1]
+    endpoint = f"{PAGE}/gemini-credits"
+    form = urlencode({"csrf": csrf})
+    member = login(server, role="member")
+    status, _, _ = exchange(server, "POST", endpoint, form, {**FORM, **member}, auth=False)
+    assert status == 403
+    status, _, _ = exchange(server, "POST", endpoint, "csrf=bad", {**FORM, **admin}, auth=False)
+    assert status == 403
+    assert not reads
+
+    status, headers, _ = exchange(server, "POST", endpoint, form, {**FORM, **admin}, auth=False)
+    assert (status, headers["Location"]) == (303, PAGE)
+    html = page(server, admin)
+    assert reads == [True]
+    assert "JPY 1,125" in html
+    assert "JPY 375" in html
+    assert "JPY 210" in html
+    assert 'aria-valuenow="25"' in html

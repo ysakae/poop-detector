@@ -84,7 +84,28 @@
 <p class="note">{{ plans.checked_at }} に問い合わせた消費の割合です。</p>
 {% else %}<p>まだ問い合わせていません。</p>{% endif %}
 <form method="post" action="{{ plan_action }}">{{ csrf_field(token) }}<button data-busy-label="CLI に問い合わせています…">CLI に問い合わせる</button></form>
-<p class="note">監視するマシンの各 CLI に、ログイン中のアカウントのサブスクリプションの使用量を問い合わせます。モデルは呼ばず、数秒かかります。判定以外の使い方の分も含みます。Gemini API の請求状況とクレジット残高は Google AI Studio で確認できます。Claude Code CLI は戻る時刻を出しません。「制限なし」はその制限がないことを示します。棒の色は、70% 以上で注意、90% 以上で警告に変わります。</p>
+<p class="note">監視するマシンの各 CLI に、ログイン中のアカウントのサブスクリプションの使用量を問い合わせます。モデルは呼ばず、数秒かかります。判定以外の使い方の分も含みます。Claude Code CLI は戻る時刻を出しません。「制限なし」はその制限がないことを示します。棒の色は、70% 以上で注意、90% 以上で警告に変わります。</p>
+<div class="quota-provider">
+<h4>Gemini API の開発者クレジット</h4>
+{% if not credits %}<p>まだ問い合わせていません。</p>
+{% else %}
+{% if credits.problem %}<p class="note" role="status">{{ credits.problem }}</p>{% endif %}
+{% if credits.granted %}
+<table><tbody>
+<tr><th scope="row">付与額（設定値）</th><td>{{ credits.granted }}</td></tr>
+<tr><th scope="row">クレジット消費額</th><td>{{ credits.used }}</td></tr>
+<tr><th scope="row">うち Gemini API</th><td>{{ credits.gemini_used }}</td></tr>
+<tr><th scope="row">残高（請求データから計算）</th><td>{{ credits.remaining }}</td></tr>
+</tbody></table>
+{% endif %}
+{% if credits.meter %}
+<div class="quota-row"><span class="quota-label">消費割合</span><div class="quota-bar" role="meter" aria-label="開発者クレジットの消費割合" aria-valuenow="{{ credits.meter.percent }}" aria-valuemin="0" aria-valuemax="100"><div class="quota-fill quota-{{ credits.meter.level }}" style="width:{{ credits.meter.percent }}%"></div></div><span class="quota-value">{{ credits.meter.percent }}% 使用</span></div>
+{% endif %}
+<p class="note">確認 {{ credits.checked_at }}{% if credits.exported_at %} ／ 請求データの最新エクスポート {{ credits.exported_at }}{% endif %}</p>
+{% endif %}
+<form method="post" action="{{ credits_action }}">{{ csrf_field(token) }}<button data-busy-label="BigQuery に問い合わせています…">BigQuery に問い合わせる</button></form>
+<p class="note">設定したクレジット1件の請求エクスポートを集計します。請求データの反映には時間がかかります。<a href="https://console.cloud.google.com/billing/credits">Google Cloud のクレジット</a> ／ <a href="https://aistudio.google.com/billing">AI Studio の前払い残高</a></p>
+</div>
 </section>
 <section class="settings-section" aria-labelledby="benchmark-title"><h3 id="benchmark-title">判定器・モデルの比較</h3>
 <p class="note">ラベル付きの動画での比較は時間がかかるので、監視するマシンで <code>video-benchmark</code> を実行します。<code>--output</code> を省くと、結果をこの画面に出します。数は適合率 / 再現率です。</p>
