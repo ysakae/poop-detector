@@ -26,6 +26,7 @@ from ..records.floor_objects import FloorObjects
 from ..timezones import local_now
 from ..video.clips import CLIP_LABELS
 from ..video.thumbnails import ensure_thumbnail
+from . import updates
 from .access import expired_cookie, session_ids
 from .accounts import ROLES, Role
 from .activity_page import render_activity
@@ -365,6 +366,48 @@ def management_page(handler: "Handler", _query: Query) -> None:
     handler.respond(200, render_management(handler))
 
 
+@get("/manage/update/status", role="admin")
+def update_status(handler: "Handler", _query: Query) -> None:
+    restart = handler.app.restart
+    upgrade = restart.upgrade if restart is not None else None
+    current = updates.installed_version()
+    latest = updates.latest_stable()
+    payload = {
+        "current": current,
+        "latest": latest,
+        "available": updates.is_newer(latest, current),
+        "enabled": upgrade is not None,
+        "phase": upgrade.phase if upgrade is not None else "idle",
+        "target": upgrade.target if upgrade is not None else None,
+        "generation": restart.generation if restart is not None else None,
+        "ready": restart is not None and restart.ready.is_set() and not restart.requested.is_set(),
+    }
+    handler.respond(200, json.dumps(payload), "application/json; charset=utf-8")
+
+
+@post("/manage/update", role="admin")
+def update_app(handler: "Handler", form: Form) -> None:
+    restart = handler.app.restart
+    if restart is None or restart.upgrade is None:
+        handler.respond(409, "この起動方法では画面から更新できません。")
+        return
+    latest = updates.latest_stable()
+    fields = form.fields
+    if (
+        fields.get("confirm") != "yes"
+        or latest is None
+        or fields.get("target") != latest
+        or not updates.is_newer(latest, updates.installed_version())
+    ):
+        handler.respond(400, "更新先を確認し、画面を読み直してください。")
+    elif restart.update(
+        fields.get("generation", ""), latest, lambda: audit(handler, "app.update", latest)
+    ):
+        handler.respond(202, "")
+    else:
+        handler.respond(409, "処理中か、画面が古くなっています。")
+
+
 @get("/manage/restart", role="admin")
 def restart_status(handler: "Handler", _query: Query) -> None:
     restart = handler.app.restart
@@ -528,6 +571,7 @@ def logout(handler: "Handler", _form: Form) -> None:
     "/assets/clip_storage.js",
     "/assets/management.js",
     "/assets/restart.js",
+    "/assets/update.js",
     "/assets/judge_models.js",
     "/assets/areas.js",
     "/assets/push.js",

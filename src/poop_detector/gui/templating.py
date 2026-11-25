@@ -13,6 +13,7 @@ from .assets import asset_url
 from .icons import ICONS
 from .navigation import Viewer, frame_for
 from .themes import Display
+from .updates import installed_version
 
 ENVIRONMENT = Environment(
     loader=PackageLoader("poop_detector.gui", "templates"),
@@ -25,6 +26,7 @@ ENVIRONMENT = Environment(
 ENVIRONMENT.globals["icons"] = ICONS
 # 同梱の静的ファイルの URL（内容のハッシュ付き）。ブラウザーが長く預けられる。
 ENVIRONMENT.globals["asset"] = asset_url
+ENVIRONMENT.globals["app_version"] = installed_version
 
 
 # 画面を見ている人。asgi.dispatch がルートを呼ぶスレッドで設定する（ログインしていなければ None）。

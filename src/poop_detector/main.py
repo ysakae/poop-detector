@@ -2,10 +2,11 @@
 
 import argparse
 import logging
+import shutil
 import sys
 import traceback
 from collections.abc import Sequence
-from importlib.metadata import version
+from pathlib import Path
 
 import cv2
 
@@ -30,6 +31,7 @@ from .commands.registration import CommandGroup
 from .config import Config, apply_timezone
 from .errors import UserError
 from .gui.restart import Restart
+from .gui.updates import Upgrade, exec_python, installed_version
 from .records.events import EXCRETION_TYPES, RECORD_LOCATIONS
 from .redaction import RedactingFormatter, install_log_redaction, redact
 
@@ -60,7 +62,12 @@ def gui_port(value: str) -> int:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="犬のトイレの変化検知")
-    result.add_argument("--version", action="version", version=version("poop-detector"))
+    result.add_argument("--version", action="version", version=installed_version())
+    result.add_argument(
+        "--update-dir",
+        type=Path,
+        help="GUI からの PyPI 更新を有効にし、更新用の仮想環境を指定先に置く",
+    )
     result.add_argument("--config", default="config/config.yaml", help="設定ファイル")
     result.add_argument(
         "-v",
@@ -404,21 +411,48 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     外部ライブラリの例外の文字列は RTSP の URL を含みうるので表示せず、種類だけを伝える。
     """
-    args = parser().parse_args(argv)
+    launch_args = list(sys.argv[1:] if argv is None else argv)
+    args = parser().parse_args(launch_args)
     configure_logging(args.verbose)
     try:
         restartable = (args.command == "gui" and args.port != 0) or (
             args.command == "run" and args.gui and args.gui_port != 0 and args.max_frames == 0
         )
+        upgrade = None
+        if args.update_dir is not None:
+            uv = shutil.which("uv")
+            if not restartable or uv is None:
+                raise UserError("GUI 更新には固定ポートの GUI と PATH 上の uv が必要です")
+            upgrade = Upgrade(args.update_dir.resolve(), str(Path(uv).resolve()))
+            try:
+                active = upgrade.active_python()
+                if active is not None:
+                    exec_python(active, launch_args)
+            except (OSError, ValueError) as error:
+                raise UserError(
+                    "更新先を起動できません。更新ディレクトリの active を確認してください"
+                ) from error
         handler: Handler = args.handler
         while True:
             config = Config.load(args.config)
             apply_timezone(config.timezone)
-            restart = Restart(args.command) if restartable else None
+            restart = Restart(args.command, upgrade) if restartable else None
             result = handler(args, CommandContext(config, restart))
             if result or restart is None or not restart.requested.is_set():
                 return result
-            args.no_browser = True
+            if not args.no_browser:
+                launch_args.append("--no-browser")
+                args.no_browser = True
+            if upgrade is not None and upgrade.python is not None:
+                try:
+                    upgrade.activate(upgrade.python, launch_args)
+                except OSError as error:
+                    report_failure(
+                        f"更新先を起動できませんでした（{type(error).__name__}）。現在の版で再開します",
+                        args.verbose,
+                    )
+                    upgrade.python = None
+                    upgrade.phase = "failed"
     except UserError as error:
         # このパッケージで書いた文言なので、そのまま（念のため伏せ字にして）表示する。
         report_failure(str(error), args.verbose)

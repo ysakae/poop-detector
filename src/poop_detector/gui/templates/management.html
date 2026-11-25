@@ -21,6 +21,18 @@
 <p class="note">トレーを交換したときは、<a href="/manage/areas/tray">範囲の登録 › トレー交換</a>で範囲と基準画像を登録し直してください。</p>
 </section>
 </div>
+<section aria-labelledby="update-heading">
+<h3 id="update-heading">アプリのバージョン</h3>
+<p>現在のバージョン <strong>{{ app_version() }}</strong></p>
+<p id="update-message" role="status">PyPI の安定版を確認しています。</p>
+<form id="update-form" method="post" action="/manage/update" hidden>
+  {{ csrf_field(token) }}
+  <label><input type="checkbox" name="confirm" value="yes" required> 更新を適用するため、現在のアプリを再起動する</label>
+  <button type="submit">更新する</button>
+</form>
+<noscript><p><a href="https://pypi.org/project/poop-detector/">PyPI で公開されているバージョンを確認する</a></p></noscript>
+<script defer src="{{ asset('update.js') }}"></script>
+</section>
 <section aria-labelledby="restart-heading">
 <h3 id="restart-heading">アプリの再起動</h3>
 {% if restart %}
