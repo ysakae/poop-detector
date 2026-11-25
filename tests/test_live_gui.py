@@ -8,6 +8,7 @@ from http.client import HTTPConnection
 
 import cv2
 import numpy as np
+import pytest
 from support import request, session_cookie
 
 from poop_detector.capture.live_preview import LivePreview
@@ -187,3 +188,44 @@ def test_live_stream_rechecks_session(gui, monkeypatch):
         assert response.readline() == b"--frame\r\n"
         server.app.sessions.revoke(cookie["Cookie"].split("=", 1)[1])
         assert response.read().endswith(b"\r\n--frame--\r\n")
+
+
+def test_live_panel_recovers_when_stream_never_delivers_an_image(gui):
+    playwright = pytest.importorskip("playwright.sync_api")
+    server, store, _ = gui
+    preview = LivePreview(store.root)
+    preview.request_frame()
+    frame = np.full((60, 100, 3), 190, dtype=np.uint8)
+    frame[:, :50] = (150, 115, 60)
+    host, port = server.server_address
+    url = f"http://{host}:{port}"
+    name, value = session_cookie(server)["Cookie"].split("=", 1)
+
+    def publish_before_status(route):
+        preview.request_frame()
+        preview.publish(frame)
+        route.continue_()
+
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page()
+        page.context.add_cookies([{"name": name, "value": value, "url": url}])
+        # 配信の要求を保留して、サーバーに新しい JPEG があっても画像が届かない状況を作る。
+        page.route("**/live/stream*", lambda route: None)
+        page.route("**/live/status", publish_before_status)
+        page.goto(url, wait_until="domcontentloaded")
+        page.wait_for_function("document.querySelector('#live-frame').hasAttribute('src')")
+        assert page.locator("#live-frame").is_hidden()
+        page.wait_for_function(
+            """() => {
+                const image = document.querySelector('#live-frame');
+                return !image.hidden && image.naturalWidth === 100;
+            }""",
+            timeout=8000,
+        )
+        playwright.expect(page.locator("#live-saver")).to_have_attribute("aria-pressed", "false")
+        with page.expect_request("**/live/frame*"):
+            pass
+        with page.expect_request("**/live/stream?fps=2"):
+            page.locator("#live-saver").click()
+        browser.close()
