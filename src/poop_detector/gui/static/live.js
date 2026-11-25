@@ -17,6 +17,8 @@ const jst = new Intl.DateTimeFormat("ja-JP", {
 const waiting = "監視からの映像を待っています。";
 let retryAt = 0;
 let startedAt = 0;
+const FIRST_FRAME_TIMEOUT_MS = 4000;
+let useSnapshots = false;
 
 // 通信を抑える工夫。外の回線で見るときは、映像を1秒に SAVER_FPS コマまでにする。
 // 端末が回線の種類やデータセーバーを教えてくれるとき（Android の Chrome など）は自動で抑え、
@@ -63,7 +65,10 @@ saverButton.addEventListener("click", () => {
         // 覚えられなくても、この画面では選んだとおりにする。
     }
     showSaver();
-    if (image.hasAttribute("src")) image.src = streamUrl();
+    useSnapshots = false;
+    stopStream();
+    retryAt = 0;
+    startStream();
 });
 showSaver();
 
@@ -171,9 +176,13 @@ function stopStream() {
 }
 
 function startStream() {
-    if (document.hidden || offscreen || image.hasAttribute("src") || Date.now() < retryAt) return;
-    startedAt = Date.now();
-    image.src = streamUrl();
+    const now = Date.now();
+    if (document.hidden || offscreen || now < retryAt) return;
+    if (image.hasAttribute("src")) {
+        if (!useSnapshots || (!image.complete && now - startedAt < FIRST_FRAME_TIMEOUT_MS)) return;
+    }
+    startedAt = now;
+    image.src = useSnapshots ? "/live/frame?t=" + now : streamUrl();
 }
 
 function showAge(stamp) {
@@ -219,13 +228,21 @@ async function updateStreamStatus() {
         const response = await fetch("/live/status", { cache: "no-store" });
         if (!response.ok) throw new Error();
         const { frame_time: stamp, tray_state: trayState } = await response.json();
-        if (document.hidden) return;
+        if (document.hidden || offscreen) return;
         if (!stamp) {
-            if (!image.hidden || Date.now() - startedAt >= 4000) stopStream();
-            frameStatus.textContent = waiting;
+            if (!image.hidden || Date.now() - startedAt >= FIRST_FRAME_TIMEOUT_MS) stopStream();
+        } else if (!useSnapshots && image.hasAttribute("src") && !image.naturalWidth
+            && Date.now() - startedAt >= FIRST_FRAME_TIMEOUT_MS) {
+            // 監視に画像があっても、ブラウザーに配信の先頭コマが届かないことがある。
+            // MJPEG を開き直さず、表示中だけ単発の JPEG を1秒に1枚取得する。
+            stopStream();
+            useSnapshots = true;
         }
         startStream();
-        if (!stamp || !image.hasAttribute("src")) return;
+        if (!stamp || !image.hasAttribute("src") || !image.naturalWidth) {
+            frameStatus.textContent = waiting;
+            return;
+        }
         image.hidden = false;
         controls.hidden = false;
         showAge(stamp);
