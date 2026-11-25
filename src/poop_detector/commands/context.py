@@ -21,6 +21,7 @@ from ..features.outages import OutageKind, OutageLog, OutageTracker
 from ..features.tray_registration import TrayRegistration
 from ..features.tray_tracking import TrayTracker
 from ..frames import Frame
+from ..gui.restart import Restart
 from ..notifications import (
     DEFAULT_NTFY_SERVER,
     FanOutNotifier,
@@ -54,6 +55,7 @@ class CommandContext:
     """設定ファイルから読んだ設定と、データの保存先の場所。"""
 
     config: Config
+    restart: Restart | None = None
 
     @property
     def root(self) -> Path:

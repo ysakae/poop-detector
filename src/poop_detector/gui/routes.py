@@ -354,6 +354,7 @@ def render_management(
         token=handler.csrf,
         points=points,
         error=error,
+        restart=app.restart,
         outages=outage_rows(app.outages.recent()),
         **management_status(handler),
     )
@@ -362,6 +363,35 @@ def render_management(
 @get("/manage", role="admin")
 def management_page(handler: "Handler", _query: Query) -> None:
     handler.respond(200, render_management(handler))
+
+
+@get("/manage/restart", role="admin")
+def restart_status(handler: "Handler", _query: Query) -> None:
+    restart = handler.app.restart
+    if restart is None:
+        handler.respond(409, "")
+        return
+    payload = {
+        "generation": restart.generation,
+        "command": restart.command,
+        "ready": restart.ready.is_set() and not restart.requested.is_set(),
+    }
+    handler.respond(200, json.dumps(payload), "application/json; charset=utf-8")
+
+
+@post("/manage/restart", role="admin")
+def restart_app(handler: "Handler", form: Form) -> None:
+    restart = handler.app.restart
+    if restart is None:
+        handler.respond(
+            409, "この起動方法では画面から再起動できません。", "text/plain; charset=utf-8"
+        )
+    elif form.fields.get("confirm") != "yes":
+        handler.respond(400, "再起動する対象を確認してください。", "text/plain; charset=utf-8")
+    elif restart.request(form.fields.get("generation", ""), lambda: audit(handler, "app.restart")):
+        handler.respond(202, "")
+    else:
+        handler.respond(409, "再起動中か、画面が古くなっています。", "text/plain; charset=utf-8")
 
 
 @get("/manage/areas/tray", role="admin")
@@ -497,6 +527,7 @@ def logout(handler: "Handler", _form: Form) -> None:
     "/assets/weight_chart.js",
     "/assets/clip_storage.js",
     "/assets/management.js",
+    "/assets/restart.js",
     "/assets/judge_models.js",
     "/assets/areas.js",
     "/assets/push.js",

@@ -1,6 +1,6 @@
 [project]
 name = "poop-detector"
-version = "0.1.0"
+version = "1.0.0"
 description = "犬のトイレの変化を検知して通知するローカル監視ツール"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Yoshiaki Sakae" }]
 keywords = ["dog", "pet", "toilet", "camera", "rtsp", "opencv", "monitoring", "ntfy"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Environment :: Web Environment",
     "Intended Audience :: End Users/Desktop",
@@ -74,9 +74,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["poop_detector"]
 [tool.coverage.report]
-# Gemini API のモデル一覧を動的に取得するようにしたあとの実測は95.69%。CI は手元より0.02%ほど低い。
+# 再起動の対応後の実測は95.68%。既定ブランチの CI の実測から0.02ポイント上がった。
 precision = 2
-fail_under = 95.57
+fail_under = 95.59
 show_missing = true
 skip_covered = true
 [tool.mypy]

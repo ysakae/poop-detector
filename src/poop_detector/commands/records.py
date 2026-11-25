@@ -103,6 +103,7 @@ def gui(args: argparse.Namespace, context: CommandContext) -> int:
             web=web,
             config_path=args.config,
             manual_only=args.manual_only,
+            restart=context.restart,
             review_enabled=context.config.video_review_enabled,
         )
     return 0

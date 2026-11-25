@@ -17,6 +17,7 @@ FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 
 # 権限の表（Issue #85）で、管理者だけができる操作の入口。
 ADMIN_GET = {
+    "/manage/restart",
     "/manage",
     "/manage/setup",
     "/manage/status",
@@ -34,6 +35,7 @@ ADMIN_GET = {
     "/manage/export/summary",
 }
 ADMIN_POST = {
+    "/manage/restart",
     "/manage/tray",
     "/manage/storage/cleanup",
     "/manage/invite",

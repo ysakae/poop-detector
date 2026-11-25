@@ -302,6 +302,7 @@ def watch(
                     web=web,
                     config_path=args.config,
                     review_enabled=config.video_review_enabled,
+                    restart=context.restart,
                 )
             )
         watchdog = camera_watchdog(context, notifier)
@@ -337,7 +338,7 @@ def watch(
             preview.pulse(engine.camera.healthy)
             return exchange.before_align(engine, frame)
 
-        Monitor(
+        monitor = Monitor(
             live,
             roi,
             baseline,
@@ -350,7 +351,12 @@ def watch(
             on_tray_state=preview.set_tray_state,
             extensions=scene_extensions(initial),
             clock=clock,
-        ).run(args.max_frames)
+        )
+        if context.restart is None:
+            monitor.run(args.max_frames)
+        else:
+            context.restart.ready.set()
+            monitor.run(args.max_frames, stop_requested=context.restart.requested.is_set)
         # 自分で終了したことを残し、GUI の見張りが停止として知らせないようにする。
         preview.mark_stopped()
     return 0

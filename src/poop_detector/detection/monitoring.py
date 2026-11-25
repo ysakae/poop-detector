@@ -226,11 +226,13 @@ class Monitor:
     def _new_machine(self) -> Machine:
         return Machine(self.config.verify_seconds, self.config.clear_seconds)
 
-    def run(self, max_frames: int = 0) -> int:
+    def run(self, max_frames: int = 0, *, stop_requested: Callable[[], bool] | None = None) -> int:
         """max_frames が 0 なら止めるまで動き、処理したフレーム数を返す。"""
         seen = 0
         try:
             while not max_frames or seen < max_frames:
+                if stop_requested is not None and stop_requested():
+                    break
                 seen += self.step()
         except KeyboardInterrupt:
             logger.info("監視を終了しました")

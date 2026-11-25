@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 import pytest
 import yaml
-from support import spot_scene
+from support import request, spot_scene, submit
 
 from poop_detector.commands import context, setup
 from poop_detector.config import CONNECTION_KEYS, Config
@@ -266,6 +266,7 @@ def test_gui_passes_settings_to_the_server(cli_env, monkeypatch):
                 # 管理 › 設定が書き換える設定ファイル（--config の値）。
                 "config_path": "config.yaml",
                 "manual_only": False,
+                "restart": None,
                 "review_enabled": True,
             },
         )
@@ -336,6 +337,59 @@ def test_run_with_gui_serves_management_and_releases_port(cli_env, monkeypatch, 
     assert requests == [200]
     with socket.socket() as connection:
         assert connection.connect_ex((urls[0].hostname, urls[0].port)) != 0
+
+
+def test_run_with_gui_restarts_after_monitor_cleanup(cli_env, monkeypatch):
+    from poop_detector.commands import run
+    from poop_detector.gui import server
+
+    baseline = register_scene(cli_env)
+    closed = []
+
+    class Camera(StillCamera):
+        """起動のたびに作り直され、終了時に閉じるカメラ。"""
+
+        def __exit__(self, *args):
+            closed.append(self)
+
+    use_camera(cli_env, baseline)
+    monkeypatch.setattr(context, "Camera", lambda *args: Camera(baseline))
+    write_config(cli_env, "pet_name: 初回\nclips: {enabled: false}\n")
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+
+    servers = []
+    make_server = server.make_server
+
+    def capture_server(*args, **kwargs):
+        gui = make_server(*args, **kwargs)
+        servers.append(gui)
+        if len(servers) > 1:
+            gui.test_cookie = servers[0].test_cookie
+        return gui
+
+    def monitor(self, _max_frames, *, stop_requested):
+        gui = servers[-1]
+        status = json.loads(request(gui, "GET", "/manage/restart")[1])
+        assert status["ready"]
+        assert status["command"] == "run"
+        if len(servers) == 1:
+            gui.app.store.record(baseline, 0.1, None, 1)
+            fields = {"generation": status["generation"], "confirm": "yes"}
+            assert submit(gui, "/manage/restart", fields)[0] == 202
+            assert stop_requested()
+            write_config(cli_env, "pet_name: 再起動後\nclips: {enabled: false}\n")
+        else:
+            assert len(closed) == 1
+            assert status["generation"] != servers[0].app.restart.generation
+            assert "再起動後".encode() in request(gui, "GET", "/manage")[1]
+            assert len(gui.app.store.list()) == 1
+
+    monkeypatch.setattr(server, "make_server", capture_server)
+    monkeypatch.setattr(run.Monitor, "run", monitor)
+    assert cli_env.run("run", "--gui", "--gui-port", str(port), "--no-browser") == 0
+    assert len(servers) == len(closed) == 2
 
 
 def test_run_with_gui_reports_occupied_port(cli_env, capsys):

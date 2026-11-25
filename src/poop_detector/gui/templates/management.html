@@ -21,6 +21,22 @@
 <p class="note">トレーを交換したときは、<a href="/manage/areas/tray">範囲の登録 › トレー交換</a>で範囲と基準画像を登録し直してください。</p>
 </section>
 </div>
+<section aria-labelledby="restart-heading">
+<h3 id="restart-heading">アプリの再起動</h3>
+{% if restart %}
+<p>対象は {{ '監視と管理画面' if restart.command == 'run' else '管理画面のみ' }}です。再起動すると設定を読み直します。</p>
+<form id="restart-form" method="post" action="/manage/restart">
+  {{ csrf_field(token) }}
+  <input type="hidden" name="generation" value="{{ restart.generation }}" data-command="{{ restart.command }}">
+  <label><input type="checkbox" name="confirm" value="yes" required> この対象を再起動する</label>
+  <button type="submit"{% if restart.requested.is_set() %} disabled{% endif %}>再起動</button>
+</form>
+<p id="restart-message" role="status">{% if restart.requested.is_set() %}再起動を受け付けました。{% endif %}</p>
+<script defer src="{{ asset('restart.js') }}"></script>
+{% else %}
+<p>この起動方法では画面から再起動できません。固定ポートで <code>poop-detector gui</code> または <code>poop-detector run --gui</code> を起動してください。</p>
+{% endif %}
+</section>
 <section aria-labelledby="outages-heading">
 <h3 id="outages-heading">直近の停止</h3>
 <p class="note">監視の停止とカメラの不調が、設定の watchdog.minutes 以上続いたときの記録です（新しい順）。停止を知らせる通知は同じ停止で1回だけ送り、復旧したら長さと合わせて知らせます。</p>
