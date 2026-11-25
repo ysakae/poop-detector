@@ -5,6 +5,7 @@ import logging
 import sys
 import traceback
 from collections.abc import Sequence
+from importlib.metadata import version
 
 import cv2
 
@@ -28,6 +29,7 @@ from .commands.context import CommandContext, Handler
 from .commands.registration import CommandGroup
 from .config import Config, apply_timezone
 from .errors import UserError
+from .gui.restart import Restart
 from .records.events import EXCRETION_TYPES, RECORD_LOCATIONS
 from .redaction import RedactingFormatter, install_log_redaction, redact
 
@@ -58,6 +60,7 @@ def gui_port(value: str) -> int:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="犬のトイレの変化検知")
+    result.add_argument("--version", action="version", version=version("poop-detector"))
     result.add_argument("--config", default="config/config.yaml", help="設定ファイル")
     result.add_argument(
         "-v",
@@ -404,10 +407,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     configure_logging(args.verbose)
     try:
-        config = Config.load(args.config)
-        apply_timezone(config.timezone)
+        restartable = (args.command == "gui" and args.port != 0) or (
+            args.command == "run" and args.gui and args.gui_port != 0 and args.max_frames == 0
+        )
         handler: Handler = args.handler
-        return handler(args, CommandContext(config))
+        while True:
+            config = Config.load(args.config)
+            apply_timezone(config.timezone)
+            restart = Restart(args.command) if restartable else None
+            result = handler(args, CommandContext(config, restart))
+            if result or restart is None or not restart.requested.is_set():
+                return result
+            args.no_browser = True
     except UserError as error:
         # このパッケージで書いた文言なので、そのまま（念のため伏せ字にして）表示する。
         report_failure(str(error), args.verbose)

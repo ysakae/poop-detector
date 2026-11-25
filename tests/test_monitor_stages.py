@@ -128,6 +128,8 @@ def test_monitor_step_reports_new_frames_and_reconnects(tmp_path):
     ]
     # フレームが届かない回は 1/fps 秒待つ。
     assert clock.now >= 0.1
+    # 停止を要求されたらカメラを次に読む前に抜ける。
+    assert loop.run(stop_requested=lambda: True) == 0
 
 
 def test_dog_extension_holds_detection_and_limits_clip_triggers():

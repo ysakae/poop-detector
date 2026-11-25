@@ -45,6 +45,7 @@ from .feeding_notifications import feeding_reminders
 from .pages import page_title
 from .passkeys import PasskeyAuth
 from .rate_limit import RateLimits
+from .restart import Restart
 from .sessions import SessionPolicy, SessionStore
 from .snapshots import Snapshots
 
@@ -82,6 +83,7 @@ class GuiApp:
     # 管理 › 設定で書き換える設定ファイル。None なら設定の画面は表示だけ（テストなど）。
     config_path: Path | None = None
     manual_only: bool = False
+    restart: Restart | None = None
     review_enabled: bool = False
     cookie_name: str = COOKIE_NAME
     # 範囲の登録で画面に見せた映像の一時置き場（保存にはその映像を使う）。
@@ -148,9 +150,12 @@ class GuiServer:
         finally:
             self._stopped.set()
 
+    def request_shutdown(self) -> None:
+        self._server.should_exit = True
+
     def shutdown(self) -> None:
         """serve_forever を止め、終わるまで待つ。まだ始まっていなければ、始まってすぐに止まる。"""
-        self._server.should_exit = True
+        self.request_shutdown()
         if self._started:
             self._stopped.wait()
 
@@ -199,6 +204,7 @@ def make_server(
     manual_only: bool = False,
     review_enabled: bool = False,
     cookie_name: str = COOKIE_NAME,
+    restart: Restart | None = None,
 ) -> GuiServer:
     """GUI のサーバーを作る。待ち受けのアドレスと外部の URL は web、ポートは port を使う。
 
@@ -231,6 +237,7 @@ def make_server(
         disk_mb=disk_mb,
         config_path=Path(config_path).resolve() if config_path is not None else None,
         manual_only=manual_only,
+        restart=restart,
         review_enabled=review_enabled,
         cookie_name=cookie_name,
         push_subscriptions=PushSubscriptions(database),
@@ -286,6 +293,7 @@ def background_gui(
     web: WebOptions = LOCAL_ONLY,
     config_path: str | Path | None = None,
     review_enabled: bool = False,
+    restart: Restart | None = None,
 ) -> Iterator[None]:
     """監視中は別スレッドで GUI を提供し、監視が終われば待ち受けを閉じる。"""
     with make_server(
@@ -296,6 +304,7 @@ def background_gui(
         web=web,
         config_path=config_path,
         review_enabled=review_enabled,
+        restart=restart if port else None,
     ) as server:
         thread = threading.Thread(target=server.serve_forever, name="poop-detector-gui")
         thread.start()
@@ -318,6 +327,7 @@ def serve(
     config_path: str | Path | None = None,
     manual_only: bool = False,
     review_enabled: bool = False,
+    restart: Restart | None = None,
 ) -> None:
     with make_server(
         root,
@@ -328,7 +338,11 @@ def serve(
         config_path=config_path,
         manual_only=manual_only,
         review_enabled=review_enabled,
+        restart=restart if port else None,
     ) as server:
+        if restart is not None and port:
+            restart.stop_gui = server.request_shutdown
+            restart.ready.set()
         open_gui_url(server, open_browser)
         try:
             server.serve_forever()
