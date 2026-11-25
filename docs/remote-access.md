@@ -53,6 +53,19 @@ GUI は、画面（HTML）・スタイル・スクリプト・JSON を自分で 
 
 Cloudflare Tunnel や Tailscale などのトンネルを使う場合も、転送先を `http://127.0.0.1:8765` にします。元の `Host` と `X-Forwarded-Proto` の渡し方は、各サービスの説明を確かめてください。HTTPS で届いても `X-Forwarded-Proto` が渡らない構成では、HSTS と `Secure` 属性が付きません。
 
+## Tailscale Serve の例
+
+監視するマシンと閲覧端末を同じ tailnet に参加させます。Linux の監視マシンで未ログインの場合は `sudo tailscale up` を実行して認証します。続けて tailnet 内用の HTTPS 転送を設定します。
+
+```bash
+sudo tailscale serve --bg http://127.0.0.1:8765
+tailscale serve status
+```
+
+HTTPS を有効にするための URL が表示されたら、ブラウザーで手続きしてから Serve コマンドを再実行します。出力に表示された HTTPS URL を `gui.public_url` に設定し、`gui.host` と `gui.trusted_proxies` は上の例どおり `127.0.0.1` に設定します。`--bg` を使うと、Tailscale の再起動後も転送が再開します。[Tailscale Serve の公式手順](https://tailscale.com/docs/reference/tailscale-cli/serve)
+
+GUI を起動したあと、tailnet 内の端末から `/login` を開きます。Serve が `502` を返す場合は、まず監視マシン上の GUI が起動しているか、Serve の転送先と待ち受けポートが一致しているかを確かめます。systemd を使う場合は [Linux の常時運用手順](docker.md#linuxミニpcで常時運用する) の状態とログの確認を参照してください。
+
 ## Docker の中で動かす場合
 
 コンテナの中では `127.0.0.1` に外から届かないので、`gui.host` を `0.0.0.0` にし、ポートは監視するマシンの `127.0.0.1` だけに公開します（`-p 127.0.0.1:8765:8765`）。リバースプロキシからの要求はコンテナのネットワークのアドレスから届くので、`gui.trusted_proxies` にそのアドレスかネットワーク（例：`172.17.0.1`）を書いてください。
