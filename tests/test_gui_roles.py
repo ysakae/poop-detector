@@ -18,6 +18,7 @@ FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 # 権限の表（Issue #85）で、管理者だけができる操作の入口。
 ADMIN_GET = {
     "/manage/restart",
+    "/manage/update/status",
     "/manage",
     "/manage/setup",
     "/manage/status",
@@ -35,6 +36,7 @@ ADMIN_GET = {
     "/manage/export/summary",
 }
 ADMIN_POST = {
+    "/manage/update",
     "/manage/restart",
     "/manage/tray",
     "/manage/storage/cleanup",
@@ -74,7 +76,8 @@ def test_route_table_declares_the_roles_of_the_permission_table():
 
 
 @pytest.mark.parametrize("path", sorted(ADMIN_GET))
-def test_members_are_refused_admin_pages(gui, path):
+def test_members_are_refused_admin_pages(gui, path, monkeypatch):
+    monkeypatch.setattr("poop_detector.gui.updates.latest_stable", lambda: None)
     server, _, _ = gui
     member = login(server, role="member")
     status, _, body = exchange(server, "GET", path, headers=member, auth=False)

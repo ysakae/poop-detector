@@ -21,6 +21,7 @@
 {%- if frame and frame.section_tabs %}{{ menu(frame.section_tabs, frame.section_label, "sub-tabs") }}{% endif -%}
 {%- block content %}{% endblock -%}
 </main>
+{%- if frame %}<footer class="site-footer note">poop-detector {{ app_version() }}</footer>{% endif -%}
 {%- if frame %}<nav class="tab-bar" aria-label="タブ"><ul>
 {%- for item in frame.tabs %}<li>{{ tab(item) }}</li>{% endfor -%}
 <li><details class="tab-more{% if frame.more_current %} current{% endif %}"><summary>{{ icon("more") }}その他</summary><ul>

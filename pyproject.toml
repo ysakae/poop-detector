@@ -38,6 +38,7 @@ dependencies = [
     "py-vapid>=1.9,<2",
     "markdown-it-py>=4,<5",
     "nh3>=0.3,<1",
+    "packaging>=24,<27",
 ]
 [project.urls]
 Homepage = "https://github.com/ysakae/poop-detector"

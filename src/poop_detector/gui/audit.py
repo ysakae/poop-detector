@@ -27,6 +27,7 @@ ACTIONS: dict[str, str] = {
     "user.role": "役割の変更",
     "user.rename": "表示名の変更",
     "app.restart": "アプリの再起動",
+    "app.update": "アプリの更新",
     "tray.begin": "トレーの交換の開始",
     "tray.cancel": "トレーの交換の取り消し",
     "tray.apply": "監視範囲と基準画像の登録",
