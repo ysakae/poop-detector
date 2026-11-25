@@ -54,7 +54,7 @@ analysis = [
     "scikit-learn>=1.5,<2",
 ]
 audio-model = [
-    "ai-edge-litert>=2.3,<2.4",
+    "ai-edge-litert>=2.3,<2.5",
 ]
 [build-system]
 # license-files（PEP 639）に対応した版
