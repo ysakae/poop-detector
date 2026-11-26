@@ -31,7 +31,7 @@ def test_ntfy_sends_only_text_for_the_existing_notification_types():
     assert len(sent) == 3
     assert all(payload.keys() == {"topic", "title", "message"} for payload in sent)
     assert all(payload["topic"] == "test-family" for payload in sent)
-    assert "トレー外での排尿の候補" in sent[-1]["message"]
+    assert "トレー外でのおしっこの候補" in sent[-1]["message"]
 
 
 def test_ntfy_handles_network_failure_and_keeps_topic_out_of_logs(caplog):

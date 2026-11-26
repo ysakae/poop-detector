@@ -192,9 +192,9 @@ def test_trend_message_lists_labels_and_links_to_the_day():
             return True
 
     notifier = Messages()
-    assert notifier.send_trend(["睡眠が少ない", "排尿が多い"], DAY)
+    assert notifier.send_trend(["睡眠が少ない", "おしっこが多い"], DAY)
     message, path = notifier.messages[0]
-    assert "ポチの様子が2日続けていつもと違います（睡眠が少ない、排尿が多い）" in message
+    assert "ポチの様子が2日続けていつもと違います（睡眠が少ない、おしっこが多い）" in message
     assert path == "/trends?day=2026-11-20"
 
 
@@ -216,7 +216,7 @@ def test_trends_page_and_home_mark_an_unusual_yesterday(gui):
     add_daily_records(store, days, lambda day: 9 if day == yesterday else 3)
     cookie = login(server, role="member")
     _, _, body = exchange(server, "GET", "/", headers=cookie, auth=False)
-    assert "昨日はいつもと違いました（排尿が多い）" in body.decode()
+    assert "昨日はいつもと違いました（おしっこが多い）" in body.decode()
     status, _, body = exchange(server, "GET", "/trends", headers=cookie, auth=False)
     html = body.decode()
     assert status == 200
@@ -254,7 +254,7 @@ def test_trend_watch_notifies_through_the_gui_watch(tmp_path, monkeypatch):
     with trend_watch(context, notifier):
         pass
     assert checks == [context_module.TREND_CHECK_SECONDS]
-    assert notifier.sent == [(["排尿が多い"], today)]
+    assert notifier.sent == [(["おしっこが多い"], today)]
     off = CommandContext(Config(data_dir=str(tmp_path), trends_notify=False))
     with trend_watch(off, notifier):
         pass

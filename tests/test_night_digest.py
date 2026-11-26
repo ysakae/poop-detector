@@ -229,7 +229,7 @@ def test_night_pages_show_numbers_timeline_and_home_link(gui, monkeypatch):
     assert status == 200
     assert "6時間00分" in html  # 寝ていた時間
     assert "起きた回数" in html
-    assert "排尿の記録" in html
+    assert "おしっこの記録" in html
     assert "起きていた（30分）" in html
     assert f"/digest-video?id={night_id(night)}" in html
     status, _, _ = exchange(server, "GET", "/night?day=bad", headers=cookie, auth=False)

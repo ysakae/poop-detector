@@ -18,7 +18,7 @@ def test_label_keeps_the_condition_only_for_stool(tmp_path):
     assert clips.get(clip_id)["stool_condition"] is None
     clips.labels.save(clip_id, ClipLabel("both", stool_condition=""))
     assert clips.get(clip_id)["stool_condition"] is None
-    with pytest.raises(ValueError, match="便の状態"):
+    with pytest.raises(ValueError, match="うんちの状態"):
         clips.labels.save(clip_id, ClipLabel("feces", stool_condition="liquid"))
 
 
@@ -40,7 +40,7 @@ def test_clip_list_shows_the_human_condition(tmp_path):
     clip_id = ready_clip(clips)
     clips.labels.save(clip_id, ClipLabel("feces", stool_condition="diarrhea"))
     [row] = clips.list(include_assessments=True)
-    assert clip_list_item(row, None)["label"] == "排便（下痢らしい）"
+    assert clip_list_item(row, None)["label"] == "うんち（下痢らしい）"
 
 
 def test_clip_page_has_the_condition_field_and_saves_it(gui):
@@ -58,7 +58,7 @@ def test_clip_page_has_the_condition_field_and_saves_it(gui):
     html = body.decode()
     assert 'name="stool_condition"' in html
     assert '<option value="diarrhea" selected>' in html
-    assert "便の状態：下痢らしい" in html
+    assert "うんちの状態：下痢らしい" in html
     status, _ = submit(
         server,
         "/clips/label",
@@ -74,5 +74,5 @@ def test_stool_condition_is_validated_before_it_is_discarded():
 
     assert _validated_stool_condition(ClipLabel("urine", stool_condition="soft")) is None
     assert _validated_stool_condition(ClipLabel("both", stool_condition="soft")) == "soft"
-    with pytest.raises(ValueError, match="便の状態"):
+    with pytest.raises(ValueError, match="うんちの状態"):
         _validated_stool_condition(ClipLabel("urine", stool_condition="invalid"))

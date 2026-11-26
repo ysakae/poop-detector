@@ -76,8 +76,8 @@ def test_print_summary_shows_counts_and_hours(gui):
     cookie = login(server)
     html = page(server, cookie, f"{PAGE}/summary?from=2026-11-01&to=2026-11-07")
     assert "2026/11/01〜2026/11/07" in html
-    assert re.search(r"排便</th><td>2", html)
-    assert re.search(r"排尿</th><td>1", html)
+    assert re.search(r"うんち</th><td>2", html)
+    assert re.search(r"おしっこ</th><td>1", html)
     assert "21時" in html
     assert "export.summary" in audit_actions(server)
 

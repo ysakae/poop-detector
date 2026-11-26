@@ -293,8 +293,8 @@ def label_form(row: Mapping[str, Any], assessment: Mapping[str, Any] | None) -> 
 
 # 1回押して確定するボタン。(値, 名前, アイコン)。
 QUICK_LABELS: tuple[tuple[str, str, str], ...] = (
-    ("feces", "排便", "feces"),
-    ("urine", "排尿", "urine"),
+    ("feces", "うんち", "feces"),
+    ("urine", "おしっこ", "urine"),
     ("both", "両方", "paw"),
     ("none", "排泄なし", "none"),
 )

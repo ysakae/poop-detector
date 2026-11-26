@@ -29,8 +29,8 @@ def test_unlabeled_event_offers_one_tap_buttons(gui):
     assert form
     assert f'<input type="hidden" name="id" value="{event}">' in form
     for value, text in [
-        ("feces", "排便"),
-        ("urine", "排尿"),
+        ("feces", "うんち"),
+        ("urine", "おしっこ"),
         ("both", "両方"),
         ("false", "誤検知"),
     ]:

@@ -27,7 +27,7 @@
 </section>
 <section class="card" aria-labelledby="today-title">
 <h2 id="today-title">今日の記録</h2>
-<div class="stats">{{ stat("排便", daily.feces, "回", "feces") }}{{ stat("排尿", daily.urine, "回", "urine") }}{{ stat("ごはん", food_grams, "g", "food") }}{% if daily.unspecified %}{{ stat("種類不明", daily.unspecified, "回", "paw") }}{% endif %}</div>
+<div class="stats">{{ stat("うんち", daily.feces, "回", "feces") }}{{ stat("おしっこ", daily.urine, "回", "urine") }}{{ stat("ごはん", food_grams, "g", "food") }}{% if daily.unspecified %}{{ stat("種類不明", daily.unspecified, "回", "paw") }}{% endif %}</div>
 {% if guide_today %}<p class="note"><a href="/advice">今日の目安 {{ guide_today[0] }} g{% if guide_today[1] %}（確かめてください）{% endif %}</a></p>
 {% endif %}<p class="note">{{ today }}（{{ timezone }}）の確定記録です。<a href="/records">記録と集計を見る</a></p>
 </section>

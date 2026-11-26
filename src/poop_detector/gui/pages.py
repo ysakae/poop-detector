@@ -105,8 +105,8 @@ def save_failed_page(title: str | None) -> str:
 
 # 検知の画像の確認で、1回押して保存するボタン（値・文言・アイコン）。
 EVENT_QUICK_LABELS: tuple[tuple[str, str, str], ...] = (
-    ("feces", "排便", "feces"),
-    ("urine", "排尿", "urine"),
+    ("feces", "うんち", "feces"),
+    ("urine", "おしっこ", "urine"),
     ("both", "両方", "paw"),
     ("false", "誤検知", "none"),
 )
@@ -148,7 +148,7 @@ def event_quick_buttons(row: EventRow, allowed: Sequence[str]) -> list[dict[str,
 def event_detail(row: EventRow) -> dict[str, Any]:
     """選んだ記録の詳細と、ラベル入力欄の初期値。"""
     choices: list[tuple[str, str]] = [
-        (value, "排便だった" if value == "feces" else text)
+        (value, "うんちだった" if value == "feces" else text)
         for value, text in EXCRETION_TYPES.items()
     ]
     if row["kind"] == "SUSPECTED":

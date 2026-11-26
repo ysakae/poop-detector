@@ -60,7 +60,7 @@ class ToiletNotifier:
     def send(self, *, clip_id: str | None = None, detected_at: str | None = None) -> bool:
         time = _notice_time(detected_at)
         return self._display(
-            f"{self.owner}トイレに変化を検出しました。排便・排尿の可能性があります。"
+            f"{self.owner}トイレに変化を検出しました。うんち・おしっこの可能性があります。"
             + (f" 検知 {time}" if time else ""),
             path=_clip_notice_path(clip_id),
         )
@@ -98,13 +98,13 @@ class ToiletNotifier:
         )
         time = _notice_time(detected_at)
         if existing_stool:
-            message = f"トレーの映像で便を確認しました。排便時刻は不明です。{detail}"
+            message = f"トレーの映像でうんちを確認しました。うんちをした時刻は不明です。{detail}"
             if time:
-                message += f" 便を確認 {time}"
+                message += f" うんちを確認 {time}"
         elif stool_condition == "diarrhea":
             again = f"24時間で{stool_repeat}回目です。" if stool_repeat > 1 else ""
             message = (
-                f"動画の自動判定で{place}下痢らしい便の候補が見つかりました。{again}{detail}"
+                f"動画の自動判定で{place}下痢らしいうんちの候補が見つかりました。{again}{detail}"
                 "続くときは獣医師に相談してください。"
             )
             if time:

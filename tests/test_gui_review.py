@@ -208,7 +208,7 @@ def test_review_shows_only_the_item(gui):
     assert "今の前後の動画を保存" not in html
     html = page(server, f"/records/events?id={event_id}&from=review", cookie)
     assert "<h2>記録の詳細</h2>" not in html
-    assert "目視で確認した排便・排尿を記録する" not in html
+    assert "目視で確認したうんち・おしっこを記録する" not in html
     assert "<h2>記録の詳細</h2>" in page(server, f"/records/events?id={event_id}", cookie)
 
 
@@ -244,7 +244,7 @@ def test_review_list_shows_thumbnails_and_what_was_found(gui):
     assert f'<img src="/clip-thumbnail?id={clip_id}" alt=""' in html
     assert f'<img src="/image?id={event_id}" alt=""' in html
     assert "トイレ見守りの動画" in html
-    assessment = '<span class="clip-assessment">自動判定：排便の候補 ／ トレー内</span>'
+    assessment = '<span class="clip-assessment">自動判定：うんちの候補 ／ トレー内</span>'
     assert assessment in html
     assert assessment in library
     row = re.search(rf'<li><a href="/clips\?id={plain}.*?</li>', html, re.S)[0]
