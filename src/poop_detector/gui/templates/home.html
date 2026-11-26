@@ -21,9 +21,13 @@
 <h2 id="review-title">確認待ち</h2>
 {% if trend_notes %}<p class="note"><a href="/trends">昨日はいつもと違いました（{{ trend_notes | join("、") }}）</a></p>
 {% endif %}{% if floor_pending %}<p class="note"><a href="/floor">床の候補 {{ floor_pending }}件が未確認です</a></p>
-{% endif %}{% if pending %}<p class="home-review-count"><strong>{{ pending }}</strong>件</p>
+{% endif %}<div data-home-review>
+<div data-review-waiting{% if not pending %} hidden{% endif %}>
+<p class="home-review-count"><strong>{{ pending }}</strong>件</p>
 <p><a class="button" href="/review">確認待ち {{ pending }}件を確認する</a></p>
-{% else %}<p>{{ chip("確認待ちはありません", "ok") }}</p>{% endif %}
+</div>
+<p data-review-empty{% if pending %} hidden{% endif %}>{{ chip("確認待ちはありません", "ok") }}</p>
+</div>
 </section>
 <section class="card" aria-labelledby="today-title">
 <h2 id="today-title">今日の記録</h2>

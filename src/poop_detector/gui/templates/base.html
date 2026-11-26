@@ -15,7 +15,7 @@
 {%- if frame %}<p class="site-status"><span class="chip chip-{{ frame.monitor_state }}">監視：{{ frame.monitor }}</span> <a href="/account">{{ frame.person }}さん</a> <a class="header-logout" href="/logout">ログアウト</a></p>{% endif -%}
 </header>
 {%- if frame %}{{ menu(frame.menu, "メインメニュー", "site-menu") }}{% endif -%}
-<main>
+<main{% if review_revision is defined %} data-review-revision="{{ review_revision }}"{% endif %}{% if clip_revision is defined %} data-clip-revision="{{ clip_revision }}"{% endif %}>
 {%- if frame and frame.management %}{{ menu(frame.management, "管理のメニュー", "sub-menu") }}{% endif -%}
 {%- if frame and frame.management_tabs %}{{ menu(frame.management_tabs, "管理の中の画面", "sub-tabs") }}{% endif -%}
 {%- if frame and frame.section_tabs %}{{ menu(frame.section_tabs, frame.section_label, "sub-tabs") }}{% endif -%}
@@ -26,5 +26,5 @@
 {%- for item in frame.tabs %}<li>{{ tab(item) }}</li>{% endfor -%}
 <li><details class="tab-more{% if frame.more_current %} current{% endif %}"><summary>{{ icon("more") }}その他</summary><ul>
 {%- for item in frame.more %}<li>{{ tab(item) }}</li>{% endfor -%}
-</ul></details></li></ul></nav><script src="{{ asset('menu.js') }}" defer></script><script src="{{ asset('busy.js') }}" defer></script><script src="{{ asset('notification_target.js') }}" defer></script>{% endif -%}
+</ul></details></li></ul></nav><script src="{{ asset('menu.js') }}" defer></script><script src="{{ asset('busy.js') }}" defer></script><script src="{{ asset('notification_target.js') }}" defer></script><script src="{{ asset('clip_status.js') }}" defer></script>{% endif -%}
 </html>

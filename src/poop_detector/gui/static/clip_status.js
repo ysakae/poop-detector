@@ -1,76 +1,112 @@
 "use strict";
 
-// 録画・変換中の動画の状態を数秒ごとに確かめ、変わったら画面を更新する（Issue #187）。
-// 変換中の動画は、一覧の行と選んだ動画の欄に data-pending-clip（ID）と data-clip-status（状態）を持つ。
-// 再生中の動画や入力途中のフォームがあるときは読み直さず、「更新」を促す知らせだけを出す。
-const INTERVAL = 5000;
-let timer = null;
-let checking = false;
-let edited = false;
-let announced = false;
+(() => {
+    const interval = 5000;
+    const main = document.querySelector("main");
+    const {clipRevision, reviewRevision} = main.dataset;
+    const endpoint = clipRevision ? "/page-status?clips=1" : "/page-status";
+    let timer;
+    let checking = false;
+    let edited = false;
+    let submitting = false;
+    let notice;
+    let pending;
 
-function pendingClips() {
-    // 一覧のクリックで選んだ動画の欄が差し替わるので、毎回 DOM から読み直す。
-    const pending = new Map();
-    for (const element of document.querySelectorAll("[data-pending-clip]")) {
-        pending.set(element.dataset.pendingClip, element.dataset.clipStatus);
-    }
-    return pending;
-}
-
-function busy() {
-    if (edited) return true;
-    return [...document.querySelectorAll("video")].some((video) => !video.paused && !video.ended);
-}
-
-function announce() {
-    announced = true;
-    const message = document.createElement("p");
-    message.className = "message message-info";
-    message.setAttribute("role", "status");
-    const link = document.createElement("a");
-    link.href = location.href;
-    link.textContent = "更新";
-    message.append("録画・変換が終わった動画があります。", link, "すると表示が変わります。");
-    const anchor = document.querySelector("#clip-pending") || document.querySelector(".workspace");
-    anchor?.before(message);
-}
-
-function schedule() {
-    if (timer !== null || checking || announced || document.hidden) return;
-    timer = window.setTimeout(check, INTERVAL);
-}
-
-async function check() {
-    timer = null;
-    // タブが裏にあるときは止め、表に戻ったら visibilitychange で再開する。
-    if (document.hidden) return;
-    const pending = pendingClips();
-    if (!pending.size) return;
-    checking = true;
-    try {
-        const query = new URLSearchParams([...pending.keys()].map((id) => ["id", id]));
-        const response = await fetch("/clips/status?" + query);
-        if (!response.ok) throw new Error("HTTP " + response.status);
-        const {clips} = await response.json();
-        const changed = clips.some((clip) => pending.has(clip.id) && pending.get(clip.id) !== clip.status);
-        if (changed) {
-            if (busy()) announce();
-            else location.reload();
-            return;
+    function updateCount(count) {
+        if (count === pending) return;
+        pending = count;
+        const remaining = main.querySelector("[data-review-remaining]");
+        if (remaining) remaining.textContent = `確認待ち 残り${count}件`;
+        for (const link of document.querySelectorAll('.site-menu a[href="/review"], .tab-bar a[href="/review"]')) {
+            const badge = link.querySelector(".badge");
+            if (!count) {
+                badge?.remove();
+            } else if (badge) {
+                badge.textContent = count;
+            } else {
+                const newBadge = document.createElement("span");
+                newBadge.className = "badge";
+                newBadge.textContent = count;
+                link.append(newBadge);
+            }
         }
-    } catch (error) {
-        console.warn("動画の状態を確認できませんでした。次の回で試します。", error);
-    } finally {
-        checking = false;
+        const home = main.querySelector("[data-home-review]");
+        if (home) {
+            home.querySelector("strong").textContent = count;
+            home.querySelector("a").textContent = `確認待ち ${count}件を確認する`;
+            home.querySelector("[data-review-waiting]").hidden = !count;
+            home.querySelector("[data-review-empty]").hidden = Boolean(count);
+        }
     }
-    schedule();
-}
 
-document.addEventListener("input", (event) => {
-    if (event.target.closest("form")) edited = true;
-});
-document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && pendingClips().size) schedule();
-});
-if (pendingClips().size) schedule();
+    function busy() {
+        return edited || submitting || document.activeElement?.closest("form")
+            || [...main.querySelectorAll("video")].some((video) => !video.paused && !video.ended);
+    }
+
+    function announce() {
+        if (notice) return;
+        notice = document.createElement("p");
+        notice.className = "message message-info";
+        notice.setAttribute("role", "status");
+        const link = document.createElement("a");
+        link.href = location.href;
+        link.addEventListener("click", () => { link.href = location.href; });
+        link.textContent = "更新";
+        notice.append("動画または確認待ちが更新されました。", link, "すると最新の状態を表示します。");
+        main.prepend(notice);
+    }
+
+    function schedule(delay = interval) {
+        if (timer !== undefined || checking || document.hidden) return;
+        timer = window.setTimeout(check, delay);
+    }
+
+    async function check() {
+        timer = undefined;
+        if (document.hidden) return;
+        checking = true;
+        try {
+            const response = await fetch(endpoint, {signal: AbortSignal.timeout(interval)});
+            if (response.status === 401 || response.status === 403) return;
+            if (!response.ok) throw new Error("HTTP " + response.status);
+            const state = await response.json();
+            if (!document.hidden) {
+                updateCount(state.pending);
+                const changed = (reviewRevision && reviewRevision !== state.review)
+                    || (clipRevision && clipRevision !== state.clips);
+                if (changed) {
+                    if (busy()) announce();
+                    else {
+                        location.reload();
+                        return;
+                    }
+                } else if (notice) {
+                    notice.remove();
+                    notice = undefined;
+                }
+            }
+        } catch (error) {
+            console.warn("画面の更新を確認できませんでした。次の回で試します。", error);
+        } finally {
+            checking = false;
+        }
+        schedule();
+    }
+
+    if (reviewRevision || clipRevision) {
+        main.addEventListener("input", (event) => {
+            if (event.target.closest("form")) edited = true;
+        });
+        window.addEventListener("submit", (event) => {
+            if (!event.defaultPrevented) submitting = true;
+        });
+        window.addEventListener("pageshow", () => { submitting = false; });
+    }
+    document.addEventListener("visibilitychange", () => {
+        window.clearTimeout(timer);
+        timer = undefined;
+        schedule(0);
+    });
+    schedule();
+})();

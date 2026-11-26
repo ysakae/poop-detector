@@ -114,6 +114,18 @@ def running(root, **kwargs):
         thread.join()
 
 
+def test_background_status_checks_do_not_extend_session_idle_time(tmp_path):
+    with running(tmp_path) as server:
+        sessions = server.app.sessions
+        clock = Clock()
+        sessions.clock = clock
+        cookie = login(server)
+        clock.now += sessions.policy.idle_hours * 3600 - 1
+        assert exchange(server, "GET", "/page-status", headers=cookie, auth=False)[0] == 200
+        clock.now += 2
+        assert exchange(server, "GET", "/page-status", headers=cookie, auth=False)[0] == 403
+
+
 def test_start_token_no_longer_logs_in(tmp_path):
     """起動トークン方式は廃止した。URL に token を付けても、セッションは始まらない。"""
     with running(tmp_path) as server:

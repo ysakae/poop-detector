@@ -34,6 +34,7 @@ from .assets import IMAGE_CACHE, serve_asset
 from .auth_api import safe_next
 from .clip_pages import (
     capacity_status,
+    clip_revision,
     render_clips,
     render_storage,
     stream_video,
@@ -55,7 +56,7 @@ from .pages import (
     saved_record_url,
 )
 from .passkeys import PasskeyError
-from .review_queue import NEXT_PAGE, review_bar, review_items
+from .review_queue import NEXT_PAGE, pending_items, review_bar, review_items, review_revision
 from .sheet_page import sheet_summary
 from .sleep_page import render_sleep
 from .templating import render_template
@@ -64,6 +65,7 @@ from .trends_page import yesterday_notes
 if TYPE_CHECKING:
     from .exchange import Exchange as Handler
 
+PAGE_STATUS = "/page-status"
 ASSETS = Path(__file__).with_name("static")
 # 外出から戻ってこの時間の間は、ホームに留守中のまとめの入口を出す。
 DIGEST_HOME_HOURS = 24
@@ -301,7 +303,7 @@ CLIP_ID = re.compile(r"[0-9a-f]{32}")
 
 @get("/clips/status")
 def clip_status(handler: "Handler", query: Query) -> None:
-    """変換待ちの動画の状態を、ID と状態だけの JSON で返す（static/clip_status.js が使う）。"""
+    """指定された動画の ID と状態を JSON で返す。"""
     if handler.headers.get("Sec-Fetch-Site") == "cross-site":
         handler.respond(403, "アクセスできません")
         return
@@ -309,6 +311,25 @@ def clip_status(handler: "Handler", query: Query) -> None:
     found = handler.app.clips.statuses(list(dict.fromkeys(ids))[:STATUS_LIMIT])
     payload = {"clips": [{"id": clip, "status": status} for clip, status in found.items()]}
     handler.respond(200, json.dumps(payload), "application/json; charset=utf-8")
+
+
+@get(PAGE_STATUS)
+def page_status(handler: "Handler", query: Query) -> None:
+    if handler.headers.get("Sec-Fetch-Site") == "cross-site":
+        handler.respond(403, "アクセスできません")
+        return
+    app = handler.app
+    rows = app.clips.list(include_assessments=True)
+    items = pending_items(app.store.list(), rows)
+    payload: dict[str, int | str] = {"pending": len(items), "review": review_revision(items)}
+    if first(query, "clips") == "1":
+        payload["clips"] = clip_revision(rows)
+    handler.respond(
+        200,
+        json.dumps(payload),
+        "application/json; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @get("/clips/capacity")

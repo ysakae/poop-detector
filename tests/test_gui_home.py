@@ -98,7 +98,9 @@ def test_home_has_one_main_action(gui):
     assert "確認待ち 1件を確認する" in html
     assert filled_buttons(html) == 1
     store.classify(event_id, "feces")
-    assert filled_buttons(page(server, "/", cookie)) == 0
+    html = page(server, "/", cookie)
+    assert "<div data-review-waiting hidden>" in html
+    assert "<p data-review-empty>" in html
 
 
 def test_home_records_care_in_one_tap(gui):

@@ -75,9 +75,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["poop_detector"]
 [tool.coverage.report]
-# 再起動の対応後の実測は95.68%。既定ブランチの CI の実測から0.02ポイント上がった。
+# 自動更新の対応後の実測は95.67%。前回の実測から0.01ポイント上がった。
 precision = 2
-fail_under = 95.59
+fail_under = 95.60
 show_missing = true
 skip_covered = true
 [tool.mypy]

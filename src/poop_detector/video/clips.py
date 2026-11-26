@@ -229,6 +229,7 @@ class ClipStore:
         if include_assessments:
             query = """SELECT c.*, a.label AS review_label, a.error AS review_error,
                 a.location AS review_location, a.stool_condition AS review_stool_condition,
+                a.assessed_at AS review_assessed_at,
                 d.clip_id IS NOT NULL AS review_dismissed
                 FROM clips c LEFT JOIN video_assessments a ON a.clip_id=c.id
                 LEFT JOIN review_dismissals d ON d.clip_id=c.id

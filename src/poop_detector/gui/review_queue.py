@@ -7,6 +7,7 @@
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlencode
 
@@ -150,6 +151,11 @@ def item_time(store: "Store", clips: "ClipStore", key: str) -> str | None:
 
 def review_items(store: "Store", clips: "ClipStore") -> list[ReviewItem]:
     return pending_items(store.list(), clips.list(include_assessments=True))
+
+
+def review_revision(items: Sequence[ReviewItem]) -> str:
+    """確認待ちの件数が同じでも、項目や判定内容の変化を識別する。"""
+    return sha256(repr(list(items)).encode()).hexdigest()
 
 
 def review_bar(items: Sequence[ReviewItem], key: str) -> dict[str, Any]:
