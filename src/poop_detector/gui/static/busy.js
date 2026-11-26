@@ -34,7 +34,7 @@ function reset() {
 }
 
 function markBusy(form, submitter) {
-    const buttons = form.querySelectorAll("button:not([type=button]), input[type=submit]");
+    const buttons = [...form.elements].filter((field) => field.type === "submit");
     // 送信の値（押したボタンの name と value）が消えないよう、止めるのは送信を始めたあと。
     setTimeout(() => {
         for (const button of buttons) {

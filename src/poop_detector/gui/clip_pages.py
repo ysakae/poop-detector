@@ -233,14 +233,6 @@ def assessment_detail(assessment: Mapping[str, Any] | None, labeled: bool) -> di
         else "",
         activity=ACTIVITIES[cast(str, assessment["activity"])],
         stool_condition=STOOL_CONDITION_TEXT.get(assessment.get("stool_condition") or "", ""),
-        seeks=[
-            {"value": seconds, "text": text, "shown": f"{seconds:g}"}
-            for seconds, text in (
-                (assessment["start_seconds"], "開始候補へ移動"),
-                (assessment["end_seconds"], "完了候補へ移動"),
-            )
-            if seconds is not None
-        ],
         notified=local_time(assessment["notified_at"]) if assessment["notified_at"] else "",
         draft=not labeled,
     )
@@ -277,16 +269,19 @@ def benchmark_form(
 
 def label_form(row: Mapping[str, Any], assessment: Mapping[str, Any] | None) -> dict[str, Any]:
     """動画のラベル入力欄の初期値。自動判定が下書きなら、その値を使う。"""
-    draft: Mapping[str, Any] = (
-        assessment if assessment and not assessment["error"] and row["label"] is None else {}
-    )
+    candidates = assessment if assessment and not assessment["error"] else {}
+    draft = candidates if row["label"] is None else {}
     offsets = []
-    for name, text, button in [
-        ("start", "開始（動画内の秒）", "開始"),
-        ("end", "完了（動画内の秒）", "完了"),
-    ]:
+    for name, text in [("start", "開始"), ("end", "完了")]:
         value = row["actual_" + name + "_offset"]
-        offsets.append((name, text, "" if value is None else str(value), button))
+        offsets.append(
+            {
+                "name": name,
+                "text": text,
+                "value": "" if value is None else str(value),
+                "candidate": candidates.get(f"{name}_seconds"),
+            }
+        )
     condition = row.get("stool_condition") if row["label"] is not None else None
     return {
         "label": row["label"] or draft.get("label", "uncertain"),

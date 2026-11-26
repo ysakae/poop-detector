@@ -152,6 +152,13 @@ button[aria-busy="true"]{cursor:progress}button[aria-busy="true"]::before{conten
 .clip-tools{margin:0 0 12px;padding:12px 16px;border:1px solid var(--border);box-shadow:none}.clip-tools>summary{font-weight:600}.clip-tools>summary .chip{margin-left:6px;vertical-align:middle;white-space:normal}.clip-tools .toolbar{margin:12px 0 0}
 .clip-more{margin-top:16px;padding:14px 16px;border:1px solid var(--border);box-shadow:none}.clip-more>summary{font-weight:600}
 .clip-video{max-height:60vh}
+.clip-timing{margin:12px 0 16px;padding:8px 12px 12px;border:1px solid var(--border);border-radius:var(--radius-small)}
+.clip-timing>legend{margin-bottom:4px}
+.clip-timing>.note{margin:0 0 10px}
+.clip-offsets,.clip-offset-actions{display:flex;flex-wrap:wrap;gap:8px}
+.clip-offsets{gap:12px;margin-bottom:12px}
+.clip-offset{flex:1 1 17rem;min-width:0;padding:10px;background:var(--surface-2);border-radius:var(--radius-small)}
+.clip-offset input{width:100%;margin-bottom:8px}
 
 /* 管理 */
 .management-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,1fr);gap:20px;align-items:start}

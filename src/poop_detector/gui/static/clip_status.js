@@ -40,7 +40,8 @@
     }
 
     function busy() {
-        return edited || submitting || document.activeElement?.closest("form")
+        const focused = document.activeElement;
+        return edited || submitting || focused?.form || focused?.closest("form")
             || [...main.querySelectorAll("video")].some((video) => !video.paused && !video.ended);
     }
 
@@ -96,7 +97,7 @@
 
     if (reviewRevision || clipRevision) {
         main.addEventListener("input", (event) => {
-            if (event.target.closest("form")) edited = true;
+            if (event.target.form || event.target.closest("form")) edited = true;
         });
         window.addEventListener("submit", (event) => {
             if (!event.defaultPrevented) submitting = true;

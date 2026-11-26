@@ -89,6 +89,52 @@ def test_codex_draft_is_visible_without_overwriting_human_label(gui):
     assert clips.assessments.get(clip)["label"] == "feces"
 
 
+@pytest.mark.parametrize(("candidate_start", "candidate_end"), [(None, None), (0, None), (0, 4)])
+def test_clip_offsets_stay_with_the_matching_seek_and_label_form(
+    gui, candidate_start, candidate_end
+):
+    from poop_detector.video.clips import ClipStore
+
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    clip = ready_clip(clips)
+    if candidate_start is not None:
+        clips.assessments.save(
+            clip, Assessment("feces", "excreting", candidate_start, candidate_end, "人工データ")
+        )
+
+    def page():
+        return request(server, "GET", f"/clips?id={clip}")[1].decode()
+
+    def offset_block(html):
+        return (
+            html.split("</video>", 1)[1]
+            .split('<fieldset class="clip-timing">', 1)[1]
+            .split("</fieldset>", 1)[0]
+        )
+
+    html = page()
+    controls = offset_block(html)
+    assert '<details class="clip-more">' in html
+    assert 'action="/clips/label" id="clip-label-form"' in html
+    assert 'type="submit" form="clip-label-form">ラベルを保存' in controls
+    start, end = re.findall(r'<div class="clip-offset">(.*?)</div>\s*</div>', controls, re.S)
+    for name, block in (("start", start), ("end", end)):
+        assert f'name="{name}" form="clip-label-form" value=""' in block
+        assert f'data-video-offset="{name}"' in block
+        assert html.count(f'name="{name}"') == 1
+    assert ("開始候補へ移動（0秒）" in start) == (candidate_start is not None)
+    assert ("完了候補へ移動（4秒）" in end) == (candidate_end is not None)
+    assert html.count("開始候補へ移動") == int(candidate_start is not None)
+    assert html.count("完了候補へ移動") == int(candidate_end is not None)
+
+    fields = {"id": clip, "label": "feces", "start": "2.5", "end": "4"}
+    assert submit(server, "/clips/label", fields)[0] == 303
+    controls = offset_block(page())
+    assert 'name="start" form="clip-label-form" value="2.5"' in controls
+    assert 'name="end" form="clip-label-form" value="4.0"' in controls
+
+
 def test_clip_links_keep_addressable_details_for_partial_navigation(gui):
     from poop_detector.video.clips import ClipStore
 
