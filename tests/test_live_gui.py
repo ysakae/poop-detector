@@ -229,3 +229,32 @@ def test_live_panel_recovers_when_stream_never_delivers_an_image(gui):
         with page.expect_request("**/live/stream?fps=2"):
             page.locator("#live-saver").click()
         browser.close()
+
+
+def test_live_panel_retries_when_status_request_stalls(gui):
+    playwright = pytest.importorskip("playwright.sync_api")
+    server, store, _ = gui
+    preview = LivePreview(store.root)
+    frame = np.full((60, 100, 3), 190, dtype=np.uint8)
+    host, port = server.server_address
+    url = f"http://{host}:{port}"
+    name, value = session_cookie(server)["Cookie"].split("=", 1)
+
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page()
+        page.context.add_cookies([{"name": name, "value": value, "url": url}])
+
+        def publish_before_status(route):
+            preview.request_frame()
+            preview.publish(frame)
+            route.continue_()
+
+        page.route("**/live/status", publish_before_status)
+        # 復帰時に通信が応答しなくなった状況を、最初の要求を保留して再現する。
+        page.route("**/live/status", lambda route: None, times=1)
+        page.route("**/live/stream*", lambda route: None)
+        page.goto(url, wait_until="domcontentloaded")
+        playwright.expect(page.locator("#live-frame")).to_be_visible(timeout=12000)
+        assert page.locator("#live-frame").evaluate("(image) => image.naturalWidth") == 100
+        browser.close()
