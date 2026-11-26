@@ -100,15 +100,15 @@ def test_diarrhea_message_and_repeat():
     notifier.send_assessment("feces", clip_id="b", stool_condition="diarrhea", stool_repeat=3)
     notifier.send_assessment("feces", clip_id="c")
     first, again, plain = notifier.messages
-    assert "下痢らしい便" in first
+    assert "下痢らしいうんち" in first
     assert "24時間で3回目" in again
     assert "下痢" not in plain
 
 
 def test_assessment_summary_shows_the_condition():
-    assert clip_assessment_summary("feces", None, False, "diarrhea") == "排便の候補（下痢らしい）"
-    assert clip_assessment_summary("feces", None, False, "normal") == "排便の候補（ふつう）"
-    assert clip_assessment_summary("feces", None, False) == "排便の候補"
+    assert clip_assessment_summary("feces", None, False, "diarrhea") == "うんちの候補（下痢らしい）"
+    assert clip_assessment_summary("feces", None, False, "normal") == "うんちの候補（ふつう）"
+    assert clip_assessment_summary("feces", None, False) == "うんちの候補"
 
 
 # --- 判定から通知まで ---
@@ -178,4 +178,4 @@ def test_review_queue_shows_the_stool_condition(gui):
     )
     cookie = login(server, role="member")
     _, _, body = exchange(server, "GET", "/review", headers=cookie, auth=False)
-    assert "排便の候補（下痢らしい）" in body.decode()
+    assert "うんちの候補（下痢らしい）" in body.decode()

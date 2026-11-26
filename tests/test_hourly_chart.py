@@ -49,16 +49,16 @@ def test_busiest_hours_are_ranked_separately_for_feces_and_urine(gui):
     store.add_excretion("both", "2026-11-08T19:20:00+09:00")
     store.add_excretion("feces", "2026-11-08T21:10:00+09:00")
     html = records_page(server)
-    assert "<strong>排便が多い時間帯</strong> 7時台（2件）、19時台（1件）" in html
-    assert "<strong>排尿が多い時間帯</strong> 19時台（2件）、7時台（1件）" in html
+    assert "<strong>うんちが多い時間帯</strong> 7時台（2件）、19時台（1件）" in html
+    assert "<strong>おしっこが多い時間帯</strong> 19時台（2件）、7時台（1件）" in html
 
 
 def test_busiest_hours_show_when_one_type_has_no_records(gui):
     server, store, _ = gui
     store.add_excretion("urine", "2026-11-08T19:00:00+09:00")
     html = records_page(server)
-    assert "<strong>排便が多い時間帯</strong> 記録なし" in html
-    assert "<strong>排尿が多い時間帯</strong> 19時台（1件）" in html
+    assert "<strong>うんちが多い時間帯</strong> 記録なし" in html
+    assert "<strong>おしっこが多い時間帯</strong> 19時台（1件）" in html
 
 
 def test_busiest_hours_render_with_previous_summary_format(gui, monkeypatch):
@@ -87,7 +87,7 @@ def test_table_is_still_readable_but_folded(gui):
     assert folded
     assert 'id="hourly-stats"' in folded[0]
     # 時間帯別の集計そのものは、開いたまま（表だけをたたむ）。
-    assert "<details open><summary>時間帯別の排便・排尿</summary>" not in html
+    assert "<details open><summary>時間帯別のうんち・おしっこ</summary>" not in html
 
 
 def test_no_records_says_so_instead_of_an_empty_chart(gui):

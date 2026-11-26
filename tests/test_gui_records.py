@@ -110,7 +110,7 @@ def test_record_shortcuts_restore_the_selected_period(records_gui, path, label):
     server, _, _ = records_gui
     html = get_html(server, "/records?date=2026-11-18&days=90&record_end=2026-11-16")
     shortcuts = re.search(r'<nav aria-label="関連する記録".*?</nav>', html, re.S)[0]
-    assert html.index(shortcuts) < html.index("1日の排便・排尿回数")
+    assert html.index(shortcuts) < html.index("1日のうんち・おしっこ回数")
     link = re.search(rf'<a[^>]*href="({path}\?[^"]+)"[^>]*>(.*?)</a>', shortcuts, re.S)
     assert label in link[2]
     assert '<svg class="icon"' in link[2]

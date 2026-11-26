@@ -34,7 +34,7 @@ def test_records_are_a_timeline_with_icons(gui):
     html = request(server, "GET", "/records")[1].decode()
     listing = html.split('<ul class="timeline record-list">', 1)[1].split("</ul>", 1)[0]
     assert '<svg class="icon"' in listing
-    assert "排便" in listing
+    assert "うんち" in listing
     assert "朝" in listing
     assert f"id={event}" in listing
     assert '<table class="data-table"' not in html
@@ -44,7 +44,7 @@ def test_gui_lists_image_and_saves_label(gui):
     server, store, event = gui
     status, data = request(server, "GET", f"/records/events?id={event}")
     assert status == 200
-    assert "排便だった".encode() in data
+    assert "うんちだった".encode() in data
     assert event.encode() in data
     assert request(server, "GET", "/image?id=" + event)[0] == 200
     assert (
@@ -120,7 +120,7 @@ def test_records_show_daily_counts_and_hourly_statistics_in_japan_time(gui):
     status, body = request(server, "GET", "/records?date=2026-11-08&days=7")
     assert status == 200
     html = body.decode()
-    assert day_counts(html) == {"排便": "1", "排尿": "2", "種類不明": "1"}
+    assert day_counts(html) == {"うんち": "1", "おしっこ": "2", "種類不明": "1"}
     assert "2026-11-02〜2026-11-08（7日間・記録あり2日）" in html
     hourly = html.split('id="hourly-stats"', 1)[1].split("</table>", 1)[0]
     assert re.search(r"00:00〜00:59</th>.*?</meter> 2件.*?</meter> 2件", hourly)
@@ -132,11 +132,11 @@ def test_records_stats_follow_confirmed_start_or_fall_back_to_record_time(gui):
     with store.connect() as db:
         db.execute("UPDATE events SET timestamp=? WHERE id=?", ("2026-11-07T15:25:00+00:00", event))
     url = "/records?date=2026-11-08&days=7"
-    assert day_counts(request(server, "GET", url)[1].decode())["排尿"] == "0"
+    assert day_counts(request(server, "GET", url)[1].decode())["おしっこ"] == "0"
     store.classify(event, "urine", start=None)
-    assert day_counts(request(server, "GET", url)[1].decode())["排尿"] == "1"
+    assert day_counts(request(server, "GET", url)[1].decode())["おしっこ"] == "1"
     store.classify(event, "urine", start="2026-11-07T23:55:00+09:00")
-    assert day_counts(request(server, "GET", url)[1].decode())["排尿"] == "0"
+    assert day_counts(request(server, "GET", url)[1].decode())["おしっこ"] == "0"
     assert request(server, "GET", "/records?date=invalid&days=-1")[0] == 200
 
 
@@ -268,7 +268,7 @@ def test_manual_record_has_its_own_page(gui):
     events = request(server, "GET", f"/records/events?id={event}")[1].decode()
     assert "<h2>記録の詳細</h2>" in events
     assert 'name="action"' not in events
-    assert "目視で確認した排便・排尿を記録する" not in events
+    assert "目視で確認したうんち・おしっこを記録する" not in events
     # 保存すると記録の画面へ戻り、足した記録が見える。
     start = re.search(r'name="start" value="([^"]+)"', page)[1]
     fields = {"action": "manual", "type": "feces", "start": start}

@@ -48,7 +48,7 @@
 {% endif %}
 {% if assessment %}
 {% if assessment.error %}<div class="message message-error">{{ assessment.error }}</div>{% else %}
-<div class="message message-info"><strong>自動判定の候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %} ／ {{ assessment.activity }}{% if assessment.stool_condition %} ／ 便の状態：{{ assessment.stool_condition }}{% endif %}</strong><br>{{ assessment.reason }}
+<div class="message message-info"><strong>自動判定の候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %} ／ {{ assessment.activity }}{% if assessment.stool_condition %} ／ うんちの状態：{{ assessment.stool_condition }}{% endif %}</strong><br>{{ assessment.reason }}
 {%- for seek in assessment.seeks -%}
 <p><button class="secondary" type="button" data-video-seek="{{ seek.value }}">{{ seek.text }}（{{ seek.shown }}秒）</button></p>
 {%- endfor -%}
@@ -59,7 +59,7 @@
 {% if quick %}
 <form method="post" action="/clips/quick" class="quick-confirm">{{ csrf_field(token) }}
 <input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}{% if review %}<input type="hidden" name="from" value="review">{% endif %}
-<h4>排便・排尿の確認</h4>
+<h4>うんち・おしっこの確認</h4>
 <div class="quick-buttons">
 {%- for button in quick.buttons -%}
 <button{% if not button.main %} class="secondary"{% endif %} name="label" value="{{ button.value }}">{{ icon(button.icon) }}{{ button.text }}</button>
@@ -82,7 +82,7 @@
 {%- for value, text in activities -%}
 <option value="{{ value }}" {% if value == form.activity %}selected{% endif %}>{{ text }}</option>
 {%- endfor -%}
-</select></label><label>便の状態（排便のとき）<select name="stool_condition"><option value="">選ばない</option>
+</select></label><label>うんちの状態（うんちのとき）<select name="stool_condition"><option value="">選ばない</option>
 {%- for value, text in stool_conditions -%}
 <option value="{{ value }}" {% if value == form.stool_condition %}selected{% endif %}>{{ text }}</option>
 {%- endfor -%}

@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from .review_dismissals import ReviewDismissals
 
 CLIP_LABELS = {
-    "feces": "排便",
-    "urine": "排尿",
+    "feces": "うんち",
+    "urine": "おしっこ",
     "both": "両方",
     "none": "排泄なし",
     "uncertain": "判断できない",

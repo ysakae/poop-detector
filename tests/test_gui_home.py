@@ -41,8 +41,8 @@ def test_home_counts_todays_records(gui):
     store.classify(event_id, "feces")
     html = page(server, "/", login(server, role="member"))
     today = re.search(r'aria-labelledby="today-title".*?</section>', html, re.S)[0]
-    assert stat(today, "排便") == ("1", "回")
-    assert stat(today, "排尿") == ("0", "回")
+    assert stat(today, "うんち") == ("1", "回")
+    assert stat(today, "おしっこ") == ("0", "回")
     # 種類不明は、あるときだけ出す。
     assert "種類不明" not in today
     assert "確認待ちはありません" in html
@@ -53,7 +53,7 @@ def test_home_lists_recent_records(gui):
     store.classify(event_id, "urine", note="朝の散歩のあと")
     html = page(server, "/", login(server, role="member"))
     recent = re.search(r'aria-labelledby="recent-title".*?</section>', html, re.S)[0]
-    assert "排尿" in recent
+    assert "おしっこ" in recent
     assert '<svg class="icon"' in recent
     assert f'href="/records/events?id={event_id}"' in recent
 

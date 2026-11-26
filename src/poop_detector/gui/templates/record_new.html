@@ -4,9 +4,9 @@
 {% block content %}
 <h2>排泄を記録</h2>
 {% if manual_only %}
-<p class="note">目で見て確かめた排便・排尿を記録します。</p>
+<p class="note">目で見て確かめたうんち・おしっこを記録します。</p>
 {% else %}
-<p class="note">目で見て確かめた排便・排尿を記録します。通知の画像や動画がある排泄は、<a href="/review">確認待ち</a>でラベルを付けてください（同じ排泄を二重に記録しないため）。</p>
+<p class="note">目で見て確かめたうんち・おしっこを記録します。通知の画像や動画がある排泄は、<a href="/review">確認待ち</a>でラベルを付けてください（同じ排泄を二重に記録しないため）。</p>
 {% endif %}
 <form method="post" action="/save" class="card">{{ csrf_field(token) }}
 {% if manual_only %}

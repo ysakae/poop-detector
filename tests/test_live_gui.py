@@ -59,7 +59,7 @@ def test_home_shows_latest_codex_assessment_and_manual_label(gui):
     assert status == 200
     data = json.loads(response)
     assert data["clip_id"] == latest
-    assert data["label"] == "排便"
+    assert data["label"] == "うんち"
     assert data["human_label"] == "排泄なし"
     assert data["reason"] == "<根拠>"
     assert data["requested_at"]

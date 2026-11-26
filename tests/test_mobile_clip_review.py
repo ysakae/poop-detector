@@ -16,7 +16,7 @@ def test_notification_view_opens_at_candidate_and_confirms_once(gui):
     status, body = request(server, "GET", f"/clips?id={clip}&notice=1")
     assert status == 200
     assert f"/clip-video?id={clip}#t=3" in body.decode()
-    assert "排便・排尿の確認" in body.decode()
+    assert "うんち・おしっこの確認" in body.decode()
     for _ in range(2):
         assert (
             submit(
@@ -67,8 +67,8 @@ def test_unlabeled_clip_offers_one_tap_buttons_without_a_notification(gui):
     form = quick_form(html)
     assert form
     for value, text in [
-        ("feces", "排便"),
-        ("urine", "排尿"),
+        ("feces", "うんち"),
+        ("urine", "おしっこ"),
         ("both", "両方"),
         ("none", "排泄なし"),
     ]:

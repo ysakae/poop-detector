@@ -1,5 +1,5 @@
 {#- 動画のラベルと一緒に、排泄の確定記録を保存する欄。 -#}
-<fieldset><legend>排便・排尿の確定記録</legend>
+<fieldset><legend>うんち・おしっこの確定記録</legend>
 {%- if confirmation.linked -%}
 <input type="hidden" name="record_id" value="{{ confirmation.linked }}"><p><a href="/records/events?id={{ confirmation.linked }}">ひも付け済みの記録を開く</a></p><p class="note">確定した日時や種類は、ひも付け済みの記録から編集できます。</p>
 {%- else -%}

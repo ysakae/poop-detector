@@ -78,7 +78,7 @@ def test_codex_draft_is_visible_without_overwriting_human_label(gui):
     )
     _, body = request(server, "GET", "/clips?id=" + clip)
     page = body.decode()
-    assert "自動判定の候補 ／ 排便" in page
+    assert "自動判定の候補 ／ うんち" in page
     assert "&lt;新しい便が見えます&gt;" in page
     assert 'name="label" value="feces" checked' in page
     assert clips.get(clip)["label"] is None
@@ -231,7 +231,7 @@ def test_clip_list_can_be_narrowed_by_label_state(gui):
     rows = narrowed.split('id="clip-list"', 1)[1].split("</nav>", 1)[0]
     assert 'aria-hidden="true">✓</span>' in rows
     assert "人のラベル：</span>排泄なし</span>" in rows
-    assert "自動判定：排便の候補 ／ トレー内</span>" in rows
+    assert "自動判定：うんちの候補 ／ トレー内</span>" in rows
     # 絞り込んだ一覧の先頭を開き、行のリンクは絞り込みを保つ。
     assert f'class="active" href="/clips?id={labeled}&amp;show=labeled"' in narrowed
     assert f"/clips?id={waiting}" not in narrowed

@@ -255,7 +255,7 @@ def test_day_view_is_one_timeline_with_totals(gui):
     listing = html.split('<ul class="timeline day-list">', 1)[1].split("</ul>", 1)[0]
     order = [listing.index(text) for text in ("19:00", "10:00", "09:00", "08:00")]
     assert order == sorted(order)
-    for text in ("給餌", "シート交換", "排尿", "体重", "1,850 g", "25.5 g", "母"):
+    for text in ("給餌", "シート交換", "おしっこ", "体重", "1,850 g", "25.5 g", "母"):
         assert text in listing, text
     assert listing.count('<svg class="icon"') == 5
 

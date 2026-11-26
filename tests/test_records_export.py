@@ -47,14 +47,14 @@ def test_csv_lists_confirmed_records_of_the_period_in_local_time(store):
     assert first["開始"] == "2026-11-01T08:30:00+09:00"
     assert first["完了"] == "2026-11-01T08:31:30+09:00"
     assert first["所要（秒）"] == "90"
-    assert first["種類"] == "排便"
+    assert first["種類"] == "うんち"
     assert first["場所"] == ""
     assert first["メモ"] == "やや軟らかい"
     assert first["記録の由来"] == "手入力"
     second = dict(zip(CSV_HEADER, table[2], strict=True))
-    assert (second["種類"], second["場所"], second["完了"]) == ("排尿", "トレー外", "")
+    assert (second["種類"], second["場所"], second["完了"]) == ("おしっこ", "トレー外", "")
     third = dict(zip(CSV_HEADER, table[3], strict=True))
-    assert (third["種類"], third["記録の由来"]) == ("排便・排尿", "見逃し")
+    assert (third["種類"], third["記録の由来"]) == ("うんち・おしっこ", "見逃し")
 
 
 def test_csv_neutralizes_cells_that_spreadsheets_would_run_as_formulas(tmp_path):

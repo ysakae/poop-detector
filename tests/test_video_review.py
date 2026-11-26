@@ -110,8 +110,8 @@ def test_live_review_notices_existing_stool_once_until_clear_even_after_restart(
         f"https://toilet.example.com/clips?id={first}&notice=1",
         f"https://toilet.example.com/clips?id={next_stool}&notice=1",
     ]
-    assert "排便時刻は不明" in messages[0]["message"]
-    assert "便を確認" in messages[0]["message"]
+    assert "うんちをした時刻は不明" in messages[0]["message"]
+    assert "うんちを確認" in messages[0]["message"]
     assert when.astimezone().strftime("%m/%d %H:%M:%S") in messages[0]["message"]
 
 
@@ -270,10 +270,10 @@ def test_backfill_never_notifies_and_live_skips_feeding(tmp_path):
 @pytest.mark.parametrize(
     ("label", "interrupted", "location", "expected"),
     [
-        ("feces", True, None, "排便の候補"),
-        ("urine", True, "outside", "トレー外での排尿の候補"),
-        ("both", True, None, "排便・排尿の候補"),
-        ("urine", False, None, "排尿の候補"),
+        ("feces", True, None, "うんちの候補"),
+        ("urine", True, "outside", "トレー外でのおしっこの候補"),
+        ("both", True, None, "うんち・おしっこの候補"),
+        ("urine", False, None, "おしっこの候補"),
         ("none", True, None, None),
         ("uncertain", True, None, None),
     ],

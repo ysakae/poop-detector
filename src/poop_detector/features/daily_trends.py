@@ -51,8 +51,8 @@ METRICS = {
     # 床面のマス目を通過した回数。観測できた時間から1日分に直す。
     "moves": Metric("移動", "回", 20),
     "sleep": Metric("睡眠", "分", 60),
-    "feces": Metric("排便", "回", 1),
-    "urine": Metric("排尿", "回", 1),
+    "feces": Metric("うんち", "回", 1),
+    "urine": Metric("おしっこ", "回", 1),
 }
 DIRECTIONS = {"high": "多い", "low": "少ない"}
 

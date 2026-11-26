@@ -24,9 +24,9 @@ EXCRETION_LOCATIONS = {"tray": "トレー内", "outside": "トレー外"}
 OUTSIDE_PEN = "outside_pen"
 RECORD_LOCATIONS = {**EXCRETION_LOCATIONS, OUTSIDE_PEN: "サークル外"}
 EXCRETION_TYPES = {
-    "feces": "排便",
-    "urine": "排尿",
-    "both": "排便・排尿",
+    "feces": "うんち",
+    "urine": "おしっこ",
+    "both": "うんち・おしっこ",
     "unspecified": "種類不明",
 }
 

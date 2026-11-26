@@ -96,7 +96,7 @@ def test_worker_summarizes_a_finished_period_with_text_only(tmp_path):
     assert summary.points == ["14時ごろ鳴いていた"]
     prompt, images, schema = judge.calls[0]
     assert images == []
-    assert "排便の記録" in prompt
+    assert "うんちの記録" in prompt
     assert schema == SUMMARY_SCHEMA
     assert not worker.poll_once()
 

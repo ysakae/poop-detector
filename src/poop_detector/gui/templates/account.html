@@ -27,7 +27,7 @@
 <p class="toolbar"><button type="button" id="push-enable" hidden>この端末で通知を受け取る</button><button type="button" class="secondary" id="push-disable" hidden>この端末では受け取らない</button></p>
 {% if push_saved %}<p class="saved" role="status">通知の受け取り方を保存しました。</p>{% endif %}
 <form method="post" action="/account/push/preferences">{{ csrf_field(token) }}
-<p><label><input type="checkbox" name="alerts" value="1"{% if push_alerts %} checked{% endif %}> 排便・排尿の候補の通知を受け取る</label></p>
+<p><label><input type="checkbox" name="alerts" value="1"{% if push_alerts %} checked{% endif %}> うんち・おしっこの候補の通知を受け取る</label></p>
 <p><label><input type="checkbox" name="early" value="1"{% if push_early %} checked{% endif %}> 見守り通知（トイレでの滞在）も受け取る</label></p>
 <p><label><input type="checkbox" name="feeding" value="1"{% if push_feeding %} checked{% endif %}> ごはんが未記録のときに予定を知らせる</label></p>
 <p><label><input type="checkbox" name="household" value="1"{% if push_household %} checked{% endif %}> 家族が在宅に戻したときに知らせる（留守中のまとめを開けます）</label></p>

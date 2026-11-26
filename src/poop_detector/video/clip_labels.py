@@ -33,7 +33,7 @@ class ClipLabel:
 def _validated_stool_condition(clip_label: ClipLabel) -> str | None:
     condition = clip_label.stool_condition or None
     if condition is not None and condition not in STOOL_CONDITIONS:
-        raise ValueError("便の状態を確認してください")
+        raise ValueError("うんちの状態を確認してください")
     return condition if clip_label.label in ("feces", "both") else None
 
 
@@ -147,7 +147,7 @@ class ClipLabels:
     ) -> str | None:
         """動画のラベルを排泄の記録として確定し、記録の場所を返す。record_id が "new" なら新規。"""
         if clip_label.label not in ("feces", "urine", "both"):
-            raise ValueError("確定記録には排便・排尿・両方のいずれかを選んでください")
+            raise ValueError("確定記録にはうんち・おしっこ・両方のいずれかを選んでください")
         record_id, linked = self._linked_record(db, clip, record_id)
         if clip_label.location == "outside" and record_id == clip["event_id"]:
             raise ValueError("トレー外の排泄は、トレー内の検知とは別の記録を選んでください")

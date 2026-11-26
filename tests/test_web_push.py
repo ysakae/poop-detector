@@ -152,7 +152,7 @@ def test_notification_is_encrypted_and_signed_for_each_subscriber(push, clip_id,
     payload = receiver.decrypt(request.data)
     assert payload == {
         "title": "ポチのトイレ",
-        "body": "ポチのトイレに変化を検出しました。排便・排尿の可能性があります。",
+        "body": "ポチのトイレに変化を検出しました。うんち・おしっこの可能性があります。",
         "url": url,
     }
 

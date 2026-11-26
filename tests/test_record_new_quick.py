@@ -30,7 +30,7 @@ def test_excretion_type_is_chosen_with_buttons(gui):
     server, _, _ = gui
     page = new_record_page(server)
     assert '<select name="type"' not in page
-    for value, text in (("feces", "排便"), ("urine", "排尿"), ("both", "両方")):
+    for value, text in (("feces", "うんち"), ("urine", "おしっこ"), ("both", "両方")):
         assert re.search(rf'<button[^>]* name="type" value="{value}">.*?{text}</button>', page)
 
 
