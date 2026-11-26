@@ -62,7 +62,7 @@
 <h4>うんち・おしっこの確認</h4>
 <div class="quick-buttons">
 {%- for button in quick.buttons -%}
-<button{% if not button.main %} class="secondary"{% endif %} name="label" value="{{ button.value }}">{{ icon(button.icon) }}{{ button.text }}</button>
+<button{% if not button.main %} class="secondary"{% endif %} name="label" value="{{ button.value }}">{{ icon(button.icon) }}<span class="quick-label">{{ button.text }}</span></button>
 {%- endfor -%}
 </div>
 <div class="times">{{ location_field(locations, form.location) }}
