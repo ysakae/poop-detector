@@ -4,9 +4,15 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-26
+
 ### 追加
 
 - GUI に現在のバージョンと PyPI の最新安定版を表示し、`--update-dir` で起動した管理画面から更新できるようにする
+
+### 修正
+
+- ホームのライブ映像が表示されない場合に、接続を自動でやり直す（#326）
 
 ## [1.0.0] - 2026-11-26
 
@@ -96,5 +102,6 @@
 - GitHub Actions で静的解析、Python 3.11・3.12 のテスト、Docker イメージを確認
 - MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明、依存ライブラリのライセンスの一覧
 
-[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/ysakae/poop-detector/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/ysakae/poop-detector/releases/tag/v1.0.0
