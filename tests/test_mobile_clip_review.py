@@ -81,6 +81,14 @@ def test_unlabeled_clip_offers_one_tap_buttons_without_a_notification(gui):
     assert "ラベルを保存" in html
 
 
+def test_quick_button_label_can_wrap_separately_from_its_icon(gui):
+    server, store, _ = gui
+    clip = ready_clip(ClipStore(store.root))
+    form = quick_form(request(server, "GET", f"/clips?id={clip}")[1].decode())
+    assert form
+    assert '<span class="quick-label">うんち・おしっこなし</span></button>' in form
+
+
 def test_suggested_label_is_the_only_filled_button(gui):
     server, store, _ = gui
     clips = ClipStore(store.root)

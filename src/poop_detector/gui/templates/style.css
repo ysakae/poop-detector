@@ -147,6 +147,7 @@ button[aria-busy="true"]{cursor:progress}button[aria-busy="true"]::before{conten
 /* 動画の確認：1回押して確定するボタンを主役にし、細かい入力はたたむ */
 .quick-confirm{margin:16px 0;padding:16px;background:var(--surface-2);border-radius:var(--radius)}.quick-confirm h4{margin:0 0 10px;font-size:16px}
 .quick-buttons{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px}.quick-buttons button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:56px;padding-inline:8px;font-size:17px;white-space:nowrap}.quick-buttons .icon{width:22px;height:22px}
+.quick-buttons .quick-label{min-width:0;white-space:normal;overflow-wrap:anywhere}
 /* 動画の画面の上でたたむ、保存の操作と録画容量（Issue 187） */
 .clip-tools{margin:0 0 12px;padding:12px 16px;border:1px solid var(--border);box-shadow:none}.clip-tools>summary{font-weight:600}.clip-tools>summary .chip{margin-left:6px;vertical-align:middle;white-space:normal}.clip-tools .toolbar{margin:12px 0 0}
 .clip-more{margin-top:16px;padding:14px 16px;border:1px solid var(--border);box-shadow:none}.clip-more>summary{font-weight:600}
