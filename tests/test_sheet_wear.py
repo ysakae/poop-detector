@@ -114,22 +114,27 @@ def test_status_counts_events_and_keeps_latest_ratio(tmp_path):
     assert status.measured
 
 
-def test_reset_starts_counting_again(tmp_path):
+def test_legacy_auto_reset_keeps_events_and_notification(tmp_path):
     sheet = log(tmp_path)
     sheet.record("scene", 0.2, "event")
     sheet.mark_notified()
-    sheet.reset("scene", "auto")
+    # 旧バージョンが残した自動リセットは割合の測定値を持たない。
+    with sheet.database.connect() as db:
+        db.execute(
+            "INSERT INTO sheet_wear (at, scene_signature, kind, source) VALUES (?, ?, ?, ?)",
+            (datetime.now(UTC).isoformat(), "scene", "reset", "auto"),
+        )
     status = sheet.status()
-    assert (status.events, status.ratio, status.notified) == (0, 0.0, False)
-    assert status.since is not None
+    assert (status.events, status.ratio, status.notified) == (1, 0.0, True)
+    assert status.since is None
 
 
-def test_changing_the_scene_resets_before_recording(tmp_path):
+def test_changing_the_scene_keeps_events_and_uses_latest_ratio(tmp_path):
     sheet = log(tmp_path)
     sheet.record("old", 0.2, "event")
     sheet.record("new", 0.01, "event")
     status = sheet.status()
-    assert (status.events, status.ratio) == (1, 0.01)
+    assert (status.events, status.ratio) == (2, 0.01)
 
 
 def test_sheet_change_in_care_records_resets(tmp_path):
@@ -183,17 +188,21 @@ def test_extension_retries_when_notification_fails(tmp_path):
     assert not sheet.status().notified
 
 
-def test_settling_back_to_a_clean_sheet_resets(tmp_path):
+def test_settling_below_one_percent_preserves_event_count(tmp_path):
     notifier = SheetNotifier()
     ext, sheet = extension(tmp_path, notifier)
     detector = IncrementalDetector(EMPTY)
     detector.accept(STAIN)
     ext.on_reference(view(), detector, "event")
-    detector.accept(EMPTY)
-    ext.on_reference(view(EMPTY), detector, "settled")
+    faint_stain = EMPTY.copy()
+    cv2.rectangle(faint_stain, (10, 10), (20, 20), (30, 30, 30), -1)
+    detector.accept(faint_stain)
+    ratio = detector.wear_ratio()
+    assert 0 < ratio <= 0.01
+    ext.on_reference(view(faint_stain), detector, "settled")
     status = sheet.status()
-    assert (status.events, status.ratio) == (0, 0.0)
-    assert status.since is not None
+    assert (status.events, status.ratio) == (1, ratio)
+    assert status.since is None
 
 
 def test_disabled_setting_builds_no_extension(tmp_path):

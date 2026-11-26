@@ -9,8 +9,6 @@ from ..detection.monitoring import FrameView, MonitorExtension
 from ..records.sheet_wear import SheetWearLog
 
 logger = logging.getLogger(__name__)
-# 清掃・乾燥で空が続いたときに、汚れがこの割合以下ならきれいなシートに替えたとみなす。
-RESET_RATIO = 0.01
 
 
 class SheetNotifier(Protocol):
@@ -34,10 +32,6 @@ class SheetWearExtension(MonitorExtension):
         reason: Literal["event", "settled"],
     ) -> None:
         ratio = detector.wear_ratio(view.valid_mask)
-        if reason == "settled" and ratio <= RESET_RATIO:
-            self.log.reset(self.signature, "auto")
-            logger.info("きれいなシートに戻ったので、シートの使用を数え直します")
-            return
         self.log.record(self.signature, ratio, reason)
         status = self.log.status()
         if status.notified or not status.due(
