@@ -28,6 +28,8 @@ from .list_time import by_day, list_time
 from .review_queue import ReviewItem, review_bar, review_revision
 from .templating import render_template
 
+CONDITION_TAG_LABELS = {"既存の跡と新しい排泄": "前からあった跡と新しいうんち・おしっこ"}
+
 if TYPE_CHECKING:
     from .exchange import Exchange
 
@@ -49,7 +51,7 @@ SOURCES = {
     "dog_exit": "犬の退場",
     "dog_visit": "犬の入退場",
     "early_alert": "トイレ見守り",
-    "toilet_reentry": "排泄後の再侵入",
+    "toilet_reentry": "トイレ後に再びトレーに入ったとき",
     "outside_stay": "トレー外での滞在",
 }
 # 一覧の絞り込み（?show=）。値は、動画の行がその条件に入るかを返す。
@@ -264,7 +266,10 @@ def benchmark_form(
         "available": True,
         "state": (candidate.state if candidate else None) or "",
         "states": [("", "選ばない"), *CANDIDATE_STATES.items()],
-        "presets": [{"tag": tag, "checked": tag in tags} for tag in CONDITION_TAGS],
+        "presets": [
+            {"tag": tag, "label": CONDITION_TAG_LABELS.get(tag, tag), "checked": tag in tags}
+            for tag in CONDITION_TAGS
+        ],
         "other": "、".join(tag for tag in tags if tag not in CONDITION_TAGS),
         "linked": linked,
     }
@@ -297,7 +302,7 @@ QUICK_LABELS: tuple[tuple[str, str, str], ...] = (
     ("feces", "うんち", "feces"),
     ("urine", "おしっこ", "urine"),
     ("both", "両方", "paw"),
-    ("none", "排泄なし", "none"),
+    ("none", "うんち・おしっこなし", "none"),
 )
 
 

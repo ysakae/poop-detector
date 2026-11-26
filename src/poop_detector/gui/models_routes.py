@@ -30,6 +30,7 @@ from ..video.judge_runs import JudgeRunUsage
 from ..video.plan_usage import PlanUsageBoard, QuotaWindow
 from ..video.providers import PROVIDER_NAMES
 from ..video.review_status import ReviewStatus, review_status
+from .clip_pages import CONDITION_TAG_LABELS
 from .pages import Query, local_time, message_page
 from .routes import Form, audit, first, get, post
 from .templating import render_template
@@ -230,7 +231,7 @@ def _answers(result: BenchmarkResult, clips: ClipStore) -> list[dict[str, Any]]:
                 "id": case.clip_id,
                 "label": ANSWER_NAMES[case.label],
                 "split": SPLIT_NAMES.get(case.split, "―"),
-                "tags": "、".join(case.tags) or "―",
+                "tags": "、".join(CONDITION_TAG_LABELS.get(tag, tag) for tag in case.tags) or "―",
                 "answers": [
                     {"name": ANSWER_NAMES[answer], "miss": answer != case.label}
                     for answer in case.answers
@@ -291,7 +292,7 @@ def _datasets(root: Path, clips: ClipStore) -> tuple[list[dict[str, Any]], int]:
                     for split, counts in summary["by_split"].items()
                 ],
                 "tags": [
-                    {"name": tag, "counts": list(counts.values())}
+                    {"name": CONDITION_TAG_LABELS.get(tag, tag), "counts": list(counts.values())}
                     for tag, counts in summary["by_tag"].items()
                 ],
                 "summary": summary,

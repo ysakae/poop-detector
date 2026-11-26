@@ -261,7 +261,7 @@ def test_manual_record_has_its_own_page(gui):
     status, body = request(server, "GET", "/records/new")
     page = body.decode()
     assert status == 200
-    assert "<h2>排泄を記録</h2>" in page
+    assert "<h2>トイレを記録</h2>" in page
     assert 'name="action"' in page
     assert 'name="start"' in page
     # 記録の詳細は1件のラベルだけを扱う。

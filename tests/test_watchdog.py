@@ -371,7 +371,7 @@ def test_judge_watchdog_messages_say_what_stops_and_what_to_check():
     assert notifier.send_outage("judge", datetime(2026, 11, 12, 0, 30, tzinfo=UTC))
     assert notifier.send_recovery("judge", 3900)
     assert notifier.messages == [
-        "11/12 09:30から動画の自動判定が失敗し続けています。この間、排泄の通知は届きません。"
+        "11/12 09:30から動画の自動判定が失敗し続けています。この間、トイレの通知は届きません。"
         "判定器の利用上限とログインを確認してください。",
         "動画の自動判定が再開しました。約1時間5分止まっていました。この間の動画を順に判定します。",
     ]

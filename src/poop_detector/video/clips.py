@@ -26,7 +26,7 @@ CLIP_LABELS = {
     "feces": "うんち",
     "urine": "おしっこ",
     "both": "両方",
-    "none": "排泄なし",
+    "none": "うんち・おしっこなし",
     "uncertain": "判断できない",
 }
 # 新たに出た便の状態（#294）。normal: 形がある、soft: やわらかい、diarrhea: 形のない下痢、
@@ -40,7 +40,7 @@ ACTIVITIES = {
     "sniffing": "匂いを嗅ぐ",
     "scratching": "体を掻く",
     "walking": "歩く・通過する",
-    "excreting": "排泄動作",
+    "excreting": "うんち・おしっこをする動作",
 }
 logger = logging.getLogger(__name__)
 

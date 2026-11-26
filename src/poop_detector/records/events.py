@@ -72,7 +72,7 @@ def utcnow() -> str:
 def validate_location(location: str | None, *, manual: bool = False) -> None:
     locations = RECORD_LOCATIONS if manual else EXCRETION_LOCATIONS
     if location and location not in locations:
-        raise InvalidInputError("排泄した場所が不正です")
+        raise InvalidInputError("場所の選択を確認してください")
 
 
 def _has_video_confirmation(db: sqlite3.Connection, event_id: str) -> bool:
@@ -328,7 +328,7 @@ class Store:
         location: str | None = None,
     ) -> str:
         if excretion_type not in EXCRETION_TYPES:
-            raise InvalidInputError("排泄の種類を指定してください")
+            raise InvalidInputError("うんち・おしっこの種類を指定してください")
         validate_times(timestamp, None)
         validate_times(start, end)
         if not isinstance(note, str) or len(note) > 2000:

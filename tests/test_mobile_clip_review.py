@@ -70,7 +70,7 @@ def test_unlabeled_clip_offers_one_tap_buttons_without_a_notification(gui):
         ("feces", "うんち"),
         ("urine", "おしっこ"),
         ("both", "両方"),
-        ("none", "排泄なし"),
+        ("none", "うんち・おしっこなし"),
     ]:
         assert f'name="label" value="{value}"' in form
         assert text in form

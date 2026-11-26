@@ -1,4 +1,4 @@
-"""カメラを使わないときも同じデータに排泄を記録できる。"""
+"""カメラを使わないときも同じデータにトイレを記録できる。"""
 
 import pytest
 from support import request, submit
@@ -24,11 +24,11 @@ def test_manual_home_hides_live_view_and_links_to_manual_entry(gui, submitted_ac
             status, page = request(manual, "GET", "/records/new")
             assert status == 200
             html = page.decode()
-            assert "排泄を記録" in html
+            assert "トイレを記録" in html
             assert "通知は来ましたか？" not in html
             assert (
                 'href="/review"'
-                not in html.split('<form method="post"', 1)[0].split("<h2>排泄を記録</h2>", 1)[1]
+                not in html.split('<form method="post"', 1)[0].split("<h2>トイレを記録</h2>", 1)[1]
             )
             assert '<input type="hidden" name="action" value="manual">' in html
             assert (

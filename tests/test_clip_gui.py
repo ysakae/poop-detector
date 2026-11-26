@@ -223,14 +223,14 @@ def test_clip_list_can_be_narrowed_by_label_state(gui):
     rows = unlabelled.split('id="clip-list"', 1)[1].split("</nav>", 1)[0]
     assert "人のラベルなし" not in rows
     assert "✓" not in rows
-    assert "自動判定：排泄なし</span>" in rows
+    assert "自動判定：うんち・おしっこなし</span>" in rows
     assert f"/clips?id={labeled}" not in rows
 
     narrowed = request(server, "GET", "/clips?show=labeled")[1].decode()
     assert '<a href="/clips?show=labeled" aria-current="true">ラベル済み 1</a>' in narrowed
     rows = narrowed.split('id="clip-list"', 1)[1].split("</nav>", 1)[0]
     assert 'aria-hidden="true">✓</span>' in rows
-    assert "人のラベル：</span>排泄なし</span>" in rows
+    assert "人のラベル：</span>うんち・おしっこなし</span>" in rows
     assert "自動判定：うんちの候補 ／ トレー内</span>" in rows
     # 絞り込んだ一覧の先頭を開き、行のリンクは絞り込みを保つ。
     assert f'class="active" href="/clips?id={labeled}&amp;show=labeled"' in narrowed
@@ -276,12 +276,12 @@ def test_clip_list_marks_only_videos_waiting_for_automatic_review(gui, request):
         for item in (failed, judged, labeled, excluded, old, recording)
     )
     assert "自動判定：失敗" in before[failed]
-    assert "自動判定：排泄なし" in before[judged]
+    assert "自動判定：うんち・おしっこなし" in before[judged]
 
     assert clips.assessments.save(waiting, Assessment(label="none"))
     after = rows()
     assert "判定待ち" not in after[waiting]
-    assert "自動判定：排泄なし" in after[waiting]
+    assert "自動判定：うんち・おしっこなし" in after[waiting]
 
 
 def test_empty_filter_says_so_instead_of_no_clips_yet(gui):

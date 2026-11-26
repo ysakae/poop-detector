@@ -66,7 +66,7 @@
 {% if sheet %}<section class="card" aria-labelledby="sheet-title">
 <h2 id="sheet-title">シートの使用</h2>
 <p>{% if sheet.due %}{{ chip("そろそろ交換どきです", "warn") }}{% else %}{{ chip("まだ使えます", "ok") }}{% endif %}</p>
-<p class="note">前回の交換から 排泄 {{ sheet.events }}回・汚れ {{ sheet.percent }}%（監視範囲に占める差分の割合の目安）。替えたら「シート交換をした」を押してください。</p>
+<p class="note">前回の交換から、うんち・おしっこの候補が計{{ sheet.events }}回、汚れは{{ sheet.percent }}%（監視範囲に占める差分の割合の目安）。替えたら「シート交換をした」を押してください。</p>
 </section>
 {% endif %}<section class="card" aria-labelledby="recent-title">
 <h2 id="recent-title">最近の確定記録</h2>
@@ -75,7 +75,7 @@
 <li>{{ icon(record.icon) }}<span class="timeline-what">{{ record.type }}<small>{{ record.location }}</small></span><a href="{{ record.url }}">{{ when(record.when) }}</a></li>
 {%- endfor -%}
 </ul>
-{% else %}{{ empty_state("確定記録はまだありません", "排泄を見かけたら、ここから記録できます。", "/records/new", "排泄を記録", "secondary") }}{% endif %}
+{% else %}{{ empty_state("確定記録はまだありません", "うんちやおしっこを見かけたら、ここから記録できます。", "/records/new", "トイレを記録", "secondary") }}{% endif %}
 <p class="note"><a href="/clips?show=detected">差分検知の動画</a></p>
 </section>
 {% if manual_only %}

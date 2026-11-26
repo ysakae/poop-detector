@@ -178,14 +178,22 @@ def test_candidate_is_saved_from_the_clip_page(gui):
     status, _ = submit(
         server,
         "/clips/benchmark",
-        {"id": clip, "state": "include", "tag": ["夜間（赤外線）", "遮蔽"], "other_tags": "給水"},
+        {
+            "id": clip,
+            "state": "include",
+            "tag": ["夜間（赤外線）", "既存の跡と新しい排泄"],
+            "other_tags": "給水",
+        },
     )
 
     assert status == 303
-    assert clips.benchmark.get(clip) == Candidate("include", ("夜間（赤外線）", "遮蔽", "給水"))
+    assert clips.benchmark.get(clip) == Candidate(
+        "include", ("夜間（赤外線）", "既存の跡と新しい排泄", "給水")
+    )
     page = request(server, "GET", f"/clips?id={clip}&benchmark_saved=1")[1].decode()
     assert "評価の候補を保存しました" in page
-    assert 'value="遮蔽" checked' in page
+    assert 'value="既存の跡と新しい排泄" checked' in page
+    assert "前からあった跡と新しいうんち・おしっこ</label>" in page
     assert 'value="給水"' in page
     assert "評価に入れる" in page
 

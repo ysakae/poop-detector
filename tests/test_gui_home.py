@@ -111,7 +111,7 @@ def test_home_records_care_in_one_tap(gui):
         ("/care#feeding", "ごはん"),
         ("/care#sheet", "シート交換"),
         ("/weight", "体重"),
-        ("/records/new", "排泄"),
+        ("/records/new", "トイレ"),
     ]:
         assert re.search(
             rf'<a href="{re.escape(href)}"><svg class="icon".*?</svg>{text}</a>', quick

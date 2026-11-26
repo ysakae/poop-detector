@@ -120,10 +120,10 @@ class ToiletNotifier:
 
     def send_sheet_due(self, events: int, ratio: float) -> bool:
         """前回の交換からの排泄の回数か、汚れの割合が上限に達したことを知らせる。"""
-        count = f"排泄{events}回、" if events else ""
+        count = f"うんち・おしっこの候補が計{events}回、" if events else ""
         message = (
             f"{self.owner}トイレのシートがそろそろ交換どきです。"
-            f"前回の交換から{count}汚れは監視範囲の約{ratio:.0%}です。"
+            f"前回の交換から、{count}汚れは監視範囲の約{ratio:.0%}です。"
         )
         return self._display(message, path="/")
 
@@ -202,9 +202,12 @@ class ToiletNotifier:
 
     def send_reentry(self, kind: str, event_id: str, at: datetime, clip_id: str | None) -> Delivery:
         detail, risk = {
-            "reentry": ("未回収の排泄候補があるトレーに再侵入", "MEDIUM"),
-            "high": ("排泄物を踏んだ可能性が高い", "HIGH"),
-            "uncollected": ("排泄候補の片付けが未確認", "要確認"),
+            "reentry": (
+                "うんちやおしっこの跡が残っている可能性があるトレーに、また入りました",
+                "MEDIUM",
+            ),
+            "high": ("うんちやおしっこを踏んだ可能性が高い", "HIGH"),
+            "uncollected": ("うんち・おしっこの候補を片付けたか確認できません", "要確認"),
         }[kind]
         path = (
             ("/clips?" + urlencode({"id": clip_id}))
@@ -234,7 +237,7 @@ class ToiletNotifier:
         elif kind == "judge":
             # 差分だけの通知は抑えたままなので、届かなくなる通知を伝える。
             message = (
-                f"{start}から動画の自動判定が失敗し続けています。この間、排泄の通知は届きません。"
+                f"{start}から動画の自動判定が失敗し続けています。この間、トイレの通知は届きません。"
                 "判定器の利用上限とログインを確認してください。"
             )
         else:

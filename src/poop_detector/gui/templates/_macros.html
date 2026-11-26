@@ -1,6 +1,6 @@
 {#- 複数の画面で使う部品。 -#}
 {% macro location_field(locations, location) -%}
-<label>排泄した場所<select name="location">
+<label>どこでした？<select name="location">
 {%- for value, title in [("", "場所不明")] + locations -%}
 <option value="{{ value }}"{% if value == (location or "") %} selected{% endif %}>{{ title }}</option>
 {%- endfor -%}
