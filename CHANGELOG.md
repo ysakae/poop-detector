@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-26
+
+### 変更
+
+- GUI と通知の表記を「うんち」「おしっこ」にそろえ、記録画面や案内の「排泄」も文脈に合わせて「トイレ」などに言い換える（#329、#332）
+
+### 修正
+
+- ホームと確認待ちの件数、動画一覧を開いたまま、新しい検知や動画を確認できるようにする（#330）
+- 手動でシート交換を記録すると、シートの使用回数と汚れの集計を交換時点からやり直す（#331）
+- 睡眠の割合と、犬検出モデルの結果に基づく割合を睡眠画面に表示する（#333）
+
 ## [1.1.0] - 2026-11-26
 
 ### 追加
@@ -102,6 +114,7 @@
 - GitHub Actions で静的解析、Python 3.11・3.12 のテスト、Docker イメージを確認
 - MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明、依存ライブラリのライセンスの一覧
 
-[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/ysakae/poop-detector/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/ysakae/poop-detector/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/ysakae/poop-detector/releases/tag/v1.0.0
