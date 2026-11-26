@@ -150,7 +150,7 @@ class ClipLabels:
             raise ValueError("確定記録にはうんち・おしっこ・両方のいずれかを選んでください")
         record_id, linked = self._linked_record(db, clip, record_id)
         if clip_label.location == "outside" and record_id == clip["event_id"]:
-            raise ValueError("トレー外の排泄は、トレー内の検知とは別の記録を選んでください")
+            raise ValueError("トレーの外でした場合は、トレー内の検知とは別の記録を選んでください")
         times = self._absolute_times(clip, clip_label)
         if record_id == "new":
             record_id = self._confirm_new(db, clip, clip_label, times)

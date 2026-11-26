@@ -132,7 +132,7 @@ class ReentryStore:
                 "SELECT 1 FROM reentry_waste WHERE event_id=?", (event_id,)
             ).fetchone()
             if candidate is None:
-                raise InvalidInputError("排泄候補が見つかりません")
+                raise InvalidInputError("うんち・おしっこの候補が見つかりません")
             if label:
                 Store.classify_in(db, event_id, label, location=location)
             elif location:

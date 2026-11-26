@@ -302,7 +302,7 @@ def test_each_area_says_what_it_is_for(areas_gui):
         "floor",
         "outside",
     ]
-    assert "排泄の検知" in card(html, "roi")
+    assert "うんち・おしっこの検知" in card(html, "roi")
     assert "行動マップ" in card(html, "floor")
     assert "睡眠" in card(html, "floor")
     outside = card(html, "outside")

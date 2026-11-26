@@ -28,11 +28,11 @@
 {%- endfor -%}
 </nav>{% endif %}<article id="clip-detail"{% if clip and clip.pending %} data-pending-clip="{{ clip.id }}" data-clip-status="{{ clip.status_key }}"{% endif %}>
 {% if clip is none %}
-{% if notice %}<p>指定された動画を確認できません。<a href="/records/new">排泄を記録</a></p>{% endif %}
+{% if notice %}<p>指定された動画を確認できません。<a href="/records/new">トイレを記録</a></p>{% endif %}
 {% if any_clips %}<div class="empty"><h3>この条件の動画はありません</h3><p>「すべて」に切り替えてください。</p></div>{% else %}<div class="empty"><h3>動画はまだありません</h3><p>監視を起動して保存ボタンを押すか、自動検知を待ってください。</p></div>{% endif %}
 {% else %}
 <h3>{{ clip.time }}</h3><p class="note">{{ clip.source }} ／ {{ clip.status }}</p>
-{% if notice_unavailable %}<p>動画ファイルを確認できません。<a href="/records/new">排泄を記録</a></p>{% endif %}
+{% if notice_unavailable %}<p>動画ファイルを確認できません。<a href="/records/new">トイレを記録</a></p>{% endif %}
 {% if clip.ready %}
 <video controls preload="metadata" class="clip-video" playsinline poster="/clip-thumbnail?id={{ clip.id }}" src="/clip-video?id={{ clip.id }}{{ seek }}">動画を再生できません。</video>
 {#- 確認のための再生の操作。ブラウザーの標準の操作バーより大きく押せるボタンにする（static/clips.js）。 -#}
@@ -42,7 +42,7 @@
 <div class="message message-info"><strong>行動分析 ／ 旋回候補</strong><p>トレー付近の位置を取得 {{ circling.located }}/{{ circling.sampled }}コマ</p>
 {%- if not circling.candidates %}<p>旋回候補はありません。</p>{% endif -%}
 {%- for candidate in circling.candidates -%}
-<p><button class="secondary" type="button" data-video-seek="{{ candidate.start }}">旋回候補 {{ "%.1f"|format(candidate.start) }}〜{{ "%.1f"|format(candidate.end) }}秒へ移動</button>{% if candidate.lead is not none %} ／ 排泄の開始記録より {{ "%.1f"|format(candidate.lead) }}秒前に検出{% endif %}</p>
+<p><button class="secondary" type="button" data-video-seek="{{ candidate.start }}">旋回候補 {{ "%.1f"|format(candidate.start) }}〜{{ "%.1f"|format(candidate.end) }}秒へ移動</button>{% if candidate.lead is not none %} ／ 記録した開始時刻より {{ "%.1f"|format(candidate.lead) }}秒前に検出{% endif %}</p>
 {%- endfor -%}
 </div>
 {% endif %}

@@ -93,7 +93,7 @@ class BenchmarkCandidates:
             row = db.execute("SELECT status, label FROM clips WHERE id=?", (clip_id,)).fetchone()
             if row is None or row["status"] != "ready" or row["label"] not in EVALUATED_LABELS:
                 raise ValueError(
-                    "評価の候補には、保存済みで排泄の種類か排泄なしの"
+                    "評価の候補には、保存済みでうんち・おしっこの種類か「うんち・おしっこなし」の"
                     "ラベルを付けた動画を選んでください"
                 )
             if state is None and not normalized:

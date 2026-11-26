@@ -117,7 +117,7 @@ def quick_clip(handler: Exchange, form: Form) -> None:
     label = fields.get("label", "")
     try:
         if label not in ("feces", "urine", "both", "none"):
-            raise ValueError("排泄の種類を選んでください")
+            raise ValueError("うんち・おしっこの種類を選んでください")
         row = store.get(clip_id)
         if row is None:
             raise ValueError("動画が見つかりません")

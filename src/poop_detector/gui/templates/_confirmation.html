@@ -8,6 +8,6 @@
 {%- for record in confirmation.candidates -%}
 <option value="{{ record.id }}" data-record-location="{{ record.location }}"{% if record.selected %} selected{% endif %}{% if record.disabled %} disabled{% endif %}>{{ record.time }} {{ record.label }}</option>
 {%- endfor -%}
-<option value="new" data-tray-event="{{ 1 if confirmation.tray_event else 0 }}"{% if confirmation.new_disabled %} disabled{% endif %}>新しい確定記録を作成</option></select></label><p class="note">同じ排泄がすでに記録されている場合は、その記録を選んでください。</p>
+<option value="new" data-tray-event="{{ 1 if confirmation.tray_event else 0 }}"{% if confirmation.new_disabled %} disabled{% endif %}>新しい確定記録を作成</option></select></label><p class="note">すでに記録している場合は、その記録を選んでください。</p>
 {%- endif -%}
 <button formaction="/clips/confirm">ラベルと確定記録を保存</button></fieldset>

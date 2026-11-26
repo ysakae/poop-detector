@@ -11,7 +11,7 @@
 {%- endfor -%}
 </div><p class="note">「選ばない」の動画も、ラベルがあれば評価セットの下書きに入ります。「評価に入れる」を選んだ動画だけで作るときは <code>benchmark-dataset create --selected-only</code> を使います。</p></fieldset><fieldset><legend>撮影の条件</legend><div class="choices">
 {%- for preset in benchmark.presets -%}
-<label class="choice"><input type="checkbox" name="tag" value="{{ preset.tag }}" {% if preset.checked %}checked{% endif %}>{{ preset.tag }}</label>
+<label class="choice"><input type="checkbox" name="tag" value="{{ preset.tag }}" {% if preset.checked %}checked{% endif %}>{{ preset.label }}</label>
 {%- endfor -%}
 </div><p><label>ほかの条件（「、」で区切る）<input name="other_tags" maxlength="400" value="{{ benchmark.other }}"></label></p><p class="note">「一部欠落」「トレー外」は録画の情報から自動で付きます。</p></fieldset><p class="note">
 {%- if benchmark.linked -%}

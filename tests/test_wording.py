@@ -17,7 +17,7 @@ AVOIDED = {
     "確定した記録": "確定記録",
     "確定した排泄": "確定記録",
     "動画ラベルのみ保存": "ラベルを保存",
-    "手動で記録する": "排泄を記録",
+    "手動で記録する": "トイレを記録",
 }
 
 
@@ -65,3 +65,14 @@ def test_detections_are_found_among_the_clips(gui):
     status, body = request(server, "GET", f"/records/events?id={event}")
     assert status == 200
     assert "<h2>記録の詳細</h2>" in body.decode()
+
+
+def test_record_detail_uses_plain_language_for_location_and_times(gui):
+    server, store, event = gui
+    store.classify(event, "feces")
+    status, body = request(server, "GET", f"/records/events?id={event}")
+    assert status == 200
+    html = body.decode()
+    assert "どこでした？" in html
+    assert "し始めた時刻" in html
+    assert "終わった時刻" in html

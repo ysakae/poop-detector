@@ -56,7 +56,7 @@ SECTION_TITLES = {
     "audio": "鳴き声の記録",
     "digest": "留守中のまとめ",
     "presence": "不在の記録",
-    "reentry": "排泄後の再侵入の見守り",
+    "reentry": "トイレをした後、またトレーに入ったときの見守り",
     "review": "動画の自動判定",
     "gui": "GUI",
 }

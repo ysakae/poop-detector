@@ -39,7 +39,7 @@ def test_classify_and_manual_records(tmp_path):
 def test_invalid_record_is_not_saved(tmp_path):
     store = Store(tmp_path)
     for kind, start, end, message in [
-        ("invalid", "2026-11-08T23:00:00+09:00", None, "排泄の種類"),
+        ("invalid", "2026-11-08T23:00:00+09:00", None, "うんち・おしっこの種類"),
         ("urine", "2026-11-08T23:00:00", None, "タイムゾーンが必要"),
         ("feces", "2026-11-08T23:00:00+09:00", "2026-11-08T22:00:00+09:00", "完了は開始以降"),
     ]:

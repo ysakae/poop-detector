@@ -320,7 +320,7 @@ SETTINGS: tuple[Setting, ...] = (
         "max_events",
         int,
         _number(0, 100),
-        "0〜100 の整数（前回の交換からの排泄の回数。0 なら回数では知らせない）",
+        "0〜100 の整数（前回の交換から検知したうんち・おしっこの候補の回数。0 なら回数では知らせない）",
     ),
     Setting(
         "sheet_max_ratio",
@@ -448,7 +448,7 @@ SETTINGS: tuple[Setting, ...] = (
         "notify",
         bool,
         _always,
-        "true または false（移動・睡眠・排泄の回数が2日続けていつもと違うときに知らせる）",
+        "true または false（移動・睡眠・トイレの記録が2日続けていつもと違うときに知らせる）",
     ),
     Setting(
         "floor_judge",
@@ -843,7 +843,7 @@ class Config:
         names = {
             "clip_enabled": "動画保存",
             "dog_enabled": "犬の検出",
-            "reentry_enabled": "排泄後の再侵入検知",
+            "reentry_enabled": "トイレをした後にまたトレーに入ったことを検知",
             "video_review_enabled": "動画の自動判定",
             "early_alert_enabled": "見守り通知",
             "track_tray_enabled": "トレー追従",

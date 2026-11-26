@@ -2,11 +2,11 @@
 {% extends "base.html" %}
 {% from "_macros.html" import empty_state, hidden_fields, icon, stat, when %}
 {% block content %}
-<div class="records-heading"><h2>記録</h2><a class="button" href="/records/new">{{ icon("plus") }} 排泄を記録</a></div>
+<div class="records-heading"><h2>記録</h2><a class="button" href="/records/new">{{ icon("plus") }} トイレを記録</a></div>
 {% if saved %}<div class="message" role="status">記録しました。</div>{% endif %}
 <nav aria-label="関連する記録" class="record-shortcuts">
 {% set related = [
-  ("/trends", "trend", "いつもとの違い", "移動・睡眠・排泄の推移"),
+  ("/trends", "trend", "いつもとの違い", "移動・睡眠・トイレの推移"),
   ("/presence", "paw", "不在の記録", "サークルにいなかった時間"),
   ("/vocal", "waveform", "鳴き声の記録", "鳴いていた時間"),
   ("/night", "sleep", "夜間のまとめ", "一晩の睡眠と出来事"),

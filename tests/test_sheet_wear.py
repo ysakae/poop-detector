@@ -248,7 +248,7 @@ def test_sheet_due_message_mentions_count_and_ratio():
     assert notifier.send_sheet_due(6, 0.234)
     message, path = notifier.messages[0]
     assert "ポチのトイレ" in message
-    assert "6回" in message
+    assert "うんち・おしっこの候補が計6回" in message
     assert "23%" in message
     assert path == "/"
 
@@ -256,7 +256,7 @@ def test_sheet_due_message_mentions_count_and_ratio():
 def test_sheet_due_message_without_events():
     notifier = Messages()
     notifier.send_sheet_due(0, 0.4)
-    assert "排泄" not in notifier.messages[0][0]
+    assert "うんち・おしっこの候補" not in notifier.messages[0][0]
 
 
 def test_sheet_settings_have_defaults_and_ranges():
@@ -288,6 +288,6 @@ def test_home_shows_sheet_wear_after_monitoring(gui):
     _, _, body = exchange(server, "GET", "/", headers=cookie, auth=False)
     html = body.decode()
     assert "シートの使用" in html
-    assert "排泄 6回" in html
+    assert "うんち・おしっこの候補が計6回" in html
     assert "汚れ 12%" in html
     assert "そろそろ交換どきです" in html

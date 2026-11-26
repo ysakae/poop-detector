@@ -166,8 +166,8 @@ def event_detail(row: EventRow) -> dict[str, Any]:
         "selected_label": selected_label(row),
         "location": row["location"],
         "times": [
-            ("start", "排泄の開始", local_time(row["actual_start"], form=True)),
-            ("end", "排泄の完了", local_time(row["actual_end"], form=True)),
+            ("start", "し始めた時刻", local_time(row["actual_start"], form=True)),
+            ("end", "終わった時刻", local_time(row["actual_end"], form=True)),
         ],
         "note": row["note"],
     }
@@ -225,7 +225,7 @@ HOME_QUICK: tuple[tuple[str, str, str], ...] = (
     ("/care#feeding", "food", "ごはん"),
     ("/care#sheet", "sheet", "シート交換"),
     ("/weight", "weight", "体重"),
-    (NEW_RECORD_PAGE, "paw", "排泄"),
+    (NEW_RECORD_PAGE, "paw", "トイレ"),
 )
 # 確定記録の種類ごとのアイコン（gui/icons.py の名前）。ない種類は肉球にする。
 RECORD_ICONS = {"feces": "feces", "urine": "urine"}

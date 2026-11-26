@@ -502,7 +502,9 @@ class PreparedClip:
                 location=None,
             )
         if self.outside_stay and assessment.location == "tray":
-            return Assessment("none", "other", None, None, "トレー外での排泄は確認できません")
+            return Assessment(
+                "none", "other", None, None, "トレーの外ではうんち・おしっこを確認できません"
+            )
         seen, clear = assessment.stool_seen_seconds, assessment.stool_clear_seconds
         return replace(
             assessment,
