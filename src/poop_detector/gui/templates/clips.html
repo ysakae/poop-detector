@@ -38,6 +38,24 @@
 {#- 確認のための再生の操作。ブラウザーの標準の操作バーより大きく押せるボタンにする（static/clips.js）。 -#}
 <div class="video-controls"><button class="secondary" type="button" data-video-jump="-10">10秒戻る</button><button class="secondary" type="button" data-video-jump="10">10秒進む</button><button class="secondary" type="button" data-video-seek="{{ clip.trigger_offset }}">操作・検知の位置へ</button><button class="secondary" type="button" data-video-rate="2" aria-pressed="false">2倍速</button></div><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
 {% if clip.interrupted %}<div class="message message-warn">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>{% endif %}
+<fieldset class="clip-timing">
+<legend>開始・完了</legend>
+<p class="note">映っていない時刻は空欄にしてください。</p>
+<div class="clip-offsets">
+{% for offset in form.offsets %}
+<div class="clip-offset">
+<label>{{ offset.text }}（動画内の秒）
+<input type="number" min="0" max="{{ clip.duration }}" step="0.01" name="{{ offset.name }}" form="clip-label-form" value="{{ offset.value }}">
+</label>
+<div class="clip-offset-actions">
+{% if offset.candidate is not none %}<button class="secondary" type="button" data-video-seek="{{ offset.candidate }}">{{ offset.text }}候補へ移動（{{ "%g"|format(offset.candidate) }}秒）</button>{% endif %}
+<button class="secondary" type="button" data-video-offset="{{ offset.name }}">現在位置を{{ offset.text }}にする</button>
+</div>
+</div>
+{% endfor %}
+</div>
+<button class="secondary" type="submit" form="clip-label-form">ラベルを保存</button>
+</fieldset>
 {% if circling %}
 <div class="message message-info"><strong>行動分析 ／ 旋回候補</strong><p>トレー付近の位置を取得 {{ circling.located }}/{{ circling.sampled }}コマ</p>
 {%- if not circling.candidates %}<p>旋回候補はありません。</p>{% endif -%}
@@ -49,9 +67,6 @@
 {% if assessment %}
 {% if assessment.error %}<div class="message message-error">{{ assessment.error }}</div>{% else %}
 <div class="message message-info"><strong>自動判定の候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %} ／ {{ assessment.activity }}{% if assessment.stool_condition %} ／ うんちの状態：{{ assessment.stool_condition }}{% endif %}</strong><br>{{ assessment.reason }}
-{%- for seek in assessment.seeks -%}
-<p><button class="secondary" type="button" data-video-seek="{{ seek.value }}">{{ seek.text }}（{{ seek.shown }}秒）</button></p>
-{%- endfor -%}
 {% if assessment.notified %}<br>通知済み {{ assessment.notified }}{% endif %}
 {%- if assessment.draft %}<br>動画を確認してからラベルを保存してください。{% endif %}</div>
 {% endif %}
@@ -70,11 +85,11 @@
 {% for record in confirmation.candidates %}<option value="{{ record.id }}" data-record-location="{{ record.location }}"{% if record.selected %} selected{% endif %}{% if record.disabled %} disabled{% endif %}>{{ record.time }} {{ record.label }}</option>{% endfor %}
 <option value="new" data-tray-event="{{ 1 if confirmation.tray_event else 0 }}"{% if confirmation.new_disabled %} disabled{% endif %}>新しい確定記録を作成</option>
 </select></label></div>
-<p class="note">押すと、動画のラベルと確定記録を保存します{% if review %}（次の件へ進みます）{% endif %}。日時やメモを付けるときは、下の「くわしく入力」を使ってください。</p>
+<p class="note">押すと、動画のラベルと確定記録を保存します{% if review %}（次の件へ進みます）{% endif %}。開始・完了やメモを含めて確定記録を保存するには、「くわしく入力」を開いてください。</p>
 </form>
 {% endif %}
-<details class="clip-more"{% if not quick %} open{% endif %}><summary>くわしく入力（動作・開始と完了・メモ）</summary>
-<form method="post" action="/clips/label">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>動画の内容</legend><div class="choices">
+<details class="clip-more"{% if not quick %} open{% endif %}><summary>くわしく入力（動画の内容・動作・メモ）</summary>
+<form method="post" action="/clips/label" id="clip-label-form">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>動画の内容</legend><div class="choices">
 {%- for value, text in clip_labels -%}
 <label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == form.label %}checked{% endif %}>{{ text }}</label>
 {%- endfor -%}
@@ -86,11 +101,7 @@
 {%- for value, text in stool_conditions -%}
 <option value="{{ value }}" {% if value == form.stool_condition %}selected{% endif %}>{{ text }}</option>
 {%- endfor -%}
-</select></label></div><p class="note">再生位置を開始・完了として指定できます。映っていない時刻は空欄にしてください。</p><div class="times">
-{%- for name, text, value, button in form.offsets -%}
-<div><label>{{ text }}<input type="number" min="0" max="{{ clip.duration }}" step="0.01" name="{{ name }}" value="{{ value }}"></label><button class="secondary" type="button" data-video-offset="{{ name }}">ここを{{ button }}にする</button></div>
-{%- endfor -%}
-</div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000">{{ clip.note }}</textarea></label></p><button class="secondary">ラベルを保存</button>{% include "_confirmation.html" %}</form>
+</select></label></div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000">{{ clip.note }}</textarea></label></p><button class="secondary">ラベルを保存</button>{% include "_confirmation.html" %}</form>
 </details>
 <details class="clip-more"{% if clip.dismissed %} open{% endif %}><summary>そのほかの操作（保護・評価の候補・確認待ち）</summary>
 {% if clip.dismissed %}<p class="note">確認待ちから外しています。</p><form method="post" action="/review/restore">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary">確認待ちに戻す</button></form>{% elif review %}<form method="post" action="/review/dismiss">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><input type="hidden" name="from" value="review"><button class="secondary">確認しない（確認待ちから外す）</button></form>{% endif %}
