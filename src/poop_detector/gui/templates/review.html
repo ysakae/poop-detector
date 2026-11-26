@@ -3,7 +3,7 @@
 {% from "_macros.html" import chip, clip_assessment, csrf_field, empty_state, icon, when %}
 {% block content %}
 <h2>確認待ち {{ count }}件</h2>
-{% if done %}<p class="message" role="status">すべて確認しました。</p>{% endif %}
+{% if done and not count %}<p class="message" role="status">すべて確認しました。</p>{% endif %}
 {% if end and count %}<p class="message message-warn" role="status">最後まで進みました。飛ばした件が残っています。</p>{% endif %}
 {% if dismissed %}<p class="message" role="status">{{ dismissed }}件を確認待ちから外しました。</p>{% endif %}
 {% if restored %}<p class="message" role="status">{{ restored }}件を確認待ちに戻しました。</p>{% endif %}

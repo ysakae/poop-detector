@@ -3,6 +3,7 @@
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlencode
@@ -24,7 +25,7 @@ from ..video.clips import ACTIVITIES, CLIP_LABELS, PENDING_STATUSES, ClipRow, Cl
 from ..video.review import RESUME_WINDOW
 from .assets import VIDEO_CACHE
 from .list_time import by_day, list_time
-from .review_queue import ReviewItem, review_bar
+from .review_queue import ReviewItem, review_bar, review_revision
 from .templating import render_template
 
 if TYPE_CHECKING:
@@ -146,7 +147,7 @@ def clip_list_item(
 
 
 def pending_marks(status: str) -> dict[str, Any]:
-    """変換待ちかどうかと、状態の値（static/clip_status.js が変化を見比べる）。"""
+    """一覧と詳細欄で使う、変換待ちかどうかと台帳の状態。"""
     return {"pending": status in PENDING_STATUSES, "status_key": status}
 
 
@@ -318,6 +319,11 @@ def quick_form(
     }
 
 
+def clip_revision(rows: Sequence[Mapping[str, Any]]) -> str:
+    """画面と更新確認の要求で、同じ動画台帳なら同じ値を返す。"""
+    return sha256(repr(list(rows)).encode()).hexdigest()
+
+
 def render_clips(
     root: str | Path,
     token: str,
@@ -420,6 +426,8 @@ def render_clips(
         live=live,
         tools_alert=tools_alert(live, capacity),
         has_pending=has_pending,
+        clip_revision=clip_revision(rows),
+        review_revision=review_revision(queue),
         refresh_url=clips_url(mode, row["id"] if row else None),
         saved=bool(query.get("saved")),
         benchmark_saved=bool(query.get("benchmark_saved")),

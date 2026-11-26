@@ -67,7 +67,7 @@ from .navigation import Viewer
 from .pages import save_failed_page
 from .rate_limit import RateLimiter, RateLimits
 from .review_queue import review_items
-from .routes import GET_ROUTES, POST_ROUTES, Form, admin_only_page, required_role
+from .routes import GET_ROUTES, PAGE_STATUS, POST_ROUTES, Form, admin_only_page, required_role
 from .templating import DISPLAY, VIEWER
 from .themes import resolve
 
@@ -244,7 +244,10 @@ class Admission:
         if scope["method"] == "POST" and origin is not None and origin not in self.site.origins:
             return Response("アクセスできません", 403, media_type=HTML)
         url = urlsplit(request_path(scope))
-        found = await run_in_threadpool(self.valid_session, headers.get("cookie"))
+        # バックグラウンドの更新確認では、操作がないセッションの有効期限を延ばさない。
+        found = await run_in_threadpool(
+            self.valid_session, headers.get("cookie"), touch=url.path != PAGE_STATUS
+        )
         if found is not None:
             # ルートへは、確かめたセッションを scope の state で渡す（CSRF トークンを導く）。
             state = scope.setdefault("state", {})
@@ -257,14 +260,14 @@ class Admission:
             return Response(b"", 303, {"Location": f"/login?{target}"})
         return Response(ACCESS_DENIED, 403, media_type=HTML)
 
-    def valid_session(self, cookie_header: str | None) -> tuple[str, str] | None:
+    def valid_session(self, cookie_header: str | None, *, touch: bool) -> tuple[str, str] | None:
         """Cookie のセッションのうち有効なものの (ID, ユーザーの ID)。
 
         ユーザーに結び付かないセッション（廃止した起動トークン方式のもの）と、無効にした
         ユーザーのセッションは使えない。データベースを読むのでスレッドで呼ぶ。
         """
         for value in session_ids(cookie_header, name=self.gui.cookie_name):
-            session = self.gui.sessions.lookup(value)
+            session = self.gui.sessions.lookup(value, touch=touch)
             if session is None:
                 continue
             user = self.gui.accounts.users.get(session.user_id) if session.user_id else None

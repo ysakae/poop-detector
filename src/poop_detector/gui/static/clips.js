@@ -74,6 +74,7 @@ document.addEventListener("click", (event) => {
         const input = detail.querySelector(`input[name="${button.dataset.videoOffset}"]`);
         const limit = Math.floor(Number(input.max) * 100 + 1e-7) / 100;
         input.value = Math.min(video.currentTime, limit).toFixed(2);
+        input.dispatchEvent(new Event("input", {bubbles: true}));
     }
 });
 

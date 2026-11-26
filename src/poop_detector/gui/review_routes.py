@@ -22,6 +22,7 @@ from .review_queue import (
     item_time,
     next_item,
     review_items,
+    review_revision,
     scene_groups,
     scene_key,
 )
@@ -100,6 +101,7 @@ def review_page(handler: "Handler", query: Query) -> None:
         "review.html",
         title=app.title,
         count=len(entries),
+        review_revision=review_revision(items),
         groups=by_day(entries),
         done=first(query, "done") == "1",
         end=first(query, "end") == "1",

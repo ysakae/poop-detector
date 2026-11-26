@@ -148,7 +148,7 @@ def test_status_route_limits_the_number_of_ids(gui):
     assert len(payload["clips"]) == 3
 
 
-def test_status_script_polls_only_while_needed(gui):
+def test_status_script_checks_visible_pages_and_protects_edits(gui):
     server, _, _ = gui
     status, headers, body = exchange(server, "GET", "/assets/clip_status.js")
     assert status == 200
@@ -156,8 +156,10 @@ def test_status_script_polls_only_while_needed(gui):
     script = body.decode()
     assert script.startswith('"use strict";')
     for point in (
-        "/clips/status",
-        "[data-pending-clip]",
+        "/page-status",
+        "clipRevision",
+        "reviewRevision",
+        "edited",
         "visibilitychange",
         "document.hidden",
         "console.warn",
@@ -180,3 +182,40 @@ def test_clip_script_works_without_the_list_in_focused_review(gui):
     script = request(server, "GET", "/assets/clips.js")[1].decode()
     assert "clipList.addEventListener" not in script
     assert "clipList?.addEventListener" in script
+
+
+def test_page_status_tracks_new_clips_and_review_replacements(gui):
+    server, store, event_id = gui
+    store.update(event_id, feedback=0)
+    clips = ClipStore(store.root)
+
+    def state():
+        status, headers, body = exchange(server, "GET", "/page-status?clips=1")
+        assert status == 200
+        assert "no-store" in headers["Cache-Control"]
+        return json.loads(body)
+
+    initial = state()
+    assert initial["pending"] == 0
+    assert f'data-clip-revision="{initial["clips"]}"' in clips_html(server)
+    assert f'data-review-revision="{initial["review"]}"' in clips_html(server, "/review")
+    assert request(server, "GET", "/page-status", auth=False)[0] == 403
+    assert (
+        exchange(server, "GET", "/page-status", headers={"Sec-Fetch-Site": "cross-site"})[0] == 403
+    )
+
+    first = clips.request()
+    queued = state()
+    assert queued["clips"] != initial["clips"]
+    assert queued["review"] == initial["review"]
+
+    clips.update(first, status="ready")
+    ready = state()
+    assert ready["pending"] == 1
+    assert ready["clips"] != queued["clips"]
+
+    clips.update(first, status="failed")
+    ready_clip(clips)
+    replacement = state()
+    assert replacement["pending"] == ready["pending"]
+    assert replacement["review"] != ready["review"]

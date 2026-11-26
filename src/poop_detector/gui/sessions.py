@@ -90,8 +90,8 @@ class SessionStore:
         """有効なセッションか。"""
         return self.lookup(session_id) is not None
 
-    def lookup(self, session_id: str) -> Session | None:
-        """有効なセッションの中身。期限切れなら消して None。使ったときは最後に使った時刻を延ばす。"""
+    def lookup(self, session_id: str, *, touch: bool = True) -> Session | None:
+        """有効なセッションの中身。期限切れなら消して None。touch が真なら最後に使った時刻を更新する。"""
         if not session_id:
             return None
         key = _digest(session_id)
@@ -107,7 +107,7 @@ class SessionStore:
                 db.execute("DELETE FROM gui_sessions WHERE id = ?", (key,))
                 return None
             last_seen = datetime.fromisoformat(row["last_seen"])
-            if (now - last_seen).total_seconds() >= TOUCH_INTERVAL_SECONDS:
+            if touch and (now - last_seen).total_seconds() >= TOUCH_INTERVAL_SECONDS:
                 db.execute("UPDATE gui_sessions SET last_seen = ? WHERE id = ?", (_stamp(now), key))
         return Session(row["user_id"])
 
