@@ -196,8 +196,10 @@ def _cell_title(cell: HourCell) -> str:
     if cell.level is None:
         return f"{head} 記録なし／記録 {cell.observed_minutes}分"
     text = f"{head} 睡眠 {cell.asleep_minutes}分／記録 {cell.observed_minutes}分"
+    sleep_percent = round(cell.asleep_minutes / cell.observed_minutes * 100)
+    text += f"／睡眠割合 {sleep_percent}%"
     if cell.detection_ratio is not None:
-        text += f"／検出 {round(cell.detection_ratio * 100)}%"
+        text += f"／犬検出モデル {round(cell.detection_ratio * 100)}%"
     return text
 
 

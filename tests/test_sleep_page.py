@@ -289,9 +289,19 @@ def test_unknown_rows_are_not_counted_as_observed(tmp_path):
     assert (cell.asleep_minutes, cell.observed_minutes, cell.level) == (20, 20, None)
 
 
-def test_cell_title_shows_detection_ratio():
+def test_cell_title_shows_sleep_and_detection_ratios():
     cell = HourCell(DAY, 3, 45, 60, 0.8, 3)
-    assert _cell_title(cell) == "11/20 3時 睡眠 45分／記録 60分／検出 80%"
+    assert _cell_title(cell) == "11/20 3時 睡眠 45分／記録 60分／睡眠割合 75%／犬検出モデル 80%"
+
+
+def test_cell_title_shows_full_sleep_with_zero_model_detections():
+    cell = HourCell(DAY, 3, 60, 60, 0.0, 4)
+    assert _cell_title(cell) == "11/20 3時 睡眠 60分／記録 60分／睡眠割合 100%／犬検出モデル 0%"
+
+
+def test_cell_title_uses_recorded_minutes_for_sleep_ratio_without_model_data():
+    cell = HourCell(DAY, 3, 20, 40, None, 2)
+    assert _cell_title(cell) == "11/20 3時 睡眠 20分／記録 40分／睡眠割合 50%"
 
 
 def test_daytime_falls_back_to_default_when_config_is_broken(tmp_path):
