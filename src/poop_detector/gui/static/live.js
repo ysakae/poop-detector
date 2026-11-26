@@ -18,6 +18,7 @@ const waiting = "監視からの映像を待っています。";
 let retryAt = 0;
 let startedAt = 0;
 const FIRST_FRAME_TIMEOUT_MS = 4000;
+const STATUS_TIMEOUT_MS = 4000;
 let useSnapshots = false;
 
 // 通信を抑える工夫。外の回線で見るときは、映像を1秒に SAVER_FPS コマまでにする。
@@ -223,9 +224,16 @@ window.addEventListener("pagehide", stopStream);
 window.addEventListener("pageshow", startStream);
 
 async function updateStreamStatus() {
+    const controller = new AbortController();
+    let timeout;
     try {
         if (document.hidden || offscreen) return;
-        const response = await fetch("/live/status", { cache: "no-store" });
+        // 復帰時などに通信が止まっても、次の状態確認を続けられるようにする。
+        timeout = window.setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
+        const response = await fetch("/live/status", {
+            cache: "no-store",
+            signal: controller.signal,
+        });
         if (!response.ok) throw new Error();
         const { frame_time: stamp, tray_state: trayState } = await response.json();
         if (document.hidden || offscreen) return;
@@ -255,9 +263,11 @@ async function updateStreamStatus() {
             frameStatus.textContent = status;
         }
     } catch {
+        if (controller.signal.aborted) return;
         stopStream();
         frameStatus.textContent = "現在の映像を取得できません。監視の起動とカメラ接続を確認してください。";
     } finally {
+        window.clearTimeout(timeout);
         window.setTimeout(updateStreamStatus, 1000);
     }
 }
