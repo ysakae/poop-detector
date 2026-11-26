@@ -289,5 +289,5 @@ def test_home_shows_sheet_wear_after_monitoring(gui):
     html = body.decode()
     assert "シートの使用" in html
     assert "うんち・おしっこの候補が計6回" in html
-    assert "汚れ 12%" in html
+    assert "汚れは12%" in html
     assert "そろそろ交換どきです" in html
