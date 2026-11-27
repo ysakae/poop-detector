@@ -1,5 +1,6 @@
 """動画通知から該当位置を開き、スマホで確定できることを確認する。"""
 
+import pytest
 from support import ready_clip, request, submit
 
 from poop_detector.video.clip_reviews import Assessment
@@ -36,6 +37,63 @@ def test_missing_notification_clip_shows_manual_entry(gui):
     assert status == 200
     assert "指定された動画を確認できません" in body.decode()
     assert b'href="/records/new"' in body
+
+
+@pytest.mark.parametrize(
+    ("label", "start", "end", "actual_start", "actual_end"),
+    [
+        ("feces", "0", "11.25", "06:10:00", "06:10:11.250000"),
+        ("urine", "5.25", "", "06:10:05.250000", None),
+        ("both", "", "11", None, "06:10:11"),
+    ],
+)
+def test_quick_confirmation_saves_video_offsets_and_record_times(
+    gui, label, start, end, actual_start, actual_end
+):
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    clip = ready_clip(clips)
+
+    fields = {"id": clip, "label": label, "start": start, "end": end}
+    assert submit(server, "/clips/quick", fields)[0] == 303
+    saved = clips.get(clip)
+    assert saved["actual_start_offset"] == (float(start) if start else None)
+    assert saved["actual_end_offset"] == (float(end) if end else None)
+    (record,) = store.records()
+    assert record["excretion_type"] == label
+    assert record["actual_start"] == (f"2026-11-09T{actual_start}+00:00" if actual_start else None)
+    assert record["actual_end"] == (f"2026-11-09T{actual_end}+00:00" if actual_end else None)
+
+
+def test_quick_confirmation_rejects_reversed_offsets(gui):
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    clip = ready_clip(clips)
+
+    fields = {"id": clip, "label": "feces", "start": "12", "end": "11"}
+    assert submit(server, "/clips/quick", fields)[0] == 400
+    assert clips.get(clip)["label"] is None
+    assert store.records() == []
+
+
+@pytest.mark.parametrize(
+    ("candidate_start", "trigger_offset", "show_trigger"),
+    [(None, 10, True), (0, 10, False), (None, 0, False)],
+)
+def test_trigger_seek_is_shown_only_as_a_fallback(
+    gui, candidate_start, trigger_offset, show_trigger
+):
+    server, store, _ = gui
+    clips = ClipStore(store.root)
+    clip = ready_clip(clips)
+    clips.update(clip, trigger_offset=trigger_offset)
+    clips.assessments.save(
+        clip, Assessment(label="feces", activity="excreting", start_seconds=candidate_start)
+    )
+
+    page = request(server, "GET", f"/clips?id={clip}")[1].decode()
+    assert ("開始候補へ移動" in page) == (candidate_start is not None)
+    assert ("操作・検知の位置へ" in page) == show_trigger
 
 
 def test_notification_opens_the_requested_clip_while_it_is_recording(gui):

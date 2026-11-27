@@ -271,17 +271,14 @@ def label_form(row: Mapping[str, Any], assessment: Mapping[str, Any] | None) -> 
     """動画のラベル入力欄の初期値。自動判定が下書きなら、その値を使う。"""
     candidates = assessment if assessment and not assessment["error"] else {}
     draft = candidates if row["label"] is None else {}
-    offsets = []
+    offsets = {}
     for name, text in [("start", "開始"), ("end", "完了")]:
         value = row["actual_" + name + "_offset"]
-        offsets.append(
-            {
-                "name": name,
-                "text": text,
-                "value": "" if value is None else str(value),
-                "candidate": candidates.get(f"{name}_seconds"),
-            }
-        )
+        offsets[name] = {
+            "text": text,
+            "value": "" if value is None else str(value),
+            "candidate": candidates.get(f"{name}_seconds"),
+        }
     condition = row.get("stool_condition") if row["label"] is not None else None
     return {
         "label": row["label"] or draft.get("label", "uncertain"),

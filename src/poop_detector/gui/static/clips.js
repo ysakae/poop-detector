@@ -92,3 +92,19 @@ document.addEventListener("change", (event) => {
         if (option.selected && option.disabled) destination.value = "";
     }
 });
+
+document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!form.matches("#clip-detail form.quick-confirm") || event.submitter?.value === "none") return;
+
+    // 詳細入力と共通の時刻欄を確認し、押されたボタンの送信データに加える。
+    const labelForm = form.closest("#clip-detail").querySelector("#clip-label-form");
+    const offsets = ["start", "end"].map((name) => labelForm.elements.namedItem(name));
+    if (!offsets.every((offset) => offset.reportValidity())) {
+        event.preventDefault();
+        return;
+    }
+    form.addEventListener("formdata", ({formData}) => {
+        for (const offset of offsets) formData.set(offset.name, offset.value);
+    }, {once: true});
+});
