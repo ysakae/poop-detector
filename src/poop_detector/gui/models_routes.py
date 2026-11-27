@@ -24,6 +24,7 @@ from ..video.benchmark_results import BenchmarkResult, load_results
 from ..video.benchmark_sets import LABELS, SPLIT_NAMES
 from ..video.clips import CLIP_LABELS, ClipStore
 from ..video.gemini_credits import CreditUsage
+from ..video.gemini_usage import summarize_gemini_usage
 from ..video.judge_failures import FAILURE_NAMES
 from ..video.judge_models import UNAVAILABLE, list_models
 from ..video.judge_runs import JudgeRunUsage
@@ -112,7 +113,7 @@ def _tokens(usage: JudgeRunUsage) -> str:
     return f"入力 {average[0]:,}（キャッシュ {average[1]:,}）／出力 {average[2]:,}"
 
 
-def _judges(handler: "Handler") -> list[dict[str, Any]]:
+def _judges(usages: list[JudgeRunUsage]) -> list[dict[str, Any]]:
     return [
         {
             "provider": PROVIDER_NAMES.get(usage.provider, usage.provider),
@@ -130,8 +131,33 @@ def _judges(handler: "Handler") -> list[dict[str, Any]]:
             "last_failed": usage.last_failed,
             "tokens": _tokens(usage),
         }
-        for usage in handler.app.clips.judge_runs.usage()
+        for usage in usages
     ]
+
+
+def _gemini_estimates(usages: list[JudgeRunUsage], now: datetime) -> list[dict[str, Any]]:
+    estimates = []
+    today = now.astimezone().date()
+    for row in summarize_gemini_usage(usages):
+        cost = row.estimated_usd(today)
+        estimates.append(
+            {
+                "model": row.model or "既定（記録なし）",
+                "calls": f"{row.measured:,} / {row.calls:,}",
+                "tokens": [
+                    f"{value:,}" if row.measured else "―"
+                    for value in (
+                        row.tokens.input_tokens,
+                        row.tokens.cached_tokens,
+                        row.tokens.output_tokens,
+                    )
+                ],
+                "cost": _money("USD", cost)
+                if cost is not None
+                else ("単価未確認" if row.measured else "トークン記録なし"),
+            }
+        )
+    return estimates
 
 
 # 消費の割合がこれ以上なら、グラフの色を注意・警告に変える。
@@ -191,16 +217,16 @@ def _plans(board: PlanUsageBoard, now: datetime) -> dict[str, Any]:
     }
 
 
+def _money(currency: str, value: Decimal | None, places: int = 9) -> str:
+    if value is None:
+        return "―"
+    number = format(value, f",.{places}f").rstrip("0").rstrip(".")
+    return f"{currency} {number}"
+
+
 def _credit_view(usage: CreditUsage | None, now: datetime) -> dict[str, Any] | None:
     if usage is None:
         return None
-
-    def money(value: Decimal | None) -> str:
-        if value is None:
-            return "―"
-        number = format(value, ",.4f").rstrip("0").rstrip(".")
-        return f"{usage.currency} {number}"
-
     meter = None
     if usage.used is not None:
         percent = min(100, round(100 * usage.used / usage.granted))
@@ -209,10 +235,10 @@ def _credit_view(usage: CreditUsage | None, now: datetime) -> dict[str, Any] | N
         "problem": usage.problem,
         "checked_at": local_time(usage.checked_at.isoformat()),
         "exported_at": local_time(usage.exported_at.isoformat()) if usage.exported_at else None,
-        "granted": money(usage.granted) if usage.currency else None,
-        "used": money(usage.used),
-        "gemini_used": money(usage.gemini_used),
-        "remaining": money(usage.remaining),
+        "granted": _money(usage.currency, usage.granted, 4) if usage.currency else None,
+        "used": _money(usage.currency, usage.used, 4),
+        "gemini_used": _money(usage.currency, usage.gemini_used, 4),
+        "remaining": _money(usage.currency, usage.remaining, 4),
         "meter": meter,
     }
 
@@ -339,6 +365,7 @@ def _render(
     results, unreadable = load_results(app.root)
     datasets, unreadable_sets = _datasets(app.root, app.clips)
     now = datetime.now(UTC)
+    judge_usage = app.clips.judge_runs.usage(now)
     page = render_template(
         "models.html",
         title=app.title,
@@ -360,9 +387,10 @@ def _render(
         tray_stay_counts=app.clips.assessments.tray_stay_counts(
             (now - timedelta(days=7)).isoformat()
         ),
-        judges=_judges(handler),
+        judges=_judges(judge_usage),
         plans=_plans(app.plan_usage, now),
         plan_action=PLAN_USAGE,
+        gemini_estimates=_gemini_estimates(judge_usage, now),
         credits=_credit_view(app.gemini_credits.snapshot(), now),
         credits_action=GEMINI_CREDITS,
         benchmarks=_benchmarks(results, app.clips),

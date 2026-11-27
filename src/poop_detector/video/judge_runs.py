@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..records.database import Database
+from .gemini_api import GeminiApiJudge
 from .judge_failures import FailureCause, JudgeCallError, failure_cause
 from .token_usage import TokenUsage
 
@@ -216,7 +217,7 @@ class RecordingJudge:
         self.inner = judge
         self.log = log
         self.provider = provider
-        self.model = model
+        self.model = judge.model if isinstance(judge, GeminiApiJudge) else model
         self.purpose = purpose
         self.name = judge.name
         # 直近の呼び出しが失敗したか。まだ呼んでいなければ None。

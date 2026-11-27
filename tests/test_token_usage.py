@@ -3,13 +3,25 @@
 import json
 import sqlite3
 import subprocess
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 from poop_detector.records.database import LATEST_VERSION, MIGRATIONS, Database
 from poop_detector.video.clips import ClipStore
 from poop_detector.video.codex_cli import CodexCliJudge
+from poop_detector.video.gemini_usage import GeminiModelUsage
 from poop_detector.video.judge_runs import JudgeRunLog, RecordingJudge
 from poop_detector.video.token_usage import TokenUsage, parse_claude, parse_codex
+
+
+def test_gemini_estimate_uses_the_standard_rate_on_display_date():
+    row = GeminiModelUsage("gemini-3.8-flash", 1, 1, TokenUsage(2, 1, 1))
+    assert row.estimated_usd(date(2026, 12, 31)) == Decimal("0.000004575")
+    assert row.estimated_usd(date(2027, 1, 1)) == Decimal("0.00000915")
+    argon = GeminiModelUsage("gemini-4-argon", 1, 1, TokenUsage(2, 1, 1))
+    assert argon.estimated_usd(date(2026, 11, 30)) == Decimal("0.0000121")
+    assert argon.estimated_usd(date(2026, 12, 1)) == Decimal("0.0000242")
+
 
 CODEX_EVENTS = b"\n".join(
     json.dumps(event).encode()
