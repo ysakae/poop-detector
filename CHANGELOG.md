@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-11-27
+
+### 修正
+
+- 動画の直下に開始・完了の入力欄を置き、候補への移動から再生位置の入力・保存まで同じ場所で操作できるようにする（#337）
+- ホームのライブ映像が待機表示のまま止まったときに、自動で接続をやり直す（#336）
+- スマートフォンの幅で動画の確認ボタンの長い文言を折り返す（#335）
+
 ## [1.1.1] - 2026-11-27
 
 ### 変更
@@ -114,7 +122,8 @@
 - GitHub Actions で静的解析、Python 3.11・3.12 のテスト、Docker イメージを確認
 - MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明、依存ライブラリのライセンスの一覧
 
-[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/ysakae/poop-detector/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/ysakae/poop-detector/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/ysakae/poop-detector/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/ysakae/poop-detector/releases/tag/v1.0.0
