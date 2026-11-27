@@ -75,9 +75,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["poop_detector"]
 [tool.coverage.report]
-# 確認待ちの再設計後の実測は95.68%。前回の実測から0.01ポイント上がった。
+# Gemini API の参考費用を追加したときのローカル実測は95.69%。
 precision = 2
-fail_under = 95.61
+fail_under = 95.62
 show_missing = true
 skip_covered = true
 [tool.mypy]
