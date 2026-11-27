@@ -86,7 +86,22 @@
 <form method="post" action="{{ plan_action }}">{{ csrf_field(token) }}<button data-busy-label="CLI に問い合わせています…">CLI に問い合わせる</button></form>
 <p class="note">監視するマシンの各 CLI に、ログイン中のアカウントのサブスクリプションの使用量を問い合わせます。モデルは呼ばず、数秒かかります。判定以外の使い方の分も含みます。Claude Code CLI は戻る時刻を出しません。「制限なし」はその制限がないことを示します。棒の色は、70% 以上で注意、90% 以上で警告に変わります。</p>
 <div class="quota-provider">
-<h4>Gemini API の開発者クレジット</h4>
+<h4 id="gemini-estimate-title">Gemini API このアプリの推定利用額（直近30日）</h4>
+{% if gemini_estimates %}
+<div class="table-scroll"><table aria-labelledby="gemini-estimate-title"><thead><tr>
+<th scope="col">モデル</th><th scope="col" class="count">計測あり / 全呼び出し</th>
+<th scope="col" class="count">入力</th><th scope="col" class="count">うちキャッシュ</th>
+<th scope="col" class="count">出力・思考</th><th scope="col" class="count">推定利用額</th>
+</tr></thead><tbody>
+{% for row in gemini_estimates %}
+<tr><th scope="row">{{ row.model }}</th><td class="count">{{ row.calls }}</td>{% for value in row.tokens %}<td class="count">{{ value }}</td>{% endfor %}<td class="count">{{ row.cost }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+<p class="note">動画判定と判定器の比較で記録したトークン数に、表示時点の有料 Standard 単価を適用した米ドルの参考額です。クレジット、無料枠、税は集計対象外です。<a href="https://aistudio.google.com/docs/pricing">Google AI Studio の料金表</a></p>
+{% else %}<p>直近30日間に Gemini API を使った動画判定・判定器の比較の記録はありません。</p>{% endif %}
+</div>
+<div class="quota-provider">
+<h4>Gemini API の開発者クレジット（BigQuery 反映分）</h4>
 {% if not credits %}<p>まだ問い合わせていません。</p>
 {% else %}
 {% if credits.problem %}<p class="note" role="status">{{ credits.problem }}</p>{% endif %}

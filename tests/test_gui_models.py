@@ -588,6 +588,46 @@ def test_readiness_is_reused_for_a_short_while(models_gui):
     assert server.checked == ["Codex CLI", "Claude Code CLI"]
 
 
+def test_gemini_usage_estimate_is_shown_without_querying_bigquery(models_gui, monkeypatch):
+    from poop_detector.video import gemini_credits
+
+    server, _ = models_gui
+    log = server.app.clips.judge_runs
+    now = datetime.now(UTC)
+    model = "gemini-3.5-flash-lite"
+    log.record("gemini-api", model, "review", failed=False, usage=TokenUsage(1000, 200, 20))
+    log.record("gemini-api", model, "benchmark", failed=True, usage=TokenUsage(2000, 300, 80))
+    log.record("gemini-api", model, "review", failed=True)
+    log.record("gemini-api", "gemini-4-argon", "review", failed=False, usage=TokenUsage(50, 0, 1))
+    log.record("gemini-api", "unpriced-model", "review", failed=False, usage=TokenUsage(50, 0, 1))
+    log.record("gemini-api", "floor-model", "floor", failed=False, usage=TokenUsage(50, 0, 1))
+    log.record("gemini-api", "missing-usage", "review", failed=True)
+    log.record("gemini", "cli-model", "review", failed=False, usage=TokenUsage(10, 0, 1))
+    log.record("gemini-api", "old-model", "review", failed=False, at=now - timedelta(days=31))
+
+    def unexpected_query():
+        pytest.fail("画面を開いただけで BigQuery に問い合わせました")
+
+    monkeypatch.setattr(gemini_credits, "read_credits", unexpected_query)
+    html = page(server, login(server))
+    section = html.split('id="gemini-estimate-title"', 1)[1].split("</section>", 1)[0]
+    assert "このアプリの推定利用額" in section
+    assert "開発者クレジット" in section
+    assert "gemini-3.5-flash-lite" in section
+    assert "2 / 3" in section
+    assert "3,000" in section
+    assert "500" in section
+    assert "USD 0.001015" in section
+    assert "gemini-4-argon" in section
+    assert "unpriced-model" in section
+    assert "単価未確認" in section
+    assert "missing-usage" in section
+    assert "トークン記録なし" in section
+    assert "cli-model" not in section
+    assert "old-model" not in section
+    assert "floor-model" not in section
+
+
 def test_gemini_credit_usage_refreshes_only_on_admin_request(models_gui, monkeypatch):
     from decimal import Decimal
 

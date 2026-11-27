@@ -4,8 +4,10 @@ import json
 import pytest
 
 from poop_detector.config import Config
+from poop_detector.video.clips import ClipStore
 from poop_detector.video.judge_failures import JudgeCallError
 from poop_detector.video.judge_models import list_models
+from poop_detector.video.judge_runs import RecordingJudge
 from poop_detector.video.providers import build_judge
 from poop_detector.video.review import TRAY_SCHEMA
 from poop_detector.video.token_usage import TokenUsage
@@ -152,11 +154,15 @@ def test_sends_images_and_schema_and_measures_tokens(gemini, tmp_path, monkeypat
             ).encode(),
         )
     )
-    judge = build_judge("gemini-api", "gemini-3.5-flash-lite")
+    log = ClipStore(tmp_path).judge_runs
+    judge = RecordingJudge(build_judge("gemini-api"), log, "gemini-api", None, "review")
     assert judge.judge(tmp_path, "判定", ["frame.jpg"], TRAY_SCHEMA) == result
     assert judge.last_usage == TokenUsage(100, 20, 15)
+    (usage,) = log.usage()
+    assert usage.model == "gemini-3.8-flash"
+    assert usage.output_tokens == 15
     method, path, body, headers = requests[0]
-    assert (method, path) == ("POST", "/v1beta/models/gemini-3.5-flash-lite:generateContent")
+    assert (method, path) == ("POST", "/v1beta/models/gemini-3.8-flash:generateContent")
     assert headers["x-goog-api-key"] == "environment-key"
     payload = json.loads(body)
     assert payload["contents"][0]["parts"] == [
