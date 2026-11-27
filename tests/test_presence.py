@@ -280,7 +280,12 @@ def test_standard_extensions_add_presence_sharing_dog_inference(tmp_path):
             calls.append(1)
             return []
 
-    config = Config(data_dir=str(tmp_path), sheet_enabled=False, presence_enabled=True)
+    config = Config(
+        data_dir=str(tmp_path),
+        sheet_enabled=False,
+        presence_enabled=True,
+        presence_exit_area="0.76,0.32,1,0.67",
+    )
     image = np.full((60, 80, 3), 120, np.uint8)
     built = standard_extensions(
         ROI(0.7, 0.7, 0.3, 0.3),
@@ -292,5 +297,6 @@ def test_standard_extensions_add_presence_sharing_dog_inference(tmp_path):
         floor=ROI(0, 0, 1, 1),
     )
     ext = next(item for item in built if isinstance(item, PresenceExtension))
+    assert ext.sampler.exit_bounds == (0.76, 0.32, 1.0, 0.67)
     ext.on_camera_frame(image, False, 0.0)
     assert calls == [1]

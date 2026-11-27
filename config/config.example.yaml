@@ -137,6 +137,7 @@ trends:
 presence:
   min_minutes: 3     # これより短い不在は記録しない（分）
   away_minutes: 10   # 外出中に不在がこの時間続いたら知らせる（分）
+  exit_area: ""      # 出入口を囲む矩形。「左,上,右,下」を映像の幅・高さに対する0〜1の割合で指定
 
 # 床の候補（実験的。features.floor_objects を有効にして使う）。false なら記録だけで通知しない。
 floor:

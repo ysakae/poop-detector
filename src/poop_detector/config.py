@@ -127,6 +127,16 @@ def _always(_value: Any) -> bool:
     return True
 
 
+def _exit_bounds(value: str) -> tuple[float, float, float, float] | None:
+    try:
+        left, top, right, bottom = map(float, value.split(","))
+    except ValueError:
+        return None
+    if 0 <= left < right <= 1 and 0 <= top < bottom <= 1:
+        return left, top, right, bottom
+    return None
+
+
 def parse_daytime(value: str) -> tuple[clock_time, clock_time]:
     """「HH:MM-HH:MM」の昼の時間帯を（始め, 終わり）にする。始めは終わりより前でなければならない。"""
     match = re.fullmatch(r"(\d{2}:\d{2})-(\d{2}:\d{2})", value)
@@ -345,6 +355,14 @@ SETTINGS: tuple[Setting, ...] = (
         float,
         _number(1, 240),
         "1〜240 の数（分。外出中に不在がこの時間続いたら知らせる）",
+    ),
+    Setting(
+        "presence_exit_area",
+        "presence",
+        "exit_area",
+        str,
+        lambda value: not value.strip() or _exit_bounds(value) is not None,
+        "空欄、または映像に対する0〜1の割合を「左,上,右,下」の順に並べた文字列",
     ),
     Setting(
         "digest_enabled",
@@ -757,6 +775,7 @@ class Config:
     digest_summary_images: bool = False
     presence_min_minutes: float = 3
     presence_away_minutes: float = 10
+    presence_exit_area: str = ""
     dog_enabled: bool = False
     dog_fps: float = 1
     dog_confidence: float = 0.4
@@ -827,6 +846,10 @@ class Config:
             else:
                 result[setting.key] = value
         return result
+
+    @property
+    def presence_exit_bounds(self) -> tuple[float, float, float, float] | None:
+        return _exit_bounds(self.presence_exit_area)
 
     @property
     def fallback_providers(self) -> tuple[str, ...]:

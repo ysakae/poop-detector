@@ -401,12 +401,15 @@ def test_sleep_recorder_uses_the_registered_floor(tmp_path):
 
     points = [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]
     ActivityLayout("a" * 32, PolygonROI(points)).save(tmp_path, np.zeros((100, 100, 3), np.uint8))
-    config = Config(sleep_still_minutes=2, sleep_stir_seconds=7)
+    config = Config(
+        sleep_still_minutes=2, sleep_stir_seconds=7, presence_exit_area="0.76,0.32,1,0.67"
+    )
     recorder = sleep_recorder(events_database(tmp_path), tmp_path, config)
     assert recorder.judge.still_seconds == 120
     assert recorder.judge.stir_seconds == 7
     assert recorder.sampler.boundary is not None
     assert np.allclose(recorder.sampler.boundary, points)
+    assert recorder.sampler.exit_bounds == (0.76, 0.32, 1.0, 0.67)
 
 
 def test_sleep_recorder_without_a_floor_uses_the_whole_frame(tmp_path, caplog):
