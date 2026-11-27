@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-11-27
+
+### 修正
+
+- 動画の「うんち」「おしっこ」「両方」で、入力した開始・完了を動画ラベルと新規の確定記録に保存する（#339）
+- 「操作・検知の位置へ」は、開始候補がなく、動画の途中に操作・検知の位置がある場合に表示する（#339）
+
 ## [1.1.2] - 2026-11-27
 
 ### 修正
@@ -122,7 +129,8 @@
 - GitHub Actions で静的解析、Python 3.11・3.12 のテスト、Docker イメージを確認
 - MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明、依存ライブラリのライセンスの一覧
 
-[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/ysakae/poop-detector/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/ysakae/poop-detector/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/ysakae/poop-detector/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/ysakae/poop-detector/compare/v1.0.0...v1.1.0
