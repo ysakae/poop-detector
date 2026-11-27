@@ -73,13 +73,17 @@ def protect_clip(handler: Exchange, form: Form) -> None:
     _saved(handler, form, clip_id)
 
 
+def _offset(value: str | None) -> float | None:
+    return float(value) if value else None
+
+
 def _save_label(handler: Exchange, form: Form, record_id: str | None) -> str:
     fields = form.fields
     clip_id = fields.get("id", "")
     label = ClipLabel(
         fields.get("label", ""),
-        float(fields["start"]) if fields.get("start") else None,
-        float(fields["end"]) if fields.get("end") else None,
+        _offset(fields.get("start")),
+        _offset(fields.get("end")),
         fields.get("activity", "other"),
         fields.get("note", ""),
         fields.get("location"),
@@ -129,6 +133,8 @@ def quick_clip(handler: Exchange, form: Form) -> None:
             clip_id,
             ClipLabel(
                 label,
+                start=_offset(fields.get("start")) if label != "none" else None,
+                end=_offset(fields.get("end")) if label != "none" else None,
                 activity="other" if label == "none" else "excreting",
                 location=fields.get("location") or None,
             ),

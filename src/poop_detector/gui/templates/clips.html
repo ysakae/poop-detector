@@ -36,20 +36,20 @@
 {% if clip.ready %}
 <video controls preload="metadata" class="clip-video" playsinline poster="/clip-thumbnail?id={{ clip.id }}" src="/clip-video?id={{ clip.id }}{{ seek }}">動画を再生できません。</video>
 {#- 確認のための再生の操作。ブラウザーの標準の操作バーより大きく押せるボタンにする（static/clips.js）。 -#}
-<div class="video-controls"><button class="secondary" type="button" data-video-jump="-10">10秒戻る</button><button class="secondary" type="button" data-video-jump="10">10秒進む</button><button class="secondary" type="button" data-video-seek="{{ clip.trigger_offset }}">操作・検知の位置へ</button><button class="secondary" type="button" data-video-rate="2" aria-pressed="false">2倍速</button></div><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
+<div class="video-controls"><button class="secondary" type="button" data-video-jump="-10">10秒戻る</button><button class="secondary" type="button" data-video-jump="10">10秒進む</button>{% if form.offsets.start.candidate is none and 0 < clip.trigger_offset <= clip.duration %}<button class="secondary" type="button" data-video-seek="{{ clip.trigger_offset }}">操作・検知の位置へ</button>{% endif %}<button class="secondary" type="button" data-video-rate="2" aria-pressed="false">2倍速</button></div><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
 {% if clip.interrupted %}<div class="message message-warn">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>{% endif %}
 <fieldset class="clip-timing">
 <legend>開始・完了</legend>
 <p class="note">映っていない時刻は空欄にしてください。</p>
 <div class="clip-offsets">
-{% for offset in form.offsets %}
+{% for name, offset in form.offsets.items() %}
 <div class="clip-offset">
 <label>{{ offset.text }}（動画内の秒）
-<input type="number" min="0" max="{{ clip.duration }}" step="0.01" name="{{ offset.name }}" form="clip-label-form" value="{{ offset.value }}">
+<input type="number" min="0" max="{{ clip.duration }}" step="0.01" name="{{ name }}" form="clip-label-form" value="{{ offset.value }}">
 </label>
 <div class="clip-offset-actions">
 {% if offset.candidate is not none %}<button class="secondary" type="button" data-video-seek="{{ offset.candidate }}">{{ offset.text }}候補へ移動（{{ "%g"|format(offset.candidate) }}秒）</button>{% endif %}
-<button class="secondary" type="button" data-video-offset="{{ offset.name }}">現在位置を{{ offset.text }}にする</button>
+<button class="secondary" type="button" data-video-offset="{{ name }}">現在位置を{{ offset.text }}にする</button>
 </div>
 </div>
 {% endfor %}
@@ -85,7 +85,7 @@
 {% for record in confirmation.candidates %}<option value="{{ record.id }}" data-record-location="{{ record.location }}"{% if record.selected %} selected{% endif %}{% if record.disabled %} disabled{% endif %}>{{ record.time }} {{ record.label }}</option>{% endfor %}
 <option value="new" data-tray-event="{{ 1 if confirmation.tray_event else 0 }}"{% if confirmation.new_disabled %} disabled{% endif %}>新しい確定記録を作成</option>
 </select></label></div>
-<p class="note">押すと、動画のラベルと確定記録を保存します{% if review %}（次の件へ進みます）{% endif %}。開始・完了やメモを含めて確定記録を保存するには、「くわしく入力」を開いてください。</p>
+<p class="note">「うんち」「おしっこ」「両方」は、入力した開始・完了も保存します。{% if review %}保存すると次の件へ進みます。{% endif %}メモを付けるには「くわしく入力」を開いてください。</p>
 </form>
 {% endif %}
 <details class="clip-more"{% if not quick %} open{% endif %}><summary>くわしく入力（動画の内容・動作・メモ）</summary>
