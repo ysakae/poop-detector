@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-27
+
+### 追加
+
+- 実験設定 `review.defer_short_visits` を有効にすると、条件を満たす短い犬の出入りを、ほかの出入りより後に判定する（#347）
+
+### 変更
+
+- 監視と GUI の同時起動時は、ライブ映像の最新 JPEG をメモリーで共有する。録画の稼働確認も SQLite への定期書き込みをやめ、常時監視中の SSD 書き込みを減らす（#348）
+- 録画とタイムラプスの JPEG を FFmpeg に直接渡し、入力用の一時ファイルを省く。タイムラプスは静止画を1枚ずつ読み込む（#348）
+
 ## [1.3.0] - 2026-11-27
 
 ### 追加
@@ -149,7 +160,8 @@
 - GitHub Actions で静的解析、Python 3.11・3.12 のテスト、Docker イメージを確認
 - MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明、依存ライブラリのライセンスの一覧
 
-[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/ysakae/poop-detector/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/ysakae/poop-detector/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/ysakae/poop-detector/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/ysakae/poop-detector/compare/v1.1.3...v1.2.0
