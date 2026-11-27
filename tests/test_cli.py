@@ -371,6 +371,7 @@ def test_run_with_gui_restarts_after_monitor_cleanup(cli_env, monkeypatch):
 
     def monitor(self, _max_frames, *, stop_requested):
         gui = servers[-1]
+        assert gui.app.preview.in_memory
         status = json.loads(request(gui, "GET", "/manage/restart")[1])
         assert status["ready"]
         assert status["command"] == "run"

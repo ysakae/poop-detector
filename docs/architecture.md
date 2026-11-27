@@ -45,9 +45,10 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
   - `video.clip_storage`：保持期間・保護・整理
 
   接続とスキーマは `records/database.py` が管理します。スキーマの版を `PRAGMA user_version` に記録し、開くときに未適用の移行処理を順に適用します（版管理を入れる前のデータベースは版0として扱い、版1への移行でいまの形にそろえます）。
-- GUI からの「今の前後の動画を保存」は `clips` テーブルへ `queued` 行を入れるだけで、監視側の `ClipCollector.poll()` が拾います。監視の生存は `capture_status` のハートビートで判定します。
-- ライブ映像は `LivePreview` が `.live-preview.jpg` を書き、GUI が `.live-preview-request` の更新時刻で要求を伝えます。ホームは認証済みのHTTP接続1本（`/live/stream`）で、新しいJPEGができるたびに受け取ります。`?fps=`（1〜30）を付けると、`gui/live_stream.send_interval` の間隔より詰めて送りません（外の回線で通信を抑える「通信を節約」が使う）。管理画面の静止画取得は別の経路を使います。
+- GUI からの「今の前後の動画を保存」は `clips` テーブルへ `queued` 行を入れるだけで、監視側の `ClipCollector.poll()` が拾います。録画の稼働状態は `.capture-status` に状態が変わったときと1秒ごとに書き、10秒で失効します。旧版の監視と組み合わせた場合は DB の `capture_status` を読みます。
+- ライブ映像は `run --gui` の監視と GUI で最新の JPEG 1枚をメモリーに共有します。別プロセスの GUI は `.live-preview-request` の更新時刻で要求を伝え、監視が `.live-preview.jpg` を書きます。ホームは認証済みのHTTP接続1本（`/live/stream`）で、新しいJPEGができるたびに受け取ります。`?fps=`（1〜30）を付けると、`gui/live_stream.send_interval` の間隔より詰めて送りません（外の回線で通信を抑える「通信を節約」が使う）。管理画面の静止画取得は登録用に最大4枚をメモリーに保持し、各画像は10分で失効します。
 - 監視は `LivePreview.pulse` で `.live-preview-monitor` に稼働状態を書き、自分で終了したときは `mark_stopped` で `stopped` を残します。GUI のサーバーはこのファイルの更新時刻を見張り、途絶えたら監視の停止として知らせます（下の「監視の停止とカメラの不調の見張り」）。
+- 録画とタイムラプスは、JPEG をパイプで FFmpeg に渡します。変換に成功した MP4 を保存先と同じファイルシステム内で公開します。
 - `activity.sqlite3` は行動マップ専用の別データベースです。
 - 排他は `fcntl.flock` のロックファイル（`.capture.lock`、`.review.lock`、`.activity.lock`）で行います。動画収集を伴う監視は同時に1プロセスだけです。`restore` はこの3つのロックを取れたときだけ、データの保存先を入れ替えます。
 - バックアップ（`records/backup.py`）は、データベースを SQLite のオンラインバックアップで一時ディレクトリに写し、セッション・登録用 URL・Web Push の購読をコピーから消して VACUUM してから ZIP に入れます。ZIP に入れてよい名前は `ALLOWED` の表で決め、復元はその表にない名前、目録とずれた中身、SHA-256 の合わないファイルを断ります。スキーマを変えたときは、`ALLOWED` と `SECRET_TABLES` に新しいファイルやテーブルを加えるかを確かめてください。
@@ -96,7 +97,7 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 | `SheetWearExtension` | `sheet.enabled`（既定で有効） | 通知済み状態の更新のたびに汚れの割合（`IncrementalDetector.wear_ratio`）を記録し、交換どきを一度だけ知らせる（`features/sheet_wear.py`） |
 | `FloorObjectExtension` | `--floor-objects` | 位置合わせ前の映像で、犬のいない場面の背景と比べて床に新しく現れて動かない物を候補にし、記録して知らせる（`experimental/floor_objects.py`）。犬検出の推論は行動マップ・睡眠と共有する |
 | `PresenceExtension` | `--presence` | 位置合わせ前の映像で、睡眠の記録と同じ `MotionSampler` で1秒ごとに在室を観測し、`left` が続いた区間を不在として記録する。外出中（`AwayMode`）に `presence.away_minutes` 続いたら一度だけ知らせ、戻ったら知らせる（`features/presence.py`） |
-| `SnapshotExtension` | `digest.enabled`（既定で有効）・`night.enabled` | 外出中の区間がある間と夜の時間帯の間だけ、位置合わせ前の映像を縮めた静止画を `digest/<区間の ID>/` に残し、`KEEP_DAYS` より古い区間を消す（`features/digest.py`）。タイムラプスは GUI が開かれたときに `encode_mp4` で作り、打ち切りの時間を静止画の枚数に比例させる（`TIMELAPSE_SECONDS_PER_FRAME`。最低は録画と同じ `ENCODE_TIMEOUT`） |
+| `SnapshotExtension` | `digest.enabled`（既定で有効）・`night.enabled` | 外出中の区間がある間と夜の時間帯の間だけ、位置合わせ前の映像を縮めた静止画を `digest/<区間の ID>/` に残し、`KEEP_DAYS` より古い区間を消す（`features/digest.py`）。タイムラプスは GUI から要求されたときに JPEG を1枚ずつ FFmpeg に渡して作り、打ち切りの時間を静止画の枚数に比例させる（`TIMELAPSE_SECONDS_PER_FRAME`。最低は録画と同じ `ENCODE_TIMEOUT`） |
 | `CameraWatchdogExtension` | `watchdog.enabled`（既定で有効） | 位置合わせ前の映像が届かない時間を数え、カメラの不調として知らせる（`features/watchdog.py`） |
 
 新しい機能は `monitor(..., extensions=[...])` に渡せば、`Monitor` を変えずに足せます。

@@ -153,21 +153,62 @@ def test_second_collector_is_rejected_and_stale_requests_fail(tmp_path):
         assert store.get(stale)["status"] == "failed"
 
 
-def test_encoder_uses_disk_spool_instead_of_payload_copy(tmp_path, monkeypatch):
+def test_encoder_pipes_each_frame_to_ffmpeg_without_disk_spool(tmp_path, monkeypatch):
+    from poop_detector.video import recording
+
+    fake = tmp_path / "ffmpeg"
+    fake.write_text('#!/bin/sh\nfor output do :; done\ncat > "$output"\n')
+    fake.chmod(0o700)
+    monkeypatch.setattr(recording.shutil, "which", lambda name: str(fake))
+    output = tmp_path / "out.mp4"
+    assert recording.encode_mp4([(0, "", b"a"), (2, "", b"b")], output, 1) == 3
+    assert output.read_bytes() == b"aab"
+
+
+def test_encoder_times_out_when_ffmpeg_stops_reading(tmp_path, monkeypatch):
     import subprocess
 
-    from poop_detector.video.recording import encode_mp4
+    from poop_detector.video import recording
 
-    seen = []
+    fake = tmp_path / "ffmpeg"
+    fake.write_text("#!/bin/sh\nexec sleep 30\n")
+    fake.chmod(0o700)
+    monkeypatch.setattr(recording.shutil, "which", lambda name: str(fake))
+    with pytest.raises(subprocess.TimeoutExpired):
+        recording.encode_mp4([(0, "", b"x" * (256 * 1024))], tmp_path / "out.mp4", 1, timeout=0.1)
 
-    def run(command, **kwargs):
-        assert "input" not in kwargs
-        seen.append(kwargs["stdin"].read())
-        return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(subprocess, "run", run)
-    assert encode_mp4([(0, "", b"a"), (1, "", b"b")], tmp_path / "x.mp4", 1) == 2
-    assert seen == [b"ab"]
+def test_capture_heartbeat_writes_on_transition_and_once_per_second(tmp_path, monkeypatch):
+    from poop_detector.video.recording import ClipCollector
+
+    collector = ClipCollector(tmp_path)
+    writes = []
+    monkeypatch.setattr(collector.store, "heartbeat", writes.append)
+    collector.poll(now=0)
+    collector.last_frame = 0
+    collector.poll(now=0.25)
+    collector.poll(now=0.5, force=True)
+    collector.poll(now=1.5)
+    collector.poll(now=5)
+    assert writes == [False, True, True, False]
+
+
+def test_capture_health_uses_volatile_file_and_honors_legacy_writer(tmp_path, monkeypatch):
+    from poop_detector.video import clips
+
+    store = clips.ClipStore(tmp_path)
+    with store.connect() as db:
+        db.execute("INSERT INTO capture_status VALUES (1,?,1)", (clips.time.time(),))
+    assert store.live()
+    store.heartbeat(False)
+    assert not clips.ClipStore(tmp_path).live()
+    store.heartbeat(True)
+    with store.connect() as db:
+        db.execute("DELETE FROM capture_status")
+    assert clips.ClipStore(tmp_path).live()
+    later = clips.time.time() + 11
+    monkeypatch.setattr(clips.time, "time", lambda: later)
+    assert not clips.ClipStore(tmp_path).live()
 
 
 def test_worker_continues_after_metadata_failure(tmp_path, monkeypatch):

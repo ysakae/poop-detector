@@ -1,4 +1,4 @@
-"""監視プロセスとローカルGUIで最新フレームを1枚だけ共有する。"""
+"""監視とGUIで最新フレームを1枚だけ共有する。"""
 
 import logging
 import os
@@ -20,25 +20,33 @@ HEARTBEAT_MAX_AGE = 5  # 監視の稼働状態がこれより古ければ、監�
 
 
 class LivePreview:
-    """GUI から要求があったときだけ、最新フレームを .live-preview.jpg に書き出す。"""
+    """GUI から要求があったときだけ、最新フレームをメモリーかファイルで共有する。"""
 
-    def __init__(self, root: str | Path) -> None:
+    def __init__(self, root: str | Path, *, in_memory: bool = False) -> None:
         self.root = Path(root)
         self.frame_path = self.root / ".live-preview.jpg"
         self.request_path = self.root / ".live-preview-request"
         self.tray_state_path = self.root / ".live-preview-tray-state"
         self.last_attempt = float("-inf")
+        self.last_file_error = float("-inf")
         self.monitor_path = self.root / ".live-preview-monitor"
         self.last_pulse = float("-inf")
+        self.in_memory = in_memory
+        self._requested_at = float("-inf")
+        self._frame: tuple[bytes, float] | None = None
 
     def publish(self, frame: Frame | None, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
         if frame is None or now - self.last_attempt < FRAME_INTERVAL:
             return
         self.last_attempt = now
+        local_request = now - self._requested_at <= REQUEST_MAX_AGE
+        if not local_request:
+            self._frame = None
+        file_request = self._file_requested(now)
+        if not local_request and not file_request:
+            return
         try:
-            if time.time() - self.request_path.stat().st_mtime > REQUEST_MAX_AGE:
-                return
             height, width = frame.shape[:2]
             if max(width, height) > 640:
                 scale = 640 / max(width, height)
@@ -47,12 +55,32 @@ class LivePreview:
             ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if not ok:
                 return
-            write_bytes(self.frame_path, jpeg.tobytes())
-        except FileNotFoundError:
-            return
-        except (OSError, cv2.error):
+            payload = jpeg.tobytes()
+            if local_request:
+                self._frame = (payload, time.time())
+            if file_request:
+                try:
+                    write_bytes(self.frame_path, payload)
+                except OSError:
+                    self._file_error(now)
+        except cv2.error:
             logger.warning("ライブ映像のプレビューを更新できません")
             self.last_attempt = now + REQUEST_MAX_AGE
+
+    def _file_requested(self, now: float) -> bool:
+        if now - self.last_file_error < REQUEST_MAX_AGE:
+            return False
+        try:
+            return time.time() - self.request_path.stat().st_mtime <= REQUEST_MAX_AGE
+        except FileNotFoundError:
+            return False
+        except OSError:
+            self._file_error(now)
+            return False
+
+    def _file_error(self, now: float) -> None:
+        logger.warning("別プロセス用のライブ映像を更新できません")
+        self.last_file_error = now
 
     def set_tray_state(self, state: str) -> None:
         try:
@@ -104,11 +132,25 @@ class LivePreview:
         return self.latest()
 
     def request_frame(self) -> None:
+        if self.in_memory:
+            self._requested_at = time.monotonic()
+            return
         with suppress(OSError):
             self.request_path.touch(mode=0o600)
 
+    def _current_frame(self) -> tuple[bytes, float] | None:
+        frame = self._frame
+        if frame is not None and time.time() - frame[1] <= FRAME_MAX_AGE:
+            return frame
+        return None
+
     def latest(self, after: str | None = None) -> tuple[bytes, str] | None:
         """有効で、前回と異なる JPEG を返す。"""
+        memory = self._current_frame()
+        if memory is not None:
+            jpeg, stamp = memory
+            timestamp = datetime.fromtimestamp(stamp, UTC).isoformat()
+            return (jpeg, timestamp) if timestamp != after else None
         try:
             with self.frame_path.open("rb") as frame:
                 stamp = os.fstat(frame.fileno()).st_mtime
@@ -121,6 +163,9 @@ class LivePreview:
         return None
 
     def frame_time(self) -> str | None:
+        memory = self._current_frame()
+        if memory is not None:
+            return datetime.fromtimestamp(memory[1], UTC).isoformat()
         try:
             stamp = self.frame_path.stat().st_mtime
         except OSError:

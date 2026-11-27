@@ -72,12 +72,14 @@ dev = [
 ]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
 [tool.coverage.run]
 source = ["poop_detector"]
 [tool.coverage.report]
-# 短い犬の出入りの判定順の試行を追加したときのローカル実測は95.71%。
+# 常時監視の書き込みを減らすテストを追加したときのローカル実測は95.68%。
 precision = 2
-fail_under = 95.64
+fail_under = 95.66
 show_missing = true
 skip_covered = true
 [tool.mypy]
