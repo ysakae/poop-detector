@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-27
+
+### 変更
+
+- 確認待ちから開く動画・静止画では、確認結果や場所を一つのフォームで入力し、「保存して次へ」で確定する。動画の保存先も同じフォームで選べる（#341）
+- 広い画面では映像と入力欄を左右に、狭い画面では上下に配置する。動画の開始・完了は再生欄の下で指定し、動作やメモなどは必要なときに開く（#341）
+- 確認待ちの一覧では「確認を始める」を件数のそばに置き、画角ごとの操作は必要なときに開けるようにする（#341）
+
 ## [1.1.3] - 2026-11-27
 
 ### 修正
@@ -129,7 +137,8 @@
 - GitHub Actions で静的解析、Python 3.11・3.12 のテスト、Docker イメージを確認
 - MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明、依存ライブラリのライセンスの一覧
 
-[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/ysakae/poop-detector/compare/v1.1.3...v1.2.0
 [1.1.3]: https://github.com/ysakae/poop-detector/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/ysakae/poop-detector/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/ysakae/poop-detector/compare/v1.1.0...v1.1.1
