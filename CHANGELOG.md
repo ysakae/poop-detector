@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-27
+
+### 追加
+
+- 管理画面の「プランの使用量」に、直近30日間の Gemini API の動画判定・判定器比較の呼び出し回数、トークン数、推定利用額をモデル別に表示する。BigQuery に反映済みの開発者クレジット残高と反映日時も同じ画面で確認できる（#344）
+
 ## [1.2.1] - 2026-11-27
 
 ### 修正
@@ -143,7 +149,8 @@
 - GitHub Actions で静的解析、Python 3.11・3.12 のテスト、Docker イメージを確認
 - MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明、依存ライブラリのライセンスの一覧
 
-[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/ysakae/poop-detector/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/ysakae/poop-detector/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/ysakae/poop-detector/compare/v1.1.3...v1.2.0
 [1.1.3]: https://github.com/ysakae/poop-detector/compare/v1.1.2...v1.1.3
