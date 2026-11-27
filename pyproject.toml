@@ -75,9 +75,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["poop_detector"]
 [tool.coverage.report]
-# Gemini API の参考費用を追加したときのローカル実測は95.69%。
+# 短い犬の出入りの判定順の試行を追加したときのローカル実測は95.71%。
 precision = 2
-fail_under = 95.62
+fail_under = 95.64
 show_missing = true
 skip_covered = true
 [tool.mypy]
