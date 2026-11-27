@@ -166,10 +166,10 @@ def test_labeled_clip_opens_the_detailed_form_instead(gui):
     assert '<details class="clip-more" open>' in html
 
 
-def test_one_tap_from_the_review_queue_moves_to_the_next_item(gui):
+def test_one_tap_from_the_video_list_still_moves_to_the_next_item(gui):
     server, store, _ = gui
     clip = ready_clip(ClipStore(store.root))
-    html = request(server, "GET", f"/clips?id={clip}&from=review")[1].decode()
+    html = request(server, "GET", f"/clips?id={clip}")[1].decode()
     assert '<input type="hidden" name="from" value="review">' in quick_form(html)
     from urllib.parse import urlencode
 

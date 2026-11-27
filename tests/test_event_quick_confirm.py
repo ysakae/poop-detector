@@ -68,11 +68,12 @@ def test_one_tap_keeps_times_and_note_and_returns_to_the_record(gui):
     assert row["note"] == "メモ"
 
 
-def test_one_tap_from_the_review_queue_moves_to_the_next_item(gui):
+def test_saving_from_the_review_queue_moves_to_the_next_item(gui):
     server, store, event = gui
     page = f"/records/events?filter=unlabeled&id={event}&from=review"
     html = request(server, "GET", page)[1].decode()
-    assert '<input type="hidden" name="from" value="review">' in quick_form(html)
+    assert '<input type="hidden" name="from" value="review">' in html
+    assert quick_form(html) is None
     fields = {"id": event, "label": "false", "filter": "unlabeled", "from": "review"}
     status, headers, _ = post_save(server, fields, page)
     assert (status, headers["Location"]) == (303, f"/review/next?after=event:{event}")

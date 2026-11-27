@@ -5,9 +5,6 @@
 {%- else -%}
 <label>保存先<select name="record_id">
 {%- if confirmation.candidates %}<option value="">保存先を選択</option>{% endif -%}
-{%- for record in confirmation.candidates -%}
-<option value="{{ record.id }}" data-record-location="{{ record.location }}"{% if record.selected %} selected{% endif %}{% if record.disabled %} disabled{% endif %}>{{ record.time }} {{ record.label }}</option>
-{%- endfor -%}
-<option value="new" data-tray-event="{{ 1 if confirmation.tray_event else 0 }}"{% if confirmation.new_disabled %} disabled{% endif %}>新しい確定記録を作成</option></select></label><p class="note">すでに記録している場合は、その記録を選んでください。</p>
+{{ record_options(confirmation, clip.event_id) }}</select></label><p class="note">すでに記録している場合は、その記録を選んでください。</p>
 {%- endif -%}
 <button formaction="/clips/confirm">ラベルと確定記録を保存</button></fieldset>

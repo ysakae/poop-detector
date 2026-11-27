@@ -1,0 +1,24 @@
+{#- 動画ライブラリと確認待ちで使う保存先と補足情報の入力欄。 -#}
+{% macro record_options(confirmation, original, focused=false) -%}
+{% for record in confirmation.candidates -%}
+<option value="{{ record.id }}" data-record-location="{{ record.location }}"{% if focused and record.id == original %} data-record-original{% endif %}{% if record.selected %} selected{% endif %}{% if record.disabled %} disabled{% endif %}>{{ record.time }} {{ record.label }}</option>
+{%- endfor %}
+<option value="new" data-tray-event="{{ 1 if confirmation.tray_event else 0 }}"{% if confirmation.new_disabled %} disabled{% elif focused and not confirmation.candidates|selectattr("selected")|list %} selected{% endif %}>新しい確定記録を作成</option>
+{%- endmacro %}
+
+{% macro clip_metadata(clip) -%}
+<p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
+{%- endmacro %}
+
+{% macro clip_details(activities, stool_conditions, form, focused=false) -%}
+<label>動作<select name="activity">
+{% if focused %}<option value=""{% if not form.review_label %} selected{% endif %}>種類に合わせる</option>{% endif %}
+{%- for value, text in activities -%}
+<option value="{{ value }}" {% if value == form.activity and (not focused or form.review_label) %}selected{% endif %}>{{ text }}</option>
+{%- endfor -%}
+</select></label><label{% if focused %} class="review-stool"{% endif %}>うんちの状態{% if not focused %}（うんちのとき）{% endif %}<select name="stool_condition"><option value="">選ばない</option>
+{%- for value, text in stool_conditions -%}
+<option value="{{ value }}" {% if value == form.stool_condition %}selected{% endif %}>{{ text }}</option>
+{%- endfor -%}
+</select></label>
+{%- endmacro %}

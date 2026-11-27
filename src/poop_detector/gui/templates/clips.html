@@ -1,6 +1,7 @@
 {#- 動画の一覧と、選んだ動画の再生・ラベル入力欄。 -#}
 {% extends "base.html" %}
 {% from "_macros.html" import capacity_panel, chip, clip_assessment, csrf_field, icon, location_field, show_field, when %}
+{% from "_clip_fields.html" import clip_details, clip_metadata, record_options %}
 {% block content %}
 {% include "_review_bar.html" %}
 {% if not focused %}
@@ -31,30 +32,32 @@
 {% if notice %}<p>指定された動画を確認できません。<a href="/records/new">トイレを記録</a></p>{% endif %}
 {% if any_clips %}<div class="empty"><h3>この条件の動画はありません</h3><p>「すべて」に切り替えてください。</p></div>{% else %}<div class="empty"><h3>動画はまだありません</h3><p>監視を起動して保存ボタンを押すか、自動検知を待ってください。</p></div>{% endif %}
 {% else %}
-<h3>{{ clip.time }}</h3><p class="note">{{ clip.source }} ／ {{ clip.status }}</p>
+{% if focused %}<header class="review-item-title"><h2>動画を確認</h2><p>{{ clip.time }} ／ {{ clip.source }}{% if not clip.ready %} ／ {{ clip.status }}{% endif %}</p></header>{% else %}<h3>{{ clip.time }}</h3><p class="note">{{ clip.source }} ／ {{ clip.status }}</p>{% endif %}
 {% if notice_unavailable %}<p>動画ファイルを確認できません。<a href="/records/new">トイレを記録</a></p>{% endif %}
 {% if clip.ready %}
+{% if focused %}<div class="review-item"><div class="review-media">{% endif %}
 <video controls preload="metadata" class="clip-video" playsinline poster="/clip-thumbnail?id={{ clip.id }}" src="/clip-video?id={{ clip.id }}{{ seek }}">動画を再生できません。</video>
 {#- 確認のための再生の操作。ブラウザーの標準の操作バーより大きく押せるボタンにする（static/clips.js）。 -#}
-<div class="video-controls"><button class="secondary" type="button" data-video-jump="-10">10秒戻る</button><button class="secondary" type="button" data-video-jump="10">10秒進む</button>{% if form.offsets.start.candidate is none and 0 < clip.trigger_offset <= clip.duration %}<button class="secondary" type="button" data-video-seek="{{ clip.trigger_offset }}">操作・検知の位置へ</button>{% endif %}<button class="secondary" type="button" data-video-rate="2" aria-pressed="false">2倍速</button></div><p class="note">長さ {{ "%.1f"|format(clip.duration) }}秒。操作・検知位置は動画内 {{ "%.1f"|format(clip.trigger_offset) }}秒です。保存開始: {{ clip.start_time }}</p>
+<div class="video-controls"><button class="secondary" type="button" data-video-jump="-10">10秒戻る</button><button class="secondary" type="button" data-video-jump="10">10秒進む</button>{% if form.offsets.start.candidate is none and 0 < clip.trigger_offset <= clip.duration %}<button class="secondary" type="button" data-video-seek="{{ clip.trigger_offset }}">操作・検知の位置へ</button>{% endif %}<button class="secondary" type="button" data-video-rate="2" aria-pressed="false">2倍速</button></div>
+{% if not focused %}{{ clip_metadata(clip) }}{% endif %}
 {% if clip.interrupted %}<div class="message message-warn">切断・停止・フレーム欠落がある部分動画です。欠落区間では同じフレームを表示することがあります。</div>{% endif %}
 <fieldset class="clip-timing">
-<legend>開始・完了</legend>
-<p class="note">映っていない時刻は空欄にしてください。</p>
+<legend>開始・完了{% if focused %}（任意）{% endif %}</legend>
+{% if not focused %}<p class="note">映っていない時刻は空欄にしてください。</p>{% endif %}
 <div class="clip-offsets">
 {% for name, offset in form.offsets.items() %}
 <div class="clip-offset">
-<label>{{ offset.text }}（動画内の秒）
+<label>{{ offset.text }}{% if focused %}（秒）{% else %}（動画内の秒）{% endif %}
 <input type="number" min="0" max="{{ clip.duration }}" step="0.01" name="{{ name }}" form="clip-label-form" value="{{ offset.value }}">
 </label>
 <div class="clip-offset-actions">
-{% if offset.candidate is not none %}<button class="secondary" type="button" data-video-seek="{{ offset.candidate }}">{{ offset.text }}候補へ移動（{{ "%g"|format(offset.candidate) }}秒）</button>{% endif %}
-<button class="secondary" type="button" data-video-offset="{{ name }}">現在位置を{{ offset.text }}にする</button>
+{% if offset.candidate is not none %}<button class="secondary" type="button" data-video-seek="{{ offset.candidate }}"{% if focused %} aria-label="{{ offset.text }}候補へ移動（{{ "%g"|format(offset.candidate) }}秒）"{% endif %}>{% if focused %}候補 {{ "%g"|format(offset.candidate) }}秒{% else %}{{ offset.text }}候補へ移動（{{ "%g"|format(offset.candidate) }}秒）{% endif %}</button>{% endif %}
+<button class="secondary" type="button" data-video-offset="{{ name }}"{% if focused %} aria-label="現在位置を{{ offset.text }}にする"{% endif %}>{% if focused %}現在位置を使う{% else %}現在位置を{{ offset.text }}にする{% endif %}</button>
 </div>
 </div>
 {% endfor %}
 </div>
-<button class="secondary" type="submit" form="clip-label-form">ラベルを保存</button>
+{% if not focused %}<button class="secondary" type="submit" form="clip-label-form">ラベルを保存</button>{% endif %}
 </fieldset>
 {% if circling %}
 <div class="message message-info"><strong>行動分析 ／ 旋回候補</strong><p>トレー付近の位置を取得 {{ circling.located }}/{{ circling.sampled }}コマ</p>
@@ -64,13 +67,23 @@
 {%- endfor -%}
 </div>
 {% endif %}
+{% if focused %}</div><div class="review-side">{% endif %}
 {% if assessment %}
-{% if assessment.error %}<div class="message message-error">{{ assessment.error }}</div>{% else %}
+{% if assessment.error %}<div class="message message-error">{{ assessment.error }}</div>{% elif focused %}
+<details class="review-assessment"><summary>自動判定の候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %}</summary>
+<p>{{ assessment.activity }}{% if assessment.stool_condition %} ／ {{ assessment.stool_condition }}{% endif %}</p>{% if assessment.reason %}<p>{{ assessment.reason }}</p>{% endif %}
+{% if assessment.notified %}<p class="note">通知済み {{ assessment.notified }}</p>{% endif %}
+</details>
+{% else %}
 <div class="message message-info"><strong>自動判定の候補 ／ {{ assessment.label }}{% if assessment.location %}（{{ assessment.location }}）{% endif %} ／ {{ assessment.activity }}{% if assessment.stool_condition %} ／ うんちの状態：{{ assessment.stool_condition }}{% endif %}</strong><br>{{ assessment.reason }}
 {% if assessment.notified %}<br>通知済み {{ assessment.notified }}{% endif %}
 {%- if assessment.draft %}<br>動画を確認してからラベルを保存してください。{% endif %}</div>
 {% endif %}
 {% endif %}
+{% if focused %}
+{% include "_review_clip_form.html" %}
+</div></div>
+{% else %}
 {% if quick %}
 <form method="post" action="/clips/quick" class="quick-confirm">{{ csrf_field(token) }}
 <input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}{% if review %}<input type="hidden" name="from" value="review">{% endif %}
@@ -82,8 +95,7 @@
 </div>
 <div class="times">{{ location_field(locations, form.location) }}
 <label>保存先<select name="record_id">
-{% for record in confirmation.candidates %}<option value="{{ record.id }}" data-record-location="{{ record.location }}"{% if record.selected %} selected{% endif %}{% if record.disabled %} disabled{% endif %}>{{ record.time }} {{ record.label }}</option>{% endfor %}
-<option value="new" data-tray-event="{{ 1 if confirmation.tray_event else 0 }}"{% if confirmation.new_disabled %} disabled{% endif %}>新しい確定記録を作成</option>
+{{ record_options(confirmation, clip.event_id) }}
 </select></label></div>
 <p class="note">「うんち」「おしっこ」「両方」は、入力した開始・完了も保存します。{% if review %}保存すると次の件へ進みます。{% endif %}メモを付けるには「くわしく入力」を開いてください。</p>
 </form>
@@ -93,17 +105,11 @@
 {%- for value, text in clip_labels -%}
 <label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == form.label %}checked{% endif %}>{{ text }}</label>
 {%- endfor -%}
-</div></fieldset><div class="times">{{ location_field(locations, form.location) }}<label>動作<select name="activity">
-{%- for value, text in activities -%}
-<option value="{{ value }}" {% if value == form.activity %}selected{% endif %}>{{ text }}</option>
-{%- endfor -%}
-</select></label><label>うんちの状態（うんちのとき）<select name="stool_condition"><option value="">選ばない</option>
-{%- for value, text in stool_conditions -%}
-<option value="{{ value }}" {% if value == form.stool_condition %}selected{% endif %}>{{ text }}</option>
-{%- endfor -%}
-</select></label></div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000">{{ clip.note }}</textarea></label></p><button class="secondary">ラベルを保存</button>{% include "_confirmation.html" %}</form>
+</div></fieldset><div class="times">{{ location_field(locations, form.location) }}{{ clip_details(activities, stool_conditions, form) }}</div><p><label>メモ<br><textarea name="note" rows="3" maxlength="2000">{{ clip.note }}</textarea></label></p><button class="secondary">ラベルを保存</button>{% include "_confirmation.html" %}</form>
 </details>
+{% endif %}
 <details class="clip-more"{% if clip.dismissed %} open{% endif %}><summary>そのほかの操作（保護・評価の候補・確認待ち）</summary>
+{% if focused %}{{ clip_metadata(clip) }}{% endif %}
 {% if clip.dismissed %}<p class="note">確認待ちから外しています。</p><form method="post" action="/review/restore">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><button class="secondary">確認待ちに戻す</button></form>{% elif review %}<form method="post" action="/review/dismiss">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><input type="hidden" name="from" value="review"><button class="secondary">確認しない（確認待ちから外す）</button></form>{% endif %}
 {% if not clip.pinned %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}<button class="secondary" name="protected" value="1">この動画を保護</button></form>{% elif viewer_admin %}<form method="post" action="/clips/protect">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}">{{ show_field(show) }}<button class="secondary" name="protected" value="0">保護指定を解除</button></form>{% else %}<p class="note">保護中の動画です（解除は管理者が行います）。</p>{% endif %}
 {% include "_benchmark_candidate.html" %}

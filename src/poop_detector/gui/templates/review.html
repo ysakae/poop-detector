@@ -2,17 +2,15 @@
 {% extends "base.html" %}
 {% from "_macros.html" import chip, clip_assessment, csrf_field, empty_state, icon, when %}
 {% block content %}
-<h2>確認待ち {{ count }}件</h2>
+<div class="review-list-heading"><h2>確認待ち {{ count }}件</h2>
+{% if count %}<a class="button" href="{{ next_url }}">確認を始める</a>{% endif %}
+</div>
 {% if done and not count %}<p class="message" role="status">すべて確認しました。</p>{% endif %}
 {% if end and count %}<p class="message message-warn" role="status">最後まで進みました。飛ばした件が残っています。</p>{% endif %}
 {% if dismissed %}<p class="message" role="status">{{ dismissed }}件を確認待ちから外しました。</p>{% endif %}
 {% if restored %}<p class="message" role="status">{{ restored }}件を確認待ちに戻しました。</p>{% endif %}
-{% if count %}
-<p>新しい順に並んでいます。ラベルを保存すると、次の件が開きます。</p>
-<p><a class="button" href="{{ next_url }}">確認を始める</a></p>
-{%- endif %}
 {% if scenes %}
-<h3>画角ごとの確認待ち</h3>
+<details class="review-scenes"{% if not count %} open{% endif %}><summary>画角ごとの確認待ち</summary>
 <p class="note">カメラの向きやトレーの位置を変える前の動画は、画角ごとにまとめて確認待ちから外せます。ラベルは付けず、あとで戻せます。外した動画は、録画の整理で削除できるようになります。</p>
 <ul class="review-list scene-list">
 {%- for scene in scenes -%}
@@ -22,9 +20,9 @@
 </span></li>
 {%- endfor -%}
 </ul>
+</details>
 {% endif %}
 {%- if count %}
-{% if scenes %}<h3>確認待ちの一覧</h3>{% endif %}
 {%- for group in groups %}
 <h3 class="day-heading">{{ group.day }}</h3>
 <ul class="review-list">

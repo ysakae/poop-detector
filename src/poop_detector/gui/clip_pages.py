@@ -282,6 +282,7 @@ def label_form(row: Mapping[str, Any], assessment: Mapping[str, Any] | None) -> 
     condition = row.get("stool_condition") if row["label"] is not None else None
     return {
         "label": row["label"] or draft.get("label", "uncertain"),
+        "review_label": row["label"] or draft.get("label"),
         "location": draft.get("location", row["location"]),
         "activity": draft.get("activity", row["activity"]),
         "stool_condition": condition or draft.get("stool_condition") or "",
