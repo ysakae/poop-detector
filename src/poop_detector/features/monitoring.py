@@ -254,7 +254,9 @@ def _presence_extension(
         points = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
     else:
         points = floor.points
-    sampler = MotionSampler(np.array(points, dtype=np.float32))
+    sampler = MotionSampler(
+        np.array(points, dtype=np.float32), exit_bounds=config.presence_exit_bounds
+    )
     return PresenceExtension(tracker, sampler, predict)
 
 

@@ -83,6 +83,8 @@ class MotionSampler:
     - 枠の外の MIN_RELOCATE_AREA 以上の動き → 犬がそこへ動いたとみなし、居場所を移して moving
       （丸まった犬は検出が当たらないため）。止まった最初の静かな場面の映像を犬の姿として覚える
     - ほかの小さな動き → 居場所を保ったまま moving
+    出入口の指定があれば、縁に達したときはその矩形の内側と外側の両方の動きを確かめる。
+    証拠が足りなければ居場所を捨てて unknown にする。
     最後の枠の姿が消えたとき、枠の外への動きがなければ居場所を捨てて unknown にする。
     left のあとは、床面が静かな間は left を保つ。left にしてから EXIT_GRACE_SECONDS の間は、
     動きが出口（最後の枠を広げた範囲と、その近くの縁の帯）の中だけでも left を保つ
@@ -90,8 +92,14 @@ class MotionSampler:
     MIN_RELOCATE_AREA 以上の動きは、戻ってきた犬とみなして居場所にする。
     """
 
-    def __init__(self, boundary: NDArray[Any] | None) -> None:
+    def __init__(
+        self,
+        boundary: NDArray[Any] | None,
+        *,
+        exit_bounds: tuple[float, float, float, float] | None = None,
+    ) -> None:
         self.boundary = _WHOLE_FRAME if boundary is None else np.asarray(boundary, dtype=np.float32)
+        self.exit_bounds = exit_bounds
         self._areas: tuple[NDArray[Any], NDArray[Any]] | None = None
         # 直近に検出した犬の枠の大きさ（画面に対する割合）。reset でも忘れない
         self._dog_size = DOG_SIZE
@@ -177,11 +185,12 @@ class MotionSampler:
         motion = None if changed is None else self._motion(changed)
         if location is None:
             return self._after_left(motion)
-        return self._with_last_location(gray, motion, shape, location)
+        return self._with_last_location(gray, changed, motion, shape, location)
 
     def _with_last_location(
         self,
         gray: NDArray[Any],
+        changed: NDArray[Any] | None,
         motion: NDArray[Any] | None,
         shape: tuple[int, ...],
         location: Box,
@@ -189,9 +198,9 @@ class MotionSampler:
         region = _box_slices(location, shape, gray.shape, 0)
         outside = _outside_motion(motion, location, shape) if motion is not None else None
         if self._gone(gray[region]):
-            # 枠が縁にかかっていれば、検出が外れたまま縁の外へ出ていったとみなす。
+            # 枠が縁にかかっていれば、出口での動きを確かめる。
             if self._regions(gray.shape)[1][region].any():
-                return self._leave(location, shape, gray.shape)
+                return self._at_edge(location, shape, gray.shape, changed)
             # 枠の外への動きがなければ、犬がどこへ移ったか分からない。
             if outside is not None and motion is not None and _area(outside) >= MIN_RELOCATE_AREA:
                 return self._relocate(motion, shape, outside)
@@ -206,7 +215,7 @@ class MotionSampler:
             if not outside.any():
                 return "moving"
             if (outside & self._regions(motion.shape)[1]).any():
-                return self._leave(location, shape, motion.shape)
+                return self._at_edge(location, shape, motion.shape, changed)
             if _area(outside) >= MIN_RELOCATE_AREA:
                 return self._relocate(motion, shape, outside)
             # 小さな物の動きでは居場所を移さないが、静止とも数えない。
@@ -214,6 +223,38 @@ class MotionSampler:
         # 画像を比べられない。どこにいるか分からない。
         self._location, self._snapshot = None, None
         return "unknown"
+
+    def _at_edge(
+        self,
+        location: Box,
+        shape: tuple[int, ...],
+        small: tuple[int, ...],
+        changed: NDArray[Any] | None,
+    ) -> Presence:
+        if self.exit_bounds is None:
+            return self._leave(location, shape, small)
+
+        door = self._exit_mask(small, self.exit_bounds)
+        near = _box_slices(location, shape, small, EXIT_REACH)
+        floor, edge = self._regions(small)
+        if changed is not None and (changed & door & edge)[near].any():
+            # 元の枠が消えた差分や身じろぎを除き、出入口の外側に新しい動きを探す。
+            outward = changed & door & ~floor
+            outward[_box_slices(location, shape, small, STIR_MARGIN)] = False
+            if _area(outward[near]) >= MIN_MOTION_AREA:
+                return self._leave(location, shape, small, door=door)
+        self._location, self._snapshot = None, None
+        return "unknown"
+
+    @staticmethod
+    def _exit_mask(
+        small: tuple[int, ...], bounds: tuple[float, float, float, float]
+    ) -> NDArray[Any]:
+        height, width = small
+        left, top, right, bottom = bounds
+        x = np.linspace(0, 1, width)
+        y = np.linspace(0, 1, height)
+        return ((top <= y) & (y <= bottom))[:, None] & ((left <= x) & (x <= right))
 
     def _relocate(
         self, motion: NDArray[Any], shape: tuple[int, ...], seed: NDArray[Any] | None = None
@@ -247,11 +288,20 @@ class MotionSampler:
         self._snapshot, self._exit = None, None
         return "moving"
 
-    def _leave(self, location: Box, shape: tuple[int, ...], small: tuple[int, ...]) -> Presence:
+    def _leave(
+        self,
+        location: Box,
+        shape: tuple[int, ...],
+        small: tuple[int, ...],
+        *,
+        door: NDArray[Any] | None = None,
+    ) -> Presence:
         near = np.zeros(small, dtype=bool)
         near[_box_slices(location, shape, small, EXIT_REACH)] = True
         exit_area = self._regions(small)[1] & near
         exit_area[_box_slices(location, shape, small, STIR_MARGIN)] = True
+        if door is not None:
+            exit_area &= door
         self._location, self._snapshot, self._exit = None, None, exit_area
         self._left_age = 0
         return "left"

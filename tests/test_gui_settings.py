@@ -97,10 +97,16 @@ def test_changes_are_previewed_before_saving(settings_gui):
 def test_saving_writes_the_file_and_the_audit_log(settings_gui):
     server, path = settings_gui
     admin = login(server, "管理者")
-    fields = {**form_fields(page(server, admin)), "threshold": "25", "action": "save"}
+    fields = {
+        **form_fields(page(server, admin)),
+        "threshold": "25",
+        "presence_exit_area": "0.76,0.32,1,0.67",
+        "action": "save",
+    }
     status, headers, _ = post(server, admin, fields)
     assert (status, headers["Location"]) == (303, f"{PAGE}?saved=1")
     assert Config.load(path).threshold == 25
+    assert Config.load(path).presence_exit_bounds == (0.76, 0.32, 1.0, 0.67)
     assert "# 手で書いたコメント" in path.read_text()
     entry = server.app.accounts.audit.recent()[0]
     assert (entry.actor, entry.action) == ("管理者", "settings.save")

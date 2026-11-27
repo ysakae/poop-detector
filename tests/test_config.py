@@ -19,6 +19,18 @@ def test_missing_file_uses_defaults(tmp_path):
     assert Config.load(tmp_path / "none.yaml") == Config()
 
 
+def test_presence_exit_area_loads_normalized_bounds(tmp_path):
+    path = write(tmp_path, 'presence:\n  exit_area: "0.76, 0.32, 1, 0.67"\n')
+    assert Config.load(path).presence_exit_bounds == (0.76, 0.32, 1.0, 0.67)
+    assert Config().presence_exit_bounds is None
+
+
+@pytest.mark.parametrize("area", ["0.5,0.2,0.5,0.8", "0.3,0.2,1.1,0.8", "0.2,0.3", "a,0,1,1"])
+def test_presence_exit_area_rejects_invalid_bounds(area):
+    with pytest.raises(ConfigError, match=r"presence\.exit_area"):
+        Config(presence_exit_area=area)
+
+
 def test_sections_are_read_into_settings(tmp_path):
     path = write(
         tmp_path,

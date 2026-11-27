@@ -234,4 +234,5 @@ def sleep_recorder(database: "Database", root: Path, config: "Config") -> SleepR
     except (OSError, ValueError, TypeError, KeyError):
         logger.info("床面が未登録なので、睡眠の記録は映像の全体を使います")
         floor = None
-    return SleepRecorder(SleepStore(database), judge, MotionSampler(floor))
+    sampler = MotionSampler(floor, exit_bounds=config.presence_exit_bounds)
+    return SleepRecorder(SleepStore(database), judge, sampler)

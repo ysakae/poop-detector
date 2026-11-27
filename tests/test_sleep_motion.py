@@ -157,6 +157,41 @@ def test_undetected_exit_from_box_near_floor_edge_is_left():
         assert sampler.sample(scene(outside), []) == ("left", False)
 
 
+EXIT_BOUNDS = (0.76, 0.32, 1.0, 0.67)
+
+
+def test_registered_exit_ignores_disappearance_at_bed_side():
+    sampler = MotionSampler(FLOOR, exit_bounds=EXIT_BOUNDS)
+    bed = (17, 50, 47, 70)
+    settled(sampler, bed)
+    assert sampler.sample(scene(), []) == ("unknown", False)
+    assert sampler.sample(scene(), []) == ("unknown", False)
+    assert sampler.sample(scene(bed), [bed]) == ("moving", True)
+
+
+def test_registered_exit_ignores_motion_to_another_edge():
+    sampler = MotionSampler(FLOOR, exit_bounds=EXIT_BOUNDS)
+    settled(sampler)
+    bed = (20, 50, 50, 70)
+    assert sampler.sample(scene(DOG, bed), []) == ("unknown", False)
+
+
+def test_registered_exit_needs_motion_outside_floor():
+    sampler = MotionSampler(FLOOR, exit_bounds=EXIT_BOUNDS)
+    settled(sampler, NEAR_EDGE)
+    assert sampler.sample(scene(), []) == ("unknown", False)
+    assert sampler.sample(scene(), []) == ("unknown", False)
+
+
+def test_registered_exit_records_movement_across_entrance():
+    sampler = MotionSampler(FLOOR, exit_bounds=EXIT_BOUNDS)
+    settled(sampler, NEAR_EDGE)
+    outside = (145, 50, 160, 70)
+    assert sampler.sample(scene(outside), []) == ("left", False)
+    assert sampler.sample(scene(outside), []) == ("left", False)
+    assert sampler.sample(scene(NEAR_EDGE), [NEAR_EDGE]) == ("moving", True)
+
+
 def test_undetected_exit_at_image_edge_without_floor_is_left():
     sampler = MotionSampler(None)
     box = (125, 50, 155, 70)
