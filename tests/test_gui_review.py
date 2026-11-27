@@ -4,6 +4,7 @@ import re
 from urllib.parse import urlencode
 
 import numpy as np
+import pytest
 from support import exchange, login
 
 from poop_detector.video.clip_labels import ClipLabel
@@ -210,6 +211,110 @@ def test_review_shows_only_the_item(gui):
     assert "<h2>記録の詳細</h2>" not in html
     assert "目視で確認したうんち・おしっこを記録する" not in html
     assert "<h2>記録の詳細</h2>" in page(server, f"/records/events?id={event_id}", cookie)
+
+
+def test_video_review_has_one_editor_and_preserves_the_ai_draft(gui):
+    server, _, _ = gui
+    clips = server.app.clips
+    clip_id = ready_clip(server, source="manual")
+    clips.assessments.save(clip_id, Assessment("urine", "excreting", 1.25, 3, "人工データ", "tray"))
+    html = page(server, f"/clips?id={clip_id}&from=review", login(server, role="member"))
+    assert '<form method="post" action="/clips/review" id="clip-label-form"' in html
+    assert 'action="/clips/quick"' not in html
+    assert 'action="/clips/label"' not in html
+    assert html.count('<select name="location"') == 1
+    assert html.count('<select name="record_id"') == 1
+    assert re.search(r'name="label" value="urine"[^>]*checked', html)
+    assert 'name="start" form="clip-label-form" value=""' in html
+    assert 'data-video-seek="1.25"' in html
+    assert html.count("保存して次へ") == 1
+
+
+def test_still_image_review_has_one_editor_and_requires_a_choice(gui):
+    server, _, event_id = gui
+    html = page(server, f"/records/events?id={event_id}&from=review", login(server))
+    assert html.count('action="/save"') == 1
+    assert html.count('<select name="location"') == 1
+    assert re.search(r'name="label" value="unknown"[^>]*required', html)
+    assert not re.search(r'name="label" value="[^"]+"[^>]*checked', html)
+    assert "<summary>時刻・メモ（任意）</summary>" in html
+    assert html.count("保存して次へ") == 1
+
+
+@pytest.mark.parametrize(
+    ("label", "destination", "has_record", "activity"),
+    [
+        ("feces", "new", True, "excreting"),
+        ("urine", "label-only", False, "excreting"),
+        ("none", "new", False, "other"),
+        ("uncertain", "new", False, "other"),
+    ],
+)
+def test_video_review_saves_selected_kind_and_destination(
+    gui, label, destination, has_record, activity
+):
+    server, store, _ = gui
+    clips = server.app.clips
+    clip_id = ready_clip(server, source="manual")
+    clips.update(clip_id, start_at="2026-11-09T06:10:00+00:00")
+    cookie = login(server, role="member")
+    fields = {
+        "id": clip_id,
+        "label": label,
+        "from": "review",
+        "record_id": destination,
+        "activity": "",
+        "location": "tray",
+        "start": "1.25",
+        "end": "3",
+        "note": "人工データ",
+    }
+    path = f"/clips?id={clip_id}&from=review"
+    status, headers, _ = post(server, cookie, "/clips/review", fields, path)
+    assert (status, headers["Location"]) == (303, f"/review/next?after=clip:{clip_id}")
+    clip = clips.get(clip_id)
+    assert clip["label"] == label
+    assert clip["activity"] == activity
+    assert clip["note"] == "人工データ"
+    assert clip["actual_start_offset"] == (1.25 if label in ("feces", "urine") else None)
+    assert clip["actual_end_offset"] == (3.0 if label in ("feces", "urine") else None)
+    if has_record:
+        (record,) = store.records()
+        assert record["actual_start"] == "2026-11-09T06:10:01.250000+00:00"
+        assert record["actual_end"] == "2026-11-09T06:10:03+00:00"
+    else:
+        assert store.records() == []
+
+
+def test_video_review_defaults_to_the_associated_detection(gui):
+    server, store, event_id = gui
+    clips = server.app.clips
+    clip_id = ready_clip(server, event_id=event_id)
+    clips.update(clip_id, start_at="2026-11-09T06:10:00+00:00")
+    cookie = login(server, role="member")
+    path = f"/clips?id={clip_id}&from=review"
+    html = page(server, path, cookie)
+    assert re.search(rf'<option value="{event_id}"[^>]*selected', html)
+    fields = {"id": clip_id, "label": "both", "record_id": event_id, "start": "1", "from": "review"}
+    status, _, _ = post(server, cookie, "/clips/review", fields, path)
+    assert status == 303
+    (record,) = store.records()
+    assert record["id"] == event_id
+    assert record["excretion_type"] == "both"
+    assert record["actual_start"] == "2026-11-09T06:10:01+00:00"
+
+
+def test_video_review_rejects_invalid_times_and_links_back_to_the_item(gui):
+    server, store, _ = gui
+    clip_id = ready_clip(server, source="manual")
+    cookie = login(server, role="member")
+    fields = {"id": clip_id, "label": "feces", "record_id": "new", "start": "2", "end": "1"}
+    path = f"/clips?id={clip_id}&from=review"
+    status, _, body = post(server, cookie, "/clips/review", fields, path)
+    assert status == 400
+    assert f'href="/clips?id={clip_id}&amp;from=review"' in body.decode()
+    assert server.app.clips.get(clip_id)["label"] is None
+    assert store.records() == []
 
 
 def test_menu_marks_review_while_reviewing(gui):

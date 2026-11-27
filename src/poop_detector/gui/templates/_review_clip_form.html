@@ -1,0 +1,29 @@
+{#- 確認待ちで使う動画ラベルのフォーム。動画の下の開始・完了欄もこのフォームで送る。 -#}
+<form method="post" action="/clips/review" id="clip-label-form" class="review-editor">
+{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ clip.id }}"><input type="hidden" name="from" value="review">{{ show_field(show) }}
+<fieldset>
+<legend>確認結果</legend>
+<div class="choices review-choices">
+{%- for value, text in clip_labels %}
+<label class="choice"><input type="radio" name="label" value="{{ value }}"{% if value == form.review_label %} checked{% endif %} required>{{ text }}</label>
+{%- endfor %}
+</div>
+</fieldset>
+<div class="review-record-fields">
+{{ location_field(locations, form.location) }}
+{% if confirmation.linked %}
+<input type="hidden" name="record_id" value="{{ confirmation.linked }}">
+<p class="note"><a href="/records/events?id={{ confirmation.linked }}">ひも付け済みの記録を開く</a></p>
+{% else %}
+<label>保存先<select name="record_id" data-review-destination>
+{{ record_options(confirmation, clip.event_id, true) }}
+<option value="label-only">動画ラベルのみ</option>
+</select></label>
+{% endif %}
+</div>
+<details class="review-details"><summary>動作・うんちの状態・メモ（任意）</summary>
+<div class="times">{{ clip_details(activities, stool_conditions, form, true) }}</div>
+<p><label>メモ<br><textarea name="note" rows="2" maxlength="2000">{{ clip.note }}</textarea></label></p>
+</details>
+<button class="review-save" type="submit">保存して次へ</button>
+</form>

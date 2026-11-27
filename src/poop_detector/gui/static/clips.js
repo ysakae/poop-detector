@@ -83,18 +83,36 @@ document.addEventListener("change", (event) => {
     if (!field) return;
     const destination = field.form.querySelector('select[name="record_id"]');
     if (!destination) return;
+    const reviewing = destination.hasAttribute("data-review-destination");
+    const previous = destination.selectedOptions[0];
     for (const option of destination.options) {
         const location = option.dataset.recordLocation;
         option.disabled = Boolean(
             (location && field.value && location !== field.value)
             || (option.dataset.trayEvent === "1" && field.value !== "outside")
         );
-        if (option.selected && option.disabled) destination.value = "";
+        if (!reviewing && option.selected && option.disabled) destination.value = "";
+    }
+    if (reviewing && previous?.disabled) {
+        const available = destination.querySelector(
+            "option[data-record-original]:enabled, option[value=new]:enabled"
+        );
+        destination.value = available?.value ?? "label-only";
     }
 });
 
 document.addEventListener("submit", (event) => {
     const form = event.target;
+    if (form.matches("#clip-detail form.review-editor")) {
+        const start = form.elements.namedItem("start");
+        const end = form.elements.namedItem("end");
+        if (end.valueAsNumber < start.valueAsNumber) {
+            event.preventDefault();
+            end.setCustomValidity("完了は開始以降を指定してください");
+            end.reportValidity();
+        }
+        return;
+    }
     if (!form.matches("#clip-detail form.quick-confirm") || event.submitter?.value === "none") return;
 
     // 詳細入力と共通の時刻欄を確認し、押されたボタンの送信データに加える。
@@ -107,4 +125,11 @@ document.addEventListener("submit", (event) => {
     form.addEventListener("formdata", ({formData}) => {
         for (const offset of offsets) formData.set(offset.name, offset.value);
     }, {once: true});
+});
+
+document.addEventListener("input", (event) => {
+    const field = event.target;
+    if (field.matches("#clip-detail .clip-timing input") && field.form.matches(".review-editor")) {
+        field.form.elements.namedItem("end").setCustomValidity("");
+    }
 });

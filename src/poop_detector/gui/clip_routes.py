@@ -29,14 +29,14 @@ def _save_error(handler: Exchange, status: int = 400) -> None:
     )
 
 
-def _confirmation_error(handler: Exchange, error: Exception) -> None:
+def _confirmation_error(handler: Exchange, error: Exception, return_url: str = "/clips") -> None:
     handler.respond(
         400,
         message_page(
             "確定記録を保存できませんでした",
             str(error),
-            "/clips",
-            "動画一覧へ戻る",
+            return_url,
+            "動画一覧へ戻る" if return_url == "/clips" else "確認に戻る",
             title=handler.app.title,
             wrap_link=True,
         ),
@@ -77,14 +77,23 @@ def _offset(value: str | None) -> float | None:
     return float(value) if value else None
 
 
-def _save_label(handler: Exchange, form: Form, record_id: str | None) -> str:
+def _save_label(
+    handler: Exchange,
+    form: Form,
+    record_id: str | None,
+    *,
+    default_activity: str | None = None,
+) -> str:
     fields = form.fields
     clip_id = fields.get("id", "")
+    activity = fields.get("activity", default_activity or "other")
+    if activity == "" and default_activity is not None:
+        activity = default_activity
     label = ClipLabel(
         fields.get("label", ""),
         _offset(fields.get("start")),
         _offset(fields.get("end")),
-        fields.get("activity", "other"),
+        activity,
         fields.get("note", ""),
         fields.get("location"),
         fields.get("stool_condition") or None,
@@ -109,6 +118,23 @@ def confirm_clip(handler: Exchange, form: Form) -> None:
         clip_id = _save_label(handler, form, form.fields.get("record_id", ""))
     except (ValueError, TypeError) as error:
         _confirmation_error(handler, error)
+        return
+    _saved(handler, form, clip_id, advance=True)
+
+
+@post("/clips/review")
+def review_clip(handler: Exchange, form: Form) -> None:
+    fields = form.fields
+    excretion = fields.get("label") in ("feces", "urine", "both")
+    destination = fields.get("record_id", "")
+    record_id = destination if excretion and destination != "label-only" else None
+    try:
+        clip_id = _save_label(
+            handler, form, record_id, default_activity="excreting" if excretion else "other"
+        )
+    except (ValueError, TypeError) as error:
+        path = clips_url(kept_filter(fields), fields.get("id"), **{"from": "review"})
+        _confirmation_error(handler, error, path)
         return
     _saved(handler, form, clip_id, advance=True)
 

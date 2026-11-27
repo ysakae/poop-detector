@@ -19,7 +19,14 @@ PROTECTED_GET = sorted(path for path in GET_ROUTES if not is_public(path))
 
 
 def test_clip_operations_have_individual_routes():
-    paths = ("/clips/request", "/clips/label", "/clips/confirm", "/clips/protect", "/clips/quick")
+    paths = (
+        "/clips/request",
+        "/clips/label",
+        "/clips/confirm",
+        "/clips/review",
+        "/clips/protect",
+        "/clips/quick",
+    )
     assert len({POST_ROUTES[path] for path in paths}) == len(paths)
 
 

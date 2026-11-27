@@ -75,9 +75,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["poop_detector"]
 [tool.coverage.report]
-# 自動更新の対応後の実測は95.67%。前回の実測から0.01ポイント上がった。
+# 確認待ちの再設計後の実測は95.68%。前回の実測から0.01ポイント上がった。
 precision = 2
-fail_under = 95.60
+fail_under = 95.61
 show_missing = true
 skip_covered = true
 [tool.mypy]

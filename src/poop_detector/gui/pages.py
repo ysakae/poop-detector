@@ -170,6 +170,7 @@ def event_detail(row: EventRow) -> dict[str, Any]:
             ("end", "終わった時刻", local_time(row["actual_end"], form=True)),
         ],
         "note": row["note"],
+        "has_details": bool(row["actual_start"] or row["actual_end"] or row["note"]),
     }
 
 

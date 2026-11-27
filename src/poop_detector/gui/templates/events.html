@@ -10,32 +10,38 @@
 <p class="note">自動検知はうんち・おしっこの候補です。種類を確かめてから記録してください。検知を探すときは<a href="/clips?show=detected">差分検知の動画</a>を、検知されなかったうんち・おしっこは<a href="/records/new">トイレを記録</a>を開いてください。</p>
 {% endif %}
 <div class="workspace reviewing"><article>
-<h3>{{ row.time }}</h3>
-{% if row.image %}<figure><img src="/image?id={{ row.id }}" alt="検知時のカメラ画像"><figcaption>検知時の画像。静止画だけで判断できない場合は保留してください。</figcaption></figure>{% else %}<p>この記録には画像がありません。</p>{% endif %}
+{% if review %}<header class="review-item-title"><h2>検知を確認</h2><p>{{ row.time }}</p></header><div class="review-item"><div class="review-media">{% else %}<h3>{{ row.time }}</h3>{% endif %}
+{% if row.image %}<figure><img src="/image?id={{ row.id }}" alt="検知時のカメラ画像"><figcaption>{% if review %}検知時の画像{% else %}検知時の画像。静止画だけで判断できない場合は保留してください。{% endif %}</figcaption></figure>{% else %}<p>この記録には画像がありません。</p>{% endif %}
+{% if review %}</div><div class="review-side">{% endif %}
 {% if row.editable %}
-{% if row.quick %}
+{% if row.quick and not review %}
 <form method="post" action="/save" class="quick-confirm">{{ csrf_field(token) }}
-<input type="hidden" name="id" value="{{ row.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}
+<input type="hidden" name="id" value="{{ row.id }}">
 <h4>実際にはどうでしたか？</h4>
 <div class="quick-buttons">
 {%- for button in row.quick -%}
 <button class="secondary" name="label" value="{{ button.value }}">{{ icon(button.icon) }}{{ button.text }}</button>
 {%- endfor -%}
 </div>
-<p class="note">押すと、このラベルで保存します{% if review %}（次の件へ進みます）{% endif %}。場所・日時・メモを付けるときや、判断できずに保留するときは、下の「くわしく入力」を使ってください。</p>
+<p class="note">押すと、このラベルで保存します。場所・日時・メモを付けるときや、判断できずに保留するときは、下の「くわしく入力」を使ってください。</p>
 </form>
 {% endif %}
-<details class="clip-more"{% if not row.quick %} open{% endif %}><summary>くわしく入力（場所・開始と完了・メモ・種類不明・保留）</summary>
-<form method="post" action="/save">{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ row.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>実際にはどうでしたか？</legend><div class="choices">
+{% if not review %}<details class="clip-more"{% if not row.quick %} open{% endif %}><summary>くわしく入力（場所・開始と完了・メモ・種類不明・保留）</summary>{% endif %}
+<form method="post" action="/save"{% if review %} class="review-editor"{% endif %}>{{ csrf_field(token) }}<input type="hidden" name="id" value="{{ row.id }}">{% if review %}<input type="hidden" name="from" value="review">{% endif %}<fieldset><legend>{{ "確認結果" if review else "実際にはどうでしたか？" }}</legend><div class="choices{% if review %} review-choices{% endif %}">
 {%- for value, text in row.choices -%}
-<label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == row.selected_label %}checked{% endif %} required>{{ text }}</label>
+<label class="choice"><input type="radio" name="label" value="{{ value }}" {% if value == row.selected_label and (not review or not row.quick) %}checked{% endif %} required>{{ {"feces": "うんち", "both": "両方"}.get(value, text) if review else text }}</label>
 {%- endfor -%}
-</div></fieldset>{{ location_field(locations, row.location) }}<p class="note">「種類不明」はうんち・おしっこをしたことは確認できても、種類が分からない場合に選びます。開始・完了時刻は分かる場合だけ入力してください。{{ timezone }}です。</p><div class="times">
+</div>{% if review %}<p class="note">うんち・おしっこをしたことだけ分かる場合は「種類不明」を選んでください。</p>{% endif %}</fieldset>
+{{ location_field(locations, row.location) }}
+{% if review %}<details class="review-details"{% if row.has_details %} open{% endif %}><summary>時刻・メモ（任意）</summary><p class="note">{{ timezone }}です。</p>{% else %}
+<p class="note">「種類不明」はうんち・おしっこをしたことは確認できても、種類が分からない場合に選びます。開始・完了時刻は分かる場合だけ入力してください。{{ timezone }}です。</p>{% endif %}<div class="times">
 {%- for name, text, value in row.times -%}
 <label>{{ text }}<input type="datetime-local" name="{{ name }}" value="{{ value }}"></label>
 {%- endfor -%}
-</div><p><label>メモ（任意）<br><textarea name="note" rows="3" maxlength="2000">{{ row.note }}</textarea></label></p><p class="form-actions"><button{% if row.quick %} class="secondary"{% endif %}>ラベルを保存</button></p></form>
-</details>
+</div><p><label>メモ{% if not review %}（任意）{% endif %}<br><textarea name="note" rows="{{ 2 if review else 3 }}" maxlength="2000">{{ row.note }}</textarea></label></p>
+{% if review %}</details><button class="review-save" type="submit">保存して次へ</button>{% else %}<p class="form-actions"><button{% if row.quick %} class="secondary"{% endif %}>ラベルを保存</button></p>{% endif %}
+</form>{% if not review %}</details>{% endif %}
 {% else %}<p>通知されなかったうんちとして登録されています。</p>{% endif %}
+{% if review %}</div></div>{% endif %}
 </article></div>{% if not review %}<footer>ラベルは画像と同じ保存先のSQLiteに記録します。登録だけで自動学習は行いません。</footer>{% endif %}
 {% endblock %}
