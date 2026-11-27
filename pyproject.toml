@@ -1,6 +1,6 @@
 [project]
 name = "poop-detector"
-version = "1.2.0"
+version = "1.2.1"
 description = "犬のトイレの変化を検知して通知するローカル監視ツール"
 readme = "README.md"
 requires-python = ">=3.11"

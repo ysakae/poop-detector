@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-27
+
+### 修正
+
+- 「管理 › 設定 › 不在の記録」で出入口（`presence.exit_area`）を指定すると、睡眠と不在の記録で、その出入口の内側と外側の両方に動きが見えた場合に退出と判定する。寝床側で姿を見失ったときの誤判定を減らす（#343）
+
 ## [1.2.0] - 2026-11-27
 
 ### 変更
@@ -137,7 +143,8 @@
 - GitHub Actions で静的解析、Python 3.11・3.12 のテスト、Docker イメージを確認
 - MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明、依存ライブラリのライセンスの一覧
 
-[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/ysakae/poop-detector/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/ysakae/poop-detector/compare/v1.1.3...v1.2.0
 [1.1.3]: https://github.com/ysakae/poop-detector/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/ysakae/poop-detector/compare/v1.1.1...v1.1.2
