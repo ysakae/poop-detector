@@ -1,6 +1,7 @@
 """動画の保存要求と状態の台帳（監視と GUI の両方から使う）。"""
 
 import logging
+import os
 import sqlite3
 import time
 from collections.abc import Sequence
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict, cast, get_args
 from uuid import uuid4
 
+from ..atomic_file import write_bytes
 from ..records.events import (
     Store,
     utcnow,
@@ -43,6 +45,7 @@ ACTIVITIES = {
     "excreting": "うんち・おしっこをする動作",
 }
 logger = logging.getLogger(__name__)
+CAPTURE_STATUS_MAX_AGE = 10
 
 # 動画の保存要求のきっかけ。dog_visit は短い入退場をまとめた録画で、要求としては受け付けない。
 RequestSource: TypeAlias = Literal[
@@ -188,16 +191,23 @@ class ClipStore:
         return None
 
     def live(self) -> bool:
-        """監視プロセスが動画を収集できる状態か（直近のハートビートで判断）。"""
+        """直近の録画ハートビートを確認する。旧版の監視は DB の状態を使う。"""
+        now = time.time()
+        try:
+            with (self.root / ".capture-status").open("rb") as status:
+                if now - os.fstat(status.fileno()).st_mtime < CAPTURE_STATUS_MAX_AGE:
+                    return status.read(1) == b"1"
+        except OSError:
+            pass
         with self.connect() as db:
             row = db.execute("SELECT * FROM capture_status WHERE id=1").fetchone()
-        return bool(row and row["healthy"] and time.time() - row["heartbeat"] < 10)
+        return bool(row and row["healthy"] and now - row["heartbeat"] < CAPTURE_STATUS_MAX_AGE)
 
     def heartbeat(self, healthy: bool) -> None:
-        with self.connect() as db:
-            db.execute(
-                "INSERT OR REPLACE INTO capture_status VALUES (1,?,?)", (time.time(), int(healthy))
-            )
+        try:
+            write_bytes(self.root / ".capture-status", b"1" if healthy else b"0")
+        except OSError:
+            logger.warning("録画の稼働状態を保存できません")
 
     def request(
         self,

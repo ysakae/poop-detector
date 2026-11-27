@@ -205,6 +205,7 @@ def make_server(
     review_enabled: bool = False,
     cookie_name: str = COOKIE_NAME,
     restart: Restart | None = None,
+    preview: LivePreview | None = None,
 ) -> GuiServer:
     """GUI のサーバーを作る。待ち受けのアドレスと外部の URL は web、ポートは port を使う。
 
@@ -225,7 +226,7 @@ def make_server(
         root=Path(root),
         store=Store(root),
         clips=ClipStore(root),
-        preview=LivePreview(root),
+        preview=preview if preview is not None else LivePreview(root),
         csrf_secret=secrets.token_bytes(32),
         sessions=SessionStore(
             database, SessionPolicy(web.session_idle_hours, web.session_max_days)
@@ -294,6 +295,7 @@ def background_gui(
     config_path: str | Path | None = None,
     review_enabled: bool = False,
     restart: Restart | None = None,
+    preview: LivePreview | None = None,
 ) -> Iterator[None]:
     """監視中は別スレッドで GUI を提供し、監視が終われば待ち受けを閉じる。"""
     with make_server(
@@ -305,6 +307,7 @@ def background_gui(
         config_path=config_path,
         review_enabled=review_enabled,
         restart=restart if port else None,
+        preview=preview,
     ) as server:
         thread = threading.Thread(target=server.serve_forever, name="poop-detector-gui")
         thread.start()

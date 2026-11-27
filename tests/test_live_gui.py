@@ -18,6 +18,41 @@ from poop_detector.video.clip_reviews import Assessment
 from poop_detector.video.clips import ClipStore
 
 
+def test_combined_gui_keeps_jpeg_in_memory_and_serves_separate_gui(tmp_path, monkeypatch):
+    from poop_detector.capture import live_preview
+
+    monkeypatch.setattr(live_preview.time, "monotonic", lambda: 1)
+    monitor = LivePreview(tmp_path, in_memory=True)
+    standalone = LivePreview(tmp_path)
+    frame = np.full((480, 640, 3), 100, np.uint8)
+
+    monitor.request_frame()
+    monitor.publish(frame, now=1)
+    jpeg, stamp = monitor.latest()
+    assert jpeg.startswith(b"\xff\xd8")
+    assert monitor.frame_time() == stamp
+    assert monitor.latest(after=stamp) is None
+    assert not monitor.request_path.exists()
+    assert not monitor.frame_path.exists()
+
+    standalone.request_frame()
+    monitor.publish(frame, now=2)
+    assert standalone.latest()[0] == monitor.latest()[0]
+    assert monitor.frame_path.exists()
+
+    # 別プロセス向けの書き出しが失敗しても、同じプロセスの配信は続く。
+    def full(*args):
+        raise OSError("容量不足")
+
+    monkeypatch.setattr(live_preview, "write_bytes", full)
+    monitor.publish(frame, now=3)
+    assert monitor.latest(after=stamp) is not None
+    stale = time.time() + 4
+    monkeypatch.setattr(live_preview.time, "time", lambda: stale)
+    assert monitor.latest() is None
+    assert monitor.frame_time() is None
+
+
 def test_live_image_requires_a_viewer_and_expires(gui):
     server, store, _ = gui
     preview = LivePreview(store.root)

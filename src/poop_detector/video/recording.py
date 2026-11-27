@@ -3,15 +3,16 @@
 import fcntl
 import itertools
 import logging
+import os
 import queue
+import selectors
 import shutil
 import sqlite3
 import subprocess
-import tempfile
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from types import TracebackType
 from typing import IO, Any, Self, TypeAlias
@@ -81,50 +82,73 @@ def encode_mp4(
         while index + 1 < len(samples) and samples[index + 1][0] <= target + 1e-6:
             index += 1
         frames.append(samples[index][2])
+    encode_jpegs(frames, path, fps, timeout=timeout)
+    return count / fps
+
+
+def encode_jpegs(frames: Iterable[bytes], path: Path, fps: float, *, timeout: float) -> None:
+    """JPEG を順にパイプへ渡す。書き込みで詰まった時間も FFmpeg の制限時間に含める。"""
     executable = shutil.which("ffmpeg")
     if not executable:
         raise OSError("FFmpegが見つかりません")
-    # 連結JPEGをメモリーへ複製せず、一時ファイルからFFmpegへ渡す。
-    with tempfile.TemporaryFile(dir=Path(path).parent) as spool:
-        for frame in frames:
-            spool.write(frame)
-        spool.seek(0)
-        # shutil.which で見つけた FFmpeg を、固定の引数と保存先のパスだけで起動する。
-        subprocess.run(  # noqa: S603
-            [
-                executable,
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-y",
-                "-f",
-                "image2pipe",
-                "-framerate",
-                str(fps),
-                "-vcodec",
-                "mjpeg",
-                "-i",
-                "pipe:0",
-                "-an",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "24",
-                "-pix_fmt",
-                "yuv420p",
-                "-movflags",
-                "+faststart",
-                str(path),
-            ],
-            stdin=spool,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-            timeout=timeout,
-        )
-    return count / fps
+    command = [
+        executable,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "image2pipe",
+        "-framerate",
+        str(fps),
+        "-vcodec",
+        "mjpeg",
+        "-i",
+        "pipe:0",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "24",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        str(path),
+    ]
+    deadline = time.monotonic() + timeout
+    # shutil.which で見つけた FFmpeg を、固定の引数と保存先のパスだけで起動する。
+    with subprocess.Popen(  # noqa: S603
+        command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    ) as process:
+        try:
+            if process.stdin is None:
+                raise OSError("FFmpeg の入力パイプを開けません")
+            try:
+                with process.stdin as pipe, selectors.DefaultSelector() as selector:
+                    fd = pipe.fileno()
+                    os.set_blocking(fd, False)
+                    selector.register(fd, selectors.EVENT_WRITE)
+                    for jpeg in frames:
+                        pending = memoryview(jpeg)
+                        while pending:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0 or not selector.select(remaining):
+                                raise subprocess.TimeoutExpired(command, timeout)
+                            pending = pending[os.write(fd, pending) :]
+            except BrokenPipeError:
+                code = process.wait(timeout=max(0, deadline - time.monotonic()))
+                if code:
+                    raise subprocess.CalledProcessError(code, command) from None
+                raise
+            code = process.wait(timeout=max(0, deadline - time.monotonic()))
+            if code:
+                raise subprocess.CalledProcessError(code, command)
+        finally:
+            if process.poll() is None:
+                process.kill()
 
 
 def merged_source(current: str, incoming: RequestSource) -> str:
@@ -166,6 +190,8 @@ class ClipCollector:
         self.last_sample = float("-inf")
         self.last_frame = float("-inf")
         self.last_poll = float("-inf")
+        self.last_heartbeat = float("-inf")
+        self.healthy: bool | None = None
         self.scene_signature: str | None = None
         self.capture_lock: IO[str] | None = None
         self.maintenance = False
@@ -191,7 +217,7 @@ class ClipCollector:
         with self.lock:
             if paused and not self.maintenance:
                 self._interrupt()
-                self.store.heartbeat(False)
+                self._heartbeat(False, time.monotonic())
             self.maintenance = paused
 
     def _bytes(self) -> int:
@@ -327,6 +353,13 @@ class ClipCollector:
         per_frame = sum(len(sample[2]) for sample in samples) / len(samples)
         return bool(self._bytes() + per_frame * self.fps * remaining <= self.memory_limit)
 
+    def _heartbeat(self, healthy: bool, now: float) -> None:
+        # GUI の録画要求は従来どおり毎秒5回拾い、稼働状態だけ書き込み頻度を落とす。
+        if healthy != self.healthy or now - self.last_heartbeat >= 1:
+            self.store.heartbeat(healthy)
+            self.healthy = healthy
+            self.last_heartbeat = now
+
     def poll(self, now: float | None = None, force: bool = False) -> None:
         """GUI からの保存要求を拾い、録画の終わった要求を変換に回す。"""
         now = time.monotonic() if now is None else now
@@ -336,7 +369,7 @@ class ClipCollector:
             if not force and now - self.last_poll < 0.2:
                 return
             self.last_poll = now
-            self.store.heartbeat(now - self.last_frame < 5)
+            self._heartbeat(now - self.last_frame < 5, now)
             for row in self.store.queued():
                 clip_id = row["id"]
                 if not self.buffer or now - self.last_frame >= 5:

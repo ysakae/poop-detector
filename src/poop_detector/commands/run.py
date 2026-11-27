@@ -261,7 +261,7 @@ def watch(
         if sleep is not None:
             # 異常終了でも、判定中の分を書いて閉じる。
             stack.callback(sleep.close)
-        preview = LivePreview(context.root)
+        preview = LivePreview(context.root, in_memory=args.gui)
         preview.set_tray_state("searching" if tray_tracker is not None else "fixed")
         if config.clip_enabled:
             collector = stack.enter_context(
@@ -307,6 +307,7 @@ def watch(
                     config_path=args.config,
                     review_enabled=config.video_review_enabled,
                     restart=context.restart,
+                    preview=preview,
                 )
             )
         watchdog = camera_watchdog(context, notifier)

@@ -13,6 +13,7 @@ import time
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import cv2
 
@@ -21,7 +22,7 @@ from ..detection.monitoring import MonitorExtension
 from ..frames import Frame
 from ..records.away_periods import AwayPeriods
 from ..timezones import local_now
-from ..video.recording import ENCODE_TIMEOUT, encode_mp4
+from ..video.recording import ENCODE_TIMEOUT, encode_jpegs
 
 logger = logging.getLogger(__name__)
 DIGEST_DIR = "digest"
@@ -114,13 +115,14 @@ def timelapse(snapshots: DigestSnapshots, period_id: str) -> Path | None:
     newest = max(frame.stat().st_mtime_ns for frame in frames)
     if path.is_file() and path.stat().st_mtime_ns >= newest:
         return path
-    samples = [
-        (index / TIMELAPSE_FPS, "", frame.read_bytes()) for index, frame in enumerate(frames)
-    ]
-    temporary = path.with_suffix(".tmp.mp4")
     timeout = max(ENCODE_TIMEOUT, len(frames) * TIMELAPSE_SECONDS_PER_FRAME)
-    encode_mp4(samples, temporary, TIMELAPSE_FPS, timeout=timeout)
-    temporary.replace(path)
+    # 同じ区間の生成が重なっても、一方が他方の変換中のファイルを公開しない。
+    with TemporaryDirectory(dir=path.parent, prefix=".timelapse-") as folder:
+        destination = Path(folder) / TIMELAPSE_NAME
+        encode_jpegs(
+            (frame.read_bytes() for frame in frames), destination, TIMELAPSE_FPS, timeout=timeout
+        )
+        destination.replace(path)
     return path
 
 

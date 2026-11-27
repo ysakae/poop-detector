@@ -229,19 +229,22 @@ def test_timelapse_timeout_grows_with_the_number_of_frames(tmp_path, monkeypatch
 
     seen = []
 
-    def encode(samples, path, fps, *, timeout):
-        seen.append((len(samples), timeout))
+    def encode(frames, path, fps, *, timeout):
+        assert iter(frames) is frames
+        seen.append((sum(1 for _ in frames), timeout))
         path.write_bytes(b"mp4")
-        return len(samples) / fps
 
-    monkeypatch.setattr(digest, "encode_mp4", encode)
+    monkeypatch.setattr(digest, "encode_jpegs", encode)
     snapshots = DigestSnapshots(tmp_path)
     start = datetime(2026, 11, 22, 9, 0).astimezone()
     for minute in range(3):
         snapshots.save("a" * 32, FRAME, start + timedelta(minutes=minute))
     digest.timelapse(snapshots, "a" * 32)
+    # 枚数で変わる制限時間を確認する。全コマを個別にエンコードしない。
+    reference = snapshots.frames("a" * 32)[0]
     for minute in range(3, 1440):
-        snapshots.save("a" * 32, FRAME, start + timedelta(minutes=minute))
+        (reference.parent / f"{minute:04d}.jpg").hardlink_to(reference)
+    reference.touch()
     time.sleep(0.01)
     digest.timelapse(snapshots, "a" * 32)
     # 少ないときは録画と同じ30秒、1日分（1440枚）なら72秒まで待つ。
@@ -249,19 +252,39 @@ def test_timelapse_timeout_grows_with_the_number_of_frames(tmp_path, monkeypatch
 
 
 def test_encode_mp4_passes_the_timeout_to_ffmpeg(tmp_path, monkeypatch):
-    import subprocess as subprocess_module
-
     from poop_detector.video import recording
 
     calls = []
 
-    def run(*args, **kwargs):
-        calls.append(kwargs["timeout"])
-        return subprocess_module.CompletedProcess(args, 0)
+    def encode(frames, path, fps, *, timeout):
+        calls.append(timeout)
 
-    monkeypatch.setattr(recording.subprocess, "run", run)
-    monkeypatch.setattr(recording.shutil, "which", lambda name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(recording, "encode_jpegs", encode)
     samples = [(0.0, "", b"jpeg"), (0.1, "", b"jpeg")]
     recording.encode_mp4(samples, tmp_path / "a.mp4", 10)
     recording.encode_mp4(samples, tmp_path / "b.mp4", 10, timeout=90)
     assert calls == [30, 90]
+
+
+def test_timelapse_discards_failed_output_and_keeps_previous_video(tmp_path, monkeypatch):
+    from poop_detector.features import digest
+
+    snapshots = DigestSnapshots(tmp_path)
+    identifier = "a" * 32
+    stamp = datetime(2026, 1, 1).astimezone()
+    older = snapshots.save(identifier, FRAME, stamp)
+    video = older.with_name(digest.TIMELAPSE_NAME)
+    video.write_bytes(b"complete")
+    recent = snapshots.save(identifier, FRAME, stamp + timedelta(minutes=1))
+    future = time.time() + 1
+    os.utime(recent, (future, future))
+
+    def fail(frames, path, fps, *, timeout):
+        path.write_bytes(b"partial")
+        raise OSError("変換に失敗")
+
+    monkeypatch.setattr(digest, "encode_jpegs", fail)
+    with pytest.raises(OSError, match="変換に失敗"):
+        digest.timelapse(snapshots, identifier)
+    assert video.read_bytes() == b"complete"
+    assert not list(video.parent.glob(".timelapse-*"))
