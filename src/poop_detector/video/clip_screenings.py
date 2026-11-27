@@ -1,4 +1,4 @@
-"""判定の前のふるい分けの指標（clip_screenings テーブル）。記録するだけで、判定には使わない。"""
+"""判定の前のふるい分けの指標を記録する clip_screenings テーブル。"""
 
 import json
 from collections.abc import Collection

@@ -3,6 +3,7 @@
 import json
 import subprocess
 from contextlib import nullcontext
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -11,6 +12,7 @@ import numpy as np
 import pytest
 
 from poop_detector.detection.roi import ROI
+from poop_detector.experimental.screening import SCREENING_VERSION, Screening
 from poop_detector.main import parser
 from poop_detector.notifications import NtfyNotifier
 from poop_detector.video.clip_labels import ClipLabel
@@ -774,6 +776,88 @@ def test_live_review_judges_detections_before_outside_stays(tmp_path):
 def test_retry_delay_grows_while_the_judge_keeps_failing():
     assert [retry_delay(count) for count in (0, 1, 2, 3, 4)] == [20, 20, 40, 80, 160]
     assert retry_delay(8) == retry_delay(50) == 1800
+
+
+SHORT_VISIT = Screening(100, 4, 3, 1.0, 3.0, 10, 5, 0.0, 0.0, 0.0)
+
+
+def test_live_review_defers_new_short_visit_and_judges_it_when_the_queue_is_free(tmp_path):
+    store = ClipStore(tmp_path)
+    when = datetime.now(UTC)
+    short = ready(store, when, source="dog_visit")
+    longer = ready(store, when + timedelta(seconds=1), source="dog_exit")
+    outside = ready(store, when + timedelta(seconds=2), source="outside_stay")
+    inspected = []
+
+    def screen(path, row):
+        if store.screenings.get(row["id"]) is not None:
+            return None
+        result = SHORT_VISIT if row["id"] == short else replace(SHORT_VISIT, weak_tray_seconds=5)
+        assert store.screenings.save(row["id"], result)
+        return result
+
+    def inspect(path, row, judge):
+        inspected.append(row["id"])
+        return FEEDING
+
+    review = Review(store, inspect, screen=screen, defer_short_visits=True)
+    live = {"since": when.isoformat()}
+    assert review.run(limit=1, **live) == (0, 0)
+    assert store.screenings.get(short) is not None
+    assert store.assessments.get(short) is None
+    assert review.run(limit=3, **live) == (3, 0)
+    assert inspected == [longer, short, outside]
+
+
+@pytest.mark.parametrize(
+    ("seconds", "weak_frames", "unaligned", "interrupted", "version", "age", "mode", "defers"),
+    [
+        (4.999, 3, 10, 0, SCREENING_VERSION, 0, "live", True),
+        (5, 3, 10, 0, SCREENING_VERSION, 0, "live", False),
+        (0, 3, 10, 0, SCREENING_VERSION, 0, "live", False),
+        (3, 4, 10, 0, SCREENING_VERSION, 0, "live", False),
+        (3, 3, 11, 0, SCREENING_VERSION, 0, "live", False),
+        (3, 3, 10, 1, SCREENING_VERSION, 0, "live", False),
+        (3, 3, 10, 0, SCREENING_VERSION + 1, 0, "live", False),
+        (3, 3, 10, 0, SCREENING_VERSION, 15, "live", False),
+        (3, 3, 10, 0, SCREENING_VERSION, 0, "off", False),
+        (3, 3, 10, 0, SCREENING_VERSION, 0, "manual", False),
+    ],
+)
+def test_live_review_defers_only_recent_short_visits_that_meet_all_conditions(
+    tmp_path, seconds, weak_frames, unaligned, interrupted, version, age, mode, defers
+):
+    store = ClipStore(tmp_path)
+    now = datetime.now(UTC)
+    short = ready(store, now, source="dog_enter", interrupted=interrupted)
+    longer = ready(store, now + timedelta(seconds=1), source="dog_visit")
+    result = replace(
+        SHORT_VISIT, weak_tray_seconds=seconds, weak_tray_frames=weak_frames, unaligned=unaligned
+    )
+    assert store.screenings.save(short, result, version)
+    with store.store.connect() as db:
+        db.execute(
+            "UPDATE clip_screenings SET screened_at=? WHERE clip_id=?",
+            ((now - timedelta(minutes=age)).isoformat(), short),
+        )
+    inspected = []
+
+    def inspect(path, row, judge):
+        inspected.append(row["id"])
+        return FEEDING
+
+    review = Review(
+        store,
+        inspect,
+        screen=lambda path, row: None,
+        defer_short_visits=mode != "off",
+        now=lambda: now,
+    )
+    if mode == "manual":
+        assert review.run(limit=1, clip_id=short) == (1, 0)
+    else:
+        assert review.run(limit=1, since=now.isoformat()) == (1, 0)
+    assert inspected == [longer if defers else short]
 
 
 def test_worker_waits_longer_only_for_judge_failures(tmp_path):

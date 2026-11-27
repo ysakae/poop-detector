@@ -29,7 +29,7 @@ from ..frames import Frame, Mask
 from ..records.events import EXCRETION_LOCATIONS, EXCRETION_TYPES
 from .clip_reviews import Assessment
 from .clip_storage import REVIEW_LOCK
-from .clips import ACTIVITIES, CLIP_LABELS, STOOL_CONDITIONS, ClipRow, ClipStore
+from .clips import ACTIVITIES, CLIP_LABELS, DOG_VISIT_SOURCES, STOOL_CONDITIONS, ClipRow, ClipStore
 from .judge_runs import RecordingJudge
 from .judge_source import FixedJudge, JudgeChoice, JudgeSource
 
@@ -43,6 +43,7 @@ STOOL_REPEAT_HOURS = 24
 # 試し直しを待つ動画を覚えておく本数の上限。超えたら古いものから諦める。
 RETRY_BACKLOG = 500
 FAILURE_WAIT = 20
+SHORT_VISIT_DEFER_WINDOW = timedelta(minutes=15)
 # きっかけの優先度（clip_reviews.PRIORITY_ORDER の 0・1・2）ごとに、1時間あたりの上限のうち
 # 使ってよい割合。犬の出入りは4分の3、トレー外の滞在は半分までで後回しにし、
 # 検知と滞在の通知のために枠を残す。
@@ -678,10 +679,12 @@ class Review:
         max_per_hour: int = 0,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         screen: Screener | None = None,
+        defer_short_visits: bool = False,
     ) -> None:
         self.store = store
-        # 判定の前のふるい分けの指標を記録する。判定を省くことには使わない。
+        # 指標を記録し、試行が有効なら犬の出入りの判定順に使う。
         self.screen = screen
+        self.defer_short_visits = defer_short_visits and screen is not None
         # 監視中に判定器を呼ぶ1時間あたりの上限（0 は上限なし）。now はテストで差し替える。
         self.max_per_hour, self.now = max_per_hour, now
         # 直前に判定してよかった優先度。変わったときだけログに残す。
@@ -716,7 +719,8 @@ class Review:
 
     def _run(self, limit: int, since: str | None, clip_id: str | None) -> tuple[int, int]:
         completed = failures = 0
-        for row in self._waiting(limit, since, clip_id):
+        defer_short = self.defer_short_visits and since is not None and clip_id is None
+        for row in self._waiting(limit, since, clip_id, defer_short=defer_short):
             # 台帳には、この動画で実際に使った判定器を記録する。
             choice = self.judges.current()
             judge = RecordingJudge(
@@ -726,7 +730,12 @@ class Review:
                 path = self.store.video_path(row)
                 if path is None:
                     raise OSError("動画ファイルがありません")
-                self._screen(path, row)
+                screened = self._screen(path, row)
+                if screened and defer_short and row["source"] in DOG_VISIT_SOURCES:
+                    # 1本ずつ計測して並べ直す。並べ直した動画は次の選定で再び候補になる。
+                    first = next(self._waiting(1, since, clip_id, defer_short=True), None)
+                    if first is None or first["id"] != row["id"]:
+                        continue
                 result = self.inspect(path, row, judge)
                 observed_at = _clip_timestamp(
                     row, result.end_seconds if result.label in EVIDENCE else None
@@ -766,14 +775,15 @@ class Review:
                 )
         return completed, failures
 
-    def _screen(self, path: Path, row: ClipRow) -> None:
-        """ふるい分けの指標を記録する。失敗しても判定は続ける。"""
+    def _screen(self, path: Path, row: ClipRow) -> bool:
+        """ふるい分けの指標を新たに記録できたら True。失敗しても判定は続ける。"""
         if self.screen is None:
-            return
+            return False
         try:
-            self.screen(path, row)
-        except (ValueError, TypeError, OSError, cv2.error):
+            return self.screen(path, row) is not None
+        except (ValueError, TypeError, OSError, sqlite3.Error, cv2.error):
             logger.warning("ふるい分けの指標を記録できませんでした（動画 %s）", row["id"])
+            return False
 
     def _notify_assessment(
         self,
@@ -856,21 +866,23 @@ class Review:
         )
         self.store.assessments.finish_stool_notice(clip_id, sent)
 
-    def _waiting(self, limit: int, since: str | None, clip_id: str | None) -> Iterator[ClipRow]:
+    def _waiting(
+        self, limit: int, since: str | None, clip_id: str | None, *, defer_short: bool
+    ) -> Iterator[ClipRow]:
         """判定を待つ動画を順に返す。監視中（since あり）は、1時間あたりの上限を守る。
 
         上限のあるときは、呼び出しの回数が動画ごとに変わるので、1本ずつ数え直して選ぶ。
         """
         pending = self.store.assessments.pending
-        if since is None or not self.max_per_hour:
+        if since is None or (not self.max_per_hour and not defer_short):
             yield from pending(
                 limit, since, clip_id, self.scene_signature, retry=tuple(self.retries)
             )
             return
         seen: set[str] = set()
         for _ in range(limit):
-            priority = self._allowed_priority()
-            if priority is None:
+            priority = self._allowed_priority() if self.max_per_hour else None
+            if self.max_per_hour and priority is None:
                 return
             rows = pending(
                 1,
@@ -879,6 +891,9 @@ class Review:
                 self.scene_signature,
                 retry=tuple(self.retries),
                 max_priority=priority,
+                short_screened_since=(self.now() - SHORT_VISIT_DEFER_WINDOW).isoformat()
+                if defer_short
+                else None,
             )
             # 判定器の呼び出しに失敗した動画は試し直しに残るので、同じ実行では繰り返さない。
             if not rows or rows[0]["id"] in seen:

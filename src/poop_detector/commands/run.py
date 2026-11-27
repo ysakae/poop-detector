@@ -115,6 +115,8 @@ def review_watcher(
     judges: "JudgeSource",
     max_per_hour: int = 0,
     screening: tuple[Path, float] | None = None,
+    *,
+    defer_short_visits: bool = False,
 ) -> "Review":
     """録画時の基準で動画を自動判定する。判定器は動画ごとに judges から受け取る。
 
@@ -155,6 +157,7 @@ def review_watcher(
         judges=judges,
         max_per_hour=max_per_hour,
         screen=screen,
+        defer_short_visits=defer_short_visits,
     )
 
 
@@ -220,6 +223,7 @@ def _start_video_review(
         config.review_max_per_hour,
         # 犬検出を使うときだけ、判定の前にふるい分けの指標を記録する。
         (context.dog_model_dir, config.dog_confidence) if config.dog_enabled else None,
+        defer_short_visits=config.review_defer_short_visits,
     )
     stack.enter_context(review.watch(judge_watchdog(context, notifier)))
 
