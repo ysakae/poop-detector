@@ -80,12 +80,14 @@ class AssessmentStore:
         *,
         retry: Sequence[str] = (),
         max_priority: int | None = None,
+        short_screened_since: str | None = None,
     ) -> list[ClipRow]:
         """自動判定を待つ動画。
 
         since を指定すると、それ以降の未判定の動画と retry に挙げた失敗済みの動画を、
         きっかけの優先度の高い順、同じ優先度では古い順に返す。max_priority を指定すると、
         それより優先度の低い（数の大きい）きっかけの動画を後回しにする。
+        short_screened_since より後に計測した条件付きの短い出入りは、出入りの中で後ろに並べる。
         """
         conditions = ["c.status='ready'", "c.label IS NULL", "c.source IS NOT 'toilet_reentry'"]
         params: list[object] = []
@@ -109,9 +111,22 @@ class AssessmentStore:
         if max_priority is not None:
             conditions.append(f"{PRIORITY_ORDER} <= ?")
             params.append(max_priority)
-        order = (
-            f"{PRIORITY_ORDER}, c.requested_at ASC" if since is not None else "c.requested_at DESC"
-        )
+        order = "c.requested_at DESC"
+        if since is not None:
+            order = f"{PRIORITY_ORDER}, c.requested_at ASC"
+        if since is not None and short_screened_since is not None:
+            from ..experimental.screening import SCREENING_VERSION
+
+            short = """c.source IN ('dog_enter','dog_exit','dog_visit') AND c.interrupted=0
+                AND EXISTS (
+                    SELECT 1 FROM clip_screenings s WHERE s.clip_id=c.id
+                        AND s.version=? AND s.screened_at>?
+                        AND s.weak_tray_seconds>0 AND s.weak_tray_seconds<5-0.000001
+                        AND s.weak_tray_frames<=3 AND s.sampled>s.unaligned
+                        AND 10*s.unaligned<=s.sampled
+                )"""
+            order = f"{PRIORITY_ORDER}, ({short}), c.requested_at ASC"
+            params.extend([SCREENING_VERSION, short_screened_since])
         # 条件はこの関数内の固定の文字列だけで組み立て、値はすべてプレースホルダーで渡す。
         with self.connect() as db:
             return [

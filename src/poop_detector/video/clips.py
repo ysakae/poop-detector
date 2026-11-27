@@ -49,6 +49,7 @@ RequestSource: TypeAlias = Literal[
     "manual", "detected", "dog_enter", "dog_exit", "early_alert", "outside_stay", "toilet_reentry"
 ]
 ClipSource: TypeAlias = RequestSource | Literal["dog_visit"]
+DOG_VISIT_SOURCES = frozenset({"dog_enter", "dog_exit", "dog_visit"})
 ClipStatus: TypeAlias = Literal[
     "queued", "recording", "encoding", "ready", "failed", "removing", "removed"
 ]
@@ -145,7 +146,7 @@ class ClipStore:
 
     @property
     def screenings(self) -> "ScreeningStore":
-        """判定の前のふるい分けの指標（clip_screenings）。記録だけで、判定には使わない。"""
+        """判定の前のふるい分けの指標（clip_screenings）。"""
         from .clip_screenings import ScreeningStore
 
         return ScreeningStore(self.store.database)

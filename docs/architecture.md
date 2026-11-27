@@ -145,9 +145,9 @@ GUI は `poop-detector gui` で単独起動できます。`poop-detector run --g
 
 `circling-review` サブコマンドは保存済み動画に犬検出をかけ、トレー付近の旋回（排泄の前兆候補）を `circling_reviews` テーブルへ記録します（`experimental/circling.py`）。オフラインの分析だけで、監視ループや通知にはつながっていません。`circling-compare` は、人がラベルを付けた動画で、この規則と軌跡の特徴量による決定木（任意の依存の scikit-learn）を日ごとの交差検証で比べます（#127）。
 
-### 判定の前のふるい分けの指標（記録だけ）
+### 判定の前のふるい分けの指標
 
-判定器に渡す動画を減らせるかを確かめるため、犬検出を使う監視（`dog.enabled`）では、`Review` が判定の直前に `experimental.screening.ClipScreener` で動画ごとの指標を求め、`clip_screenings` に残します。判定を省いたり通知を変えたりはしません。指標を求められなくても、判定はそのまま続けます。
+犬検出を使う監視（`dog.enabled`）では、`Review` が判定の直前に `experimental.screening.ClipScreener` で動画ごとの指標を求め、`clip_screenings` に残します。`review.defer_short_visits` を有効にすると、指標が[短い出入りの条件](dog.md#判定の前のふるい分けの指標を記録する)を満たす動画を犬の出入りの中で後に回します。指標が未計測か、計測してから15分以上経った動画は通常の順番です。
 
 監視の犬検出（`dog.confidence`、既定0.4）は、かがんだ犬の確信度（0.2〜0.4）を落とすので、トレー滞在時間（`clips.tray_stay_seconds`）は排泄している動画ほど短く測られます（#127。人が確認した排便の動画で1.0秒の例がある）。そこで指標は、別に作った低いしきい値（`WEAK_CONFIDENCE`＝0.2）の検出器で、動画を1/3秒ごとに（トレー追従があれば位置を合わせて）調べて求めます。
 

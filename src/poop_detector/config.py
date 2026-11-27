@@ -560,6 +560,14 @@ SETTINGS: tuple[Setting, ...] = (
         "0〜1000 の整数（監視中に判定器を呼ぶ1時間あたりの上限。0 で上限なし）",
     ),
     Setting(
+        "review_defer_short_visits",
+        "review",
+        "defer_short_visits",
+        bool,
+        _always,
+        "true または false（試行。短い犬の出入りの判定順を下げる）",
+    ),
+    Setting(
         "video_review_enabled",
         "features",
         "video_review",
@@ -789,6 +797,7 @@ class Config:
     review_model: str = ""
     review_fallback: str = ""
     review_max_per_hour: int = 20
+    review_defer_short_visits: bool = False
     video_review_enabled: bool = False
     early_alert_enabled: bool = False
     track_tray_enabled: bool = False
