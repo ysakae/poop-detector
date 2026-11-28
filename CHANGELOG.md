@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-29
+
+### 修正
+
+- ホームのライブ映像が、カメラが数秒途切れたあとに「監視からの映像を待っています。」のまま戻らない問題を修正。配信を開き直すたびに URL を変え、ブラウザーが閉じた配信を使い回さないようにした（#350）
+
 ## [1.4.0] - 2026-11-27
 
 ### 追加
@@ -160,7 +166,8 @@
 - GitHub Actions で静的解析、Python 3.11・3.12 のテスト、Docker イメージを確認
 - MIT License、コントリビューションの手引き、行動規範、セキュリティポリシー、データの扱いの説明、依存ライブラリのライセンスの一覧
 
-[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/ysakae/poop-detector/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/ysakae/poop-detector/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/ysakae/poop-detector/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/ysakae/poop-detector/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/ysakae/poop-detector/compare/v1.2.0...v1.2.1
