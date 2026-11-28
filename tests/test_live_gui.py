@@ -2,6 +2,7 @@
 
 import json
 import os
+import threading
 import time
 from contextlib import closing
 from http.client import HTTPConnection
@@ -261,7 +262,7 @@ def test_live_panel_recovers_when_stream_never_delivers_an_image(gui):
         playwright.expect(page.locator("#live-saver")).to_have_attribute("aria-pressed", "false")
         with page.expect_request("**/live/frame*"):
             pass
-        with page.expect_request("**/live/stream?fps=2"):
+        with page.expect_request("**/live/stream?fps=2&t=*"):
             page.locator("#live-saver").click()
         browser.close()
 
@@ -293,3 +294,50 @@ def test_live_panel_retries_when_status_request_stalls(gui):
         playwright.expect(page.locator("#live-frame")).to_be_visible(timeout=12000)
         assert page.locator("#live-frame").evaluate("(image) => image.naturalWidth") == 100
         browser.close()
+
+
+def test_live_panel_reconnects_after_stream_ends(gui):
+    playwright = pytest.importorskip("playwright.sync_api")
+    server, store, _ = gui
+    preview = LivePreview(store.root)
+    frame = np.full((60, 100, 3), 190, dtype=np.uint8)
+    host, port = server.server_address
+    url = f"http://{host}:{port}"
+    name, value = session_cookie(server)["Cookie"].split("=", 1)
+    camera_up = threading.Event()
+    camera_up.set()
+    stopped = threading.Event()
+
+    def camera():
+        # 監視の代わりに、要求があるときだけ最新のコマを書き出す。
+        while not stopped.is_set():
+            if camera_up.is_set():
+                preview.publish(frame)
+            time.sleep(0.05)
+
+    thread = threading.Thread(target=camera, daemon=True)
+    thread.start()
+    shown = """() => {
+        const image = document.querySelector('#live-frame');
+        return !image.hidden && image.naturalWidth === 100;
+    }"""
+    try:
+        with playwright.sync_playwright() as runtime:
+            browser = runtime.chromium.launch()
+            page = browser.new_page()
+            page.context.add_cookies([{"name": name, "value": value, "url": url}])
+            streams = []
+            page.on("request", lambda req: "/live/stream" in req.url and streams.append(req.url))
+            page.goto(url, wait_until="domcontentloaded")
+            page.wait_for_function(shown, timeout=8000)
+            # カメラが数秒止まると、サーバーは配信を閉じる。
+            camera_up.clear()
+            page.wait_for_function("document.querySelector('#live-frame').hidden", timeout=10000)
+            camera_up.set()
+            # 同じ URL を開き直すと、ブラウザーは閉じた配信の画像を使い回して要求を送らない。
+            page.wait_for_function(shown, timeout=10000)
+            assert len(set(streams)) >= 2
+            browser.close()
+    finally:
+        stopped.set()
+        thread.join()

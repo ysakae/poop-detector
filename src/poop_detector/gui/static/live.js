@@ -50,8 +50,10 @@ let saving = storedSaver() ?? automaticSaver();
 // 映像が画面から外れている間（下へスクロールしたとき）は、受け取りを止める。
 let offscreen = false;
 
-function streamUrl() {
-    return saving ? "/live/stream?fps=" + SAVER_FPS : "/live/stream";
+// 配信は、カメラが数秒止まるとサーバーが閉じる。同じ URL を開き直すと、ブラウザーは
+// 閉じた配信の画像を使い回して要求を送らず、監視も書き出しを始めないため、毎回 URL を変える。
+function streamUrl(now) {
+    return (saving ? "/live/stream?fps=" + SAVER_FPS + "&t=" : "/live/stream?t=") + now;
 }
 
 function showSaver() {
@@ -183,7 +185,7 @@ function startStream() {
         if (!useSnapshots || (!image.complete && now - startedAt < FIRST_FRAME_TIMEOUT_MS)) return;
     }
     startedAt = now;
-    image.src = useSnapshots ? "/live/frame?t=" + now : streamUrl();
+    image.src = useSnapshots ? "/live/frame?t=" + now : streamUrl(now);
 }
 
 function showAge(stamp) {
